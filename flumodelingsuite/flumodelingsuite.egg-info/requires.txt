@@ -1,0 +1,4 @@
+epydemix
+pandas
+numpy
+holidays

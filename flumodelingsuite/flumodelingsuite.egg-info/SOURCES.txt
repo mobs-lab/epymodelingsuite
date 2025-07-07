@@ -1,0 +1,14 @@
+MANIFEST.in
+pyproject.toml
+data/location_codebook.csv
+data/school_calendars_corrected.csv
+data/school_calendars_formatted.csv
+data/school_calendars_old.csv
+flumodelingsuite/__init__.py
+flumodelingsuite/school_closures.py
+flumodelingsuite/seasonality.py
+flumodelingsuite.egg-info/PKG-INFO
+flumodelingsuite.egg-info/SOURCES.txt
+flumodelingsuite.egg-info/dependency_links.txt
+flumodelingsuite.egg-info/requires.txt
+flumodelingsuite.egg-info/top_level.txt

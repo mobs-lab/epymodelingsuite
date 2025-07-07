@@ -1,0 +1,261 @@
+state,event_name,start_day,start_month,end_day,end_month
+AK,Thanksgiving Break,25,11,26,11
+AK,Christmas Break,20,12,31,12
+AK,Mid Winter Break,18,2,21,2
+AK,Spring Break,7,3,11,3
+AL,Thanksgiving Break,23,11,27,11
+AL,Christmas Break,21,12,1,1
+AL,Mid Winter Break,15,2,17,2
+AL,Spring Break,5,4,9,4
+AR,Thanksgiving Break,26,11,27,11
+AR,Christmas Break,21,12,4,1
+AR,Spring Break,22,3,26,3
+AZ,Fall Break,11,10,15,10
+AZ,Thanksgiving Break,25,11,26,11
+AZ,Christmas Break,20,12,31,12
+AZ,Mid Winter Break,24,2,25,2
+AZ,Spring Break,14,3,18,3
+CA,Thanksgiving Break,26,11,27,11
+CA,Christmas Break,21,12,8,1
+CA,Spring Break,26,3,2,4
+CO,Fall Break,16,10,20,10
+CO,Thanksgiving Break,23,11,27,11
+CO,Christmas Break,21,12,4,1
+CO,Mid Winter Break,15,2,16,2
+CO,Spring Break,29,3,5,4
+CT,Thanksgiving Break,25,11,27,11
+CT,Christmas Break,24,12,1,1
+CT,Mid Winter Break,12,2,15,2
+CT,Spring Break,12,4,16,4
+DC,Fall Break,7,10,11,10
+DC,Thanksgiving Break,24,11,26,11
+DC,Christmas Break,23,12,31,12
+DC,Mid Winter Break,21,2,25,2
+DC,March Break,10,3,11,3
+DC,Spring Break,11,4,18,4
+DE,Fall Break,2,11,3,11
+DE,Thanksgiving Break,25,11,27,11
+DE,Christmas Break,24,12,1,1
+DE,Mid Winter Break,12,2,15,2
+DE,Spring Break,25,3,26,3
+FL,Thanksgiving Break,25,11,27,11
+FL,Christmas Break,21,12,1,1
+FL,Spring Break,26,3,2,4
+GA,Fall Break,8,10,12,10
+GA,Thanksgiving Break,23,11,27,11
+GA,Christmas Break,21,12,6,1
+GA,Mid Winter Break,12,2,15,2
+GA,Spring Break,5,4,9,4
+HI,Fall Break,5,10,9,10
+HI,Thanksgiving Break,26,11,27,11
+HI,Christmas Break,21,12,4,1
+HI,Spring Break,15,3,19,3
+IA,Fall Break,30,10,3,11
+IA,Thanksgiving Break,25,11,27,11
+IA,Christmas Break,23,12,1,1
+IA,Spring Break,15,3,23,3
+ID,Fall Break,22,10,23,10
+ID,Thanksgiving Break,23,11,27,11
+ID,Christmas Break,21,12,1,1
+ID,Spring Break,22,3,26,3
+IL,Thanksgiving Break,25,11,27,11
+IL,Christmas Break,21,12,1,1
+IL,Spring Break,29,3,2,4
+IN,Fall Break,12,10,16,10
+IN,Thanksgiving Break,25,11,27,11
+IN,Christmas Break,18,12,1,1
+IN,Mid Winter Break,15,2,16,2
+IN,Spring Break,22,3,2,4
+KS,Thanksgiving Break,27,11,29,11
+KS,Christmas Break,23,12,6,1
+KS,Spring Break,13,3,20,3
+KY,Fall Break,2,10,6,10
+KY,Thanksgiving Break,25,11,27,11
+KY,Christmas Break,21,12,4,1
+KY,Mid Winter Break,12,2,15,2
+KY,Spring Break,26,3,2,4
+LA,Thanksgiving Break,23,11,27,11
+LA,Christmas Break,23,12,1,1
+LA,Mid Winter Break,15,2,19,2
+LA,Spring Break,2,4,6,4
+MA,Thanksgiving Break,26,11,27,11
+MA,Christmas Break,24,12,4,1
+MA,Mid Winter Break,15,2,19,2
+MA,Spring Break,19,4,23,4
+MD,Thanksgiving Break,26,11,27,11
+MD,Christmas Break,24,12,1,1
+MD,Mid Winter Break,12,2,15,2
+MD,Spring Break,29,3,5,4
+ME,Fall Break,9,10,12,10
+ME,Thanksgiving Break,25,11,27,11
+ME,Christmas Break,23,12,1,1
+ME,Mid Winter Break,15,2,19,2
+ME,Spring Break,16,4,23,4
+MI,Thanksgiving Break,25,11,27,11
+MI,Christmas Break,21,12,1,1
+MI,Mid Winter Break,15,2,19,2
+MI,Spring Break,2,4,9,4
+MN,Fall Break,14,10,16,10
+MN,Thanksgiving Break,25,11,27,11
+MN,Christmas Break,21,12,1,1
+MN,Mid Winter Break,15,2,16,2
+MN,Spring Break,2,4,9,4
+MO,Thanksgiving Break,25,11,27,11
+MO,Christmas Break,21,12,1,1
+MO,Mid Winter Break,12,2,15,2
+MO,Spring Break,19,3,26,3
+MS,Thanksgiving Break,23,11,27,11
+MS,Christmas Break,21,12,4,1
+MS,Spring Break,15,3,19,3
+MT,Fall Break,15,10,16,10
+MT,Thanksgiving Break,25,11,27,11
+MT,Christmas Break,23,12,1,1
+MT,Spring Break,29,3,5,4
+NC,Thanksgiving Break,24,11,26,11
+NC,Christmas Break,20,12,3,1
+NC,Spring Break,11,4,18,4
+ND,Fall Break,22,10,23,10
+ND,Thanksgiving Break,25,11,27,11
+ND,Christmas Break,24,12,1,1
+ND,Mid Winter Break,15,2,16,2
+ND,Spring Break,15,3,19,3
+NE,Thanksgiving Break,25,11,27,11
+NE,Christmas Break,21,12,4,1
+NE,Spring Break,8,3,12,3
+NH,Thanksgiving Break,25,11,27,11
+NH,Christmas Break,24,12,1,1
+NH,Mid Winter Break,22,2,26,2
+NH,Spring Break,26,4,30,4
+NJ,Fall Break,5,11,10,11
+NJ,Thanksgiving Break,26,11,27,11
+NJ,Christmas Break,24,12,1,1
+NJ,Mid Winter Break,12,2,15,2
+NJ,Spring Break,2,4,9,4
+NM,Fall Break,8,10,9,10
+NM,Thanksgiving Break,23,11,27,11
+NM,Christmas Break,21,12,4,1
+NM,Spring Break,18,3,26,3
+NV,Thanksgiving Break,24,11,26,11
+NV,Christmas Break,20,12,4,1
+NV,Spring Break,14,3,20,3
+NY,Thanksgiving Break,26,11,27,11
+NY,Christmas Break,24,12,1,1
+NY,Mid Winter Break,12,2,19,2
+NY,Spring Break,29,3,2,4
+OH,Thanksgiving Break,25,11,27,11
+OH,Christmas Break,21,12,1,1
+OH,Spring Break,2,4,9,4
+OK,Fall Break,11,10,18,10
+OK,Thanksgiving Break,22,11,26,11
+OK,Christmas Break,20,12,31,12
+OK,Mid Winter Break,18,2,21,2
+OK,Spring Break,14,3,18,3
+OR,Thanksgiving Break,23,11,27,11
+OR,Christmas Break,21,12,1,1
+OR,Spring Break,22,3,26,3
+PA,Thanksgiving Break,26,11,27,11
+PA,Christmas Break,24,12,1,1
+PA,Spring Break,29,3,2,4
+RI,Thanksgiving Break,28,11,29,11
+RI,Christmas Break,23,12,1,1
+RI,Mid Winter Break,17,2,18,2
+RI,Spring Break,10,4,17,4
+SC,Fall Break,2,11,3,11
+SC,Thanksgiving Break,25,11,27,11
+SC,Christmas Break,21,12,1,1
+SC,March Break,18,3,19,3
+SC,Spring Break,2,4,9,4
+SD,Fall Break,11,10,12,10
+SD,Thanksgiving Break,24,11,26,11
+SD,Christmas Break,23,12,31,12
+SD,Mid Winter Break,21,2,22,2
+SD,Spring Break,15,4,18,4
+TN,Fall Break,12,10,16,10
+TN,Thanksgiving Break,25,11,27,11
+TN,Christmas Break,21,12,4,1
+TN,Spring Break,15,3,19,3
+TX,Thanksgiving Break,23,11,27,11
+TX,Christmas Break,21,12,4,1
+TX,Spring Break,15,3,19,3
+UT,Fall Break,21,10,25,10
+UT,Thanksgiving Break,24,11,29,11
+UT,Christmas Break,20,12,31,12
+UT,Mid Winter Break,21,2,22,2
+UT,Spring Break,4,4,8,4
+VA,Fall Break,11,10,12,10
+VA,November Break,1,11,2,11
+VA,Thanksgiving Break,24,11,26,11
+VA,Christmas Break,20,12,31,12
+VA,Mid Winter Break,18,2,21,2
+VA,Spring Break,8,4,15,4
+VT,Thanksgiving Break,23,11,27,11
+VT,Christmas Break,23,12,1,1
+VT,Mid Winter Break,22,2,2,3
+VT,Spring Break,19,4,23,4
+WA,Thanksgiving Break,23,11,27,11
+WA,Christmas Break,21,12,1,1
+WA,Mid Winter Break,15,2,19,2
+WA,Spring Break,12,4,16,4
+WI,Fall Break,23,10,26,10
+WI,Thanksgiving Break,25,11,27,11
+WI,Christmas Break,23,12,1,1
+WI,Mid Winter Break,15,2,16,2
+WI,Spring Break,2,4,9,4
+WV,Thanksgiving Break,26,11,27,11
+WV,Christmas Break,24,12,1,1
+WV,Spring Break,2,4,5,4
+WY,Thanksgiving Break,24,11,26,11
+WY,Christmas Break,20,12,31,12
+WY,Mid Winter Break,18,2,21,2
+WY,Spring Break,28,3,1,4
+AK,Summer Break,19,5,17,8
+AL,Summer Break,3,6,1,9
+AR,Summer Break,26,5,24,8
+AZ,Summer Break,26,5,5,8
+CA,Summer Break,10,6,18,8
+CO,Summer Break,28,5,17,8
+CT,Summer Break,15,6,1,9
+DC,Summer Break,22,6,30,8
+DE,Summer Break,3,6,31,8
+FL,Summer Break,9,6,24,8
+GA,Summer Break,26,5,12,8
+HI,Summer Break,1,6,4,8
+IA,Summer Break,2,6,8,9
+ID,Summer Break,4,6,27,8
+IL,Summer Break,22,6,8,9
+IN,Summer Break,3,6,3,8
+KS,Summer Break,21,5,15,8
+KY,Summer Break,26,5,12,8
+LA,Summer Break,26,5,31,8
+MA,Summer Break,18,6,1,9
+MD,Summer Break,14,6,6,7
+ME,Summer Break,9,6,31,8
+MI,Summer Break,3,6,24,8
+MN,Summer Break,11,6,8,9
+MO,Summer Break,3,6,24,8
+MS,Summer Break,26,5,10,8
+MT,Summer Break,4,6,24,8
+NC,Summer Break,10,6,25,8
+ND,Summer Break,3,6,27,8
+NE,Summer Break,26,5,18,8
+NH,Summer Break,16,6,2,9
+NJ,Summer Break,28,6,8,9
+NM,Summer Break,25,5,29,7
+NV,Summer Break,25,5,9,8
+NY,Summer Break,25,6,21,9
+OH,Summer Break,3,6,27,8
+OK,Summer Break,18,5,9,8
+OR,Summer Break,11,6,2,9
+PA,Summer Break,11,6,2,9
+RI,Summer Break,17,6,3,9
+SC,Summer Break,4,6,17,8
+SD,Summer Break,24,5,26,8
+TN,Summer Break,26,5,10,8
+TX,Summer Break,28,5,24,8
+UT,Summer Break,2,6,16,8
+VA,Summer Break,17,6,23,8
+VT,Summer Break,11,6,26,8
+WA,Summer Break,18,6,2,9
+WI,Summer Break,11,6,1,9
+WV,Summer Break,28,5,8,9
+WY,Summer Break,2,6,23,8

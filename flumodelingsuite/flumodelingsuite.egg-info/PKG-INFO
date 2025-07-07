@@ -1,0 +1,15 @@
+Metadata-Version: 2.4
+Name: flumodelingsuite
+Version: 0.0.1
+Summary: Testing
+Author-email: Remy LeWinter <lewinter.r@northeastern.edu>
+License-Expression: MIT
+Project-URL: Homepage, https://github.com/mobs-lab/flu-modeling-suite
+Classifier: Programming Language :: Python :: 3
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+Requires-Dist: epydemix
+Requires-Dist: pandas
+Requires-Dist: numpy
+Requires-Dist: holidays

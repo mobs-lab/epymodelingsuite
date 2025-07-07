@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flumodelingsuite"
+version = "0.0.1"
+authors = [
+  { name="Remy LeWinter", email="lewinter.r@northeastern.edu" },
+]
+description = "Testing"
+dependencies = [
+    "epydemix",
+    "pandas",
+    "numpy",
+    "holidays"
+]
+readme = "README.md"
+requires-python = ">=3.9"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+license = "MIT"
+license-files = ["LICEN[CS]E*"]
+
+[project.urls]
+Homepage = "https://github.com/mobs-lab/flu-modeling-suite"
+
+[tool.setuptools]
+packages = ["flumodelingsuite"]
+include-package-data = true
