@@ -1,4 +1,5 @@
 epydemix
-pandas
 numpy
 holidays
+matplotlib
+pandas

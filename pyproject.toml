@@ -8,12 +8,13 @@ version = "0.0.1"
 authors = [
   { name="Remy LeWinter", email="lewinter.r@northeastern.edu" },
 ]
-description = "Testing"
+description = "Models for influenza forecasting and scenario modeling. A codebase for working with epydemix."
 dependencies = [
     "epydemix",
     "pandas",
     "numpy",
-    "holidays"
+    "holidays",
+    "matplotlib"
 ]
 readme = "README.md"
 requires-python = ">=3.9"

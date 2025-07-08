@@ -34,7 +34,7 @@ def make_school_closure_dict(
     import sys
 
     # Read closures from school calendars
-    filename = os.path.join(os.path.dirname(sys.modules[__name__].__file__), "../data/school_calendars_formatted.csv")
+    filename = os.path.join(os.path.dirname(sys.modules[__name__].__file__), "data/school_calendars_formatted.csv")
     calendars = pd.read_csv(filename)
     
     # Initialize the output dict
@@ -252,7 +252,7 @@ def add_school_closure_interventions(
     import os
 
     # Codebook for locations
-    filename = os.path.join(os.path.dirname(sys.modules[__name__].__file__), "../data/location_codebook.csv")
+    filename = os.path.join(os.path.dirname(sys.modules[__name__].__file__), "data/location_codebook.csv")
     location_codebook = pd.read_csv(filename)
 
     # Get the school closures that apply to the location/population of the model
