@@ -7,6 +7,8 @@ name = "flumodelingsuite"
 version = "0.0.1"
 authors = [
   { name="Remy LeWinter", email="lewinter.r@northeastern.edu" },
+  { name="Nima Moghaddas", email="moghaddas.n@northeastern.edu" },
+  { name="Minami Ueda", email="ueda.m@northeastern.edu" }
 ]
 description = "Models for influenza forecasting and scenario modeling. A codebase for working with epydemix."
 dependencies = [
