@@ -4,12 +4,13 @@ import pandas as pd
 from epydemix.model import EpiModel 
 
 def smh_data_to_epydemix(
-    start_date: str,
-    end_date: str,
+    input_filepath: str,
+    start_date: str | pd.Timestamp,
+    end_date: str | pd.Timestamp,
     location: str,
     model: EpiModel,
-    scenario: str = "C_D",
-    output_filename: Optional[str]=None,
+    scenario: str,
+    output_filepath: Optional[str]=None,
 ) -> pd.DataFrame:
     """
     Processes age-specific influenza vaccine coverage data from the scenario modeling hub into 
@@ -22,12 +23,13 @@ def smh_data_to_epydemix(
     administered per age group for the specified scenario.
 
     Args:
+        input_filepath (str): Path to CSV containing SMH vaccination data.
         start_date (str or Timestamp): Start date of the simulation period (used to build full timeline).
         end_date (str or Timestamp): End date of the simulation period (used to build full timeline).
         location (str): Name of the geography to filter vaccine data (e.g., 'California').
         model (object): Epydemix EpiModel instance with a .population.Nk list for age group sizes.
-        scenario (str): One of {'A_B', 'C_D', 'E_F'}, indicating which vaccination scenario to extract.
-        output_filename (str, optional): If provided, the output DataFrame will be saved as a CSV file with this name.
+        scenario (str): String representing scenario grouping (e.g. one of {'A_B', 'C_D', 'E_F'} for the 24/25 season) indicating which vaccination scenario to extract. Must match the suffix of columns in the original data e.g. 'flu.coverage.rd2425.sc_A_B'.
+        output_filepath (str, optional): If provided, the output DataFrame will be saved as a CSV at the given filepath.
 
     Returns:
         pd.DataFrame: DataFrame with columns ['dates', 'scenario', <age groups>] giving the 
@@ -38,20 +40,23 @@ def smh_data_to_epydemix(
     import sys
     
     # ========== LOAD AND FILTER DATA ==========
-    filename = os.path.join(os.path.dirname(sys.modules[__name__].__file__), "data/vaccine_scenarios_2425.csv")
-    vaccines = pd.read_csv(filename)
+    vaccines = pd.read_csv(input_filepath)
+    # Date and time handling
     vaccines["Week_Ending_Sat"] = pd.to_datetime(vaccines["Week_Ending_Sat"])
     start_date = pd.Timestamp(start_date)
     end_date = pd.Timestamp(end_date)
-    location = location
+    # Validate location
     if location not in vaccines['Geography'].unique():
         raise ValueError(f"Location '{location}' not found in vaccine data. \n Available locations: {vaccines['Geography'].unique()}")
+    # Validate scenario
+    scenario_options = [name.split('sc_')[-1] for name in list(vaccines.columns) if name.find('sc_') > -1]
+    if scenario not in scenario_options:
+        raise ValueError(f"Scenario '{scenario}' not found in vaccine data. \n Available scenarios: {scenario_options}")
+    # Filter data
     vaccines = vaccines.query("Geography == @location and Week_Ending_Sat >= @start_date").rename(
-        columns={
-            "flu.coverage.rd2425.sc_A_B": "Coverage_A_B", 
-            "flu.coverage.rd2425.sc_C_D": "Coverage_C_D",
-            "flu.coverage.rd2425.sc_E_F": "Coverage_E_F"
-        }
+        columns={name: 'Coverage_' + name.split('sc_')[-1] 
+                 for name in list(vaccines.columns) 
+                 if name.find('sc_') > -1}
     )
     
     # ========== AGGREGATE AGE GROUPS ==========
@@ -71,7 +76,7 @@ def smh_data_to_epydemix(
             "Coverage_A_B": weighted_avg(g, "Coverage_A_B"),
             "Coverage_C_D": weighted_avg(g, "Coverage_C_D"),
             "Coverage_E_F": weighted_avg(g, "Coverage_E_F"),
-        }))
+        }), include_groups=False)
         .reset_index()
     )
     
@@ -177,9 +182,8 @@ def smh_data_to_epydemix(
     }, inplace=True)
 
     # ========== WRITE OUTPUT CSV ==========
-    if output_filename:
-        output_path = os.path.join(os.path.dirname(sys.modules[__name__].__file__), "data", output_filename + ".csv")
-        df_final.to_csv(output_path, index=False)
+    if output_filepath:
+        df_final.to_csv(output_filepath, index=False)
     
     return df_final
 
