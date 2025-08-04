@@ -1,0 +1,118 @@
+model:
+  name: "flu_round05"
+  version: "v0.0.1"
+  date: "2024-08-05" # YYYY-MM-DD
+  description: "Flu model for the 2024-2025 season, Round 5"
+
+  simulation:
+    location:
+      - "TX"
+      - "MA" # or "all"
+    start_date: "2024-08-05" # YYYY-MM-DD
+    end_date: "2025-08-05" # YYYY-MM-DD
+
+  random_seed: 42
+
+  compartments:
+  - id: S
+    label: "Susceptible"
+    clinical: true
+    traveller: true
+
+  - id: S_vax
+    label: "Susceptible (vaccinated)"
+
+  - id: L
+    label: "Latent"
+
+  - id: L_vax
+    label: "Latent (vaccinated)"
+  
+  - id: I
+    label: "Infectious"
+  
+  - id: R
+    label: "Recovered"
+
+  - id: R_vax
+    label: "Recovered (vaccinated)"
+
+  transitions:
+  - type: mediated # "spontaneous" or "mediated" or "vaccination"
+    source: S
+    target: L
+    mediators:
+      ratio: beta
+      source: I
+  - type: spontaneous
+    source: I
+    target: R
+    ratio: mu
+  - type: vaccination
+    source: S
+    target: S_vax
+  - type: vaccination
+    source: L
+    target: L_vax
+
+  interventions:
+  - type: school_closure
+    reduction_factor: 0.33
+  - type: parameter
+    target_parameter: beta
+    reduction_factor: 0.5
+    start_date: "2024-10-01" # YYYY-MM-DD
+    end_date: "2025-04-01" # YYYY-MM-DD
+  - type: contact_matrix
+
+  seasonality:
+    type: balcan
+    seasonality_max_date: "2024-10-01" # YYYY-MM-DD
+    seasonality_min_date: "2025-04-01" # YYYY-MM-DD
+    transmissibility_max: 1.00
+    transmissibility_min: 0.50
+
+  # Parameters/Variables: constant, array, or probability distribution
+  parameters:
+    vaccine_effectiveness:
+      type: constant
+      value: 0.7
+    mu:
+      type: expression
+      value: 1/5 # np.pow(2, -3)
+    delta:
+      type: array
+      value:
+      - 0.793650793650794
+      - 0.826446280991736
+      - 0.523560209424084
+      - 0.492610837438424
+      - 0.666666666666667
+    generation_time:
+      type: distribution
+      distribution:
+        type: gamma
+        args:
+          - 2.0
+          - 1.5
+        kwargs:
+          # some_other_param: 100
+
+  # Parameters to calibrate
+  priors:
+    beta:
+      # Prior
+      distribution:
+        type: uniform
+        args: [0, 1]
+        kwargs:
+          # some_other_param: 100
+    lambda:
+      distribution:
+        type: norm
+        args: [0, 1]
+        kwargs:
+          # some_other_param: 100
+
+  vaccination:
+    processed_coverage_data_path: "data/PROCESSED_Age_Specific_Coverage_Flu_RD1_2024_25_Sc_A_B_C_D_E_F.csv"
