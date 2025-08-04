@@ -42,12 +42,12 @@ model:
     source: S
     target: L
     mediators:
-      ratio: beta
+      rate: beta
       source: I
   - type: spontaneous
     source: I
     target: R
-    ratio: mu
+    rate: mu
   - type: vaccination
     source: S
     target: S_vax
