@@ -82,7 +82,7 @@ model:
       value: 1/5 # np.pow(2, -3)
     delta:
       type: array
-      value:
+      values:
       - 0.793650793650794
       - 0.826446280991736
       - 0.523560209424084
