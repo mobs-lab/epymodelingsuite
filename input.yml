@@ -16,8 +16,8 @@ model:
   compartments:
   - id: S
     label: "Susceptible"
-    clinical: true
-    traveller: true
+    is_clinical: true
+    is_traveller: true
 
   - id: S_vax
     label: "Susceptible (vaccinated)"
