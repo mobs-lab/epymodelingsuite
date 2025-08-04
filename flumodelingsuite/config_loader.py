@@ -222,7 +222,7 @@ def _add_model_parameters_from_config(model, config):
 	model.add_parameter(parameters_dict=parameters_dict)
 	return model
 
-def setup_model_from_config(config):
+def setup_epimodel_from_config(config):
 	"""
 	Set up an EpiModel instance from a configuration dictionary.
 	
