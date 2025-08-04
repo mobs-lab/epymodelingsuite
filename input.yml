@@ -91,7 +91,7 @@ model:
     generation_time:
       type: distribution
       distribution:
-        type: gamma
+        name: gamma
         args:
           - 2.0
           - 1.5
@@ -103,13 +103,13 @@ model:
     beta:
       # Prior
       distribution:
-        type: uniform
+        name: uniform
         args: [0, 1]
         kwargs:
           # some_other_param: 100
-    lambda:
+    lamb:
       distribution:
-        type: norm
+        name: norm
         args: [0, 1]
         kwargs:
           # some_other_param: 100
