@@ -149,8 +149,11 @@ def _add_model_compartments_from_config(model, config):
 		return model
 	
 	# Add compartments to the model
-	compartment_ids = [ compartment['id'] for compartment in config['model']['compartments'] ]
-	model.add_compartments(compartment_ids)
+	try:
+		compartment_ids = [ compartment['id'] for compartment in config['model']['compartments'] ]
+		model.add_compartments(compartment_ids)
+	except Exception as e:
+		raise ValueError(f"Error adding compartments: {e}")
 
 	return model
 
@@ -174,22 +177,29 @@ def _add_model_transitions_from_config(model, config):
 	# Add transitions to the model
 	for transition in config['model']['transitions']:
 		if transition['type'] == "mediated":
-			model.add_transition(
-				transition['source'],
-				transition['target'],
-				params=(
-					transition['mediators']['rate'],
-					transition['mediators']['source']
-				),
-				kind=transition['type']
-			)
+			try:
+				model.add_transition(
+					transition['source'],
+					transition['target'],
+					params=(
+						transition['mediators']['rate'],
+						transition['mediators']['source']
+					),
+					kind=transition['type']
+				)
+			except Exception as e:
+				raise ValueError(f"Error adding mediated transition {transition}: {e}")
 		elif transition['type'] == "spontaneous":
-			model.add_transition(
-				transition['source'],
-				transition['target'],
-				params=transition['rate'],
-				kind=transition['type']
-			)
+			try:
+				model.add_transition(
+					transition['source'],
+					transition['target'],
+					params=transition['rate'],
+					kind=transition['type']
+				)
+			except Exception as e:
+				raise ValueError(f"Error adding spontaneous transition {transition}: {e}")
+
 	return model
 
 def _add_model_parameters_from_config(model, config):
@@ -219,6 +229,11 @@ def _add_model_parameters_from_config(model, config):
 		elif data['type'] == 'expression':
 			parameters_dict[key] = _safe_eval(data['value'])
 	
+	try:
+		model.add_parameter(parameters_dict=parameters_dict)
+	except Exception as e:
+		raise ValueError(f"Error adding parameters to model: {e}")
+
 	model.add_parameter(parameters_dict=parameters_dict)
 	return model
 
