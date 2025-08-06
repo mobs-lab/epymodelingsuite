@@ -228,7 +228,7 @@ def _add_model_parameters_from_config(model, config):
 	# Add parameters to the model
 	parameters_dict = {}
 	for key, data in config['model']['parameters'].items():
-		if data['type'] in 'constant':
+		if data['type'] == 'constant':
 			parameters_dict[key] = data['value']
 		elif data['type'] == 'array':
 			parameters_dict[key] = data['values']
