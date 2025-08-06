@@ -155,6 +155,7 @@ def _add_model_compartments_from_config(model, config):
 	try:
 		compartment_ids = [ compartment['id'] for compartment in config['model']['compartments'] ]
 		model.add_compartments(compartment_ids)
+		logger.info(f"Added compartments: {compartment_ids}")
 	except Exception as e:
 		raise ValueError(f"Error adding compartments: {e}")
 
