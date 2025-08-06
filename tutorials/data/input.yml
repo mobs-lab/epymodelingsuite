@@ -5,9 +5,7 @@ model:
   description: "Flu model for the 2024-2025 season, Round 5"
 
   simulation:
-    location:
-      - "TX"
-      - "MA" # or "all"
+    population: United_States
     start_date: "2024-08-05" # YYYY-MM-DD
     end_date: "2025-08-05" # YYYY-MM-DD
 
