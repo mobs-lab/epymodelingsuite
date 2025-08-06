@@ -2,6 +2,9 @@
 # Functions for loading and validating configuration files (defined in YAML format).
 
 from typing import Any
+import logging
+
+logger = logging.getLogger(__name__)
 
 from epydemix.model import EpiModel
 
@@ -187,6 +190,7 @@ def _add_model_transitions_from_config(model, config):
 					),
 					kind=transition['type']
 				)
+				logger.info(f"Added mediated transition: {transition['source']} -> {transition['target']} (mediator: {transition['mediators']['source']}, rate: {transition['mediators']['rate']})")
 			except Exception as e:
 				raise ValueError(f"Error adding mediated transition {transition}: {e}")
 		elif transition['type'] == "spontaneous":
@@ -197,6 +201,7 @@ def _add_model_transitions_from_config(model, config):
 					params=transition['rate'],
 					kind=transition['type']
 				)
+				logger.info(f"Added spontaneous transition: {transition['source']} -> {transition['target']} (rate: {transition['rate']})")
 			except Exception as e:
 				raise ValueError(f"Error adding spontaneous transition {transition}: {e}")
 
@@ -231,6 +236,7 @@ def _add_model_parameters_from_config(model, config):
 	
 	try:
 		model.add_parameter(parameters_dict=parameters_dict)
+		logger.info(f"Added parameters: {list(parameters_dict.keys())}")
 	except Exception as e:
 		raise ValueError(f"Error adding parameters to model: {e}")
 
