@@ -240,7 +240,6 @@ def _add_model_parameters_from_config(model, config):
 	except Exception as e:
 		raise ValueError(f"Error adding parameters to model: {e}")
 
-	model.add_parameter(parameters_dict=parameters_dict)
 	return model
 
 def setup_epimodel_from_config(config):
