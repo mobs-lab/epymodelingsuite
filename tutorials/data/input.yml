@@ -58,6 +58,9 @@ model:
   interventions:
   - type: school_closure
     reduction_factor: 0.33
+    years:
+      - 2024
+      - 2025
   - type: parameter
     target_parameter: beta
     reduction_factor: 0.5
