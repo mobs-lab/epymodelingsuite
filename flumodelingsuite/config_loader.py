@@ -271,6 +271,49 @@ def _set_population_from_config(model, config):
 		raise ValueError(f"Error setting population: {e}")
 
 	return model
+
+def _add_school_closure_intervention_from_config(model, config):
+	"""
+	Apply a school closure intervention to the EpiModel instance.
+	
+	Parameters
+	----------
+		model (EpiModel): The EpiModel instance to which the intervention will be applied.
+		config (dict): Configuration dictionary containing intervention details.
+
+	Returns
+	----------
+		EpiModel: EpiModel instance with the intervention applied.
+	"""
+
+	# Check if interventions are defined in the config
+	if 'interventions' not in config['model']:
+		return model
+	
+	# Load school closure functions
+	from .school_closures import make_school_closure_dict, add_school_closure_interventions
+
+	# Extract school closure interventions
+	school_closures_interventions = [intervention for intervention in config['model']['interventions'] if intervention['type'] == 'school_closure']
+
+	# Confirm that there are school closure interventions to apply
+	if len(school_closures_interventions) == 0:
+		return model
+
+	for intervention in school_closures_interventions:
+		try:
+			closure_dict = make_school_closure_dict(intervention['years'])
+			add_school_closure_interventions(
+					model=model,
+					closure_dict=closure_dict,
+					reduction_factor=intervention['reduction_factor']
+			)
+			logger.info(f"Applied school closure intervention for years: {intervention['years']} with reduction factor: {intervention['reduction_factor']}")
+		except Exception as e:
+			raise ValueError(f"Error applying school closure intervention {intervention}:\n{e}")
+
+	return model
+
 def setup_epimodel_from_config(config):
 	"""
 	Set up an EpiModel instance from a configuration dictionary.
@@ -306,5 +349,8 @@ def setup_epimodel_from_config(config):
 
 	# Set up parameters
 	model = _add_model_parameters_from_config(model, config)
+
+	# Apply school closure
+	model = _add_school_closure_intervention_from_config(model, config)
 
 	return model
