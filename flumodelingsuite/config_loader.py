@@ -243,6 +243,31 @@ def _add_model_parameters_from_config(model, config):
 
 	return model
 
+def _parse_age_group(group_str):
+    """
+    Parse an age group string like "0-4", "65+" into a list of individual age labels.
+    For "a-b", returns [str(a), str(a+1), ..., str(b)].
+    For "c+", returns [str(c), ..., "84", "84+"].
+
+	Parameters
+	----------
+		group_str (str): Age group string to parse.
+
+	Returns
+	----------
+		list: List of individual age labels as strings.
+    """
+    if group_str.endswith('+'):
+        # e.g. "65+" -> start=65, end at 84 then add "84+"
+        start = int(group_str[:-1])
+        end = 84
+        labels = [str(i) for i in range(start, end)] + [f"{end}+"]
+    else:
+        # e.g. "5-17" -> start=5, end=17
+        start, end = map(int, group_str.split('-'))
+        labels = [str(i) for i in range(start, end + 1)]
+    return labels
+
 def _set_population_from_config(model, config):
 	"""
 	Set the population for the EpiModel instance from the configuration dictionary.
@@ -263,8 +288,23 @@ def _set_population_from_config(model, config):
 		return model
 
 	try:
-		population_name = config.get('model').get('simulation').get('population')
-		population = load_epydemix_population(population_name)
+		# Get population name
+		population_name = config.get('model').get('population').get('name')
+		
+		# Get age groups
+		age_groups = config.get('model').get('population', {}).get('age_groups', None)
+
+		# Create age group mapping
+		age_group_mapping = {
+			group: _parse_age_group(group)
+			for group in age_groups
+		}
+
+		population = load_epydemix_population(
+			population_name=population_name,
+			age_group_mapping=age_group_mapping
+		)
+
 		model.set_population(population)
 		logger.info(f"Model population set to: {population_name}")
 	except Exception as e:

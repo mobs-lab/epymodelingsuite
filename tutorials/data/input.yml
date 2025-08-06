@@ -5,11 +5,19 @@ model:
   description: "Flu model for the 2024-2025 season, Round 5"
 
   simulation:
-    population: United_States
     start_date: "2024-08-05" # YYYY-MM-DD
     end_date: "2025-08-05" # YYYY-MM-DD
 
   random_seed: 42
+
+  population:
+    name: United_States_New_York
+    age_groups:
+      - "0-4"
+      - "5-17"
+      - "18-49"
+      - "50-64"
+      - "65+"
 
   compartments:
   - id: S
