@@ -243,6 +243,34 @@ def _add_model_parameters_from_config(model, config):
 
 	return model
 
+def _set_population_from_config(model, config):
+	"""
+	Set the population for the EpiModel instance from the configuration dictionary.
+	
+	Parameters
+	----------
+		model (EpiModel): The EpiModel instance for which the population will be set.
+		config (dict): Configuration dictionary containing population details.
+
+	Returns
+	----------
+		EpiModel: EpiModel instance with the population set.
+	"""
+
+	from epydemix.population import load_epydemix_population
+
+	if 'population' not in config['model']['simulation']:
+		return model
+
+	try:
+		population_name = config.get('model').get('simulation').get('population')
+		population = load_epydemix_population(population_name)
+		model.set_population(population)
+		logger.info(f"Model population set to: {population_name}")
+	except Exception as e:
+		raise ValueError(f"Error setting population: {e}")
+
+	return model
 def setup_epimodel_from_config(config):
 	"""
 	Set up an EpiModel instance from a configuration dictionary.
@@ -266,6 +294,9 @@ def setup_epimodel_from_config(config):
 	# Set the model name if provided in the config
 	if 'name' in config['model']:
 		model.name = config['model']['name']
+	
+	# Set population
+	model = _set_population_from_config(model, config)
 
 	# Set up compartments
 	model = _add_model_compartments_from_config(model, config)
