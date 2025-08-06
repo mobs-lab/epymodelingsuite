@@ -3,3 +3,4 @@ numpy
 holidays
 matplotlib
 pandas
+pyyaml
