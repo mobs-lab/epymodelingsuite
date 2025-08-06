@@ -243,6 +243,94 @@ def _add_model_parameters_from_config(model, config):
 
 	return model
 
+def _add_vaccination_schedules_from_config(model, config):
+	"""
+	Add transitions between compartments due to vaccination to the EpiModel instance from the configuration dictionary.
+
+	Parameters
+	----------
+		model (EpiModel): The EpiModel instance to which compartment transitions will be added.
+		config (dict): Configuration dictionary containing compartment transitions and vaccination schedules.
+
+	Returns
+	----------
+		EpiModel: EpiModel instance with compartment transitions added.
+	"""
+
+	import pandas as pd
+	from .vaccinations import smh_data_to_epydemix, make_vaccination_probability_function, add_vaccination_schedule
+
+	# Check that transitions and vaccination config exist
+	if 'transitions' not in config['model']:
+		return model
+	if 'vaccination' not in config['model']:
+		return model
+
+	# Extract compartment transitions due to vaccination
+	vaccination_transitions = [transition for transition in config['model']['transitions'] if transition.get('type') == 'vaccination']
+
+	# If no vaccination transitions, return model as is
+	if not vaccination_transitions:
+		logger.info("No vaccination transitions found in configuration.")
+		return model
+
+	# Define vaccine probability function
+	vaccine_probability_function = make_vaccination_probability_function(
+		config.get('model').get('vaccination').get('origin_compartment'),
+		config.get('model').get('vaccination').get('eligible_compartments')
+	)
+
+	# Vaccination schedule data
+	preprocessed_vaccination_data_path = config.get('model').get('vaccination').get('preprocessed_vaccination_data_path', None)
+	
+	if preprocessed_vaccination_data_path:
+		# Load preprocessed vaccination schedule if provided
+		vaccination_schedule = pd.read_csv(preprocessed_vaccination_data_path)
+		logger.info(f"Loaded preprocessed vaccination schedule from {preprocessed_vaccination_data_path}")
+	else:
+		# Otherwise, create vaccination schedule from SMH data
+		start_date = config.get('model').get('simulation').get('start_date')
+		end_date = config.get('model').get('simulation').get('end_date')
+		smh_vaccination_data_path = config.get('model').get('vaccination').get('smh_vaccination_data_path', None)
+
+		location = config.get('model').get('simulation').get('population', None)
+		if not location:
+			raise ValueError("Population/location must be specified in the simulation config for vaccination schedule creation.")
+		location = location.replace('_', ' ')
+
+		scenario = config.get('model').get('vaccination').get('scenario', None)
+
+		try:
+			vaccination_schedule = smh_data_to_epydemix(
+				input_filepath=smh_vaccination_data_path,
+				start_date=start_date,
+				end_date=end_date,
+				location=location,
+				model=model,
+				scenario=scenario,
+				output_filepath=None
+			)
+			logger.info(f"Created vaccination schedule from SMH data at {smh_vaccination_data_path}")
+		except Exception as e:
+			raise ValueError(f"Error creating vaccination schedule from SMH data:\n{e}")
+
+	# Add vaccine transitions to the model
+	for transition in vaccination_transitions:
+		try:
+			model = add_vaccination_schedule(
+				model=model,
+				vaccine_probability_function=vaccine_probability_function,
+				location=location,
+				source_comp=transition['source'],
+				target_comp=transition['target'],
+				vaccination_schedule=vaccination_schedule
+			)
+			logger.info(f"Added vaccination transition: {transition['source']} -> {transition['target']}")
+		except Exception as e:
+			raise ValueError(f"Error adding vaccination transition {transition}: {e}")
+	
+	return model
+
 def setup_epimodel_from_config(config):
 	"""
 	Set up an EpiModel instance from a configuration dictionary.
@@ -275,5 +363,8 @@ def setup_epimodel_from_config(config):
 
 	# Set up parameters
 	model = _add_model_parameters_from_config(model, config)
+
+	# Set up vaccination schedules
+	model = _add_vaccination_schedules_from_config(model, config)
 
 	return model
