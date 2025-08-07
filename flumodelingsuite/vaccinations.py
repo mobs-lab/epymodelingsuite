@@ -295,7 +295,27 @@ def add_vaccination_schedule(
         )
 
     vaccine_schedule = (vaccination_schedule[age_groups_model].values,)
+
+    # Usage:
+    model = remove_vaccination_transitions(model, source_comp, target_comp)
     model.add_transition(source_comp, target_comp, params=vaccine_schedule, kind="vaccination")
     
     return model
 
+def remove_vaccination_transitions(model, source_comp="S", target_comp="SV"):
+        """Manually remove vaccination transitions from model."""
+        
+        # Remove from transitions_list
+        model.transitions_list = [
+            t for t in model.transitions_list 
+            if not (t.source == source_comp and t.target == target_comp and t.kind == "vaccination")
+        ]
+        
+        # Remove from transitions dict
+        if source_comp in model.transitions:
+            model.transitions[source_comp] = [
+                t for t in model.transitions[source_comp]
+                if not (t.target == target_comp and t.kind == "vaccination")
+            ]
+        
+        return model
