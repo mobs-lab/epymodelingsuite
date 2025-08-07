@@ -2,6 +2,9 @@
 # Functions for loading and validating configuration files (defined in YAML format).
 
 from typing import Any
+import logging
+
+logger = logging.getLogger(__name__)
 
 from epydemix.model import EpiModel
 
@@ -149,8 +152,12 @@ def _add_model_compartments_from_config(model, config):
 		return model
 	
 	# Add compartments to the model
-	compartment_ids = [ compartment['id'] for compartment in config['model']['compartments'] ]
-	model.add_compartments(compartment_ids)
+	try:
+		compartment_ids = [ compartment['id'] for compartment in config['model']['compartments'] ]
+		model.add_compartments(compartment_ids)
+		logger.info(f"Added compartments: {compartment_ids}")
+	except Exception as e:
+		raise ValueError(f"Error adding compartments: {e}")
 
 	return model
 
@@ -174,22 +181,31 @@ def _add_model_transitions_from_config(model, config):
 	# Add transitions to the model
 	for transition in config['model']['transitions']:
 		if transition['type'] == "mediated":
-			model.add_transition(
-				transition['source'],
-				transition['target'],
-				params=(
-					transition['mediators']['rate'],
-					transition['mediators']['source']
-				),
-				kind=transition['type']
-			)
+			try:
+				model.add_transition(
+					transition['source'],
+					transition['target'],
+					params=(
+						transition['mediators']['rate'],
+						transition['mediators']['source']
+					),
+					kind=transition['type']
+				)
+				logger.info(f"Added mediated transition: {transition['source']} -> {transition['target']} (mediator: {transition['mediators']['source']}, rate: {transition['mediators']['rate']})")
+			except Exception as e:
+				raise ValueError(f"Error adding mediated transition {transition}: {e}")
 		elif transition['type'] == "spontaneous":
-			model.add_transition(
-				transition['source'],
-				transition['target'],
-				params=transition['rate'],
-				kind=transition['type']
-			)
+			try:
+				model.add_transition(
+					transition['source'],
+					transition['target'],
+					params=transition['rate'],
+					kind=transition['type']
+				)
+				logger.info(f"Added spontaneous transition: {transition['source']} -> {transition['target']} (rate: {transition['rate']})")
+			except Exception as e:
+				raise ValueError(f"Error adding spontaneous transition {transition}: {e}")
+
 	return model
 
 def _add_model_parameters_from_config(model, config):
@@ -212,14 +228,19 @@ def _add_model_parameters_from_config(model, config):
 	# Add parameters to the model
 	parameters_dict = {}
 	for key, data in config['model']['parameters'].items():
-		if data['type'] in 'constant':
+		if data['type'] == 'constant':
 			parameters_dict[key] = data['value']
 		elif data['type'] == 'array':
 			parameters_dict[key] = data['values']
 		elif data['type'] == 'expression':
 			parameters_dict[key] = _safe_eval(data['value'])
 	
-	model.add_parameter(parameters_dict=parameters_dict)
+	try:
+		model.add_parameter(parameters_dict=parameters_dict)
+		logger.info(f"Added parameters: {list(parameters_dict.keys())}")
+	except Exception as e:
+		raise ValueError(f"Error adding parameters to model: {e}")
+
 	return model
 
 def setup_epimodel_from_config(config):
