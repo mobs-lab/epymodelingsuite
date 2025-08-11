@@ -482,9 +482,9 @@ def setup_epimodel_from_config(config: RootConfig) -> EpiModel:
 	model = EpiModel()
 
 	# Set the model name if provided in the config
-	if 'name' in config['model']:
-		model.name = config['model']['name']
-	
+	if hasattr(config.model, 'name'):
+		model.name = config.model.name
+
 	# Set population
 	model = _set_population_from_config(model, config)
 
