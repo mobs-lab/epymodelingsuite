@@ -245,6 +245,26 @@ def _add_model_parameters_from_config(model: EpiModel, config: RootConfig) -> Ep
 	return model
 
 # === Model loading ===
+def load_model_config_from_file(path: str) -> RootConfig:
+    """
+    Load model configuration YAML from the given path and validate against the schema.
+
+	Parameters
+	----------
+		path (str): The file path to the YAML configuration file.
+
+	Returns
+	-------
+		RootConfig: The validated configuration object.
+    """
+    import yaml
+    with open(path, 'r') as f:
+        raw = yaml.safe_load(f)
+
+    root = validate_config(raw)
+    logger.info("Configuration loaded successfully.")
+    return root
+
 def setup_epimodel_from_config(config: RootConfig) -> EpiModel:
 	"""
 	Set up an EpiModel instance from a RootConfig instance.
