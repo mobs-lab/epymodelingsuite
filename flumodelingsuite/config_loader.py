@@ -7,6 +7,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 from epydemix.model import EpiModel
+from .config_validator import RootConfig, validate_config
 
 import numpy as np
 import scipy
@@ -134,7 +135,7 @@ def _safe_eval(expr: str) -> Any:
 	return eval(code, {'__builtins__': None, 'np': np, 'scipy': scipy}, {})
 
 # === Model setup functions ===
-def _add_model_compartments_from_config(model, config):
+def _add_model_compartments_from_config(model: EpiModel, config: RootConfig) -> EpiModel:
 	"""
 	Add compartments to the EpiModel instance from the configuration dictionary.
 	
@@ -161,7 +162,7 @@ def _add_model_compartments_from_config(model, config):
 
 	return model
 
-def _add_model_transitions_from_config(model, config):
+def _add_model_transitions_from_config(model: EpiModel, config: RootConfig) -> EpiModel:
 	"""
 	Add transitions between compartments to the EpiModel instance from the configuration dictionary.
 
@@ -208,7 +209,7 @@ def _add_model_transitions_from_config(model, config):
 
 	return model
 
-def _add_model_parameters_from_config(model, config):
+def _add_model_parameters_from_config(model: EpiModel, config: RootConfig) -> EpiModel:
 	"""
 	Add parameters to the EpiModel instance from the configuration dictionary.
 	
@@ -243,16 +244,17 @@ def _add_model_parameters_from_config(model, config):
 
 	return model
 
-def setup_epimodel_from_config(config):
+# === Model loading ===
+def setup_epimodel_from_config(config: RootConfig) -> EpiModel:
 	"""
-	Set up an EpiModel instance from a configuration dictionary.
+	Set up an EpiModel instance from a RootConfig instance.
 	
 	Parameters
 	----------
-		config (dict): Configuration dictionary containing model details. Usually loaded from a YAML file.
+		config (RootConfig): RootConfig instance containing model details. Use `load_model_config_from_file(path_to_yaml)`.
 
 	Returns
-	----------
+	-------
 		EpiModel: An instance of EpiModel configured according to the provided settings.
 	"""
 	
