@@ -441,14 +441,12 @@ def _add_school_closure_intervention_from_config(model, config):
 
 	return model
 
-def setup_epimodel_from_config(config):
-	"""
-	Set up an EpiModel instance from a configuration dictionary.
-	
+def load_model_config_from_file(path: str) -> RootConfig:
+    """
+    Load model configuration YAML from the given path and validate against the schema.
 	Parameters
 	----------
 		path (str): The file path to the YAML configuration file.
-
 	Returns
 	-------
 		RootConfig: The validated configuration object.
