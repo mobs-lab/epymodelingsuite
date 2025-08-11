@@ -37,16 +37,16 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # Install the package under test
+      # Install the package
       - name: Install flumodelingsuite
-        run: pip install .
+        run: pip install -e .
 
       # Run tests with coverage report
       - name: Run tests with coverage
         run: |
           pytest \
             --junitxml=pytest.xml \
-            --cov-report=term-missing:skip-covered \
+            --cov-report=term-missing \
             --cov=flumodelingsuite \
             tests/ | tee pytest-coverage.txt
 
