@@ -11,7 +11,7 @@ model:
   random_seed: 42
 
   population:
-    name: United_States_New_York
+    name: US-NY
     age_groups:
       - "0-4"
       - "5-17"
