@@ -262,13 +262,13 @@ def _add_vaccination_schedules_from_config(model, config):
 	from .vaccinations import smh_data_to_epydemix, make_vaccination_probability_function, add_vaccination_schedule
 
 	# Check that transitions and vaccination config exist
-	if 'transitions' not in config['model']:
+	if not hasattr(config.model, 'transitions'):
 		return model
-	if 'vaccination' not in config['model']:
+	if not hasattr(config.model, 'vaccination'):
 		return model
 
 	# Extract compartment transitions due to vaccination
-	vaccination_transitions = [transition for transition in config['model']['transitions'] if transition.get('type') == 'vaccination']
+	vaccination_transitions = [transition for transition in config.model.transitions if transition.type == 'vaccination']
 
 	# If no vaccination transitions, return model as is
 	if not vaccination_transitions:
@@ -277,29 +277,29 @@ def _add_vaccination_schedules_from_config(model, config):
 
 	# Define vaccine probability function
 	vaccine_probability_function = make_vaccination_probability_function(
-		config.get('model').get('vaccination').get('origin_compartment'),
-		config.get('model').get('vaccination').get('eligible_compartments')
+		config.model.vaccination.origin_compartment,
+		config.model.vaccination.eligible_compartments
 	)
 
 	# Vaccination schedule data
-	preprocessed_vaccination_data_path = config.get('model').get('vaccination').get('preprocessed_vaccination_data_path', None)
-	
+	preprocessed_vaccination_data_path = config.model.vaccination.preprocessed_vaccination_data_path
+
 	if preprocessed_vaccination_data_path:
 		# Load preprocessed vaccination schedule if provided
 		vaccination_schedule = pd.read_csv(preprocessed_vaccination_data_path)
 		logger.info(f"Loaded preprocessed vaccination schedule from {preprocessed_vaccination_data_path}")
 	else:
 		# Otherwise, create vaccination schedule from SMH data
-		start_date = config.get('model').get('simulation').get('start_date')
-		end_date = config.get('model').get('simulation').get('end_date')
-		smh_vaccination_data_path = config.get('model').get('vaccination').get('smh_vaccination_data_path', None)
+		start_date = config.model.simulation.start_date
+		end_date = config.model.simulation.end_date
+		smh_vaccination_data_path = config.model.vaccination.smh_vaccination_data_path
 
-		location = config.get('model').get('simulation').get('population', None)
+		location = config.model.simulation.population
 		if not location:
 			raise ValueError("Population/location must be specified in the simulation config for vaccination schedule creation.")
 		location = location.replace('_', ' ')
 
-		scenario = config.get('model').get('vaccination').get('scenario', None)
+		scenario = config.model.vaccination.scenario
 
 		try:
 			vaccination_schedule = smh_data_to_epydemix(
@@ -322,11 +322,11 @@ def _add_vaccination_schedules_from_config(model, config):
 				model=model,
 				vaccine_probability_function=vaccine_probability_function,
 				location=location,
-				source_comp=transition['source'],
-				target_comp=transition['target'],
+				source_comp=transition.source,
+				target_comp=transition.target,
 				vaccination_schedule=vaccination_schedule
 			)
-			logger.info(f"Added vaccination transition: {transition['source']} -> {transition['target']}")
+			logger.info(f"Added vaccination transition: {transition.source} -> {transition.target}")
 		except Exception as e:
 			raise ValueError(f"Error adding vaccination transition {transition}: {e}")
 	
@@ -371,15 +371,15 @@ def _set_population_from_config(model, config):
 
 	from epydemix.population import load_epydemix_population
 
-	if 'population' not in config['model']['simulation']:
+	if not hasattr(config.model, 'population'):
 		return model
 
 	try:
 		# Get population name
-		population_name = config.get('model').get('population').get('name')
-		
+		population_name = config.model.population.name
+
 		# Get age groups
-		age_groups = config.get('model').get('population', {}).get('age_groups', None)
+		age_groups = config.model.population.age_groups
 
 		# Create age group mapping
 		age_group_mapping = {
