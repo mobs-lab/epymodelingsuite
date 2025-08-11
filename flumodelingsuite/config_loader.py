@@ -355,14 +355,51 @@ def _parse_age_group(group_str):
         labels = [str(i) for i in range(start, end + 1)]
     return labels
 
-def _set_population_from_config(model, config):
+def _convert_location_name_format(value: str, format: str) -> str:
 	"""
-	Set the population for the EpiModel instance from the configuration dictionary.
+	Convert location name in ISO 3166 to specific format.
 	
 	Parameters
 	----------
+		value (str): Location code in ISO 3166. Countries use ISO 3166-1 alpha-2 country code (e.g., "US") and states/regions use ISO 3166-2 subdivision (e.g., "US-NY").
+		format (str): The format of area name to convert to. Options are "epydemix_population" (United_States_New_York), "location_name" (New York), "location_abbreviation" (NY), "location_code" (36).
+
+	Returns
+	-------
+		str: The converted area name or code, or None if the value is invalid.
+	"""
+
+	from .config_validator import validate_iso3166
+	try:
+		validate_iso3166(value)
+	except ValueError as e:
+		logger.error(f"Invalid area name format: {e}")
+		return None
+	
+	import pandas as pd
+	import os, sys
+	filename = os.path.join(os.path.dirname(sys.modules[__name__].__file__), "data/location_codebook.csv")
+	location_codebook = pd.read_csv(filename)
+
+	if value.startswith('US-'):
+		if format == "epydemix_population":
+			return location_codebook.loc[location_codebook['ISO'] == value, 'location_name_epydemix'].values[0]
+		elif format == "location_name":
+			return location_codebook.loc[location_codebook['ISO'] == value, 'location_name'].values[0]
+		elif format == "location_code":
+			return location_codebook.loc[location_codebook['ISO'] == value, 'location_code'].values[0]
+		return None
+	else:
+		return None
+
+def _set_population_from_config(model: EpiModel, config: RootConfig) -> EpiModel:
+	"""
+	Set the population for the EpiModel instance from the configuration dictionary.
+
+	Parameters
+	----------
 		model (EpiModel): The EpiModel instance for which the population will be set.
-		config (dict): Configuration dictionary containing population details.
+		config (RootConfig): The configuration object containing population details.
 
 	Returns
 	----------
@@ -375,8 +412,8 @@ def _set_population_from_config(model, config):
 		return model
 
 	try:
-		# Get population name
-		population_name = config.model.population.name
+		# Get population name, and convert to corresponding "epydemix_population" name
+		population_name = _convert_location_name_format(config.model.population.name, "epydemix_population")
 
 		# Get age groups
 		age_groups = config.model.population.age_groups
