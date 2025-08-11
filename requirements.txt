@@ -4,3 +4,4 @@ holidays
 matplotlib
 pandas
 pyyaml
+pydantic

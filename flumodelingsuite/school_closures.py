@@ -260,7 +260,7 @@ def add_school_closure_interventions(
         raise ValueError(f'Model population \'{model.population.name}\' not found in location codebook. Make sure that the model is set up for a US state-level or nation-level population.')
 
     # Get the school closures that apply to the location/population of the model
-    closures = closure_dict[location_codebook[location_codebook.location_name_epydemix == model.population.name].location_abbreviation[0]]
+    closures = closure_dict[location_codebook[location_codebook.location_name_epydemix == model.population.name].location_abbreviation.iloc[0]]
 
     # Add all interventions to the model
     [model.add_intervention(layer_name='school', start_date=closure.start_date, end_date=closure.end_date,

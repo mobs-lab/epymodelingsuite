@@ -7,6 +7,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 from epydemix.model import EpiModel
+from .config_validator import RootConfig, validate_config
 
 import numpy as np
 import scipy
@@ -134,7 +135,7 @@ def _safe_eval(expr: str) -> Any:
 	return eval(code, {'__builtins__': None, 'np': np, 'scipy': scipy}, {})
 
 # === Model setup functions ===
-def _add_model_compartments_from_config(model, config):
+def _add_model_compartments_from_config(model: EpiModel, config: RootConfig) -> EpiModel:
 	"""
 	Add compartments to the EpiModel instance from the configuration dictionary.
 	
@@ -148,12 +149,12 @@ def _add_model_compartments_from_config(model, config):
 		EpiModel: EpiModel instance with compartments added.
 	"""
 	
-	if 'compartments' not in config['model']:
+	if not hasattr(config.model, 'compartments'):
 		return model
 	
 	# Add compartments to the model
 	try:
-		compartment_ids = [ compartment['id'] for compartment in config['model']['compartments'] ]
+		compartment_ids = [ compartment.id for compartment in config.model.compartments ]
 		model.add_compartments(compartment_ids)
 		logger.info(f"Added compartments: {compartment_ids}")
 	except Exception as e:
@@ -161,7 +162,7 @@ def _add_model_compartments_from_config(model, config):
 
 	return model
 
-def _add_model_transitions_from_config(model, config):
+def _add_model_transitions_from_config(model: EpiModel, config: RootConfig) -> EpiModel:
 	"""
 	Add transitions between compartments to the EpiModel instance from the configuration dictionary.
 
@@ -175,40 +176,40 @@ def _add_model_transitions_from_config(model, config):
 		EpiModel: EpiModel instance with compartment transitions added.
 	"""
 
-	if 'transitions' not in config['model']:
+	if not hasattr(config.model, 'transitions'):
 		return model
 
 	# Add transitions to the model
-	for transition in config['model']['transitions']:
-		if transition['type'] == "mediated":
+	for transition in config.model.transitions:
+		if transition.type == "mediated":
 			try:
 				model.add_transition(
-					transition['source'],
-					transition['target'],
+					transition.source,
+					transition.target,
 					params=(
-						transition['mediators']['rate'],
-						transition['mediators']['source']
+						transition.mediators.rate,
+						transition.mediators.source
 					),
-					kind=transition['type']
+					kind=transition.type
 				)
-				logger.info(f"Added mediated transition: {transition['source']} -> {transition['target']} (mediator: {transition['mediators']['source']}, rate: {transition['mediators']['rate']})")
+				logger.info(f"Added mediated transition: {transition.source} -> {transition.target} (mediator: {transition.mediators.source}, rate: {transition.mediators.rate})")
 			except Exception as e:
 				raise ValueError(f"Error adding mediated transition {transition}: {e}")
-		elif transition['type'] == "spontaneous":
+		elif transition.type == "spontaneous":
 			try:
 				model.add_transition(
-					transition['source'],
-					transition['target'],
-					params=transition['rate'],
-					kind=transition['type']
+					transition.source,
+					transition.target,
+					params=transition.rate,
+					kind=transition.type
 				)
-				logger.info(f"Added spontaneous transition: {transition['source']} -> {transition['target']} (rate: {transition['rate']})")
+				logger.info(f"Added spontaneous transition: {transition.source} -> {transition.target} (rate: {transition.rate})")
 			except Exception as e:
 				raise ValueError(f"Error adding spontaneous transition {transition}: {e}")
 
 	return model
 
-def _add_model_parameters_from_config(model, config):
+def _add_model_parameters_from_config(model: EpiModel, config: RootConfig) -> EpiModel:
 	"""
 	Add parameters to the EpiModel instance from the configuration dictionary.
 	
@@ -222,18 +223,18 @@ def _add_model_parameters_from_config(model, config):
 		EpiModel: EpiModel instance with parameters added.
 	"""
 	
-	if 'parameters' not in config['model']:
+	if not hasattr(config.model, 'parameters'):
 		return model
 
 	# Add parameters to the model
 	parameters_dict = {}
-	for key, data in config['model']['parameters'].items():
-		if data['type'] == 'constant':
-			parameters_dict[key] = data['value']
-		elif data['type'] == 'array':
-			parameters_dict[key] = data['values']
-		elif data['type'] == 'expression':
-			parameters_dict[key] = _safe_eval(data['value'])
+	for key, data in config.model.parameters.items():
+		if data.type == 'constant':
+			parameters_dict[key] = data.value
+		elif data.type == 'array':
+			parameters_dict[key] = data.values
+		elif data.type == 'expression':
+			parameters_dict[key] = _safe_eval(data.value)
 	
 	try:
 		model.add_parameter(parameters_dict=parameters_dict)
@@ -446,15 +447,35 @@ def setup_epimodel_from_config(config):
 	
 	Parameters
 	----------
-		config (dict): Configuration dictionary containing model details. Usually loaded from a YAML file.
+		path (str): The file path to the YAML configuration file.
 
 	Returns
+	-------
+		RootConfig: The validated configuration object.
+    """
+    import yaml
+    with open(path, 'r') as f:
+        raw = yaml.safe_load(f)
+
+    root = validate_config(raw)
+    logger.info("Configuration loaded successfully.")
+    return root
+
+def setup_epimodel_from_config(config: RootConfig) -> EpiModel:
+	"""
+	Set up an EpiModel instance from a RootConfig instance.
+	
+	Parameters
 	----------
+		config (RootConfig): RootConfig instance containing model details. Use `load_model_config_from_file(path_to_yaml)`.
+
+	Returns
+	-------
 		EpiModel: An instance of EpiModel configured according to the provided settings.
 	"""
 	
 	# Validate that 'model' key exists in config
-	if 'model' not in config:
+	if not hasattr(config, 'model'):
 		raise ValueError("Configuration must contain a 'model' key.")
 
 	# Create an empty instance of EpiModel

@@ -122,7 +122,7 @@ def smh_data_to_epydemix(
         
         for _, week_data in age_data.iterrows():
             week_end = week_data["Week_Ending_Sat"]
-            days_in_period = (week_end - current_date).days
+            days_in_period = (week_end - current_date).days + 1
             
             if days_in_period > 0:
                 # Calculate daily rates for this period
@@ -132,14 +132,14 @@ def smh_data_to_epydemix(
                 }
                 
                 # Add daily entries for this period
-                for date in pd.date_range(current_date, week_end - pd.Timedelta(days=1)):
+                for date in pd.date_range(current_date, week_end):
                     daily_vaccines_list.append({
                         "dates": date,
                         "age_group": age_group,
                         **{scn: daily_rates[scn] for scn in ["A_B", "C_D", "E_F"]}
                     })
             
-            current_date = week_end
+            current_date = week_end + pd.Timedelta(days=1)
         
         # Fill remaining days with zeros
         for date in pd.date_range(current_date, end_date):
@@ -295,7 +295,27 @@ def add_vaccination_schedule(
         )
 
     vaccine_schedule = (vaccination_schedule[age_groups_model].values,)
+
+    # Usage:
+    model = remove_vaccination_transitions(model, source_comp, target_comp)
     model.add_transition(source_comp, target_comp, params=vaccine_schedule, kind="vaccination")
     
     return model
 
+def remove_vaccination_transitions(model, source_comp="S", target_comp="SV"):
+        """Manually remove vaccination transitions from model."""
+        
+        # Remove from transitions_list
+        model.transitions_list = [
+            t for t in model.transitions_list 
+            if not (t.source == source_comp and t.target == target_comp and t.kind == "vaccination")
+        ]
+        
+        # Remove from transitions dict
+        if source_comp in model.transitions:
+            model.transitions[source_comp] = [
+                t for t in model.transitions[source_comp]
+                if not (t.target == target_comp and t.kind == "vaccination")
+            ]
+        
+        return model
