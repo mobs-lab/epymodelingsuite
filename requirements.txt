@@ -5,3 +5,4 @@ matplotlib
 pandas
 pyyaml
 pytest
+pytest-cov
