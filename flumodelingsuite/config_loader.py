@@ -244,20 +244,19 @@ def _add_model_parameters_from_config(model: EpiModel, config: RootConfig) -> Ep
 
 	return model
 
-def _add_vaccination_schedules_from_config(model, config):
+def _add_vaccination_schedules_from_config(model: EpiModel, config: RootConfig) -> EpiModel:
 	"""
 	Add transitions between compartments due to vaccination to the EpiModel instance from the configuration dictionary.
 
 	Parameters
 	----------
-		model (EpiModel): The EpiModel instance to which compartment transitions will be added.
-		config (dict): Configuration dictionary containing compartment transitions and vaccination schedules.
+		model (EpiModel): The EpiModel instance to which vaccination schedules will be added.
+		config (RootConfig): The configuration object containing vaccination schedule details.
 
 	Returns
 	----------
-		EpiModel: EpiModel instance with compartment transitions added.
+		EpiModel: EpiModel instance with vaccination schedules added.
 	"""
-
 	import pandas as pd
 	from .vaccinations import smh_data_to_epydemix, make_vaccination_probability_function, add_vaccination_schedule
 
@@ -330,7 +329,7 @@ def _add_vaccination_schedules_from_config(model, config):
 		except Exception as e:
 			raise ValueError(f"Error adding vaccination transition {transition}: {e}")
 	
-def _parse_age_group(group_str):
+def _parse_age_group(group_str: str) -> list:
     """
     Parse an age group string like "0-4", "65+" into a list of individual age labels.
     For "a-b", returns [str(a), str(a+1), ..., str(b)].
@@ -436,14 +435,14 @@ def _set_population_from_config(model: EpiModel, config: RootConfig) -> EpiModel
 
 	return model
 
-def _add_school_closure_intervention_from_config(model, config):
+def _add_school_closure_intervention_from_config(model: EpiModel, config: RootConfig) -> EpiModel:
 	"""
 	Apply a school closure intervention to the EpiModel instance.
 	
 	Parameters
 	----------
 		model (EpiModel): The EpiModel instance to which the intervention will be applied.
-		config (dict): Configuration dictionary containing intervention details.
+		config (RootConfig): The configuration object containing intervention details.
 
 	Returns
 	----------
