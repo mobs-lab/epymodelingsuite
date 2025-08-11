@@ -5,6 +5,12 @@ on:
     branches:
       - '*'
   workflow_dispatch:
+    inputs:
+      target_branch:
+        description: 'Branch or tag to checkout'
+        required: true
+        default: 'main'
+
 
 permissions:
   # Write permissions are required for posting PR comments
@@ -16,9 +22,10 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      # Checkout repository
-      - name: Checkout
-        uses: actions/checkout@v5
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.target_branch }}
 
       # Setup Python environment
       - uses: actions/setup-python@v5
