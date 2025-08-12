@@ -330,10 +330,10 @@ def _add_vaccination_schedules_from_config(model: EpiModel, config: RootConfig) 
 			raise ValueError(f"Error adding vaccination transition {transition}: {e}")
 	
 def _parse_age_group(group_str: str) -> list:
-    """
-    Parse an age group string like "0-4", "65+" into a list of individual age labels.
-    For "a-b", returns [str(a), str(a+1), ..., str(b)].
-    For "c+", returns [str(c), ..., "84", "84+"].
+	"""
+	Parse an age group string like "0-4", "65+" into a list of individual age labels.
+	For "a-b", returns [str(a), str(a+1), ..., str(b)].
+	For "c+", returns [str(c), ..., "84", "84+"].
 
 	Parameters
 	----------
@@ -478,8 +478,8 @@ def _add_school_closure_intervention_from_config(model: EpiModel, config: RootCo
 	return model
 
 def load_model_config_from_file(path: str) -> RootConfig:
-    """
-    Load model configuration YAML from the given path and validate against the schema.
+	"""
+	Load model configuration YAML from the given path and validate against the schema.
 	Parameters
 	----------
 		path (str): The file path to the YAML configuration file.
