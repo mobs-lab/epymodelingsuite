@@ -243,6 +243,117 @@ def _add_model_parameters_from_config(model, config):
 
 	return model
 
+def _parse_age_group(group_str):
+    """
+    Parse an age group string like "0-4", "65+" into a list of individual age labels.
+    For "a-b", returns [str(a), str(a+1), ..., str(b)].
+    For "c+", returns [str(c), ..., "84", "84+"].
+
+	Parameters
+	----------
+		group_str (str): Age group string to parse.
+
+	Returns
+	----------
+		list: List of individual age labels as strings.
+    """
+    if group_str.endswith('+'):
+        # e.g. "65+" -> start=65, end at 84 then add "84+"
+        start = int(group_str[:-1])
+        end = 84
+        labels = [str(i) for i in range(start, end)] + [f"{end}+"]
+    else:
+        # e.g. "5-17" -> start=5, end=17
+        start, end = map(int, group_str.split('-'))
+        labels = [str(i) for i in range(start, end + 1)]
+    return labels
+
+def _set_population_from_config(model, config):
+	"""
+	Set the population for the EpiModel instance from the configuration dictionary.
+	
+	Parameters
+	----------
+		model (EpiModel): The EpiModel instance for which the population will be set.
+		config (dict): Configuration dictionary containing population details.
+
+	Returns
+	----------
+		EpiModel: EpiModel instance with the population set.
+	"""
+
+	from epydemix.population import load_epydemix_population
+
+	if 'population' not in config['model']['simulation']:
+		return model
+
+	try:
+		# Get population name
+		population_name = config.get('model').get('population').get('name')
+		
+		# Get age groups
+		age_groups = config.get('model').get('population', {}).get('age_groups', None)
+
+		# Create age group mapping
+		age_group_mapping = {
+			group: _parse_age_group(group)
+			for group in age_groups
+		}
+
+		population = load_epydemix_population(
+			population_name=population_name,
+			age_group_mapping=age_group_mapping
+		)
+
+		model.set_population(population)
+		logger.info(f"Model population set to: {population_name}")
+	except Exception as e:
+		raise ValueError(f"Error setting population: {e}")
+
+	return model
+
+def _add_school_closure_intervention_from_config(model, config):
+	"""
+	Apply a school closure intervention to the EpiModel instance.
+	
+	Parameters
+	----------
+		model (EpiModel): The EpiModel instance to which the intervention will be applied.
+		config (dict): Configuration dictionary containing intervention details.
+
+	Returns
+	----------
+		EpiModel: EpiModel instance with the intervention applied.
+	"""
+
+	# Check if interventions are defined in the config
+	if 'interventions' not in config['model']:
+		return model
+	
+	# Load school closure functions
+	from .school_closures import make_school_closure_dict, add_school_closure_interventions
+
+	# Extract school closure interventions
+	school_closures_interventions = [intervention for intervention in config['model']['interventions'] if intervention['type'] == 'school_closure']
+
+	# Confirm that there are school closure interventions to apply
+	if len(school_closures_interventions) == 0:
+		return model
+
+	for intervention in school_closures_interventions:
+		try:
+			closure_dict = make_school_closure_dict(intervention['years'])
+			add_school_closure_interventions(
+					model=model,
+					closure_dict=closure_dict,
+					reduction_factor=intervention['reduction_factor']
+			)
+			logger.info(f"Applied school closure intervention for years: {intervention['years']} with reduction factor: {intervention['reduction_factor']}")
+		except Exception as e:
+			raise ValueError(f"Error applying school closure intervention {intervention}:\n{e}")
+
+	return model
+
 def setup_epimodel_from_config(config):
 	"""
 	Set up an EpiModel instance from a configuration dictionary.
@@ -266,6 +377,9 @@ def setup_epimodel_from_config(config):
 	# Set the model name if provided in the config
 	if 'name' in config['model']:
 		model.name = config['model']['name']
+	
+	# Set population
+	model = _set_population_from_config(model, config)
 
 	# Set up compartments
 	model = _add_model_compartments_from_config(model, config)
@@ -275,5 +389,8 @@ def setup_epimodel_from_config(config):
 
 	# Set up parameters
 	model = _add_model_parameters_from_config(model, config)
+
+	# Apply school closure
+	model = _add_school_closure_intervention_from_config(model, config)
 
 	return model
