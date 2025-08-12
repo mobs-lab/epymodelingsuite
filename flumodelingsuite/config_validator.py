@@ -176,8 +176,8 @@ class Prior(BaseModel):
 
 class Vaccination(BaseModel):
     """Vaccination configuration, such as data paths."""
-    processed_coverage_data_path: Optional[str] = Field(None, description="Path to processed vaccination coverage data file.")
-    smh_vaccination_data_path: Optional[str] = Field(None, description="Path to SMH vaccination data file.")
+    scenario_data_path: Optional[str] = Field(None, description="Path to SMH vaccination scenario data file.")
+    preprocessed_vaccination_data_path: Optional[str] = Field(None, description="Path to preprocessed vaccination coverage data file.")
     scenario: Optional[str] = Field(None, description="Vaccination scenario.")
     origin_compartment: Optional[str] = Field(None, description="Origin compartment for vaccination.")
     eligible_compartments: Optional[List[str]] = Field(None, description="Eligible compartments for vaccination.")

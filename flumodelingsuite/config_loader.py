@@ -244,7 +244,84 @@ def _add_model_parameters_from_config(model: EpiModel, config: RootConfig) -> Ep
 
 	return model
 
-def _parse_age_group(group_str):
+def _add_vaccination_schedules_from_config(model: EpiModel, config: RootConfig) -> EpiModel:
+	"""
+	Add transitions between compartments due to vaccination to the EpiModel instance from the configuration dictionary.
+
+	Parameters
+	----------
+		model (EpiModel): The EpiModel instance to which vaccination schedules will be added.
+		config (RootConfig): The configuration object containing vaccination schedule details.
+
+	Returns
+	----------
+		EpiModel: EpiModel instance with vaccination schedules added.
+	"""
+	import pandas as pd
+	from .vaccinations import scenario_to_epydemix, make_vaccination_probability_function, add_vaccination_schedule
+
+	# Check that transitions and vaccination config exist
+	if not hasattr(config.model, 'transitions'):
+		return model
+	if not hasattr(config.model, 'vaccination'):
+		return model
+
+	# Extract compartment transitions due to vaccination
+	vaccination_transitions = [transition for transition in config.model.transitions if transition.type == 'vaccination']
+
+	# If no vaccination transitions, return model as is
+	if not vaccination_transitions:
+		logger.info("No vaccination transitions found in configuration.")
+		return model
+
+	# Define vaccine probability function
+	vaccine_probability_function = make_vaccination_probability_function(
+		config.model.vaccination.origin_compartment,
+		config.model.vaccination.eligible_compartments
+	)
+
+	# Vaccination schedule data
+	preprocessed_vaccination_data_path = config.model.vaccination.preprocessed_vaccination_data_path
+
+	if preprocessed_vaccination_data_path:
+		# Load preprocessed vaccination schedule if provided
+		vaccination_schedule = pd.read_csv(preprocessed_vaccination_data_path)
+		logger.info(f"Loaded preprocessed vaccination schedule from {preprocessed_vaccination_data_path}")
+	else:
+		# Otherwise, create vaccination schedule from SMH scenario
+		scenario_data_path = config.model.vaccination.scenario_data_path
+		start_date = config.model.simulation.start_date
+		end_date = config.model.simulation.end_date
+
+		try:
+			vaccination_schedule = scenario_to_epydemix(
+				input_filepath=scenario_data_path,
+				start_date=start_date,
+				end_date=end_date,
+				model=model,
+				output_filepath=None
+			)
+			logger.info(f"Created vaccination schedule from scenario data at {scenario_data_path}")
+		except Exception as e:
+			raise ValueError(f"Error creating vaccination schedule from scenario data:\n{e}")
+
+	# Add vaccine transitions to the model
+	for transition in vaccination_transitions:
+		try:
+			model = add_vaccination_schedule(
+				model=model,
+				vaccine_probability_function=vaccine_probability_function,
+				source_comp=transition.source,
+				target_comp=transition.target,
+				vaccination_schedule=vaccination_schedule
+			)
+			logger.info(f"Added vaccination transition: {transition.source} -> {transition.target}")
+		except Exception as e:
+			raise ValueError(f"Error adding vaccination transition {transition}: {e}")
+	
+	return model
+	
+def _parse_age_group(group_str: str) -> list:
 	"""
 	Parse an age group string like "0-4", "65+" into a list of individual age labels.
 	For "a-b", returns [str(a), str(a+1), ..., str(b)].
@@ -277,6 +354,7 @@ def _convert_location_name_format(value: str, format: str) -> str:
 	----------
 		value (str): Location code in ISO 3166. Countries use ISO 3166-1 alpha-2 country code (e.g., "US") and states/regions use ISO 3166-2 subdivision (e.g., "US-NY").
 		format (str): The format of area name to convert to. Options are "epydemix_population" (United_States_New_York), "location_name" (New York), "location_abbreviation" (NY), "location_code" (36).
+
 	Returns
 	-------
 		str: The converted area name or code, or None if the value is invalid.
@@ -288,7 +366,7 @@ def _convert_location_name_format(value: str, format: str) -> str:
 	except ValueError as e:
 		logger.error(f"Invalid area name format: {e}")
 		return None
-
+	
 	import pandas as pd
 	import os, sys
 	filename = os.path.join(os.path.dirname(sys.modules[__name__].__file__), "data/location_codebook.csv")
@@ -308,11 +386,11 @@ def _convert_location_name_format(value: str, format: str) -> str:
 def _set_population_from_config(model: EpiModel, config: RootConfig) -> EpiModel:
 	"""
 	Set the population for the EpiModel instance from the configuration dictionary.
-	
+
 	Parameters
 	----------
 		model (EpiModel): The EpiModel instance for which the population will be set.
-		config (RootConfig): The RootConfig instance containing population details.
+		config (RootConfig): The configuration object containing population details.
 
 	Returns
 	----------
@@ -325,7 +403,7 @@ def _set_population_from_config(model: EpiModel, config: RootConfig) -> EpiModel
 		return model
 
 	try:
-		# Get population name
+		# Get population name, and convert to corresponding "epydemix_population" name
 		population_name = _convert_location_name_format(config.model.population.name, "epydemix_population")
 
 		# Get age groups
@@ -356,7 +434,7 @@ def _add_school_closure_intervention_from_config(model: EpiModel, config: RootCo
 	Parameters
 	----------
 		model (EpiModel): The EpiModel instance to which the intervention will be applied.
-		config (RootConfig): The RootConfig instance containing intervention details.
+		config (RootConfig): The configuration object containing intervention details.
 
 	Returns
 	----------
@@ -391,14 +469,12 @@ def _add_school_closure_intervention_from_config(model: EpiModel, config: RootCo
 
 	return model
 
-def load_model_config_from_file(path) -> RootConfig:
+def load_model_config_from_file(path: str) -> RootConfig:
 	"""
-	Set up an EpiModel instance from a configuration dictionary.
-	
+	Load model configuration YAML from the given path and validate against the schema.
 	Parameters
 	----------
 		path (str): The file path to the YAML configuration file.
-
 	Returns
 	-------
 		RootConfig: The validated configuration object.
@@ -446,6 +522,9 @@ def setup_epimodel_from_config(config: RootConfig) -> EpiModel:
 
 	# Set up parameters
 	model = _add_model_parameters_from_config(model, config)
+
+	# Set up vaccination schedules
+	model = _add_vaccination_schedules_from_config(model, config)
 
 	# Apply school closure
 	model = _add_school_closure_intervention_from_config(model, config)
