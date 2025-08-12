@@ -319,6 +319,24 @@ def smh_data_to_epydemix(
                 week_end = week_data["Week_Ending_Sat"]
                 days_in_period = (week_end - current_date).days + 1  # Include week_end
                 
+                if (week_end >= end_date):
+                    days_in_period = (end_date - current_date).days + 1
+                    daily_rates = {
+                        scn: week_data[f"new_doses_{scn}"] / days_in_period 
+                        for scn in ["A_B", "C_D", "E_F"]
+                    }
+                    
+                    # Add daily entries for this period (including week_end)
+                    for date in pd.date_range(current_date, end_date):
+                        daily_vaccines_list.append({
+                            "dates": date,
+                            "location": location,
+                            "age_group": age_group,
+                            **{scn: round(daily_rates[scn]) for scn in ["A_B", "C_D", "E_F"]}
+                        })
+                    current_date = end_date + pd.Timedelta(days=1)  # End processing
+                    break
+
                 if days_in_period > 0:
                     # Calculate daily rates for this period
                     daily_rates = {
