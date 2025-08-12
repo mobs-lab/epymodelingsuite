@@ -255,6 +255,10 @@ def add_school_closure_interventions(
     filename = os.path.join(os.path.dirname(sys.modules[__name__].__file__), "data/location_codebook.csv")
     location_codebook = pd.read_csv(filename)
 
+    # Check that there are location codes in the codebook matching the model population name
+    if model.population.name not in location_codebook.location_name_epydemix.values:
+        raise ValueError(f'Model population \'{model.population.name}\' not found in location codebook. Make sure that the model is set up for a US state-level or nation-level population.')
+
     # Get the school closures that apply to the location/population of the model
     closures = closure_dict[location_codebook[location_codebook.location_name_epydemix == model.population.name].location_abbreviation.iloc[0]]
 
