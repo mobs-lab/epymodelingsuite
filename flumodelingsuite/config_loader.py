@@ -319,6 +319,8 @@ def _add_vaccination_schedules_from_config(model: EpiModel, config: RootConfig) 
 		except Exception as e:
 			raise ValueError(f"Error adding vaccination transition {transition}: {e}")
 	
+	return model
+	
 def _parse_age_group(group_str: str) -> list:
 	"""
 	Parse an age group string like "0-4", "65+" into a list of individual age labels.
