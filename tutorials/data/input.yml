@@ -5,13 +5,19 @@ model:
   description: "Flu model for the 2024-2025 season, Round 5"
 
   simulation:
-    location:
-      - "TX"
-      - "MA" # or "all"
     start_date: "2024-08-05" # YYYY-MM-DD
     end_date: "2025-08-05" # YYYY-MM-DD
 
   random_seed: 42
+
+  population:
+    name: US-NY
+    age_groups:
+      - "0-4"
+      - "5-17"
+      - "18-49"
+      - "50-64"
+      - "65+"
 
   compartments:
   - id: S
@@ -58,6 +64,9 @@ model:
   interventions:
   - type: school_closure
     reduction_factor: 0.33
+    years:
+      - 2024
+      - 2025
   - type: parameter
     target_parameter: beta
     reduction_factor: 0.5
