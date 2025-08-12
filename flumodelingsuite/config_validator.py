@@ -122,6 +122,7 @@ class Intervention(BaseModel):
     target_parameter: Optional[str] = Field(None, description="Target parameter for interventions. Only required for 'parameter' interventions.")
     start_date: Optional[date] = Field(None, description="Start date of intervention. Only required for 'parameter' interventions.")
     end_date: Optional[date] = Field(None, description="End date of intervention. Only required for 'parameter' interventions.")
+    years: Optional[List[int]] = Field(None, description="Years for school closure interventions. Only required for 'school_closure' interventions.")
 
 class Seasonality(BaseModel):
     """Data model for seasonality effects."""
