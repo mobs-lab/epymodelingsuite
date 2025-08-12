@@ -125,7 +125,7 @@ model:
 
   vaccination:
     # preprocessed_vaccination_data_path: "data/PROCESSED_Age_Specific_Coverage_Flu_RD1_2024_25_Sc_A_B_C_D_E_F.csv"
-    smh_vaccination_data_path: "tutorials/data/vaccine_scenarios_2425.csv"
+    scenario_data_path: "tutorials/data/vaccine_scenarios_2425_cd.csv"
     scenario: "A_B"
     origin_compartment: S
     eligible_compartments:
