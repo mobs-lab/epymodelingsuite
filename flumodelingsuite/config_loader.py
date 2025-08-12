@@ -258,7 +258,7 @@ def _add_vaccination_schedules_from_config(model: EpiModel, config: RootConfig) 
 		EpiModel: EpiModel instance with vaccination schedules added.
 	"""
 	import pandas as pd
-	from .vaccinations import smh_data_to_epydemix, make_vaccination_probability_function, add_vaccination_schedule
+	from .vaccinations import scenario_to_epydemix, make_vaccination_probability_function, add_vaccination_schedule
 
 	# Check that transitions and vaccination config exist
 	if not hasattr(config.model, 'transitions'):
@@ -288,31 +288,22 @@ def _add_vaccination_schedules_from_config(model: EpiModel, config: RootConfig) 
 		vaccination_schedule = pd.read_csv(preprocessed_vaccination_data_path)
 		logger.info(f"Loaded preprocessed vaccination schedule from {preprocessed_vaccination_data_path}")
 	else:
-		# Otherwise, create vaccination schedule from SMH data
+		# Otherwise, create vaccination schedule from SMH scenario
+		scenario_data_path = config.model.vaccination.scenario_data_path
 		start_date = config.model.simulation.start_date
 		end_date = config.model.simulation.end_date
-		smh_vaccination_data_path = config.model.vaccination.smh_vaccination_data_path
-
-		location = config.model.simulation.population
-		if not location:
-			raise ValueError("Population/location must be specified in the simulation config for vaccination schedule creation.")
-		location = location.replace('_', ' ')
-
-		scenario = config.model.vaccination.scenario
 
 		try:
-			vaccination_schedule = smh_data_to_epydemix(
-				input_filepath=smh_vaccination_data_path,
+			vaccination_schedule = scenario_to_epydemix(
+				input_filepath=scenario_data_path,
 				start_date=start_date,
 				end_date=end_date,
-				location=location,
 				model=model,
-				scenario=scenario,
 				output_filepath=None
 			)
-			logger.info(f"Created vaccination schedule from SMH data at {smh_vaccination_data_path}")
+			logger.info(f"Created vaccination schedule from scenario data at {scenario_data_path}")
 		except Exception as e:
-			raise ValueError(f"Error creating vaccination schedule from SMH data:\n{e}")
+			raise ValueError(f"Error creating vaccination schedule from scenario data:\n{e}")
 
 	# Add vaccine transitions to the model
 	for transition in vaccination_transitions:
@@ -320,7 +311,6 @@ def _add_vaccination_schedules_from_config(model: EpiModel, config: RootConfig) 
 			model = add_vaccination_schedule(
 				model=model,
 				vaccine_probability_function=vaccine_probability_function,
-				location=location,
 				source_comp=transition.source,
 				target_comp=transition.target,
 				vaccination_schedule=vaccination_schedule
