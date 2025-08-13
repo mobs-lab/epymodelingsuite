@@ -190,12 +190,11 @@ def smh_data_to_epydemix(
     start_date: str | pd.Timestamp,
     end_date: str | pd.Timestamp,
     model: EpiModel,
-    scenario: str,
     output_filepath: Optional[str] = None,
 ) -> pd.DataFrame:
     """
     Processes age-specific influenza vaccine coverage data from the scenario modeling hub into 
-    daily vaccination schedules by age group for a given scenario and ALL locations.
+    daily vaccination schedules by age group for ALL scenarios and ALL locations.
 
     The function loads weekly cumulative coverage estimates from a CSV file, maps them to 
     the model population, computes new weekly doses, and distributes them evenly across days 
@@ -208,9 +207,6 @@ def smh_data_to_epydemix(
         start_date (str or Timestamp): Start date of the simulation period (used to build full timeline).
         end_date (str or Timestamp): End date of the simulation period (used to build full timeline).
         model (object): Epydemix EpiModel instance with a .population.Nk list for age group sizes.
-        scenario (str): String representing scenario grouping (e.g. one of {'A_B', 'C_D', 'E_F'} for the 24/25 season) 
-                       indicating which vaccination scenario to extract. Must match the suffix of columns in the original data 
-                       e.g. 'flu.coverage.rd2425.sc_A_B'.
         output_filepath (str, optional): If provided, the output DataFrame will be saved as a CSV at the given filepath.
 
     Returns:
@@ -228,10 +224,8 @@ def smh_data_to_epydemix(
     start_date = pd.Timestamp(start_date)
     end_date = pd.Timestamp(end_date)
     
-    # Validate scenario
+    # Extract scenarios
     scenario_options = [name.split('sc_')[-1] for name in list(vaccines.columns) if name.find('sc_') > -1]
-    if scenario not in scenario_options:
-        raise ValueError(f"Scenario '{scenario}' not found in vaccine data. \n Available scenarios: {scenario_options}")
     
     # Filter for date range and rename scenario columns
     vaccines = vaccines.query("Week_Ending_Sat >= @start_date").rename(
@@ -261,11 +255,9 @@ def smh_data_to_epydemix(
                     "Geography": g["Geography"].iloc[0],
                     "Age": "5-17 Years",
                     "Population": g["Population"].sum(),
-                    "Coverage_A_B": weighted_avg(g, "Coverage_A_B"),
-                    "Coverage_C_D": weighted_avg(g, "Coverage_C_D"),
-                    "Coverage_E_F": weighted_avg(g, "Coverage_E_F"),
+                    **{'Coverage_'+scn: weighted_avg(g, 'Coverage_'+scn) for scn in scenario_options}
                 }), include_groups=False)
-                .reset_index()
+              .reset_index()
             )
         else:
             # Handle case where youth data might be missing for this location
@@ -295,7 +287,7 @@ def smh_data_to_epydemix(
             lambda age: model.population.Nk[age_to_index[age]] if age in age_to_index else 0
         )
         
-        for scn in ["A_B", "C_D", "E_F"]:
+        for scn in scenario_options:
             vaccine_schedule[f"cumulative_doses_{scn}"] = (
                 vaccine_schedule[f"Coverage_{scn}"] / 100 * vaccine_schedule["population_model"]
             ).round()
@@ -307,7 +299,7 @@ def smh_data_to_epydemix(
             age_data = vaccine_schedule.query("Age == @age_group").copy()
             
             # Calculate new doses per week (difference from previous week)
-            for scn in ["A_B", "C_D", "E_F"]:
+            for scn in scenario_options:
                 age_data[f"new_doses_{scn}"] = np.diff(
                     age_data[f"cumulative_doses_{scn}"], prepend=0
                 )
@@ -323,7 +315,7 @@ def smh_data_to_epydemix(
                     days_in_period = (end_date - current_date).days + 1
                     daily_rates = {
                         scn: week_data[f"new_doses_{scn}"] / days_in_period 
-                        for scn in ["A_B", "C_D", "E_F"]
+                        for scn in scenario_options
                     }
                     
                     # Add daily entries for this period (including week_end)
@@ -332,7 +324,7 @@ def smh_data_to_epydemix(
                             "dates": date,
                             "location": location,
                             "age_group": age_group,
-                            **{scn: round(daily_rates[scn]) for scn in ["A_B", "C_D", "E_F"]}
+                            **{scn: round(daily_rates[scn]) for scn in scenario_options}
                         })
                     current_date = end_date + pd.Timedelta(days=1)  # End processing
                     break
@@ -341,7 +333,7 @@ def smh_data_to_epydemix(
                     # Calculate daily rates for this period
                     daily_rates = {
                         scn: week_data[f"new_doses_{scn}"] / days_in_period 
-                        for scn in ["A_B", "C_D", "E_F"]
+                        for scn in scenario_options
                     }
                     
                     # Add daily entries for this period (including week_end)
@@ -350,7 +342,7 @@ def smh_data_to_epydemix(
                             "dates": date,
                             "location": location,
                             "age_group": age_group,
-                            **{scn: round(daily_rates[scn]) for scn in ["A_B", "C_D", "E_F"]}
+                            **{scn: round(daily_rates[scn]) for scn in scenario_options}
                         })
                 
                 current_date = week_end + pd.Timedelta(days=1)  # Start next period
@@ -361,9 +353,7 @@ def smh_data_to_epydemix(
                     "dates": date,
                     "location": location,
                     "age_group": age_group,
-                    "A_B": 0,
-                    "C_D": 0,
-                    "E_F": 0
+                    **{scn: 0 for scn in scenario_options}
                 })
         
         all_locations_data.extend(daily_vaccines_list)
@@ -375,7 +365,7 @@ def smh_data_to_epydemix(
     df_melted = pd.melt(
         daily_vaccines_df,
         id_vars=['dates', 'location', 'age_group'],
-        value_vars=['A_B', 'C_D', 'E_F'],
+        value_vars=scenario_options,
         var_name='scenario',
         value_name='value'
     )
@@ -386,9 +376,6 @@ def smh_data_to_epydemix(
         values='value',
         aggfunc='first'
     ).reset_index()
-    
-    # Filter for the requested scenario
-    df_final = df_final[df_final['scenario'] == scenario].copy()
     
     # Clean up column names
     df_final.columns.name = None
@@ -430,6 +417,7 @@ def make_vaccination_probability_function(
                   model.register_transition_kind.
     """
     import numpy as np
+    from epydemix.model.epimodel import validate_transition_function
 
     def compute_vaccination_probability(params: list, data: dict) -> np.ndarray:
         """
@@ -464,7 +452,8 @@ def make_vaccination_probability_function(
             p_vax = np.where(origin_pop > 0, effective_doses / origin_pop, 0)
 
         return np.clip(p_vax, 0, 0.999)
-
+    
+    validate_transition_function(compute_vaccination_probability)
     return compute_vaccination_probability
 
 def add_vaccination_schedule(
