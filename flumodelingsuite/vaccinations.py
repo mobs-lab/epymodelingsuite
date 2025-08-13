@@ -417,6 +417,7 @@ def make_vaccination_probability_function(
                   model.register_transition_kind.
     """
     import numpy as np
+    from epydemix.model.epimodel import validate_transition_function
 
     def compute_vaccination_probability(params: list, data: dict) -> np.ndarray:
         """
@@ -451,7 +452,8 @@ def make_vaccination_probability_function(
             p_vax = np.where(origin_pop > 0, effective_doses / origin_pop, 0)
 
         return np.clip(p_vax, 0, 0.999)
-
+    
+    validate_transition_function(compute_vaccination_probability)
     return compute_vaccination_probability
 
 def add_vaccination_schedule(
