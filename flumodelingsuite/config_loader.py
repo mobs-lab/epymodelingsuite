@@ -222,7 +222,8 @@ def _add_model_parameters_from_config(model: EpiModel, config: RootConfig) -> Ep
 	----------
 		EpiModel: EpiModel instance with parameters added.
 	"""
-	
+	from epydemix.utils import convert_to_2Darray
+  
 	if not hasattr(config.model, 'parameters'):
 		return model
 
@@ -231,8 +232,12 @@ def _add_model_parameters_from_config(model: EpiModel, config: RootConfig) -> Ep
 	for key, data in config.model.parameters.items():
 		if data.type == 'constant':
 			parameters_dict[key] = data.value
-		elif data.type == 'array':
-			parameters_dict[key] = data.values
+		elif data.type == 'array': 
+            # Assuming this will be an age-varying parameter, ensure array matches population age structure
+            if model.population.num_groups == len(data.values):
+                parameters_dict[key] = convert_to_2Darray(data.values)
+            else:
+                raise ValueError(f'Array values supplied for parameter {key} do not match model population age structure')
 		elif data.type == 'expression':
 			parameters_dict[key] = _safe_eval(data.value)
 	
@@ -243,6 +248,83 @@ def _add_model_parameters_from_config(model: EpiModel, config: RootConfig) -> Ep
 		raise ValueError(f"Error adding parameters to model: {e}")
 
 	return model
+
+def _add_seasonality_from_config(model: EpiModel, config: RootConfig) -> EpiModel:
+    """
+    Add seasonally varying transmission rate to the EpiModel from the configuration dictionary.
+
+    Parameters
+    ----------
+        model (EpiModel): The EpiModel instance to apply seasonality to.
+        config (RootConfig): The configuration object containing seasonality parameters.
+
+    Returns
+    ----------
+        EpiModel: EpiModel instance with seasonal transmission applied.
+    """
+    from .seasonality import get_seasonal_transmission_balcan
+    from epydemix.utils import compute_simulation_dates
+    import datetime as dt
+    import numpy as np
+    
+    if not hasattr(config.model, 'parameters'):
+        return model
+    if not hasattr(config.model, 'seasonality'):
+        return model
+
+    def format_date(datestring: str) -> dt.date:
+        '''Format a date from a string (YYYY-MM-DD)'''
+        date_format = '%Y-%m-%d'
+        return dt.datetime.strptime(datestring, date_format).date()
+
+    # Parameter must already be defined
+    try:
+        previous_value = model.get_parameter(config.model.seasonality.target_parameter).copy()
+    except KeyError:
+        raise ValueError(f'Attempted to apply seasonality to undefined parameter {config.model.seasonality.target_parameter}')
+      
+    # Calculate rescaling factor with requested method
+    if config.model.seasonality.method == 'balcan':
+        # Minimum transmission date is optional
+        if hasattr(config.model.seasonality, 'seasonality_min_date'):
+            date_tmin = format_date(config.model.seasonality.seasonality_min_date)
+        else:
+            date_tmin = None
+        # Do the calculation
+        dates, st = get_seasonal_transmission_balcan(
+            date_start=format_date(config.model.simulation.start_date),
+            date_stop=format_date(config.model.simulation.start_date),
+            date_tmax=format_date(config.model.seasonality.seasonality_max_date),
+            date_tmin=date_tmin,
+            R_min=R_min,
+            R_max=R_max
+        )
+    else:
+        raise ValueError(f'Undefined seasonality method recieved: {config.model.seasonality.method}')
+
+    # Handle possibilities for previous parameter value
+    # If existing parameter is constant, transform to array of size (T,) with time-varying values
+    if not hasattr(previous_value, '__len__'):
+        new_value = st * np.array(previous_value)
+    # If existing parameter is age-varying (array of size (1, N)), transform to array of size (T, N) with time-varying and age-varying values
+    elif previous_value.shape == (1, model.population.num_groups):
+        new_value = np.zeros((len(compute_simulation_dates(start_date=config.model.simulation.start_date, end_date=config.model.simulation.end_date)),
+                              model.population.num_groups))
+        for i in range(model.population.num_groups):
+            new_value[:, i] = st * np.array(previous_value[0, i])
+    # Uncertain how this will work for expressions or priors
+    else:
+        raise ValueError(f'Cannot apply seasonality to existing parameter {config.model.seasonality.target_parameter} = {previous_value}')
+    
+    # Overwrite parameter with new seasonal values
+    try:
+        model.add_parameter(config.model.seasonality.target_parameter, new_value)
+        logger.info(f'Added seasonality to parameter {config.model.seasonality.target_parameter}')
+    except Exception as e:
+		raise ValueError(f"Error adding parameters to model: {e}")
+
+    return model
+    
 
 def _add_vaccination_schedules_from_config(model: EpiModel, config: RootConfig) -> EpiModel:
 	"""
@@ -479,6 +561,7 @@ def load_model_config_from_file(path: str) -> RootConfig:
 	-------
 		RootConfig: The validated configuration object.
 	"""
+    from .config_validator import validate_config
 	import yaml
 	with open(path, 'r') as f:
 		raw = yaml.safe_load(f)
@@ -522,6 +605,9 @@ def setup_epimodel_from_config(config: RootConfig) -> EpiModel:
 
 	# Set up parameters
 	model = _add_model_parameters_from_config(model, config)
+
+    # Apply seasonality
+    model = _add_seasonality_from_config(model, config)
 
 	# Set up vaccination schedules
 	model = _add_vaccination_schedules_from_config(model, config)
