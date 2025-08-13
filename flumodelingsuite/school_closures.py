@@ -250,6 +250,10 @@ def add_school_closure_interventions(
     import pandas as pd
     import sys
     import os
+    import copy
+
+    # Make a deep copy of the model to avoid modifying the original
+    model = copy.deepcopy(model)
 
     # Codebook for locations
     filename = os.path.join(os.path.dirname(sys.modules[__name__].__file__), "data/location_codebook.csv")
