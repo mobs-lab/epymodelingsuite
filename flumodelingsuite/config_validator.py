@@ -126,9 +126,15 @@ class Intervention(BaseModel):
 
 class Seasonality(BaseModel):
     """Data model for seasonality effects."""
-    model: str
+
+    class SeasonalityMethodEnum(str, Enum):
+        """Methods for defining a seasonally varying function."""
+        balcan = 'balcan'
+    
+    target_parameter: str = Field(..., description="Name of parameter to apply seasonality to")
+    method: SeasonalityMethodEnum = Field(..., description="Method for defining a seasonally varying function")
     seasonality_max_date: date = Field(..., description="Date of seasonality peak (max transmissibility)")
-    seasonality_min_date: date = Field(..., description="Date of seasonality trough (min transmissibility)")
+    seasonality_min_date: Optional[date] = Field(..., description="Date of seasonality trough (min transmissibility)")
     transmissibility_max: float = Field(..., description="Maximum transmissibility value")
     transmissibility_min: float = Field(..., description="Minimum transmissibility value")
 

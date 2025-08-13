@@ -75,9 +75,10 @@ model:
   - type: contact_matrix
 
   seasonality:
-    model: balcan
+    target_parameter: beta
+    method: balcan
     seasonality_max_date: "2024-10-01" # YYYY-MM-DD
-    seasonality_min_date: "2025-04-01" # YYYY-MM-DD
+    seasonality_min_date: "2025-04-01" # YYYY-MM-DD, optional
     transmissibility_max: 1.00
     transmissibility_min: 0.50
 
@@ -86,6 +87,9 @@ model:
     vaccine_effectiveness:
       type: constant
       value: 0.7
+    beta:
+      type: constant
+      value: 0.3
     mu:
       type: expression
       value: 1/5 # np.pow(2, -3)
