@@ -484,6 +484,10 @@ def add_vaccination_schedule(
 
     import os
     import sys
+    import copy
+
+    # Make a deep copy of the model to avoid modifying the original
+    model = copy.deepcopy(model)
 
     model_location = model.population.name
 
@@ -533,6 +537,11 @@ def remove_vaccination_transitions(model, source_comp, target_comp):
         `add_vaccination_schedule` from creating duplicate transitions
         if it is called multiple times.
         """
+
+        import copy
+
+        # Make a deep copy of the model to avoid modifying the original
+        model = copy.deepcopy(model)
         
         # Remove from transitions_list
         model.transitions_list = [
