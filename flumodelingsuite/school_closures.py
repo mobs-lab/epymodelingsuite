@@ -248,23 +248,14 @@ def add_school_closure_interventions(
     '''
     from epydemix import EpiModel
     import pandas as pd
-    import sys
-    import os
+    from .utils import convert_location_name_format
     import copy
 
     # Make a deep copy of the model to avoid modifying the original
     model = copy.deepcopy(model)
 
-    # Codebook for locations
-    filename = os.path.join(os.path.dirname(sys.modules[__name__].__file__), "data/location_codebook.csv")
-    location_codebook = pd.read_csv(filename)
-
-    # Check that there are location codes in the codebook matching the model population name
-    if model.population.name not in location_codebook.location_name_epydemix.values:
-        raise ValueError(f'Model population \'{model.population.name}\' not found in location codebook. Make sure that the model is set up for a US state-level or nation-level population.')
-
     # Get the school closures that apply to the location/population of the model
-    closures = closure_dict[location_codebook[location_codebook.location_name_epydemix == model.population.name].location_abbreviation.iloc[0]]
+	closures = closure_dict[convert_location_name_format(model.population.name, 'abbreviation')]
 
     # Add all interventions to the model
     [model.add_intervention(layer_name='school', start_date=closure.start_date, end_date=closure.end_date,

@@ -32,8 +32,7 @@ def scenario_to_epydemix(
                       daily vaccination counts per age group across all geographies.
     """
     import numpy as np
-    import os
-    import sys
+    from .utils import convert_location_name_format
     
     # ========== LOAD AND FILTER DATA ==========
     vaccines = pd.read_csv(input_filepath)
@@ -174,11 +173,10 @@ def scenario_to_epydemix(
         "50-64 Years": "50-64",
         "65+ Years": "65+"
     }, inplace=True)
-
-    filename = os.path.join(os.path.dirname(sys.modules[__name__].__file__), "data/location_codebook.csv")
-    location_codebook = pd.read_csv(filename)
-    location_map = dict(zip(location_codebook.location_name, location_codebook.ISO))
-    df_final['location'] = df_final['location'].map(location_map)
+	
+	# Format locations as ISO codes
+    df_final['location'] = [convert_location_name_format(loc, 'ISO') for loc in df_final.location]
+	
     # ========== WRITE OUTPUT CSV ==========
     if output_filepath:
         df_final.to_csv(output_filepath, index=False)
@@ -214,8 +212,7 @@ def smh_data_to_epydemix(
                       daily vaccination counts per age group for the selected scenario across all geographies.
     """
     import numpy as np
-    import os
-    import sys
+    from .utils import convert_location_name_format
     
     # ========== LOAD AND FILTER DATA ==========
     vaccines = pd.read_csv(input_filepath)
@@ -387,10 +384,8 @@ def smh_data_to_epydemix(
         "65+ Years": "65+"
     }, inplace=True)
 
-    filename = os.path.join(os.path.dirname(sys.modules[__name__].__file__), "data/location_codebook.csv")
-    location_codebook = pd.read_csv(filename)
-    location_map = dict(zip(location_codebook.location_name, location_codebook.ISO))
-    df_final['location'] = df_final['location'].map(location_map)
+    # Format locations as ISO codes
+    df_final['location'] = [convert_location_name_format(loc, 'ISO') for loc in df_final.location]
 
     # ========== WRITE OUTPUT CSV ==========
     if output_filepath:
@@ -482,31 +477,24 @@ def add_vaccination_schedule(
         ValueError: If any age groups required by the model are missing from the DataFrame.
     """
 
-    import os
-    import sys
     import copy
+	from .utils import convert_location_name_format
 
     # Make a deep copy of the model to avoid modifying the original
     model = copy.deepcopy(model)
 
-    model_location = model.population.name
-
-    filename = os.path.join(os.path.dirname(sys.modules[__name__].__file__), "data/location_codebook.csv")
-    location_codebook = pd.read_csv(filename)
-    location_map = dict(zip(location_codebook.location_name_epydemix, location_codebook.ISO))
-
-    iso_location = location_map[model_location]
+	# Location handling
+    iso_location = convert_location_name_format(model.population.name, 'ISO')
 
     if 'location' not in vaccination_schedule.columns:
         raise ValueError(
-            f"'location' column not found in vaccination_schedule."
+            f"'location' column not found in vaccination_schedule.\n"
             f"Available columns: {list(vaccination_schedule.columns)}"
         )
 
     if iso_location not in vaccination_schedule['location'].unique():
         raise ValueError(
-            f"Location not found in vaccination schedule data. \n"
-            f"Locations must be specified as ISO 3166-2: {list(location_codebook['ISO'].values)}"
+            f"Location {iso_location} not found in vaccination schedule data."
         )
     
     vaccination_schedule = vaccination_schedule.query("location == @iso_location").copy()
