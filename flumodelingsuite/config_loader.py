@@ -149,7 +149,8 @@ def _add_model_compartments_from_config(model: EpiModel, config: RootConfig) -> 
 		EpiModel: EpiModel instance with compartments added.
 	"""
 	
-	if not hasattr(config.model, 'compartments'):
+	# Check that required attributes of model configuration are not None
+	if config.model.compartments is None:
 		return model
 	
 	# Add compartments to the model
@@ -176,7 +177,8 @@ def _add_model_transitions_from_config(model: EpiModel, config: RootConfig) -> E
 		EpiModel: EpiModel instance with compartment transitions added.
 	"""
 
-	if not hasattr(config.model, 'transitions'):
+	# Check that required attributes of model configuration are not None
+	if config.model.transitions is None:
 		return model
 
 	# Add transitions to the model
@@ -224,7 +226,8 @@ def _add_model_parameters_from_config(model: EpiModel, config: RootConfig) -> Ep
 	"""
 	from epydemix.utils import convert_to_2Darray
   
-	if not hasattr(config.model, 'parameters'):
+	# Check that required attributes of model configuration are not None
+	if config.model.parameters is None:
 		return model
 
 	# Add parameters to the model
@@ -266,9 +269,8 @@ def _add_seasonality_from_config(model: EpiModel, config: RootConfig) -> EpiMode
 	import datetime as dt
 	import numpy as np
 	
-	if not hasattr(config.model, 'parameters'):
-		return model
-	if not hasattr(config.model, 'seasonality'):
+	# Check that required attributes of model configuration are not None
+	if config.model.parameters is None or config.model.seasonality is None:
 		return model
 	
 	def format_date(datestring: str) -> dt.date:
@@ -285,7 +287,7 @@ def _add_seasonality_from_config(model: EpiModel, config: RootConfig) -> EpiMode
 	# Calculate rescaling factor with requested method
 	if config.model.seasonality.method == 'balcan':
 		# Minimum transmission date is optional
-		if hasattr(config.model.seasonality, 'seasonality_min_date'):
+		if config.model.seasonality.seasonality_min_date is not None:
 			date_tmin = format_date(config.model.seasonality.seasonality_min_date)
 		else:
 			date_tmin = None
@@ -341,10 +343,8 @@ def _add_vaccination_schedules_from_config(model: EpiModel, config: RootConfig) 
 	import pandas as pd
 	from .vaccinations import scenario_to_epydemix, make_vaccination_probability_function, add_vaccination_schedule
 
-	# Check that transitions and vaccination config exist
-	if not hasattr(config.model, 'transitions'):
-		return model
-	if not hasattr(config.model, 'vaccination'):
+	# Check that required attributes of model configuration are not None
+	if config.model.transitions is None or config.model.vaccination is None:
 		return model
 
 	# Extract compartment transitions due to vaccination
@@ -445,7 +445,8 @@ def _set_population_from_config(model: EpiModel, config: RootConfig) -> EpiModel
 	from epydemix.population import load_epydemix_population
 	from .utils import convert_location_name_format
 
-	if not hasattr(config.model, 'population'):
+	# Check that required attributes of model configuration are not None
+	if config.model.population is None:
 		return model
 
 	try:
@@ -487,10 +488,10 @@ def _add_school_closure_intervention_from_config(model: EpiModel, config: RootCo
 		EpiModel: EpiModel instance with the intervention applied.
 	"""
 
-	# Check if interventions are defined in the config
-	if not hasattr(config.model, 'interventions'):
+	# Check that required attributes of model configuration are not None
+	if config.model.interventions is None:
 		return model
-	
+
 	# Load school closure functions
 	from .school_closures import make_school_closure_dict, add_school_closure_interventions
 
@@ -547,15 +548,15 @@ def setup_epimodel_from_config(config: RootConfig) -> EpiModel:
 		EpiModel: An instance of EpiModel configured according to the provided settings.
 	"""
 	
-	# Validate that 'model' key exists in config
-	if not hasattr(config, 'model'):
+	# Validate that 'model' exists in config
+	if config.model is None:
 		raise ValueError("Configuration must contain a 'model' key.")
 
 	# Create an empty instance of EpiModel
 	model = EpiModel()
 
 	# Set the model name if provided in the config
-	if hasattr(config.model, 'name'):
+	if config.model.name is not None:
 		model.name = config.model.name
 
 	# Set population
