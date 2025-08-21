@@ -80,10 +80,6 @@ model:
             - I_S,NT
             - I_vax_S,T
             - I_vax_S,NT
-    - type: mediated_multi
-      source: S
-      target: L
-      mediators:
         - rate: r_asymp * beta
           source:
             - I_A
@@ -98,10 +94,6 @@ model:
             - I_S,NT
             - I_vax_S,T
             - I_vax_S,NT
-    - type: mediated_multi
-      source: S_vax
-      target: L_vax
-      mediators:
         - rate: r_asymp * r_vax * beta
           source:
             - I_A
@@ -127,13 +119,13 @@ model:
       end_date: "2025-04-01" # YYYY-MM-DD
     - type: contact_matrix
 
-  seasonality:
-    method: balcan
-    target_parameter: beta
-    seasonality_max_date: "2025-02-01" # YYYY-MM-DD
-    seasonality_min_date: "2025-05-01" # YYYY-MM-DD
-    transmissibility_max: 1.00
-    transmissibility_min: 0.50
+  # seasonality:
+  #   method: balcan
+  #   target_parameter: beta
+  #   seasonality_max_date: "2025-02-01" # YYYY-MM-DD
+  #   seasonality_min_date: "2025-05-01" # YYYY-MM-DD
+  #   transmissibility_max: 1.00
+  #   transmissibility_min: 0.50
 
   # Parameters/Variables: constant, array, or probability distribution
   parameters:
