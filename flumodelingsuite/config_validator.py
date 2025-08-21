@@ -109,13 +109,13 @@ class Transition(BaseModel):
         """Required fields for mediated transitions."""
 
         rate: float | str
-        source: str = Field(..., description="Source compartment id")
+        source: str | list[str] = Field(..., description="Source compartment id")
 
     type: TransitionTypeEnum
     source: str = Field(..., description="Source compartment id")
     target: str = Field(..., description="Target compartment id")
     rate: float | str | None = None
-    mediators: Mediators | None = Field(None, description="Mediators (infectors) for mediated transitions")
+    mediators: Mediators | list[Mediators] | None = Field(None, description="Mediators (infectors) for mediated transitions. For multi-mediated transitions, provide a list of mediators.")
 
     @model_validator(mode="after")
     def check_fields_for_type(cls, m: "Transition") -> "Transition":
