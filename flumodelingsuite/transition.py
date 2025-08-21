@@ -1,5 +1,6 @@
 import numpy as np
 
+
 def compute_multimediated_transition_probability(params: tuple | list[tuple], data) -> np.ndarray:
     """
     Compute the probability of a mediated transition that involves multiple mediator compartments.
