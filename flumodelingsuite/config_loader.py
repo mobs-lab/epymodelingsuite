@@ -315,6 +315,8 @@ def _add_seasonality_from_config(model: EpiModel, config: RootConfig) -> EpiMode
             R_min=config.model.seasonality.transmissibility_min,
             R_max=config.model.seasonality.transmissibility_max,
         )
+        log_msg = f"Seasonal transmission rates calculated: {dates}, {st}"
+        logger.info(log_msg)
     else:
         raise ValueError(f"Undefined seasonality method recieved: {config.model.seasonality.method}")
 
