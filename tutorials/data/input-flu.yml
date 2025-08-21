@@ -158,11 +158,13 @@ model:
       - 0.0110
       - 0.0909
     beta: # transmission rate
+      # This can be calculated from
+      # R0 = overall_eigenval * [ beta/mu (1-p_asymp) + beta/mu * (r_a * p_asymp) ]
       type: constant
-      value: 0.5
+      value: 0.0878
     beta_vax: # vaccinated transmission rate
       type: constant
-      value: 0.3
+      value: 0.026
     epsilon: # rate from latent to infectious
       type: expression
       value: 1/1.5
