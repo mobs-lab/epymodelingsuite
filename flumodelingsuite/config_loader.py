@@ -553,9 +553,11 @@ def load_model_config_from_file(path: str) -> RootConfig:
     -------
             RootConfig: The validated configuration object.
     """
+    from pathlib import Path
+
     import yaml
 
-    with open(path) as f:
+    with Path(path).open() as f:
         raw = yaml.safe_load(f)
 
     root = validate_config(raw)
