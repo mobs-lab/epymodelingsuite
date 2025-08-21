@@ -102,6 +102,7 @@ class Transition(BaseModel):
 
         spontaneous = "spontaneous"
         mediated = "mediated"
+        mediated_multi = "mediated_multi"
         vaccination = "vaccination"
 
     class Mediators(BaseModel):
