@@ -1,6 +1,15 @@
 ### utils.py
 # Utility functions
 
+def get_population_codebook():
+	'''Retrieve the population codebook as a Pandas DataFrame.'''
+	import pandas as pd
+	import os, sys
+	
+	filename = os.path.join(os.path.dirname(sys.modules[__name__].__file__), "data/population_codebook.csv")
+	population_codebook = pd.read_csv(filename)
+	
+	return population_codebook
 
 def get_location_codebook():
 	'''Retrieve the location codebook as a Pandas DataFrame.'''
