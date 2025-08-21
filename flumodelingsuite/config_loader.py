@@ -293,7 +293,7 @@ def _add_seasonality_from_config(model: EpiModel, config: RootConfig) -> EpiMode
 
     # Parameter must already be defined
     try:
-        previous_value = model.get_parameter(config.model.seasonality.target_parameter).copy()
+        previous_value = model.get_parameter(config.model.seasonality.target_parameter)
     except KeyError:
         raise ValueError(
             f"Attempted to apply seasonality to undefined parameter {config.model.seasonality.target_parameter}"
