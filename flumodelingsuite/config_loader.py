@@ -205,11 +205,11 @@ def _add_model_transitions_from_config(model: EpiModel, config: RootConfig) -> E
                     params=(transition.mediators.rate, transition.mediators.source),
                     kind=transition.type,
                 )
-                logger.info(
-                    f"Added mediated transition: {transition.source} -> {transition.target} (mediator: {transition.mediators.source}, rate: {transition.mediators.rate})"
-                )
+                log_msg = f"Added mediated transition: {transition.source} -> {transition.target} (mediator: {transition.mediators.source}, rate: {transition.mediators.rate})"
+                logger.info(log_msg)
             except Exception as e:
-                raise ValueError(f"Error adding mediated transition {transition}: {e}")
+                err_msg = f"Error adding mediated transition {transition}: {e}"
+                raise ValueError(err_msg) from e
         elif transition.type == "mediated_multi":
             try:
                 params = [(mediator.rate, mediator.source) for mediator in transition.mediators]
@@ -229,11 +229,11 @@ def _add_model_transitions_from_config(model: EpiModel, config: RootConfig) -> E
         elif transition.type == "spontaneous":
             try:
                 model.add_transition(transition.source, transition.target, params=transition.rate, kind=transition.type)
-                logger.info(
-                    f"Added spontaneous transition: {transition.source} -> {transition.target} (rate: {transition.rate})"
-                )
+                log_msg = f"Added spontaneous transition: {transition.source} -> {transition.target} (rate: {transition.rate})"
+                logger.info(log_msg)
             except Exception as e:
-                raise ValueError(f"Error adding spontaneous transition {transition}: {e}")
+                err_msg = f"Error adding spontaneous transition {transition}: {e}"
+                raise ValueError(err_msg) from e
 
     return model
 
