@@ -736,70 +736,69 @@ def smh_data_to_epydemix(
     
     return df_final
 
-
 def make_vaccination_probability_function(
-    origin_compartment: str,
-    eligible_compartments: list[str]
+	origin_compartment: str,
+	eligible_compartments: list[str]
 ) -> callable:
-    """
-    Returns a vaccination probability function for a given origin compartment and a set of 
-    eligible compartments used in the denominator when allocating doses.
+	"""
+	Returns a vaccination probability function for a given origin compartment and a set of 
+	eligible compartments used in the denominator when allocating doses.
 
-    Args:
-        origin_compartment (str): The compartment receiving the vaccination (e.g., 'S').
-        eligible_compartments (list of str): Compartments included in dose allocation denominator 
-                                             (e.g., ['S', 'R']).
+	Args:
+		origin_compartment (str): The compartment receiving the vaccination (e.g., 'S').
+		eligible_compartments (list of str): Compartments included in dose allocation denominator 
+											 (e.g., ['S', 'R']).
 
-    Returns:
-        function: A function (params, data) -> np.ndarray suitable for use with 
-                  model.register_transition_kind.
-    """
-    import numpy as np
-    from epydemix.model.epimodel import validate_transition_function
+	Returns:
+		function: A function (params, data) -> np.ndarray suitable for use with 
+				  model.register_transition_kind.
+	"""
+	import numpy as np
+	from epydemix.model.epimodel import validate_transition_function
 
-    def compute_vaccination_probability(params: list, data: dict) -> np.ndarray:
-        """
-        Computes the probability of the spontaneous transition required to move a certain 
-        number of individuals out of the origin compartment at the current time step, based 
-        on the total available doses and the distribution of the population across compartments.
+	def compute_vaccination_probability(params: list, data: dict) -> np.ndarray:
+		"""
+		Computes the probability of the spontaneous transition required to move a certain 
+		number of individuals out of the origin compartment at the current time step, based 
+		on the total available doses and the distribution of the population across compartments.
 
-        Args:
-            params (list): A list containing one element: a 1D array of daily total doses 
-                        (aligned with simulation time steps).
-            data (dict): A dictionary with the following keys:
-                - 't': Current time index (int)
-                - 'dt': Duration of the current time step
-                - 'pop': Array of compartment population counts
-                - 'comp_indices': Dict mapping compartment names ('S', 'R', etc.) to their indices in 'pop'
+		Args:
+			params (list): A list containing one element: a 1D array of daily total doses 
+						(aligned with simulation time steps).
+			data (dict): A dictionary with the following keys:
+				- 't': Current time index (int)
+				- 'dt': Duration of the current time step
+				- 'pop': Array of compartment population counts
+				- 'comp_indices': Dict mapping compartment names ('S', 'R', etc.) to their indices in 'pop'
 
-        Returns:
-            np.ndarray: Array of vaccination probabilities for the susceptible population, 
-                        clipped between 0 and 0.999.
-        """
-        total_doses = params[0][data["t"]]
-        origin_pop = data["pop"][data["comp_indices"][origin_compartment]]
+		Returns:
+			np.ndarray: Array of vaccination probabilities for the susceptible population, 
+						clipped between 0 and 0.999.
+		"""
+		total_doses = params[0][data["t"]]
+		origin_pop = data["pop"][data["comp_indices"][origin_compartment]]
 
-        denom = sum(data["pop"][data["comp_indices"][comp]] for comp in eligible_compartments)
+		denom = sum(data["pop"][data["comp_indices"][comp]] for comp in eligible_compartments)
 
-        with np.errstate(divide='ignore', invalid='ignore'):
-            fraction_origin = np.where(denom > 0, origin_pop / denom, 0)
+		with np.errstate(divide='ignore', invalid='ignore'):
+			fraction_origin = np.where(denom > 0, origin_pop / denom, 0)
 
-        effective_doses = total_doses * data["dt"] * fraction_origin
+		effective_doses = total_doses * data["dt"] * fraction_origin
 
-        with np.errstate(divide='ignore', invalid='ignore'):
-            p_vax = np.where(origin_pop > 0, effective_doses / origin_pop, 0)
+		with np.errstate(divide='ignore', invalid='ignore'):
+			p_vax = np.where(origin_pop > 0, effective_doses / origin_pop, 0)
 
-        return np.clip(p_vax, 0, 0.999)
-    
-    validate_transition_function(compute_vaccination_probability)
-    return compute_vaccination_probability
+		return np.clip(p_vax, 0, 0.999)
+	
+	validate_transition_function(compute_vaccination_probability)
+	return compute_vaccination_probability
 
 def add_vaccination_schedule(
-    model: EpiModel,
-    vaccine_probability_function: Callable,
-    source_comp: str,
-    target_comp: str,
-    vaccination_schedule:pd.DataFrame
+	model: EpiModel,
+	vaccine_probability_function: Callable,
+	source_comp: str,
+	target_comp: str,
+	vaccination_schedule:pd.DataFrame
 ) -> EpiModel:
     """
     Register and add a vaccination transition to the model using a time-varying schedule by age group.
@@ -825,65 +824,65 @@ def add_vaccination_schedule(
     # Make a deep copy of the model to avoid modifying the original
     model = copy.deepcopy(model)
 
-	# Location handling
+    # Location handling
     iso_location = convert_location_name_format(model.population.name, 'ISO')
 
     if 'location' not in vaccination_schedule.columns:
-        raise ValueError(
-            f"'location' column not found in vaccination_schedule.\n"
-            f"Available columns: {list(vaccination_schedule.columns)}"
-        )
+      raise ValueError(
+        f"'location' column not found in vaccination_schedule.\n"
+        f"Available columns: {list(vaccination_schedule.columns)}"
+      )
 
     if iso_location not in vaccination_schedule['location'].unique():
-        raise ValueError(
-            f"Location {iso_location} not found in vaccination schedule data."
-        )
-    
+      raise ValueError(
+        f"Location {iso_location} not found in vaccination schedule data."
+      )
+
     vaccination_schedule = vaccination_schedule.query("location == @iso_location").copy()
     model.register_transition_kind("vaccination", vaccine_probability_function)
-    
+
     age_groups_model = model.population.Nk_names
     age_groups_data = vaccination_schedule.columns.tolist()
 
     missing = [age for age in age_groups_model if age not in age_groups_data]
     if missing:
-        raise ValueError(
-            "Age groups in model and age groups in data must be the same.\n"
-            f"Model age groups: {age_groups_model}\n"
-            f"Data frame columns: {age_groups_data}"
-        )
+      raise ValueError(
+        "Age groups in model and age groups in data must be the same.\n"
+        f"Model age groups: {age_groups_model}\n"
+        f"Data frame columns: {age_groups_data}"
+      )
 
     vaccine_schedule = (vaccination_schedule[age_groups_model].values,)
 
     # Usage:
     model = remove_vaccination_transitions(model, source_comp, target_comp)
     model.add_transition(source_comp, target_comp, params=vaccine_schedule, kind="vaccination")
-    
+
     return model
 
 def remove_vaccination_transitions(model, source_comp, target_comp):
-        """
-        Manually remove vaccination transitions from model. This prevents
-        `add_vaccination_schedule` from creating duplicate transitions
-        if it is called multiple times.
-        """
+		"""
+		Manually remove vaccination transitions from model. This prevents
+		`add_vaccination_schedule` from creating duplicate transitions
+		if it is called multiple times.
+		"""
 
-        import copy
+		import copy
 
-        # Make a deep copy of the model to avoid modifying the original
-        model = copy.deepcopy(model)
-        
-        # Remove from transitions_list
-        model.transitions_list = [
-            t for t in model.transitions_list 
-            if not (t.source == source_comp and t.target == target_comp and t.kind == "vaccination")
-        ]
-        
-        # Remove from transitions dict
-        if source_comp in model.transitions:
-            model.transitions[source_comp] = [
-                t for t in model.transitions[source_comp]
-                if not (t.target == target_comp and t.kind == "vaccination")
-            ]
-        
-        return model
+		# Make a deep copy of the model to avoid modifying the original
+		model = copy.deepcopy(model)
+		
+		# Remove from transitions_list
+		model.transitions_list = [
+			t for t in model.transitions_list 
+			if not (t.source == source_comp and t.target == target_comp and t.kind == "vaccination")
+		]
+		
+		# Remove from transitions dict
+		if source_comp in model.transitions:
+			model.transitions[source_comp] = [
+				t for t in model.transitions[source_comp]
+				if not (t.target == target_comp and t.kind == "vaccination")
+			]
+		
+		return model
