@@ -312,8 +312,8 @@ def _add_seasonality_from_config(model: EpiModel, config: RootConfig) -> EpiMode
             date_stop=config.model.simulation.start_date,
             date_tmax=config.model.seasonality.seasonality_max_date,
             date_tmin=date_tmin,
-            R_min=R_min,
-            R_max=R_max,
+            R_min=config.model.seasonality.transmissibility_min,
+            R_max=config.model.seasonality.transmissibility_max,
         )
     else:
         raise ValueError(f"Undefined seasonality method recieved: {config.model.seasonality.method}")
