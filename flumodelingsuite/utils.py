@@ -1,5 +1,6 @@
 ### utils.py
 # Utility functions
+import pandas as pd
 
 
 def get_population_codebook() -> pd.DataFrame:
