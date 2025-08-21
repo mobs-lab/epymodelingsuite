@@ -303,14 +303,14 @@ def _add_seasonality_from_config(model: EpiModel, config: RootConfig) -> EpiMode
     if config.model.seasonality.method == "balcan":
         # Minimum transmission date is optional
         if config.model.seasonality.seasonality_min_date is not None:
-            date_tmin = format_date(config.model.seasonality.seasonality_min_date)
+            date_tmin = config.model.seasonality.seasonality_min_date
         else:
             date_tmin = None
         # Do the calculation
         dates, st = get_seasonal_transmission_balcan(
-            date_start=format_date(config.model.simulation.start_date),
-            date_stop=format_date(config.model.simulation.start_date),
-            date_tmax=format_date(config.model.seasonality.seasonality_max_date),
+            date_start=config.model.simulation.start_date,
+            date_stop=config.model.simulation.start_date,
+            date_tmax=config.model.seasonality.seasonality_max_date,
             date_tmin=date_tmin,
             R_min=R_min,
             R_max=R_max,
