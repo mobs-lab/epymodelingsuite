@@ -406,7 +406,6 @@ def _add_vaccination_schedules_from_config(model: EpiModel, config: RootConfig) 
                 input_filepath=scenario_data_path,
                 start_date=start_date,
                 end_date=end_date,
-                model=model,
                 output_filepath=None,
             )
             logger.info(f"Created vaccination schedule from scenario data at {scenario_data_path}")
