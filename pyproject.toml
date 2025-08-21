@@ -43,6 +43,7 @@ target-version = "py310"
 
 [tool.ruff.lint]
 select = ["ALL"]
+extend-select = ["I"]
 ignore = [
   "D1",    # undocumented
   "D203",  # one blank line before class
