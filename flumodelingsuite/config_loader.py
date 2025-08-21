@@ -190,6 +190,11 @@ def _add_model_transitions_from_config(model: EpiModel, config: RootConfig) -> E
     if config.model.transitions is None:
         return model
 
+    # Enable "mediated_multi" transition
+    from .transition import compute_multimediated_transition_probability
+
+    model.register_transition_kind(kind="mediated_multi", function=compute_multimediated_transition_probability)
+
     # Add transitions to the model
     for transition in config.model.transitions:
         if transition.type == "mediated":
