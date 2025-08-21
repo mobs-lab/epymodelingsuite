@@ -318,7 +318,7 @@ def _add_seasonality_from_config(model: EpiModel, config: RootConfig) -> EpiMode
     else:
         raise ValueError(f"Undefined seasonality method recieved: {config.model.seasonality.method}")
 
-    # Handle possibilities for previous parameter value
+    # Handle possibilities for previous parameter value (expressions should already be evaluated at parameter definition)
     # If existing parameter is constant, transform to array of size (T,) with time-varying values
     if not hasattr(previous_value, "__len__"):
         new_value = st * np.array(previous_value)
@@ -336,7 +336,7 @@ def _add_seasonality_from_config(model: EpiModel, config: RootConfig) -> EpiMode
         )
         for i in range(model.population.num_groups):
             new_value[:, i] = st * np.array(previous_value[0, i])
-    # Uncertain how this will work for expressions or priors
+    # Uncertain how this will work for priors
     else:
         raise ValueError(
             f"Cannot apply seasonality to existing parameter {config.model.seasonality.target_parameter} = {previous_value}"
@@ -564,6 +564,83 @@ def load_model_config_from_file(path: str) -> RootConfig:
     logger.info("Configuration loaded successfully.")
     return root
 
+    
+def _set_populations_from_config(model: EpiModel, config: RootConfig) -> EpiModel | list[EpiModel]:
+    """
+    mockup for models with different pops
+    """
+    from epydemix.population import load_epydemix_population
+    
+    from .utils import convert_location_name_format
+
+    import copy
+
+    # Check that required attributes of model configuration are not None
+    if config.model.population is None:
+        return model
+
+    try:
+        # Get population name, and convert to corresponding "epydemix_population" name
+        population_names = [convert_location_name_format(name, "epydemix_population") for name in config.model.population.names]
+
+        # Get age groups
+        age_groups = config.model.population.age_groups
+
+        # Create age group mapping
+        age_group_mapping = {group: _parse_age_group(group) for group in age_groups}
+
+        populations = [load_epydemix_population(population_name=name, age_group_mapping=age_group_mapping) for name in population_names]
+
+        models = []
+        for pop in populations:
+            mod = copy.deepcopy(model)
+            mod.set_population(pop)
+            models.append(mod)
+        
+        logger.info(f"Model populations set for: {population_names}")
+    except Exception as e:
+        raise ValueError(f"Error setting population: {e}")
+
+    return models
+
+    
+def setup_epimodels_from_config(config: RootConfig) -> EpiModel:
+    """
+    mockup for models with different pops
+    """
+    # Validate that 'model' exists in config
+    if config.model is None:
+        raise ValueError("Configuration must contain a 'model' key.")
+
+    # Create an empty instance of EpiModel
+    base_model = EpiModel()
+
+    # Set the model name if provided in the config
+    if config.model.name is not None:
+        base_model.name = config.model.name
+
+    # Set up compartments
+    base_model = _add_model_compartments_from_config(base_model, config)
+
+    # Set up transitions
+    base_model = _add_model_transitions_from_config(base_model, config)
+
+    # Set up parameters
+    base_model = _add_model_parameters_from_config(base_model, config)
+    
+    # Set population
+    models = _set_populations_from_config(base_model, config)
+
+    # Apply seasonality
+    models = [_add_seasonality_from_config(model, config) for model in models]
+
+    # Set up vaccination schedules
+    models = [_add_vaccination_schedules_from_config(model, config) for model in models]
+
+    # Apply school closure
+    models = [_add_school_closure_intervention_from_config(model, config) for model in models]
+
+    return models  # noqa: RET504
 
 def setup_epimodel_from_config(config: RootConfig) -> EpiModel:
     """
