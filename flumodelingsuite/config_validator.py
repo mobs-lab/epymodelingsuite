@@ -196,7 +196,7 @@ class ValueTypeEnum(str, Enum):
 
     constant = "constant"
     expression = "expression"
-    array = "array"
+    age_varying = "age_varying"
     distribution = "distribution"
 
 
@@ -213,10 +213,10 @@ class Parameter(BaseModel):
     @model_validator(mode="after")
     def check_param_fields(cls, m: "Parameter") -> "Parameter":
         """Ensure required fields exist for each parameter type."""
-        if m.type == "constant" and m.value is None:
-            raise ValueError("Constant parameter requires 'value'")
-        if m.type == "array" and m.values is None:
-            raise ValueError("Array parameter requires 'values'")
+        if (m.type == "constant" or m.type == "expression") and m.value is None:
+            raise ValueError("Constant or expression parameter requires 'value'")
+        if m.type == "age_varying" and m.values is None:
+            raise ValueError("Age varying parameter requires 'values'")
         if m.type == "distribution" and m.distribution is None:
             raise ValueError("Distribution parameter requires 'distribution'")
         return m

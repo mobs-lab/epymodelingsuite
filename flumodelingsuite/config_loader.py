@@ -242,10 +242,10 @@ def _add_model_parameters_from_config(model: EpiModel, config: RootConfig) -> Ep
         if data.type == "constant":
             parameters_dict[key] = data.value
         elif (
-            data.type == "array"
-        ):  # Assuming this will be an age-varying parameter, ensure array matches population age structure
+            data.type == "age_varying"
+        ):  # Ensure array matches population age structure
             if model.population.num_groups == len(data.values):
-                parameters_dict[key] = convert_to_2Darray(data.values)
+                parameters_dict[key] = convert_to_2Darray([_safe_eval(val) for val in data.values])
             else:
                 raise ValueError(
                     f"Array values supplied for parameter {key} do not match model population age structure"
