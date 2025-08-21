@@ -1,0 +1,202 @@
+model:
+  name: "flu_round05"
+  version: "v0.0.1"
+  date: "2025-08-05" # YYYY-MM-DD
+  description: "Flu model for the 2024-2025 season, Round 5"
+
+  simulation:
+    start_date: "2024-10-06" # YYYY-MM-DD
+    end_date: "2025-06-22" # YYYY-MM-DD
+
+  random_seed: 42
+
+  population:
+    name: US-MA
+    age_groups:
+      - "0-4"
+      - "5-17"
+      - "18-49"
+      - "50-64"
+      - "65+"
+
+  compartments:
+    - id: S
+      label: "Susceptible"
+    - id: S_vax
+      label: "Susceptible (vaccinated)"
+    - id: L
+      label: "Latent"
+    - id: L_vax
+      label: "Latent (vaccinated)"
+    - id: I_S,T
+      label: "Infectious (symptomatic, t)"
+    - id: I_S,NT
+      label: "Infectious (symptomatic, nt)"
+    - id: I_A
+      label: "Infectious (asymptomatic)"
+    - id: I_vax_S,T
+      label: "Infectious (vaccinated, symptomatic, tested)"
+    - id: I_vax_S,NT
+      label: "Infectious (vaccinated, symptomatic, not tested)"
+    - id: I_vax_A
+      label: "Infectious (vaccinated, asymptomatic)"
+    - id: Home_S
+      label: "Home (severe)"
+    - id: Home_M
+      label: "Home (moderate)"
+    - id: Home_A
+      label: "Home (asymptomatic)"
+    - id: Home_vax_S
+      label: "Home (vaccinated, severe)"
+    - id: Home_vax_M
+      label: "Home (vaccinated, moderate)"
+    - id: Home_vax_A
+      label: "Home (vaccinated, asymptomatic)"
+    - id: H
+      label: "Hospitalized"
+    - id: H_vax
+      label: "Hospitalized (vaccinated)"
+    - id: R_S
+      label: "Recovered (severe)"
+    - id: R_M
+      label: "Recovered (moderate)"
+    - id: R_A
+      label: "Recovered (asymptomatic)"
+    - id: R_vax_S
+      label: "Recovered (vaccinated, severe)"
+    - id: R_vax_M
+      label: "Recovered (vaccinated, moderate)"
+    - id: R_vax_A
+      label: "Recovered (vaccinated, asymptomatic)"
+
+  transitions:
+    - type: mediated_multi
+      source: S
+      target: L
+      mediators:
+        - rate: beta
+          source:
+            - I_S,T
+            - I_S,NT
+            - I_vax_S,T
+            - I_vax_S,NT
+    - type: mediated_multi
+      source: S
+      target: L
+      mediators:
+        - rate: r_a * beta
+          source:
+            - I_A
+            - I_vax_A
+    - type: mediated_multi
+      source: S_vax
+      target: L_vax
+      mediators:
+        - rate: r_vax * beta
+          source:
+            - I_S,T
+            - I_S,NT
+            - I_vax_S,T
+            - I_vax_S,NT
+    - type: mediated_multi
+      source: S_vax
+      target: L_vax
+      mediators:
+        - rate: r_a * r_vax * beta
+          source:
+            - I_A
+            - I_vax_A
+    - type: spontaneous
+      source: L
+      target: I_S,T
+      rate: p_test * (1 - p_asymp) * epsilon
+    - type: vaccination
+      source: S
+      target: S_vax
+
+  interventions:
+    - type: school_closure
+      reduction_factor: 0.33
+      years:
+        - 2024
+        - 2025
+    - type: parameter
+      target_parameter: beta
+      reduction_factor: 0.5
+      start_date: "2024-10-01" # YYYY-MM-DD
+      end_date: "2025-04-01" # YYYY-MM-DD
+    - type: contact_matrix
+
+  seasonality:
+    method: balcan
+    target_parameter: beta
+    seasonality_max_date: "2025-02-01" # YYYY-MM-DD
+    seasonality_min_date: "2025-05-01" # YYYY-MM-DD
+    transmissibility_max: 1.00
+    transmissibility_min: 0.50
+
+  # Parameters/Variables: constant, array, or probability distribution
+  parameters:
+    r_vax: # vaccinated reduction factor
+      type: expression
+      value: 1 - 0.7
+    r_a: # asymptomatic reduction factor
+      type: constant
+      value: 0.5
+    p_test: # testing probability
+      type: constant
+      value: 0.5
+    p_asymp: # probability of being asymptomatically infected
+      type: constant
+      value: 0.5
+    p_hospital: # probability of being hospitalized, age group varying
+      type: array
+      values:
+      - 0.0070
+      - 0.0027
+      - 0.0056
+      - 0.0110
+      - 0.0909
+    beta: # transmission rate
+      type: constant
+      value: 0.5
+    beta_vax: # vaccinated transmission rate
+      type: constant
+      value: 0.3
+    epsilon: # rate from latent to infectious
+      type: expression
+      value: 1/1.5
+    mu: # rate from infectious to recovered
+      type: expression
+      value: 1/1.5
+    mu_H: # rate from hospitalized to recovered, age-group varying
+      type: array
+      values:
+        - 0.37037037037037035
+        - 0.2777777777777778
+        - 0.1724137931034483
+        - 0.13333333333333333
+        - 0.19607843137254904
+    delta: # rate from home to hospitalized, age-group varying
+      type: array
+      values:
+        - 0.7936507936507936
+        - 0.8264462809917356
+        - 0.5235602094240838
+        - 0.4926108374384237
+        - 0.6666666666666666
+
+  vaccination:
+    # preprocessed_vaccination_data_path: "data/PROCESSED_Age_Specific_Coverage_Flu_RD1_2024_25_Sc_A_B_C_D_E_F.csv"
+    scenario_data_path: "tutorials/data/vaccine_scenarios_2425_cd.csv"
+    scenario: "A_B"
+    origin_compartment: S
+    eligible_compartments:
+      - S
+      # - L
+      # - I_A
+      # - Home_A
+      # - R_S
+      # - R_M
+      # - R_A
+
