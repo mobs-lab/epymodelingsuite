@@ -210,6 +210,22 @@ def _add_model_transitions_from_config(model: EpiModel, config: RootConfig) -> E
                 )
             except Exception as e:
                 raise ValueError(f"Error adding mediated transition {transition}: {e}")
+        elif transition.type == "mediated_multi":
+            try:
+                params = [(mediator.rate, mediator.source) for mediator in transition.mediators]
+                model.add_transition(
+                    transition.source,
+                    transition.target,
+                    params=params,
+                    kind=transition.type,
+                )
+                log_msg = (
+                    f"Added multi-mediated transition: {transition.source} -> {transition.target} (mediators: {params})"
+                )
+                logger.info(log_msg)
+            except Exception as e:
+                err_msg = f"Error adding multi-mediated transition {transition}: {e}"
+                raise ValueError(err_msg) from e
         elif transition.type == "spontaneous":
             try:
                 model.add_transition(transition.source, transition.target, params=transition.rate, kind=transition.type)
