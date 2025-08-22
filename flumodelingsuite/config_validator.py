@@ -66,17 +66,17 @@ def validate_iso3166(value: str) -> str:
 class Population(BaseModel):
     """Population configuration."""
 
-    name: str | None = Field(
+    names: list[str] | None = Field(
         None,
-        description="Location code in ISO 3166. Use ISO 3166-2 for states (e.g., 'US-NY') and ISO 3166-1 alpha 2 for countries (e.g., 'US')",
+        description="Location code(s) in ISO 3166. Use ISO 3166-2 for states (e.g., 'US-NY') and ISO 3166-1 alpha 2 for countries (e.g., 'US')",
     )
     age_groups: list[str] | None = Field(
         None, description="List of age groups in the population (e.g., ['0-4', '5-17', '18-49', '50-64', '65+'])"
     )
 
-    @field_validator("name")
-    def validate_name(cls, v):
-        return validate_iso3166(v)
+    @field_validator("names")
+    def validate_names(cls, v):
+        return [validate_iso3166(_) for _ in v]
 
 
 class Compartment(BaseModel):
@@ -194,9 +194,10 @@ class Distribution(BaseModel):
 class ValueTypeEnum(str, Enum):
     """Types of parameter values."""
 
-    constant = "constant"
-    expression = "expression"
+    scalar = "scalar"
     age_varying = "age_varying"
+    scan = "scan"
+    calibrated = "calibrated"
     distribution = "distribution"
 
 
@@ -204,8 +205,8 @@ class Parameter(BaseModel):
     """Data model for parameters. Parameters can be a constant, expression, array, or distribution."""
 
     type: ValueTypeEnum
-    value: float | str | list[float] | None = Field(None, description="Value for constant parameters.")
-    values: list[float] | None = Field(None, description="List of values for array parameters.")
+    value: float | str | None = Field(None, description="Value for scalar parameters.")
+    values: list[float | str] | None = Field(None, description="List of values for array parameters.")
     distribution: Distribution | None = Field(
         None, description="Distribution specification for distribution parameters."
     )
@@ -213,10 +214,12 @@ class Parameter(BaseModel):
     @model_validator(mode="after")
     def check_param_fields(cls, m: "Parameter") -> "Parameter":
         """Ensure required fields exist for each parameter type."""
-        if (m.type == "constant" or m.type == "expression") and m.value is None:
-            raise ValueError("Constant or expression parameter requires 'value'")
+        if m.type == "scalar" and m.value is None:
+            raise ValueError("Constant or expression (scalar) parameter requires 'value'")
         if m.type == "age_varying" and m.values is None:
             raise ValueError("Age varying parameter requires 'values'")
+        if m.type == "scan" and m.values is None:
+            raise ValueError("Scanned parameter requires 'values'")
         if m.type == "distribution" and m.distribution is None:
             raise ValueError("Distribution parameter requires 'distribution'")
         return m
