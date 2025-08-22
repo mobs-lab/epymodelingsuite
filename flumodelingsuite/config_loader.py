@@ -241,9 +241,7 @@ def _add_model_parameters_from_config(model: EpiModel, config: RootConfig) -> Ep
     for key, data in config.model.parameters.items():
         if data.type == "constant":
             parameters_dict[key] = data.value
-        elif (
-            data.type == "age_varying"
-        ):  # Ensure array matches population age structure
+        elif data.type == "age_varying":  # Ensure array matches population age structure
             if model.population.num_groups == len(data.values):
                 parameters_dict[key] = convert_to_2Darray([_safe_eval(val) for val in data.values])
             else:
@@ -564,16 +562,16 @@ def load_model_config_from_file(path: str) -> RootConfig:
     logger.info("Configuration loaded successfully.")
     return root
 
-    
+
 def _set_populations_from_config(model: EpiModel, config: RootConfig) -> EpiModel | list[EpiModel]:
     """
-    mockup for models with different pops
+    Mockup for models with different pops
     """
-    from epydemix.population import load_epydemix_population
-    
-    from .utils import convert_location_name_format
-
     import copy
+
+    from epydemix.population import load_epydemix_population
+
+    from .utils import convert_location_name_format
 
     # Check that required attributes of model configuration are not None
     if config.model.population is None:
@@ -581,7 +579,9 @@ def _set_populations_from_config(model: EpiModel, config: RootConfig) -> EpiMode
 
     try:
         # Get population name, and convert to corresponding "epydemix_population" name
-        population_names = [convert_location_name_format(name, "epydemix_population") for name in config.model.population.names]
+        population_names = [
+            convert_location_name_format(name, "epydemix_population") for name in config.model.population.names
+        ]
 
         # Get age groups
         age_groups = config.model.population.age_groups
@@ -589,24 +589,27 @@ def _set_populations_from_config(model: EpiModel, config: RootConfig) -> EpiMode
         # Create age group mapping
         age_group_mapping = {group: _parse_age_group(group) for group in age_groups}
 
-        populations = [load_epydemix_population(population_name=name, age_group_mapping=age_group_mapping) for name in population_names]
+        populations = [
+            load_epydemix_population(population_name=name, age_group_mapping=age_group_mapping)
+            for name in population_names
+        ]
 
         models = []
         for pop in populations:
             mod = copy.deepcopy(model)
             mod.set_population(pop)
             models.append(mod)
-        
+
         logger.info(f"Model populations set for: {population_names}")
     except Exception as e:
         raise ValueError(f"Error setting population: {e}")
 
     return models
 
-    
+
 def setup_epimodels_from_config(config: RootConfig) -> EpiModel:
     """
-    mockup for models with different pops
+    Mockup for models with different pops
     """
     # Validate that 'model' exists in config
     if config.model is None:
@@ -627,7 +630,7 @@ def setup_epimodels_from_config(config: RootConfig) -> EpiModel:
 
     # Set up parameters
     base_model = _add_model_parameters_from_config(base_model, config)
-    
+
     # Set population
     models = _set_populations_from_config(base_model, config)
 
@@ -641,6 +644,7 @@ def setup_epimodels_from_config(config: RootConfig) -> EpiModel:
     models = [_add_school_closure_intervention_from_config(model, config) for model in models]
 
     return models  # noqa: RET504
+
 
 def setup_epimodel_from_config(config: RootConfig) -> EpiModel:
     """
