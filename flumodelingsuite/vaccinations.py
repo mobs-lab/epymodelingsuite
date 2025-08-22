@@ -120,10 +120,14 @@ def get_age_groups_from_data(data: pd.DataFrame) -> dict[str, str]:
     return age_group_map_data
 
 
-def resample_dataframe(df: pd.DataFrame, dtt: float) -> pd.DataFrame:
+def resample_dataframe(df: pd.DataFrame, delta_t: float) -> pd.DataFrame:
     """
     Resample a vaccination coverage DataFrame to a finer time resolution
-    by linearly interpolating numeric columns.
+    by repeating values (step interpolation) and scaling by delta_t.
+
+    This function preserves the step-wise nature of vaccination schedules,
+    where values should remain constant within each day/period rather than
+    being smoothly interpolated between periods.
 
     Parameters
     ----------
@@ -131,10 +135,10 @@ def resample_dataframe(df: pd.DataFrame, dtt: float) -> pd.DataFrame:
         Input DataFrame with at least the following columns:
         - 'dates': datetime-like index column
         - 'location': location identifier
-        - numeric coverage columns to be interpolated
-    dtt : float
+        - numeric coverage columns to be resampled
+    delta_t : float
         Fraction of a day representing the new time step size. For example,
-        `dtt=0.5` corresponds to 12-hour intervals, `dtt=0.25` to 6-hour intervals.
+        `delta_t=0.5` corresponds to 12-hour intervals, `delta_t=0.25` to 6-hour intervals.
 
     Returns
     -------
@@ -142,24 +146,27 @@ def resample_dataframe(df: pd.DataFrame, dtt: float) -> pd.DataFrame:
         Resampled DataFrame with:
         - 'dates' as the new index column at the finer resolution
         - 'location' carried forward
-        - numeric columns interpolated and scaled by `dtt`
+        - numeric columns repeated (not interpolated) and scaled by `delta_t`
     """
     import numpy as np
 
-    frequency = f"{24 * dtt}h"
-    new_index = pd.date_range(start=df.dates.iloc[0], end=df.dates.iloc[-1] + pd.Timedelta(days=1), freq=frequency)
-    new_index = new_index[0:-1]
+    frequency = f"{24 * delta_t}h"
+
+    # Create new time index
+    new_index = pd.date_range(start=df.dates.iloc[0], end=df.dates.iloc[-1] + pd.Timedelta(days=1), freq=frequency)[
+        :-1
+    ]  # Remove the last point to avoid going beyond end date
 
     df = df.set_index("dates")
-
-    # Separate numeric columns
     numeric_cols = df.select_dtypes(include=[np.number]).columns
-    combined_index = df.index.union(new_index)
 
-    # Interpolate only numeric columns
-    vaccines_interpolated = df[numeric_cols].reindex(combined_index).interpolate(method="linear")
-    vaccines_fine = vaccines_interpolated.reindex(new_index)
-    vaccines_fine = vaccines_fine * dtt
+    # Use forward fill (step interpolation) instead of linear interpolation
+    combined_index = df.index.union(new_index)
+    vaccines_step = df[numeric_cols].reindex(combined_index).ffill()
+    vaccines_fine = vaccines_step.reindex(new_index)
+
+    # Scale by delta_t to maintain total doses per day
+    vaccines_fine = vaccines_fine * delta_t
 
     vaccines_fine = vaccines_fine.reset_index().rename(columns={"index": "dates"})
     vaccines_fine.insert(1, "location", df["location"].values[0])
@@ -294,7 +301,7 @@ def scenario_to_epydemix(
     start_date: str | pd.Timestamp,
     end_date: str | pd.Timestamp,
     target_age_groups: list[str] = ["0-4", "5-17", "18-49", "50-64", "65+"],
-    dtt: float = 1.0,
+    delta_t: float = 1.0,
     output_filepath: str | None = None,
     state: str | None = None,
 ) -> pd.DataFrame:
@@ -317,7 +324,7 @@ def scenario_to_epydemix(
         End date for the vaccination schedule (inclusive).
     target_age_groups : list of str, default ["0-4", "5-17", "18-49", "50-64", "65+"]
         Age groups to map the data to for the output schedule.
-    dtt : float, default 1.0
+    delta_t : float, default 1.0
         Time step for resampling the daily vaccination data. Default 1.0 means daily.
     output_filepath : str, optional
         If provided, the processed daily vaccination DataFrame will be saved as a CSV at this path.
@@ -497,8 +504,8 @@ def scenario_to_epydemix(
         daily_vaccines_transformed.insert(0, "dates", this_location_wide["dates"])
         daily_vaccines_transformed.insert(1, "location", this_location_wide["location"])
 
-        if dtt != 1.0:
-            vaccines_fine = resample_dataframe(daily_vaccines_transformed, dtt)
+        if delta_t != 1.0:
+            vaccines_fine = resample_dataframe(daily_vaccines_transformed, delta_t)
         else:
             vaccines_fine = daily_vaccines_transformed.copy()
 
@@ -517,6 +524,7 @@ def smh_data_to_epydemix(
     start_date: str | pd.Timestamp,
     end_date: str | pd.Timestamp,
     target_age_groups: list[str] = ["0-4", "5-17", "18-49", "50-64", "65+"],
+    delta_t: float = 1.0,
     output_filepath: str | None = None,
     state: str | None = None,
 ) -> pd.DataFrame:
@@ -524,214 +532,92 @@ def smh_data_to_epydemix(
     Process age-specific influenza vaccine coverage data from the scenario modeling hub into
     daily vaccination schedules by age group for ALL scenarios and ALL locations.
 
-    The function loads weekly cumulative coverage estimates from a CSV file, maps them to
-    the model population, computes new weekly doses, and distributes them evenly across days
-    between weekly reporting dates. Age groups 5-12 and 13-17 are merged into a 5-17 category
-    using population-weighted averages. The output is a daily time series of vaccine doses
-    administered per age group for the specified scenario across all geographies.
+    This function handles multiple scenarios by extracting them from the input data, creating
+    temporary single-scenario files, and calling scenario_to_epydemix for each scenario.
+    The results are then combined into a single DataFrame with scenario information.
 
     Args:
-        input_filepath (str): Path to CSV containing SMH vaccination data.
-        start_date (str or Timestamp): Start date of the simulation period (used to build full timeline).
-        end_date (str or Timestamp): End date of the simulation period (used to build full timeline).
-        model (object): Epydemix EpiModel instance with a .population.Nk list for age group sizes.
-        output_filepath (str, optional): If provided, the output DataFrame will be saved as a CSV at the given filepath.
+        input_filepath (str): Path to CSV containing SMH vaccination data with scenario columns.
+        start_date (str or Timestamp): Start date of the simulation period.
+        end_date (str or Timestamp): End date of the simulation period.
+        target_age_groups (list[str]): Age groups to map the data to for the output schedule.
+        delta_t (float): Time step for resampling the daily vaccination data. Default 1.0 means daily.
+        output_filepath (str, optional): If provided, the output DataFrame will be saved as a CSV.
+        state (str, optional): If provided, only data for this specific state/location will be processed.
 
     Returns
     -------
-        pd.DataFrame: DataFrame with columns ['dates', 'scenario', 'geography', <age groups>] giving the
-                      daily vaccination counts per age group for the selected scenario across all geographies.
+        pd.DataFrame: DataFrame with columns ['dates', 'scenario', 'location', <age groups>] giving the
+                      daily vaccination counts per age group for each scenario across all geographies.
     """
-    import numpy as np
+    import tempfile
+    import os
+    import pandas as pd
 
-    from .utils import convert_location_name_format, get_population_codebook
-
-    validate_age_groups(target_age_groups)
-    population_codebook = get_population_codebook()
-    # ========== LOAD AND FILTER DATA ==========
+    # ========== LOAD AND EXTRACT SCENARIOS ==========
     vaccines = pd.read_csv(input_filepath)
-    # Date and time handling
-    vaccines["Week_Ending_Sat"] = pd.to_datetime(vaccines["Week_Ending_Sat"])
-    start_date = pd.Timestamp(start_date)
-    end_date = pd.Timestamp(end_date)
 
-    # Extract scenarios
-    scenario_options = [name.split("sc_")[-1] for name in list(vaccines.columns) if name.find("sc_") > -1]
+    # Extract scenario columns directly (keep full column names)
+    scenario_columns = [name for name in vaccines.columns if name.find("sc_") > -1]
+    scenario_columns = [name.split("sc_")[-1] for name in scenario_columns if name.find("sc_") > -1]
 
-    # Filter for date range and rename scenario columns
-    vaccines = vaccines.query("Week_Ending_Sat >= @start_date").rename(
-        columns={name: "Coverage_" + name.split("sc_")[-1] for name in list(vaccines.columns) if name.find("sc_") > -1}
+    vaccines = vaccines.rename(
+        columns={name: name.split("sc_")[-1] for name in list(vaccines.columns) if name.find("sc_") > -1}
     )
 
-    # ========== PROCESS ALL GEOGRAPHIES ==========
-    all_locations_data = []
+    if not scenario_columns:
+        raise ValueError("No scenario columns found in the input data. Expected columns with 'sc_' prefix.")
 
-    for location in vaccines["Geography"].unique():
-        if state and location != state:
-            continue
-        location_data = vaccines.query("Geography == @location").copy()
+    # ========== PROCESS EACH SCENARIO ==========
+    all_scenarios_df = pd.DataFrame()
 
-        # ========== AGGREGATE AGE GROUPS FOR THIS LOCATION ==========
-        # Combine 5-12 and 13-17 year olds into single 5-17 group using population-weighted averages
-        youth_data = location_data.query("Age in ['5-12 Years', '13-17 Years']")
+    for scenario_column in scenario_columns:
+        # Extract scenario name for labeling
+        scenario_name = scenario_column
 
-        def weighted_avg(group: pd.DataFrame, column: str) -> float:
-            """Calculate population-weighted average for a column."""
-            return (group[column] * group["Population"]).sum() / group["Population"].sum()
+        # Create a temporary dataset for this scenario with single Coverage column
+        scenario_data = vaccines.copy()
 
-        if not youth_data.empty:
-            youth_aggregated = (
-                youth_data.groupby("Week_Ending_Sat")
-                .apply(
-                    lambda g: pd.Series(
-                        {
-                            "Geography": g["Geography"].iloc[0],
-                            "Age": "5-17 Years",
-                            "Population": g["Population"].sum(),
-                            **{"Coverage_" + scn: weighted_avg(g, "Coverage_" + scn) for scn in scenario_options},
-                        }
-                    ),
-                    include_groups=False,
-                )
-                .reset_index()
+        # Rename the scenario column to "Coverage" (expected by scenario_to_epydemix)
+        scenario_data["Coverage"] = scenario_data[scenario_column]
+
+        # Remove all other scenario columns to avoid confusion
+        other_scenario_columns = [col for col in scenario_columns if col != scenario_column]
+        scenario_data = scenario_data.drop(columns=other_scenario_columns)
+
+        # Create temporary file for this scenario
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as temp_file:
+            scenario_data.to_csv(temp_file.name, index=False)
+            temp_filepath = temp_file.name
+
+        try:
+            # Call scenario_to_epydemix for this scenario
+            scenario_result = scenario_to_epydemix(
+                input_filepath=temp_filepath,
+                start_date=start_date,
+                end_date=end_date,
+                target_age_groups=target_age_groups,
+                delta_t=delta_t,
+                output_filepath=None,  # Don't write individual scenario files
+                state=state,
             )
-        else:
-            # Handle case where youth data might be missing for this location
-            youth_aggregated = pd.DataFrame()
 
-        # Keep other age groups and combine with aggregated youth data
-        other_ages = location_data.query("Age not in ['5-12 Years', '13-17 Years', '6 Months - 17 Years']")
+            # Add scenario identifier
+            scenario_result.insert(1, "scenario", scenario_name)
 
-        if not youth_aggregated.empty:
-            vaccine_schedule = pd.concat([other_ages, youth_aggregated], ignore_index=True)
-        else:
-            vaccine_schedule = other_ages.copy()
+            # Combine with other scenarios
+            all_scenarios_df = pd.concat([all_scenarios_df, scenario_result], ignore_index=True)
 
-        vaccine_schedule = vaccine_schedule.sort_values(["Week_Ending_Sat", "Age"]).reset_index(drop=True)
-
-        # ========== MAP TO MODEL POPULATION ==========
-        age_to_index = {"6 Months - 4 Years": 0, "5-17 Years": 1, "18-49 Years": 2, "50-64 Years": 3, "65+ Years": 4}
-
-        # Add model population and calculate cumulative doses for each scenario
-        loc_epydemix = convert_location_name_format(location, "epydemix_population")
-        age_group_map_data = get_age_group_mapping(target_age_groups)
-
-        population_model = {}
-        for key, val in age_group_map_data.items():
-            vals = [int(v.replace("+", "")) for v in val]
-            population_model[key] = sum(population_codebook[loc_epydemix][vals].values)
-
-        # Add model population and calculate cumulative doses
-        vaccine_schedule["population_model"] = vaccine_schedule["Age"].map(
-            lambda age: list(population_model.values())[age_to_index[age]] if age in age_to_index else 0
-        )
-
-        for scn in scenario_options:
-            vaccine_schedule[f"cumulative_doses_{scn}"] = (
-                vaccine_schedule[f"Coverage_{scn}"] / 100 * vaccine_schedule["population_model"]
-            ).round()
-
-        # ========== CONVERT TO DAILY VACCINATION RATES ==========
-        daily_vaccines_list = []
-
-        for age_group in vaccine_schedule["Age"].unique():
-            age_data = vaccine_schedule.query("Age == @age_group").copy()
-
-            # Calculate new doses per week (difference from previous week)
-            for scn in scenario_options:
-                age_data[f"new_doses_{scn}"] = np.diff(age_data[f"cumulative_doses_{scn}"], prepend=0)
-
-            # Distribute weekly doses across days
-            current_date = start_date
-
-            for _, week_data in age_data.iterrows():
-                week_end = week_data["Week_Ending_Sat"]
-                days_in_period = (week_end - current_date).days + 1  # Include week_end
-
-                if week_end >= end_date:
-                    days_in_period = (end_date - current_date).days + 1
-                    daily_rates = {scn: week_data[f"new_doses_{scn}"] / days_in_period for scn in scenario_options}
-
-                    # Add daily entries for this period (including week_end)
-                    for date in pd.date_range(current_date, end_date):
-                        daily_vaccines_list.append(
-                            {
-                                "dates": date,
-                                "location": location,
-                                "age_group": age_group,
-                                **{scn: round(daily_rates[scn]) for scn in scenario_options},
-                            }
-                        )
-                    current_date = end_date + pd.Timedelta(days=1)  # End processing
-                    break
-
-                if days_in_period > 0:
-                    # Calculate daily rates for this period
-                    daily_rates = {scn: week_data[f"new_doses_{scn}"] / days_in_period for scn in scenario_options}
-
-                    # Add daily entries for this period (including week_end)
-                    for date in pd.date_range(current_date, week_end):
-                        daily_vaccines_list.append(
-                            {
-                                "dates": date,
-                                "location": location,
-                                "age_group": age_group,
-                                **{scn: round(daily_rates[scn]) for scn in scenario_options},
-                            }
-                        )
-
-                current_date = week_end + pd.Timedelta(days=1)  # Start next period
-
-            # Fill remaining days with zeros
-            for date in pd.date_range(current_date, end_date):
-                daily_vaccines_list.append(
-                    {
-                        "dates": date,
-                        "location": location,
-                        "age_group": age_group,
-                        **dict.fromkeys(scenario_options, 0),
-                    }
-                )
-
-        all_locations_data.extend(daily_vaccines_list)
-
-    # ========== RESHAPE TO FINAL FORMAT ==========
-    daily_vaccines_df = pd.DataFrame(all_locations_data)
-
-    # Melt scenarios into rows, then pivot age groups into columns
-    df_melted = pd.melt(
-        daily_vaccines_df,
-        id_vars=["dates", "location", "age_group"],
-        value_vars=scenario_options,
-        var_name="scenario",
-        value_name="value",
-    )
-
-    df_final = df_melted.pivot_table(
-        index=["dates", "scenario", "location"], columns="age_group", values="value", aggfunc="first"
-    ).reset_index()
-
-    # Clean up column names
-    df_final.columns.name = None
-    df_final.rename(
-        columns={
-            "6 Months - 4 Years": "0-4",
-            "5-17 Years": "5-17",
-            "18-49 Years": "18-49",
-            "50-64 Years": "50-64",
-            "65+ Years": "65+",
-        },
-        inplace=True,
-    )
-
-    # Format locations as ISO codes
-    df_final["location"] = [convert_location_name_format(loc, "ISO") for loc in df_final.location]
+        finally:
+            # Clean up temporary file
+            if os.path.exists(temp_filepath):
+                os.unlink(temp_filepath)
 
     # ========== WRITE OUTPUT CSV ==========
     if output_filepath:
-        df_final.to_csv(output_filepath, index=False)
+        all_scenarios_df.to_csv(output_filepath, index=False)
 
-    return df_final
+    return all_scenarios_df
 
 
 def make_vaccination_probability_function(origin_compartment: str, eligible_compartments: list[str]) -> callable:
