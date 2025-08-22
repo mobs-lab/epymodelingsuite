@@ -66,8 +66,8 @@ def validate_iso3166(value: str) -> str:
 class Population(BaseModel):
     """Population configuration."""
 
-    names: list[str] | None = Field(
-        None,
+    names: list[str] = Field(
+        ...,
         description="Location code(s) in ISO 3166. Use ISO 3166-2 for states (e.g., 'US-NY') and ISO 3166-1 alpha 2 for countries (e.g., 'US')",
     )
     age_groups: list[str] | None = Field(
