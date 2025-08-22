@@ -151,28 +151,26 @@ def resample_dataframe(df: pd.DataFrame, delta_t: float) -> pd.DataFrame:
     import numpy as np
 
     frequency = f"{24 * delta_t}h"
-    
+
     # Create new time index
-    new_index = pd.date_range(
-        start=df.dates.iloc[0], 
-        end=df.dates.iloc[-1] + pd.Timedelta(days=1), 
-        freq=frequency
-    )[:-1]  # Remove the last point to avoid going beyond end date
-    
+    new_index = pd.date_range(start=df.dates.iloc[0], end=df.dates.iloc[-1] + pd.Timedelta(days=1), freq=frequency)[
+        :-1
+    ]  # Remove the last point to avoid going beyond end date
+
     df = df.set_index("dates")
     numeric_cols = df.select_dtypes(include=[np.number]).columns
-    
+
     # Use forward fill (step interpolation) instead of linear interpolation
     combined_index = df.index.union(new_index)
     vaccines_step = df[numeric_cols].reindex(combined_index).ffill()
     vaccines_fine = vaccines_step.reindex(new_index)
-    
+
     # Scale by delta_t to maintain total doses per day
     vaccines_fine = vaccines_fine * delta_t
-    
+
     vaccines_fine = vaccines_fine.reset_index().rename(columns={"index": "dates"})
     vaccines_fine.insert(1, "location", df["location"].values[0])
-    
+
     return vaccines_fine
 
 
@@ -555,42 +553,43 @@ def smh_data_to_epydemix(
     import tempfile
     import os
     import pandas as pd
-    
+
     # ========== LOAD AND EXTRACT SCENARIOS ==========
     vaccines = pd.read_csv(input_filepath)
-    
+
     # Extract scenario columns directly (keep full column names)
     scenario_columns = [name for name in vaccines.columns if name.find("sc_") > -1]
     scenario_columns = [name.split("sc_")[-1] for name in scenario_columns if name.find("sc_") > -1]
-    
+
     vaccines = vaccines.rename(
-        columns={name: name.split("sc_")[-1] for name in list(vaccines.columns) if name.find("sc_") > -1})
-    
+        columns={name: name.split("sc_")[-1] for name in list(vaccines.columns) if name.find("sc_") > -1}
+    )
+
     if not scenario_columns:
         raise ValueError("No scenario columns found in the input data. Expected columns with 'sc_' prefix.")
-    
+
     # ========== PROCESS EACH SCENARIO ==========
     all_scenarios_df = pd.DataFrame()
-    
+
     for scenario_column in scenario_columns:
-        # Extract scenario name for labeling 
-        scenario_name = scenario_column 
-        
+        # Extract scenario name for labeling
+        scenario_name = scenario_column
+
         # Create a temporary dataset for this scenario with single Coverage column
         scenario_data = vaccines.copy()
-        
+
         # Rename the scenario column to "Coverage" (expected by scenario_to_epydemix)
         scenario_data["Coverage"] = scenario_data[scenario_column]
-        
+
         # Remove all other scenario columns to avoid confusion
         other_scenario_columns = [col for col in scenario_columns if col != scenario_column]
         scenario_data = scenario_data.drop(columns=other_scenario_columns)
-        
+
         # Create temporary file for this scenario
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as temp_file:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as temp_file:
             scenario_data.to_csv(temp_file.name, index=False)
             temp_filepath = temp_file.name
-        
+
         try:
             # Call scenario_to_epydemix for this scenario
             scenario_result = scenario_to_epydemix(
@@ -602,22 +601,22 @@ def smh_data_to_epydemix(
                 output_filepath=None,  # Don't write individual scenario files
                 state=state,
             )
-            
+
             # Add scenario identifier
             scenario_result.insert(1, "scenario", scenario_name)
-            
+
             # Combine with other scenarios
             all_scenarios_df = pd.concat([all_scenarios_df, scenario_result], ignore_index=True)
-            
+
         finally:
             # Clean up temporary file
             if os.path.exists(temp_filepath):
                 os.unlink(temp_filepath)
-    
+
     # ========== WRITE OUTPUT CSV ==========
     if output_filepath:
         all_scenarios_df.to_csv(output_filepath, index=False)
-    
+
     return all_scenarios_df
 
 
