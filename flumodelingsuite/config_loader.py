@@ -330,7 +330,7 @@ def _add_seasonality_from_config(model: EpiModel, config: RootConfig) -> EpiMode
         # Do the calculation
         dates, st = get_seasonal_transmission_balcan(
             date_start=config.model.simulation.start_date,
-            date_stop=config.model.simulation.end_date,
+            date_stop=config.model.simulation.start_date,
             date_tmax=config.model.seasonality.seasonality_max_date,
             date_tmin=date_tmin,
             R_min=config.model.seasonality.transmissibility_min,
@@ -406,6 +406,16 @@ def _add_vaccination_schedules_from_config(model: EpiModel, config: RootConfig) 
         logger.info("No vaccination transitions found in configuration.")
         return model
 
+    age_groups = config.model.population.age_groups
+
+    state = config.model.population.name
+
+    if config.model.simulation.delta_t is not None:
+        delta_t = config.model.simulation.delta_t
+    else:
+        logger.info("'delta_t' not found in simulation configuration, defaulting to 1.0 (1 day)")
+        delta_t = 1.0
+
     # Define vaccine probability function
     vaccine_probability_function = make_vaccination_probability_function(
         config.model.vaccination.origin_compartment, config.model.vaccination.eligible_compartments
@@ -429,7 +439,9 @@ def _add_vaccination_schedules_from_config(model: EpiModel, config: RootConfig) 
                 input_filepath=scenario_data_path,
                 start_date=start_date,
                 end_date=end_date,
+                model=model,
                 output_filepath=None,
+                state=state,
             )
             logger.info(f"Created vaccination schedule from scenario data at {scenario_data_path}")
         except Exception as e:

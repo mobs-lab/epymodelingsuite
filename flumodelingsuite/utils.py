@@ -2,13 +2,13 @@
 # Utility functions
 import pandas as pd
 
+import pandas as pd
+
 
 def get_population_codebook() -> pd.DataFrame:
     """Retrieve the population codebook as a Pandas DataFrame."""
     import os
     import sys
-
-    import pandas as pd
 
     filename = os.path.join(os.path.dirname(sys.modules[__name__].__file__), "data/population_codebook.csv")
     population_codebook = pd.read_csv(filename)
