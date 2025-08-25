@@ -387,10 +387,10 @@ def _add_vaccination_schedules_from_config(model: EpiModel, config: RootConfig) 
 
     state = config.model.population.name
 
-    if "delta_t" in config.model.parameters:
-        delta_t = config.model.parameters["delta_t"].value
+    if config.model.simulation.delta_t is not None:
+        delta_t = config.model.simulation.delta_t
     else:
-        logger.info("'delta_t' not found in configuration parameters, defaulting to 1.0 (1 day)")
+        logger.info("'delta_t' not found in simulation configuration, defaulting to 1.0 (1 day)")
 
     # Define vaccine probability function
     vaccine_probability_function = make_vaccination_probability_function(
