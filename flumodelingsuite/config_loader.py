@@ -312,8 +312,8 @@ def _add_seasonality_from_config(model: EpiModel, config: RootConfig) -> EpiMode
             date_stop=config.model.simulation.end_date,
             date_tmax=config.model.seasonality.seasonality_max_date,
             date_tmin=date_tmin,
-            R_min=config.model.seasonality.transmissibility_min,
-            R_max=config.model.seasonality.transmissibility_max,
+            val_min=config.model.seasonality.min_value,
+            val_max=config.model.seasonality.max_value,
             delta_t=config.model.simulation.delta_t,
         )
     else:
