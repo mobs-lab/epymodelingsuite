@@ -17,7 +17,7 @@ class SimulationConfig(BaseModel):
 
     start_date: date = Field(..., description="Start date of the simulation.")
     end_date: date = Field(..., description="End date of the simulation.")
-    delta_t: float | int = Field(None, description="Time step (dt) for the simulation in epydemix.")
+    delta_t: float | int = Field(1.0, description="Time step (dt) for the simulation in epydemix.")
 
     @field_validator("end_date")
     def check_end_date(cls, v: date, info: Any) -> date:
