@@ -416,6 +416,7 @@ def _add_vaccination_schedules_from_config(model: EpiModel, config: RootConfig) 
                 start_date=start_date,
                 end_date=end_date,
                 target_age_groups=age_groups,
+                delta_t=delta_t,
                 output_filepath=None,
                 state=state,
             )
