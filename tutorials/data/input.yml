@@ -75,13 +75,13 @@ model:
     end_date: "2025-04-01" # YYYY-MM-DD
   - type: contact_matrix
 
-  seasonality:
-    target_parameter: beta
-    method: balcan
-    seasonality_max_date: "2024-10-01" # YYYY-MM-DD
-    seasonality_min_date: "2025-04-01" # YYYY-MM-DD, optional
-    transmissibility_max: 1.00
-    transmissibility_min: 0.50
+  # seasonality:
+  #   target_parameter: beta
+  #   method: balcan
+  #   seasonality_max_date: "2024-10-01" # YYYY-MM-DD
+  #   seasonality_min_date: "2025-04-01" # YYYY-MM-DD, optional
+  #   transmissibility_max: 1.00
+  #   transmissibility_min: 0.50
 
   # Parameters/Variables: constant, array, or probability distribution
   parameters:
