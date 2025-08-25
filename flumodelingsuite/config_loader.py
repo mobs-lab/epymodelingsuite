@@ -384,12 +384,13 @@ def _add_vaccination_schedules_from_config(model: EpiModel, config: RootConfig) 
         return model
 
     age_groups = config.model.population.age_groups
-    if age_groups is None:
-        raise ValueError("No age groups found in configuration.")
 
     state = config.model.population.name
-    if state is None:
-        raise ValueError("No population name found in configuration.")
+
+    if "delta_t" in config.model.parameters:
+        delta_t = config.model.parameters["delta_t"].value
+    else:
+        logger.info("'delta_t' not found in configuration parameters, defaulting to 1.0 (1 day)")
 
     # Define vaccine probability function
     vaccine_probability_function = make_vaccination_probability_function(
