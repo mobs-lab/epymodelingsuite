@@ -401,6 +401,14 @@ def _add_vaccination_schedules_from_config(model: EpiModel, config: RootConfig) 
         logger.info("No vaccination transitions found in configuration.")
         return model
 
+    age_groups = config.model.population.age_groups
+    if age_groups is None:
+        raise ValueError("No age groups found in configuration.")
+
+    state = config.model.population.name
+    if state is None:
+        raise ValueError("No population name found in configuration.")
+
     # Define vaccine probability function
     vaccine_probability_function = make_vaccination_probability_function(
         config.model.vaccination.origin_compartment, config.model.vaccination.eligible_compartments
@@ -424,8 +432,9 @@ def _add_vaccination_schedules_from_config(model: EpiModel, config: RootConfig) 
                 input_filepath=scenario_data_path,
                 start_date=start_date,
                 end_date=end_date,
-                model=model,
+                target_age_groups=age_groups,
                 output_filepath=None,
+                state=state,
             )
             logger.info(f"Created vaccination schedule from scenario data at {scenario_data_path}")
         except Exception as e:

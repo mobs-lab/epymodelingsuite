@@ -354,6 +354,7 @@ def scenario_to_epydemix(
 
     validate_age_groups(target_age_groups)
     population_codebook = get_population_codebook()
+    state = convert_location_name_format(state, "name") if state else state
     # ========== LOAD AND FILTER DATA ==========
     vaccines = pd.read_csv(input_filepath)
     # Date and time handling
@@ -479,9 +480,10 @@ def scenario_to_epydemix(
         )
 
         # Format locations as ISO codes
-        this_location_wide["location"] = [
-            convert_location_name_format(loc, "ISO") for loc in this_location_wide.location
-        ]
+        # this_location_wide["location"] = [
+        #     convert_location_name_format(loc, "ISO") for loc in this_location_wide.location
+        # ]
+        this_location_wide["location"] = convert_location_name_format(location, "ISO")
 
         daily_vaccines_wide_subset = this_location_wide[data_age_groups]
 
