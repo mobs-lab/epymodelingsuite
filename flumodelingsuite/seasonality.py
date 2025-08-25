@@ -4,34 +4,38 @@ import datetime as dt
 from collections.abc import Callable
 
 
-def _calc_seasonality_balcan_at_t(t: float, t_max: float, R_min: float, R_max: float, period: float = 365.0) -> float:
+def _calc_seasonality_balcan_at_t(
+    t: float, t_max: float, val_min: float, val_max: float, period: float = 365.0
+) -> float:
     """
-    Calculate the seasonal transmission rate based on the time unit.
+    Calculate the seasonal transmission factor based on the time unit. This is a scaling factor that ranges between 0 and 1. To obtain the actual transmission rate at time t, this factor must be multiplied by the baseline parameter value.
     Implementation of eq25 from https://www.sciencedirect.com/science/article/pii/S1877750310000438 .
 
     Parameters
     ----------
         t (float): Time in units defined by delta_t (e.g., days if delta_t=1, hours if delta_t=1/24).
         t_max (float): Time unit when the transmission rate is at its maximum.
-        R_min (float): The minimum transmission rate.
-        R_max (float): The maximum transmission rate.
+        val_min (float): The minimum value that the parameter can take after scaling.
+        val_max (float): The maximum value that the parameter can take after scaling.
         period (float): The period of the seasonality in time units (default=365 for daily units).
 
     Returns
     -------
-        float: The seasonal transmission rate at time t.
+        float: The seasonal transmission factor at time t.
     """
     import numpy as np
 
-    return ((1 - (R_min / R_max)) * np.sin((2 * np.pi / period) * (t - t_max) + (np.pi / 2)) + 1 + (R_min / R_max)) / 2
+    return (
+        (1 - (val_min / val_max)) * np.sin((2 * np.pi / period) * (t - t_max) + (np.pi / 2)) + 1 + (val_min / val_max)
+    ) / 2
 
 
 def calc_seasonality_balcan_at_date(
     date_t: dt.date | dt.datetime,
     date_start: dt.date | dt.datetime,
     date_tmax: dt.date | dt.datetime,
-    R_min: float,
-    R_max: float,
+    val_min: float,
+    val_max: float,
     date_tmin: dt.date | dt.datetime | None = None,
     period: float | None = None,
     delta_t: float = 1.0,
@@ -45,14 +49,14 @@ def calc_seasonality_balcan_at_date(
         date_start: Reference start date/datetime where t=0.
         date_tmax: Date/datetime when the transmission rate is at its maximum.
         date_tmin: Date/datetime when the transmission rate is at its minimum (optional).
-        R_min: The minimum transmission rate.
-        R_max: The maximum transmission rate.
+        val_min: The minimum value that the parameter can take after scaling.
+        val_max: The maximum value that the parameter can take after scaling.
         period: The period of the seasonality in days (default=365). If None, derives using date_tmin and date_start or defaults to 365.
         delta_t: Time step in days (default=1.0). For example, 0.25 for 6-hour intervals, 1/24 for hourly.
 
     Returns
     -------
-        Seasonality factor at date_t.
+        float: Seasonality factor at date_t, a scaling factor between 0 and 1.
     """
     # Convert dates to datetime if needed for consistent calculation
     if isinstance(date_t, dt.date) and not isinstance(date_t, dt.datetime):
@@ -84,7 +88,7 @@ def calc_seasonality_balcan_at_date(
     # Convert period to time units
     period_units = period_days / delta_t
 
-    return _calc_seasonality_balcan_at_t(t_units, t_max_units, R_min, R_max, period_units)
+    return _calc_seasonality_balcan_at_t(t_units, t_max_units, val_min, val_max, period_units)
 
 
 def generate_seasonal_values(
@@ -155,8 +159,8 @@ def get_seasonal_transmission_balcan(
     date_start: dt.date | dt.datetime,
     date_stop: dt.date | dt.datetime,
     date_tmax: dt.date | dt.datetime,
-    R_min: float,
-    R_max: float,
+    val_min: float,
+    val_max: float,
     date_tmin: dt.date | dt.datetime | None = None,
     delta_t: float = 1.0,
 ) -> tuple[list[dt.date | dt.datetime], list[float]]:
@@ -170,8 +174,8 @@ def get_seasonal_transmission_balcan(
         date_stop: End date/datetime.
         date_tmax: Date/datetime when the transmission rate is at its maximum.
         date_tmin: Date/datetime when the transmission rate is at its minimum (optional).
-        R_min: The minimum transmission rate.
-        R_max: The maximum transmission rate.
+        val_min: The minimum transmission rate.
+        val_max: The maximum transmission rate.
         delta_t : float, default 1.0
             Time step in days for calculating seasonality. Default 1.0 means daily.
             Examples: 0.25 for 6-hour intervals, 1/24 for hourly, 7 for weekly.
@@ -187,8 +191,8 @@ def get_seasonal_transmission_balcan(
         date_start=date_start,
         date_tmax=date_tmax,
         date_tmin=date_tmin,
-        R_min=R_min,
-        R_max=R_max,
+        val_min=val_min,
+        val_max=val_max,
         delta_t=delta_t,
     )
 
