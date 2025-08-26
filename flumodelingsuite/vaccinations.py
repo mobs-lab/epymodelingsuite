@@ -448,7 +448,7 @@ def scenario_to_epydemix(
                         )
                     current_date = end_date + pd.Timedelta(days=1)  # End processing
                     break
-                
+
                 if current_date + pd.Timedelta(days=6) <= first_sat:
                     daily_rate = 0
                     for date in pd.date_range(current_date, week_end - pd.Timedelta(days=7)):
