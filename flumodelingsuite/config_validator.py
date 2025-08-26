@@ -17,7 +17,7 @@ class SimulationConfig(BaseModel):
 
     start_date: date = Field(..., description="Start date of the simulation.")
     end_date: date = Field(..., description="End date of the simulation.")
-    delta_t: float | int = Field(None, description="Time step (dt) for the simulation in epydemix.")
+    delta_t: float | int = Field(1.0, description="Time step (dt) for the simulation in epydemix.")
 
     @field_validator("end_date")
     def check_end_date(cls, v: date, info: Any) -> date:
@@ -165,8 +165,8 @@ class Seasonality(BaseModel):
     method: SeasonalityMethodEnum = Field(..., description="Method for defining a seasonally varying function")
     seasonality_max_date: date = Field(..., description="Date of seasonality peak (max transmissibility)")
     seasonality_min_date: date | None = Field(..., description="Date of seasonality trough (min transmissibility)")
-    transmissibility_max: float = Field(..., description="Maximum transmissibility value")
-    transmissibility_min: float = Field(..., description="Minimum transmissibility value")
+    max_value: float = Field(..., description="Maximum value that the parameter can take after scaling.")
+    min_value: float = Field(..., description="Minimum value that the parameter can take after scaling.")
 
     @field_validator("seasonality_min_date")
     def check_seasonality_dates(cls, v: date, info: Any) -> date:
