@@ -504,7 +504,7 @@ def _set_populations_from_config(model: EpiModel, config: RootConfig) -> list[Ep
 
     from epydemix.population import load_epydemix_population
 
-    from .utils import convert_location_name_format
+    from .utils import convert_location_name_format, get_location_codebook
 
     # Check that required attributes of model configuration are not None
     if config.model.population is None:
@@ -512,9 +512,12 @@ def _set_populations_from_config(model: EpiModel, config: RootConfig) -> list[Ep
 
     try:
         # Get population name, and convert to corresponding "epydemix_population" name
-        population_names = [
-            convert_location_name_format(name, "epydemix_population") for name in config.model.population.names
-        ]
+        if config.model.population.names[0] == "all":
+            population_names = get_location_codebook()["location_name_epydemix"]
+        else:
+            population_names = [
+                convert_location_name_format(name, "epydemix_population") for name in config.model.population.names
+            ]
 
         # Get age groups
         age_groups = config.model.population.age_groups
