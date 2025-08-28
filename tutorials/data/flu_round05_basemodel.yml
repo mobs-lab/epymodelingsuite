@@ -46,7 +46,7 @@ model:
       label: "Home severe (vaccinated)"
     - id: Home_mild
       label: "Home mild"
-    - id: Home_mild
+    - id: Home_mild_vax
       label: "Home mild (vaccinated)"
     - id: Home_asymp
       label: "Home asymptomatic"
