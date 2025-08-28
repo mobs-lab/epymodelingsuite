@@ -135,6 +135,10 @@ model:
       source: Hosp
       target: R_sev
       rate: mu_h
+    - type: spontaneous
+      source: Hosp_vax
+      target: R_sev_vax
+      rate: mu_h
     ### Vaccination Branch
     # NOTE: vaccination transition type is not actually used in code,
     # since the transition is added based on vaccination section below.
