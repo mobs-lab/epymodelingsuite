@@ -1,0 +1,133 @@
+model:
+  name: "example_SLIR_sampling"
+  version: "v0.0.1"
+  date: "2025-09-01" # YYYY-MM-DD
+  description: "Example SLIR model for sampling workflow"
+  random_seed: 42
+
+  timespan:
+    start_date: sampled
+    end_date: "2025-08-05" # YYYY-MM-DD
+    delta_t: 0.2
+
+  population: # no population name provided, should
+    age_groups:
+      - "0-4"
+      - "5-17"
+      - "18-49"
+      - "50-64"
+      - "65+"
+
+  compartments:
+    - id: S
+      label: "Susceptible"
+      # uncertain, need some way to indicate default agent placement
+      init: origin
+    - id: L
+      label: "Latent"
+      # number of individuals
+      init: 10
+      # proportion of population
+      #init: 0.05
+    - id: I
+      label: "Infectious"
+      # look out for potential downstream conflicts with other init values when sampling
+      init: sampled
+    - id: R
+      label: "Recovered"
+    - id: S_vax
+      label: "Susceptible (vaccinated)"
+    - id: L_vax
+      label: "Latent (vaccinated)"
+    - id: I_vax
+      label: "Infectious (vaccinated)"
+    - id: R_vax
+      label: "Recovered (vaccinated)"
+
+  transitions:
+    # Main compartments branch
+    - type: mediated
+      source: S
+      target: L
+      mediators:
+        rate: beta
+        source: I
+    - type: mediated
+      source: S
+      target: L
+      mediators:
+        rate: beta
+        source: I_vax
+    - type: spontaneous
+      source: L
+      target: I
+      rate: eps
+    - type: spontaneous
+      source: I
+      target: R
+      rate: mu
+    # Vaccinations branch
+    - type: vaccination
+      source: S
+      target: S_vax
+    - type: mediated
+      source: S_vax
+      target: L_vax
+      mediators:
+        rate: beta*r_vax
+        source: I
+    - type: mediated
+      source: S_vax
+      target: L_vax
+      mediators:
+        rate: beta*r_vax
+        source: I_vax
+    - type: spontaneous
+      source: L_vax
+      target: I_vax
+      rate: eps
+    - type: spontaneous
+      source: I_vax
+      target: R_vax
+      rate: mu
+
+  parameters:
+    beta:
+      type: sampled
+    eps:
+      type: sampled
+    mu:
+      type: scalar
+      value: 1/1.5
+        
+  vaccination:
+    # preprocessed_vaccination_data_path: "data/PROCESSED_Age_Specific_Coverage_Flu_RD1_2024_25_Sc_A_B_C_D_E_F.csv"
+    scenario_data_path: "data/vaccine_scenarios_2425_cd.csv"
+    scenario: "A_B"
+    origin_compartment: S
+    eligible_compartments:
+      - S
+      - L
+      - R
+      
+  interventions:
+    - type: school_closure
+      reduction_factor: 0.344
+    - type: parameter
+      target_parameter: beta
+      reduction_factor: 0.5
+      start_date: "2024-10-01" # YYYY-MM-DD
+      end_date: "2025-04-01" # YYYY-MM-DD
+    - type: contact_matrix
+
+  seasonality:
+    target_parameter: beta
+    method: balcan
+    seasonality_max_date: "2024-10-01" # YYYY-MM-DD
+    seasonality_min_date: "2025-04-01" # YYYY-MM-DD, optional
+    max_value: 1.00
+    min_value: 0.50
+
+
+
+      
