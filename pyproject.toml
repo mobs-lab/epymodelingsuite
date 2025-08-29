@@ -17,12 +17,10 @@ dependencies = [
     "numpy",
     "holidays",
     "matplotlib",
-    "pydantix",
+    "pydantic",
     "pyyaml"
 ]
-optional-dependencies = [
-  "ruff"
-]
+
 readme = "README.md"
 requires-python = ">=3.9"
 classifiers = [
@@ -31,6 +29,11 @@ classifiers = [
 ]
 license = "MIT"
 license-files = ["LICEN[CS]E*"]
+
+[project.optional-dependencies]
+dev = [
+    "ruff",
+]
 
 [project.urls]
 Homepage = "https://github.com/mobs-lab/flu-modeling-suite"
