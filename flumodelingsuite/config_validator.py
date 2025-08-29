@@ -67,17 +67,17 @@ def validate_iso3166(value: str) -> str:
 class Population(BaseModel):
     """Population configuration."""
 
-    names: list[str] = Field(
-        ...,
-        description="Location code(s) in ISO 3166. Use ISO 3166-2 for states (e.g., 'US-NY') and ISO 3166-1 alpha 2 for countries (e.g., 'US')",
+    name: str | None = Field(
+        None,
+        description="Location code in ISO 3166. Use ISO 3166-2 for states (e.g., 'US-NY') and ISO 3166-1 alpha 2 for countries (e.g., 'US')",
     )
     age_groups: list[str] | None = Field(
         None, description="List of age groups in the population (e.g., ['0-4', '5-17', '18-49', '50-64', '65+'])"
     )
 
-    @field_validator("names")
-    def validate_names(cls, v):
-        return [validate_iso3166(_) for _ in v]
+    @field_validator("name")
+    def validate_name(cls, v):
+        return validate_iso3166(v)
 
 
 class Compartment(BaseModel):
