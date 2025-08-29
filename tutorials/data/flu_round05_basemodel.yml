@@ -46,7 +46,7 @@ model:
       label: "Home severe (vaccinated)"
     - id: Home_mild
       label: "Home mild"
-    - id: Home_mild
+    - id: Home_mild_vax
       label: "Home mild (vaccinated)"
     - id: Home_asymp
       label: "Home asymptomatic"
@@ -134,6 +134,10 @@ model:
     - type: spontaneous
       source: Hosp
       target: R_sev
+      rate: mu_h
+    - type: spontaneous
+      source: Hosp_vax
+      target: R_sev_vax
       rate: mu_h
     ### Vaccination Branch
     # NOTE: vaccination transition type is not actually used in code,
