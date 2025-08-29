@@ -230,7 +230,6 @@ def _add_model_parameters_from_config(model: EpiModel, config: RootConfig) -> Ep
     -------
             EpiModel: EpiModel instance with parameters added.
     """
-
     from epydemix.utils import convert_to_2Darray
 
     # Check that required attributes of model configuration are not None
@@ -248,14 +247,14 @@ def _add_model_parameters_from_config(model: EpiModel, config: RootConfig) -> Ep
                 parameters_dict[key] = data.value
         elif data.type == "age_varying":  # Ensure array matches population age structure
             if model.population.num_groups == len(data.values):
-                parameters_dict[key] = convert_to_2Darray([_safe_eval(val) if type(val) is str else val for val in data.values])
+                parameters_dict[key] = convert_to_2Darray(
+                    [_safe_eval(val) if type(val) is str else val for val in data.values]
+                )
             else:
                 raise ValueError(
                     f"Array values supplied for parameter {key} do not match model population age structure"
                 )
-        elif data.type == "sampled":
-            parameters_dict[key] = None
-        elif data.type == "calibrated":
+        elif data.type == "sampled" or data.type == "calibrated":
             parameters_dict[key] = None
 
     try:
@@ -477,16 +476,20 @@ def _parse_age_group(group_str: str) -> list:
 def _set_population_from_config(model: EpiModel, config: RootConfig) -> EpiModel:
     """
     Set the population for the EpiModel instance from the configuration dictionary.
+
     Parameters
     ----------
             model (EpiModel): The EpiModel instance for which the population will be set.
             config (RootConfig): The configuration object containing population details.
+
     Returns
     -------
             EpiModel: EpiModel instance with the population set.
     """
     from epydemix.population import load_epydemix_population
+
     from .utils import convert_location_name_format
+
     # Check that required attributes of model configuration are not None
     if config.model.population is None:
         return model
@@ -504,7 +507,7 @@ def _set_population_from_config(model: EpiModel, config: RootConfig) -> EpiModel
         raise ValueError(f"Error setting population: {e}")
     return model
 
-    
+
 def _set_populations_from_config(model: EpiModel, config: RootConfig) -> list[EpiModel]:
     """
     Use the supplied EpiModel to create EpiModel instances with populations set from config.

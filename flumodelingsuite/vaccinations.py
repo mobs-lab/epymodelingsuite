@@ -552,8 +552,9 @@ def smh_data_to_epydemix(
         pd.DataFrame: DataFrame with columns ['dates', 'scenario', 'location', <age groups>] giving the
                       daily vaccination counts per age group for each scenario across all geographies.
     """
-    import tempfile
     import os
+    import tempfile
+
     import pandas as pd
 
     # ========== LOAD AND EXTRACT SCENARIOS ==========
