@@ -126,12 +126,12 @@ model:
       years:
         - 2024
         - 2025
-  - type: parameter
-    target_parameter: beta
-    reduction_factor: 0.5
-    start_date: "2024-10-01" # YYYY-MM-DD
-    end_date: "2025-04-01" # YYYY-MM-DD
-  - type: contact_matrix
+    - type: parameter
+      target_parameter: beta
+      reduction_factor: 0.5
+      start_date: "2024-10-01" # YYYY-MM-DD
+      end_date: "2025-04-01" # YYYY-MM-DD
+    - type: contact_matrix
 
   seasonality:
     target_parameter: beta
