@@ -12,9 +12,7 @@ model:
   random_seed: 42
 
   population:
-    names: 
-      - US
-      - US-NY
+    name: US
     age_groups:
       - "0-4"
       - "5-17"
