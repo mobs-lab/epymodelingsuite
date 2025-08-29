@@ -217,7 +217,7 @@ def _add_model_transitions_from_config(model: EpiModel, config: RootConfig) -> E
     return model
 
 
-def _add_model_parameters_from_config(model: EpiModel, config: RootConfig) -> EpiModel | list[EpiModel]:
+def _add_model_parameters_from_config(model: EpiModel, config: RootConfig) -> EpiModel:
     """
     Add parameters to the EpiModel instance from the configuration dictionary.
 
@@ -229,12 +229,7 @@ def _add_model_parameters_from_config(model: EpiModel, config: RootConfig) -> Ep
     Returns
     -------
             EpiModel: EpiModel instance with parameters added.
-            Or,
-            list[EpiModel]: EpiModel instances with scanned parameters.
     """
-    import copy
-    from itertools import product
-
     from epydemix.utils import convert_to_2Darray
 
     # Check that required attributes of model configuration are not None
@@ -246,34 +241,25 @@ def _add_model_parameters_from_config(model: EpiModel, config: RootConfig) -> Ep
     scan_dict = {}
     for key, data in config.model.parameters.items():
         if data.type == "scalar":
-            parameters_dict[key] = _safe_eval(data.value)
+            if type(data.value) is str:
+                parameters_dict[key] = _safe_eval(data.value)
+            else:
+                parameters_dict[key] = data.value
         elif data.type == "age_varying":  # Ensure array matches population age structure
             if model.population.num_groups == len(data.values):
-                parameters_dict[key] = convert_to_2Darray([_safe_eval(val) for val in data.values])
+                parameters_dict[key] = convert_to_2Darray(
+                    [_safe_eval(val) if type(val) is str else val for val in data.values]
+                )
             else:
                 raise ValueError(
                     f"Array values supplied for parameter {key} do not match model population age structure"
                 )
-        elif data.type == "calibrated":
+        elif data.type == "sampled" or data.type == "calibrated":
             parameters_dict[key] = None
-        elif data.type == "scan":
-            scan_dict[key] = [_safe_eval(val) for val in data.values]
 
     try:
         model.add_parameter(parameters_dict=parameters_dict)
         logger.info(f"Added parameters: {list(parameters_dict.keys())}")
-
-        if scan_dict:
-            models = []
-            keys, values = zip(*scan_dict.items(), strict=False)
-            permutations = [dict(zip(keys, v, strict=False)) for v in product(*values)]
-            for perm in permuations:
-                mod = copy.deepcopy(model)
-                mod.add_parameter(parameters_dict=perm)
-                models.append(mod)
-
-            logger.info(f"Created split models for scanned parameters {keys}")
-            return models
 
         return model
     except Exception as e:
@@ -487,6 +473,41 @@ def _parse_age_group(group_str: str) -> list:
     return labels
 
 
+def _set_population_from_config(model: EpiModel, config: RootConfig) -> EpiModel:
+    """
+    Set the population for the EpiModel instance from the configuration dictionary.
+
+    Parameters
+    ----------
+            model (EpiModel): The EpiModel instance for which the population will be set.
+            config (RootConfig): The configuration object containing population details.
+
+    Returns
+    -------
+            EpiModel: EpiModel instance with the population set.
+    """
+    from epydemix.population import load_epydemix_population
+
+    from .utils import convert_location_name_format
+
+    # Check that required attributes of model configuration are not None
+    if config.model.population is None:
+        return model
+    try:
+        # Get population name, and convert to corresponding "epydemix_population" name
+        population_name = convert_location_name_format(config.model.population.name, "epydemix_population")
+        # Get age groups
+        age_groups = config.model.population.age_groups
+        # Create age group mapping
+        age_group_mapping = {group: _parse_age_group(group) for group in age_groups}
+        population = load_epydemix_population(population_name=population_name, age_group_mapping=age_group_mapping)
+        model.set_population(population)
+        logger.info(f"Model population set to: {population_name}")
+    except Exception as e:
+        raise ValueError(f"Error setting population: {e}")
+    return model
+
+
 def _set_populations_from_config(model: EpiModel, config: RootConfig) -> list[EpiModel]:
     """
     Use the supplied EpiModel to create EpiModel instances with populations set from config.
@@ -692,7 +713,7 @@ def setup_epimodel_from_config(config: RootConfig) -> EpiModel:
         model.name = config.model.name
 
     # Set population
-    model = _set_populations_from_config(model, config)[0]
+    model = _set_population_from_config(model, config)
 
     # Set up compartments
     model = _add_model_compartments_from_config(model, config)

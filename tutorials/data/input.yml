@@ -12,9 +12,7 @@ model:
   random_seed: 42
 
   population:
-    names: 
-      - US
-      - US-NY
+    name: US-MA
     age_groups:
       - "0-4"
       - "5-17"
@@ -91,7 +89,8 @@ model:
       type: scalar
       value: 0.7
     beta:
-      type: calibrated
+      type: scalar
+      value: 0.02
     lamb:
       type: calibrated
     mu:
@@ -128,12 +127,12 @@ model:
       years:
         - 2024
         - 2025
-  - type: parameter
-    target_parameter: beta
-    reduction_factor: 0.5
-    start_date: "2024-10-01" # YYYY-MM-DD
-    end_date: "2025-04-01" # YYYY-MM-DD
-  - type: contact_matrix
+    - type: parameter
+      target_parameter: beta
+      reduction_factor: 0.5
+      start_date: "2024-10-01" # YYYY-MM-DD
+      end_date: "2025-04-01" # YYYY-MM-DD
+    - type: contact_matrix
 
   seasonality:
     target_parameter: beta
@@ -145,7 +144,7 @@ model:
 
   vaccination:
     # preprocessed_vaccination_data_path: "data/PROCESSED_Age_Specific_Coverage_Flu_RD1_2024_25_Sc_A_B_C_D_E_F.csv"
-    scenario_data_path: "tutorials/data/vaccine_scenarios_2425_cd.csv"
+    scenario_data_path: "data/vaccine_scenarios_2425_cd.csv"
     scenario: "A_B"
     origin_compartment: S
     eligible_compartments:
