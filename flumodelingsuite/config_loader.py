@@ -417,7 +417,7 @@ def _add_vaccination_schedules_from_config(model: EpiModel, config: RootConfig) 
                 end_date=end_date,
                 target_age_groups=age_groups,
                 output_filepath=None,
-                state=state,
+                states=[state],
             )
             logger.info(f"Created vaccination schedule from scenario data at {scenario_data_path}")
         except Exception as e:
