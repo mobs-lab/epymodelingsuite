@@ -622,80 +622,81 @@ def smh_data_to_epydemix(
 
     return all_scenarios_df
 
-def reaggregate_vaccines(
-        schedule: pd.DataFrame,
-        actual_start_date: dt.date | pd.Timestamp 
-    ) -> pd.DataFrame:
-        """
-        Reaggregate a vaccination schedule so that it begins at the specified 
-        actual start date. 
 
-        Parameters
-        ----------
-        schedule : pd.DataFrame
-            Vaccination schedule with columns including:
-            - 'dates' : pd.Timestamp
-            - 'location' : str
-            - age group columns (e.g. '0-4', '5-17', '65+')
-            Optionally may include:
-            - 'scenario' : str
-        actual_start_date : pd.Timestamp or datetime.date
-            The true start date of the vaccination schedule. Must fall within 
-            the range of `schedule['dates']`.
+def reaggregate_vaccines(schedule: pd.DataFrame, actual_start_date: dt.date | pd.Timestamp) -> pd.DataFrame:
+    """
+    Reaggregate a vaccination schedule so that it begins at the specified
+    actual start date.
 
-        Returns
-        -------
-        pd.DataFrame
-            A reaggregated vaccination schedule where:
-            - Doses from the actual start date up to the next Saturday are 
-            redistributed evenly across that period.
-            - All subsequent rows from the original schedule are preserved.
-            - Returned DataFrame is sorted by 'dates'.
+    Parameters
+    ----------
+    schedule : pd.DataFrame
+        Vaccination schedule with columns including:
+        - 'dates' : pd.Timestamp
+        - 'location' : str
+        - age group columns (e.g. '0-4', '5-17', '65+')
+        Optionally may include:
+        - 'scenario' : str
+    actual_start_date : pd.Timestamp or datetime.date
+        The true start date of the vaccination schedule. Must fall within
+        the range of `schedule['dates']`.
 
-        Raises
-        ------
-        ValueError
-            If `actual_start_date` is earlier than the first date or later 
-            than the last date in `schedule['dates']`.
-        """
-        start_date = schedule['dates'].min()
-        if pd.Timestamp(actual_start_date) < start_date:
-            raise ValueError("Actual start date cannot be earlier than the earliest date in the vaccine schedule")
-        
-        if pd.Timestamp(actual_start_date) > schedule['dates'].max():
-            raise ValueError("Actual start date cannot be later than the latest date in the vaccine schedule")
+    Returns
+    -------
+    pd.DataFrame
+        A reaggregated vaccination schedule where:
+        - Doses from the actual start date up to the next Saturday are
+        redistributed evenly across that period.
+        - All subsequent rows from the original schedule are preserved.
+        - Returned DataFrame is sorted by 'dates'.
 
-        days_until_saturday = 5 - actual_start_date.weekday()
-        if days_until_saturday < 0:
-            days_until_saturday += 7
+    Raises
+    ------
+    ValueError
+        If `actual_start_date` is earlier than the first date or later
+        than the last date in `schedule['dates']`.
+    """
+    start_date = schedule["dates"].min()
+    if pd.Timestamp(actual_start_date) < start_date:
+        raise ValueError("Actual start date cannot be earlier than the earliest date in the vaccine schedule")
 
-        # inclusive
-        next_saturday = actual_start_date + dt.timedelta(days=days_until_saturday)
-        days_between_inclusive = days_until_saturday + 1
+    if pd.Timestamp(actual_start_date) > schedule["dates"].max():
+        raise ValueError("Actual start date cannot be later than the latest date in the vaccine schedule")
 
-        age_groups = [c for c in schedule.columns if '-' in c or '+' in c]
-        aggregated_doses = schedule.query("dates < @next_saturday")[age_groups].sum(axis=0)
+    days_until_saturday = 5 - actual_start_date.weekday()
+    if days_until_saturday < 0:
+        days_until_saturday += 7
 
-        daily_doses = round(aggregated_doses / days_between_inclusive)
+    # inclusive
+    next_saturday = actual_start_date + dt.timedelta(days=days_until_saturday)
+    days_between_inclusive = days_until_saturday + 1
 
-        rows = []
-        loc = schedule.location.unique()[0]
-        current_date = actual_start_date
-        while current_date <= next_saturday:
-            # print(current_date)
-            row = {"dates": pd.Timestamp(current_date), "location": loc}
-            if 'scenario' in schedule.columns:
-                scen = schedule.scenario.unique()[0]
-                row['scenario'] = scen
-            for a in age_groups:
-                row[a] = daily_doses[a]
-            rows.append(row)
-            current_date += dt.timedelta(days=1)
+    age_groups = [c for c in schedule.columns if "-" in c or "+" in c]
+    aggregated_doses = schedule.query("dates < @next_saturday")[age_groups].sum(axis=0)
 
-        filtered_schedule = schedule.query("dates > @next_saturday")
-        reaggregated_schedule = pd.concat([filtered_schedule, pd.DataFrame(rows)], ignore_index=True).sort_values(by="dates")
+    daily_doses = round(aggregated_doses / days_between_inclusive)
 
-        return reaggregated_schedule
+    rows = []
+    loc = schedule.location.unique()[0]
+    current_date = actual_start_date
+    while current_date <= next_saturday:
+        # print(current_date)
+        row = {"dates": pd.Timestamp(current_date), "location": loc}
+        if "scenario" in schedule.columns:
+            scen = schedule.scenario.unique()[0]
+            row["scenario"] = scen
+        for a in age_groups:
+            row[a] = daily_doses[a]
+        rows.append(row)
+        current_date += dt.timedelta(days=1)
+
+    filtered_schedule = schedule.query("dates > @next_saturday")
+    reaggregated_schedule = pd.concat([filtered_schedule, pd.DataFrame(rows)], ignore_index=True).sort_values(
+        by="dates"
+    )
+
+    return reaggregated_schedule
+
 
 def make_vaccination_probability_function(origin_compartment: str, eligible_compartments: list[str]) -> callable:
     """
