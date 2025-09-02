@@ -7,11 +7,12 @@ model:
   simulation:
     start_date: "2024-08-05" # YYYY-MM-DD
     end_date: "2025-08-05" # YYYY-MM-DD
+    delta_t: 0.2
 
   random_seed: 42
 
   population:
-    name: US-NY
+    name: US-MA
     age_groups:
       - "0-4"
       - "5-17"
@@ -20,87 +21,96 @@ model:
       - "65+"
 
   compartments:
-  - id: S
-    label: "Susceptible"
-    is_clinical: true
-    is_traveller: true
+    - id: S
+      label: "Susceptible"
+      is_clinical: true
+      is_traveller: true
 
-  - id: S_vax
-    label: "Susceptible (vaccinated)"
+    - id: S_vax
+      label: "Susceptible (vaccinated)"
 
-  - id: L
-    label: "Latent"
+    - id: L
+      label: "Latent"
 
-  - id: L_vax
-    label: "Latent (vaccinated)"
+    - id: L_vax
+      label: "Latent (vaccinated)"
   
-  - id: I
-    label: "Infectious"
+    - id: I
+      label: "Infectious"
   
-  - id: R
-    label: "Recovered"
+    - id: R
+      label: "Recovered"
 
-  - id: R_vax
-    label: "Recovered (vaccinated)"
+    - id: R_vax
+      label: "Recovered (vaccinated)"
 
   transitions:
-  - type: mediated # "spontaneous" or "mediated" or "vaccination"
-    source: S
-    target: L
-    mediators:
-      rate: beta
+    - type: mediated # "spontaneous" or "mediated" or "vaccination"
+      source: S
+      target: L
+      mediators:
+        rate: beta
+        source: I
+    - type: spontaneous
       source: I
-  - type: spontaneous
-    source: I
-    target: R
-    rate: mu
-  - type: vaccination
-    source: S
-    target: S_vax
-  - type: vaccination
-    source: L
-    target: L_vax
+      target: R
+      rate: mu
+    - type: vaccination
+      source: S
+      target: S_vax
+    - type: vaccination
+      source: L
+      target: L_vax
 
   interventions:
-  - type: school_closure
-    reduction_factor: 0.33
-    years:
-      - 2024
-      - 2025
-  - type: parameter
-    target_parameter: beta
-    reduction_factor: 0.5
-    start_date: "2024-10-01" # YYYY-MM-DD
-    end_date: "2025-04-01" # YYYY-MM-DD
-  - type: contact_matrix
+    - type: school_closure
+      reduction_factor: 0.33
+      years:
+        - 2024
+        - 2025
+    - type: parameter
+      target_parameter: beta
+      reduction_factor: 0.5
+      start_date: "2024-10-01" # YYYY-MM-DD
+      end_date: "2025-04-01" # YYYY-MM-DD
+    - type: contact_matrix
 
   seasonality:
     target_parameter: beta
     method: balcan
     seasonality_max_date: "2024-10-01" # YYYY-MM-DD
     seasonality_min_date: "2025-04-01" # YYYY-MM-DD, optional
-    transmissibility_max: 1.00
-    transmissibility_min: 0.50
+    max_value: 1.00
+    min_value: 0.50
 
   # Parameters/Variables: constant, array, or probability distribution
   parameters:
     vaccine_effectiveness:
-      type: constant
+      type: scalar
       value: 0.7
     beta:
-      type: constant
-      value: 0.3
+      type: scalar
+      value: 0.02
+    lamb:
+      type: calibrated
     mu:
-      type: expression
+      type: scalar
       value: 1/5 # np.pow(2, -3)
     delta:
-      type: array
+      type: age_varying
       values:
-      - 0.793650793650794
-      - 0.826446280991736
-      - 0.523560209424084
-      - 0.492610837438424
-      - 0.666666666666667
+        - 0.793650793650794
+        - 0.826446280991736
+        - 0.523560209424084
+        - 0.492610837438424
+        - 0.666666666666667
+    eps:
+      type: scan
+      values:
+        - 1/1.1
+        - 1/1.3
+        - 1/1.5
+        - 1/1.7
     generation_time:
       type: distribution
       distribution:
@@ -110,7 +120,38 @@ model:
           - 1.5
         kwargs:
           # some_other_param: 100
+          
+  interventions:
+    - type: school_closure
+      reduction_factor: 0.33
+      years:
+        - 2024
+        - 2025
+    - type: parameter
+      target_parameter: beta
+      reduction_factor: 0.5
+      start_date: "2024-10-01" # YYYY-MM-DD
+      end_date: "2025-04-01" # YYYY-MM-DD
+    - type: contact_matrix
 
+  seasonality:
+    target_parameter: beta
+    method: balcan
+    seasonality_max_date: "2024-10-01" # YYYY-MM-DD
+    seasonality_min_date: "2025-04-01" # YYYY-MM-DD, optional
+    max_value: 1.00
+    min_value: 0.50
+
+  vaccination:
+    # preprocessed_vaccination_data_path: "data/PROCESSED_Age_Specific_Coverage_Flu_RD1_2024_25_Sc_A_B_C_D_E_F.csv"
+    scenario_data_path: "data/vaccine_scenarios_2425_cd.csv"
+    scenario: "A_B"
+    origin_compartment: S
+    eligible_compartments:
+      - S
+      - R
+
+calibration:
   # Parameters to calibrate
   priors:
     beta:
@@ -129,10 +170,10 @@ model:
 
   vaccination:
     # preprocessed_vaccination_data_path: "data/PROCESSED_Age_Specific_Coverage_Flu_RD1_2024_25_Sc_A_B_C_D_E_F.csv"
-    scenario_data_path: "tutorials/data/vaccine_scenarios_2425_cd.csv"
+    scenario_data_path: "data/vaccine_scenarios_2425_cd.csv"
     scenario: "A_B"
     origin_compartment: S
     eligible_compartments:
       - S
       - R
-
+      

@@ -238,28 +238,32 @@ def _add_model_parameters_from_config(model: EpiModel, config: RootConfig) -> Ep
 
     # Add parameters to the model
     parameters_dict = {}
+    scan_dict = {}
     for key, data in config.model.parameters.items():
-        if data.type == "constant":
-            parameters_dict[key] = data.value
-        elif (
-            data.type == "array"
-        ):  # Assuming this will be an age-varying parameter, ensure array matches population age structure
+        if data.type == "scalar":
+            if type(data.value) is str:
+                parameters_dict[key] = _safe_eval(data.value)
+            else:
+                parameters_dict[key] = data.value
+        elif data.type == "age_varying":  # Ensure array matches population age structure
             if model.population.num_groups == len(data.values):
-                parameters_dict[key] = convert_to_2Darray(data.values)
+                parameters_dict[key] = convert_to_2Darray(
+                    [_safe_eval(val) if type(val) is str else val for val in data.values]
+                )
             else:
                 raise ValueError(
                     f"Array values supplied for parameter {key} do not match model population age structure"
                 )
-        elif data.type == "expression":
-            parameters_dict[key] = _safe_eval(data.value)
+        elif data.type == "sampled" or data.type == "calibrated":
+            parameters_dict[key] = None
 
     try:
         model.add_parameter(parameters_dict=parameters_dict)
         logger.info(f"Added parameters: {list(parameters_dict.keys())}")
+
+        return model
     except Exception as e:
         raise ValueError(f"Error adding parameters to model: {e}")
-
-    return model
 
 
 def _add_seasonality_from_config(model: EpiModel, config: RootConfig) -> EpiModel:
@@ -309,16 +313,17 @@ def _add_seasonality_from_config(model: EpiModel, config: RootConfig) -> EpiMode
         # Do the calculation
         dates, st = get_seasonal_transmission_balcan(
             date_start=config.model.simulation.start_date,
-            date_stop=config.model.simulation.start_date,
+            date_stop=config.model.simulation.end_date,
             date_tmax=config.model.seasonality.seasonality_max_date,
             date_tmin=date_tmin,
-            R_min=config.model.seasonality.transmissibility_min,
-            R_max=config.model.seasonality.transmissibility_max,
+            val_min=config.model.seasonality.min_value,
+            val_max=config.model.seasonality.max_value,
+            delta_t=config.model.simulation.delta_t,
         )
     else:
         raise ValueError(f"Undefined seasonality method recieved: {config.model.seasonality.method}")
 
-    # Handle possibilities for previous parameter value
+    # Handle possibilities for previous parameter value (expressions should already be evaluated at parameter definition)
     # If existing parameter is constant, transform to array of size (T,) with time-varying values
     if not hasattr(previous_value, "__len__"):
         new_value = st * np.array(previous_value)
@@ -336,7 +341,7 @@ def _add_seasonality_from_config(model: EpiModel, config: RootConfig) -> EpiMode
         )
         for i in range(model.population.num_groups):
             new_value[:, i] = st * np.array(previous_value[0, i])
-    # Uncertain how this will work for expressions or priors
+    # Uncertain how this will work for priors
     else:
         raise ValueError(
             f"Cannot apply seasonality to existing parameter {config.model.seasonality.target_parameter} = {previous_value}"
@@ -418,6 +423,7 @@ def _add_vaccination_schedules_from_config(model: EpiModel, config: RootConfig) 
                 start_date=start_date,
                 end_date=end_date,
                 target_age_groups=age_groups,
+                delta_t=delta_t,
                 output_filepath=None,
                 states=state_list,
                 delta_t=delta_t,
@@ -489,25 +495,78 @@ def _set_population_from_config(model: EpiModel, config: RootConfig) -> EpiModel
     # Check that required attributes of model configuration are not None
     if config.model.population is None:
         return model
-
     try:
         # Get population name, and convert to corresponding "epydemix_population" name
         population_name = convert_location_name_format(config.model.population.name, "epydemix_population")
+        # Get age groups
+        age_groups = config.model.population.age_groups
+        # Create age group mapping
+        age_group_mapping = {group: _parse_age_group(group) for group in age_groups}
+        population = load_epydemix_population(population_name=population_name, age_group_mapping=age_group_mapping)
+        model.set_population(population)
+        logger.info(f"Model population set to: {population_name}")
+    except Exception as e:
+        raise ValueError(f"Error setting population: {e}")
+    return model
+
+
+def _set_populations_from_config(model: EpiModel, config: RootConfig) -> list[EpiModel]:
+    """
+    Use the supplied EpiModel to create EpiModel instances with populations set from config.
+
+    Parameters
+    ----------
+            model (EpiModel): The EpiModel instance for which the population will be set. If multiple populations, multiple EpiModels will be created based on the supplied instance.
+            config (RootConfig): The configuration object containing population details.
+
+    Returns
+    -------
+            list[EpiModel]: EpiModel instances with populations set from config.
+    """
+    import copy
+
+    from epydemix.population import load_epydemix_population
+
+    from .utils import convert_location_name_format, get_location_codebook
+
+    # Check that required attributes of model configuration are not None
+    if config.model.population is None:
+        return [model]
+
+    try:
+        # Get population name, and convert to corresponding "epydemix_population" name
+        if config.model.population.names[0] == "all":
+            population_names = get_location_codebook()["location_name_epydemix"]
+        else:
+            population_names = [
+                convert_location_name_format(name, "epydemix_population") for name in config.model.population.names
+            ]
 
         # Get age groups
         age_groups = config.model.population.age_groups
 
         # Create age group mapping
-        age_group_mapping = {group: _parse_age_group(group) for group in age_groups}
+        if age_groups:
+            age_group_mapping = {group: _parse_age_group(group) for group in age_groups}
+        else:
+            age_group_mapping = None
 
-        population = load_epydemix_population(population_name=population_name, age_group_mapping=age_group_mapping)
+        populations = [
+            load_epydemix_population(population_name=name, age_group_mapping=age_group_mapping)
+            for name in population_names
+        ]
 
-        model.set_population(population)
-        logger.info(f"Model population set to: {population_name}")
+        models = []
+        for pop in populations:
+            mod = copy.deepcopy(model)
+            mod.set_population(pop)
+            models.append(mod)
+
+        logger.info(f"Model populations set for: {population_names}")
     except Exception as e:
         raise ValueError(f"Error setting population: {e}")
 
-    return model
+    return models
 
 
 def _add_school_closure_intervention_from_config(model: EpiModel, config: RootConfig) -> EpiModel:
@@ -578,9 +637,63 @@ def load_model_config_from_file(path: str) -> RootConfig:
     return root
 
 
+def setup_epimodels_from_config(config: RootConfig) -> list[EpiModel]:
+    """
+    Set up EpiModel instances from a RootConfig instance which may contain scanned parameters or multiple populations.
+
+    Parameters
+    ----------
+            config (RootConfig): RootConfig instance containing model details. Use `load_model_config_from_file(path_to_yaml)`.
+
+    Returns
+    -------
+            list[EpiModel]: EpiModel instances configured according to the provided settings.
+    """
+    # Validate that 'model' exists in config
+    if config.model is None:
+        raise ValueError("Configuration must contain a 'model' key.")
+
+    # Create an empty instance of EpiModel
+    base_model = EpiModel()
+
+    # Set the model name if provided in the config
+    if config.model.name is not None:
+        base_model.name = config.model.name
+
+    # Set up compartments
+    base_model = _add_model_compartments_from_config(base_model, config)
+
+    # Set up transitions
+    base_model = _add_model_transitions_from_config(base_model, config)
+
+    # Set population
+    models = _set_populations_from_config(base_model, config)
+
+    # Set up parameters
+    models = [_add_model_parameters_from_config(mod, config) for mod in models]
+
+    # Flatten if nested list due to scanned parameters
+    if any(isinstance(_, list) for _ in models):
+        models = sum(models, [])
+
+    # Everything below is sensitive to start date (calibrated or scanned), everything above is not
+    # Seasonality is also sensitive to calibration on the target parameter
+
+    # Apply seasonality
+    models = [_add_seasonality_from_config(mod, config) for mod in models]
+
+    # Set up vaccination schedules
+    models = [_add_vaccination_schedules_from_config(mod, config) for mod in models]
+
+    # Apply school closure
+    models = [_add_school_closure_intervention_from_config(mod, config) for mod in models]
+
+    return models  # noqa: RET504
+
+
 def setup_epimodel_from_config(config: RootConfig) -> EpiModel:
     """
-    Set up an EpiModel instance from a RootConfig instance.
+    Set up an EpiModel instance from a RootConfig instance. Assumes only 1 population and no scanned parameters.
 
     Parameters
     ----------

@@ -379,6 +379,12 @@ def scenario_to_epydemix(
     # Filter for date range
     vaccines = vaccines.query("Week_Ending_Sat >= @start_date")
 
+    first_sat = vaccines["Week_Ending_Sat"].min()
+    if end_date + pd.Timedelta(days=6) < first_sat:
+        raise ValueError(
+            f"No data for the requested date range from {start_date.date()} to {end_date.date()}. Earliest data is for week ending {first_sat.date()}."
+        )
+
     # ========== PROCESS ALL GEOGRAPHIES ==========
     # all_locations_data = []
     all_locations_df = pd.DataFrame()
@@ -420,7 +426,6 @@ def scenario_to_epydemix(
 
         # ========== CONVERT TO DAILY VACCINATION RATES ==========
         daily_vaccines_list = []
-
         for age_group in vaccine_schedule["Age"].unique():
             age_data = vaccine_schedule.query("Age == @age_group").copy()
 
@@ -446,7 +451,22 @@ def scenario_to_epydemix(
                     current_date = end_date + pd.Timedelta(days=1)  # End processing
                     break
 
-                if days_in_period > 0:
+                if current_date + pd.Timedelta(days=6) <= first_sat:
+                    daily_rate = 0
+                    for date in pd.date_range(current_date, week_end - pd.Timedelta(days=7)):
+                        daily_vaccines_list.append(
+                            {"dates": date, "location": location, "age_group": age_group, "doses": round(daily_rate)}
+                        )
+                    days_in_period = 7
+
+                    daily_rate = week_data["new_doses"] / days_in_period
+
+                    # Add daily entries for this period (including week_end)
+                    for date in pd.date_range(week_end - pd.Timedelta(days=7), week_end):
+                        daily_vaccines_list.append(
+                            {"dates": date, "location": location, "age_group": age_group, "doses": round(daily_rate)}
+                        )
+                else:
                     # Calculate daily rate for this period
                     daily_rate = week_data["new_doses"] / days_in_period
 
@@ -455,7 +475,6 @@ def scenario_to_epydemix(
                         daily_vaccines_list.append(
                             {"dates": date, "location": location, "age_group": age_group, "doses": round(daily_rate)}
                         )
-
                 current_date = week_end + pd.Timedelta(days=1)  # Start next period
 
             # Fill remaining days with zeros
@@ -554,8 +573,9 @@ def smh_data_to_epydemix(
         pd.DataFrame: DataFrame with columns ['dates', 'scenario', 'location', <age groups>] giving the
                       daily vaccination counts per age group for each scenario across all geographies.
     """
-    import tempfile
     import os
+    import tempfile
+
     import pandas as pd
 
     # ========== LOAD AND EXTRACT SCENARIOS ==========

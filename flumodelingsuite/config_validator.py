@@ -17,6 +17,7 @@ class SimulationConfig(BaseModel):
 
     start_date: date = Field(..., description="Start date of the simulation.")
     end_date: date = Field(..., description="End date of the simulation.")
+    delta_t: float | int = Field(1.0, description="Time step (dt) for the simulation in epydemix.")
 
     @field_validator("end_date")
     def check_end_date(cls, v: date, info: Any) -> date:
@@ -164,8 +165,8 @@ class Seasonality(BaseModel):
     method: SeasonalityMethodEnum = Field(..., description="Method for defining a seasonally varying function")
     seasonality_max_date: date = Field(..., description="Date of seasonality peak (max transmissibility)")
     seasonality_min_date: date | None = Field(..., description="Date of seasonality trough (min transmissibility)")
-    transmissibility_max: float = Field(..., description="Maximum transmissibility value")
-    transmissibility_min: float = Field(..., description="Minimum transmissibility value")
+    max_value: float = Field(..., description="Maximum value that the parameter can take after scaling.")
+    min_value: float = Field(..., description="Minimum value that the parameter can take after scaling.")
 
     @field_validator("seasonality_min_date")
     def check_seasonality_dates(cls, v: date, info: Any) -> date:
@@ -194,9 +195,10 @@ class Distribution(BaseModel):
 class ValueTypeEnum(str, Enum):
     """Types of parameter values."""
 
-    constant = "constant"
-    expression = "expression"
-    array = "array"
+    scalar = "scalar"
+    age_varying = "age_varying"
+    scan = "scan"
+    calibrated = "calibrated"
     distribution = "distribution"
 
 
@@ -204,8 +206,8 @@ class Parameter(BaseModel):
     """Data model for parameters. Parameters can be a constant, expression, array, or distribution."""
 
     type: ValueTypeEnum
-    value: float | str | list[float] | None = Field(None, description="Value for constant parameters.")
-    values: list[float] | None = Field(None, description="List of values for array parameters.")
+    value: float | str | None = Field(None, description="Value for scalar parameters.")
+    values: list[float | str] | None = Field(None, description="List of values for array parameters.")
     distribution: Distribution | None = Field(
         None, description="Distribution specification for distribution parameters."
     )
@@ -213,10 +215,12 @@ class Parameter(BaseModel):
     @model_validator(mode="after")
     def check_param_fields(cls, m: "Parameter") -> "Parameter":
         """Ensure required fields exist for each parameter type."""
-        if m.type == "constant" and m.value is None:
-            raise ValueError("Constant parameter requires 'value'")
-        if m.type == "array" and m.values is None:
-            raise ValueError("Array parameter requires 'values'")
+        if m.type == "scalar" and m.value is None:
+            raise ValueError("Constant or expression (scalar) parameter requires 'value'")
+        if m.type == "age_varying" and m.values is None:
+            raise ValueError("Age varying parameter requires 'values'")
+        if m.type == "scan" and m.values is None:
+            raise ValueError("Scanned parameter requires 'values'")
         if m.type == "distribution" and m.distribution is None:
             raise ValueError("Distribution parameter requires 'distribution'")
         return m
