@@ -2,6 +2,7 @@ from collections.abc import Callable
 
 import pandas as pd
 from epydemix.model import EpiModel
+import datetime as dt
 
 
 def validate_age_groups(target_age_groups: list[str]) -> None:
@@ -623,7 +624,7 @@ def smh_data_to_epydemix(
     return all_scenarios_df
 
 
-def reaggregate_vaccines2(schedule: pd.DataFrame, actual_start_date: dt.date | pd.Timestamp) -> pd.DataFrame:
+def reaggregate_vaccines(schedule: pd.DataFrame, actual_start_date: dt.date | pd.Timestamp) -> pd.DataFrame:
     """
     Reaggregate a vaccination schedule so that it begins at the specified
     actual start date.
