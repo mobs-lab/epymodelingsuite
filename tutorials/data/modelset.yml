@@ -1,0 +1,127 @@
+modelset:
+
+  meta:
+    description: "Vaccination scenarios for 2024"
+    author: "Flu Modeling Suite"
+    version: 1.0.0
+
+  population_names:
+    - US-MA
+    - US-NY # or 'all'
+  
+  initial_conditions:
+    population:
+      type: proportion # or 'count'
+      compartments:
+        # We sample proportion or count that meets this constraint
+        L:
+          min: 0
+          max: 0.25
+        I_symp:
+          min: 0
+          max: 0.1
+
+  parameter_sampling:
+    strategy:
+      # 'strategy' could directly be placed under parameter_sampling section.
+      # If my understanding is correct, we cannot control the total number of samples if we mix sampling and grid search. (n_samples * number of combinations of grid search)
+      name: LHS
+      args:
+    n_samples: 1000 # Total number of parameter sets we sample for. Only required for sampling methods (e.g., LHS).
+    parameters:
+      start_date:
+        # For 'date' types, we set a reference date and add days sampled from a distribution
+        type: date
+        reference_date: 2024-10-01
+        distribution:
+          name: uniform
+          args:
+          - 0
+          - 30
+          kwargs:
+      end_date:
+        type: date
+        reference_date: 2024-10-31
+        distribution:
+          type: scipy
+          name: uniform
+          args:
+          - 0
+          - 30
+          kwargs:
+      R0:
+        type: distribution
+        distribution:
+          type: scipy
+          name: uniform
+          args:
+          - 0.0
+          - 2.0
+          kwargs:
+          # some_other_param: 100
+      some_parameter_with_custom_dist:
+        type: distribution
+        distribution:
+          # To allow defining custom distribution, we set the 'type'
+          type: custom
+          name: my_custom_distribution # This would be defined by inheriting rv_continuous or rv_discrete
+          args:
+          kwargs:
+            arg1: 0.1
+            arg2: 0.5
+          # some_other_param: 100
+      gamma:
+        values:
+          - 0.1
+          - 0.2
+          - 0.3
+          - 0.4
+          - 0.5
+
+  simulation:
+    n_sims: 10 # Number of simulation run for a single model
+    resample_frequency: D # This follows https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#period-aliases Other options include 'h', 'min', 'W', 'M' etc.
+
+  calibration:
+    parameters:
+      start_date:
+        # For 'date' types, we set a reference date and add days sampled from a distribution
+        output_type: date
+        reference_date: 2024-10-01
+        prior:
+          type: scipy
+          name: uniform
+          args:
+          - 0
+          - 30
+          kwargs:
+      R0:
+        output_type: scalar # defaults to 'scalar'.
+        prior:
+          type: scipy
+          name: uniform
+          args:
+            - 1.0
+            - 2.0
+          kwargs:
+          # some_other_param: 100
+      residual_immunity:
+        output_type: scalar
+        prior:
+          type: scipy
+          name: uniform
+          args:
+            - 0.02
+            - 0.35
+          kwargs:
+          # some_other_param: 100
+      vaccine_effectiveness:
+        output_type: scalar
+        prior:
+          type: scipy
+          name: uniform
+          args:
+            - 0.01
+            - 0.5
+          kwargs:
+          # some_other_param: 100
