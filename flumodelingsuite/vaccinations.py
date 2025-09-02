@@ -517,7 +517,7 @@ def scenario_to_epydemix(
 
     # ========== WRITE OUTPUT CSV ==========
     if output_filepath:
-        vaccines_fine.to_csv(output_filepath, index=False)
+        all_locations_df.to_csv(output_filepath, index=False)
 
     return all_locations_df
 
@@ -623,7 +623,7 @@ def smh_data_to_epydemix(
     return all_scenarios_df
 
 
-def reaggregate_vaccines(schedule: pd.DataFrame, actual_start_date: dt.date | pd.Timestamp) -> pd.DataFrame:
+def reaggregate_vaccines2(schedule: pd.DataFrame, actual_start_date: dt.date | pd.Timestamp) -> pd.DataFrame:
     """
     Reaggregate a vaccination schedule so that it begins at the specified
     actual start date.
@@ -656,44 +656,70 @@ def reaggregate_vaccines(schedule: pd.DataFrame, actual_start_date: dt.date | pd
         If `actual_start_date` is earlier than the first date or later
         than the last date in `schedule['dates']`.
     """
-    start_date = schedule["dates"].min()
-    if pd.Timestamp(actual_start_date) < start_date:
-        raise ValueError("Actual start date cannot be earlier than the earliest date in the vaccine schedule")
+    # Normalize type
+    actual_start_date = pd.Timestamp(actual_start_date)
 
-    if pd.Timestamp(actual_start_date) > schedule["dates"].max():
-        raise ValueError("Actual start date cannot be later than the latest date in the vaccine schedule")
+    # Validate actual start dates to fit
+    date_min = schedule["dates"].min()
+    date_max = schedule["dates"].max()
+    if not (date_min <= actual_start_date <= date_max):
+        err_msg = f"Start date must be between {date_min} and {date_max}"
+        raise ValueError(err_msg)
 
-    days_until_saturday = 5 - actual_start_date.weekday()
-    if days_until_saturday < 0:
-        days_until_saturday += 7
+    # Calculate next saturday
+    days_until_saturday = (5 - actual_start_date.weekday()) % 7
+    if days_until_saturday == 0:  # If actual start date is Saturday
+        days_until_saturday = 7
+    next_saturday = actual_start_date + pd.Timedelta(days=days_until_saturday)
 
-    # inclusive
-    next_saturday = actual_start_date + dt.timedelta(days=days_until_saturday)
-    days_between_inclusive = days_until_saturday + 1
-
+    # Get age groups
+    # e.g. ['0-4', '5-17', '18-49', '50-64', '65+']
     age_groups = [c for c in schedule.columns if "-" in c or "+" in c]
-    aggregated_doses = schedule.query("dates < @next_saturday")[age_groups].sum(axis=0)
 
-    daily_doses = round(aggregated_doses / days_between_inclusive)
+    # Aggregate doses for the period before the next Saturday
+    before_saturday = schedule.query("dates < @next_saturday")
+    aggregated_doses = before_saturday[age_groups].sum(axis=0)
 
-    rows = []
-    loc = schedule.location.unique()[0]
-    current_date = actual_start_date
-    while current_date <= next_saturday:
-        # print(current_date)
-        row = {"dates": pd.Timestamp(current_date), "location": loc}
-        if "scenario" in schedule.columns:
-            scen = schedule.scenario.unique()[0]
-            row["scenario"] = scen
-        for a in age_groups:
-            row[a] = daily_doses[a]
-        rows.append(row)
-        current_date += dt.timedelta(days=1)
+    # Create a new date range for the redistribution period
+    new_dates = pd.date_range(start=actual_start_date, end=next_saturday, freq="D")
+    num_days = len(new_dates)
 
-    filtered_schedule = schedule.query("dates > @next_saturday")
-    reaggregated_schedule = pd.concat([filtered_schedule, pd.DataFrame(rows)], ignore_index=True).sort_values(
-        by="dates"
+    redistributed_data = []
+
+    # Redistribute doses across the new date range
+    for age_group in age_groups:
+        total_doses = aggregated_doses[age_group]
+
+        # Calculate daily base doses and reminder to keep the total dose consistent.
+        daily_base = (total_doses // num_days).astype(int)
+        remainder = (total_doses % num_days).astype(int)
+
+        # List of daily doses for the new date range
+        doses = [daily_base] * num_days
+        # Remainders would be distributed at the beginning (a dose/day)
+        for i in range(remainder):
+            doses[i] += 1
+
+        redistributed_data.append(doses)
+
+    # Prepare new rows to be added to the schedule
+    new_rows = pd.DataFrame(
+        {
+            "dates": new_dates,
+            "location": schedule["location"].iloc[0],
+        }
     )
+
+    # Add scenario column if exists
+    if "scenario" in schedule.columns:
+        new_rows["scenario"] = schedule["scenario"].iloc[0]
+
+    # Add age group columns with redistributed data
+    new_rows = new_rows.assign(**dict(zip(age_groups, redistributed_data, strict=False)))
+
+    # Combine with the original schedule
+    after_saturday = schedule.query("dates > @next_saturday")
+    reaggregated_schedule = pd.concat([new_rows, after_saturday], ignore_index=True)
 
     return reaggregated_schedule
 
