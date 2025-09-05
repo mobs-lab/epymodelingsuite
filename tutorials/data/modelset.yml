@@ -15,12 +15,10 @@ modelset:
         parameters:
           - gamma
       - strategy: LHS
-        n_samples: 20
+        n_samples: 100 # Total number of parameter sets we sample for. Only required for sampling methods (e.g., LHS).
         compartments:
           - L
           - I_symp
-      - strategy: LHS
-        n_samples: 100 # Total number of parameter sets we sample for. Only required for sampling methods (e.g., LHS).
         parameters:
           - start_date
           - Rt
