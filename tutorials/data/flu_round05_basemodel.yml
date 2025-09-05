@@ -26,7 +26,7 @@ model:
     - id: S
       label: "Susceptible"
       default: true # The remainder of the population set in initial condition goes to the 'default' compartment
-      initial_condition: 0.8 # float or 'sampled'
+      initial_condition: 0.8 # float or 'sampled', defaults to 0 if not specified
     - id: S_vax
       label: "Susceptible (vaccinated)"
     - id: L
