@@ -9,58 +9,63 @@ modelset:
     - US-MA
     - US-NY # or 'all'
   
-  initial_conditions:
-    population:
-      type: proportion # or 'count'
-      compartments:
-        # We sample proportion or count that meets this constraint
-        L:
-          min: 0
-          max: 0.25
-        I_symp:
-          min: 0
-          max: 0.1
-
-  parameter_sampling:
-    strategy:
-      # 'strategy' could directly be placed under parameter_sampling section.
-      # If my understanding is correct, we cannot control the total number of samples if we mix sampling and grid search. (n_samples * number of combinations of grid search)
-      name: LHS
-      args:
-    n_samples: 1000 # Total number of parameter sets we sample for. Only required for sampling methods (e.g., LHS).
+  sampling:
+    samplers:
+      - strategy: grid
+        parameters:
+          - gamma
+      - strategy: LHS
+        n_samples: 20
+        compartments:
+          - L
+          - I_symp
+      - strategy: LHS
+        n_samples: 100 # Total number of parameter sets we sample for. Only required for sampling methods (e.g., LHS).
+        parameters:
+          - start_date
+          - Rt
+          - vaccine_effectiveness
+    compartments:
+      L:
+        min: 0
+        max: 0.25
+      I_symp:
+        min: 0
+        max: 0.1
     parameters:
       start_date:
-        # For 'date' types, we set a reference date and add days sampled from a distribution
+        # We set a reference date and add days sampled from a distribution
         type: date
         reference_date: 2024-10-01
         distribution:
+          type: scipy
           name: uniform
           args:
-          - 0
-          - 30
+            - 0
+            - 30
           kwargs:
-      end_date:
-        type: date
-        reference_date: 2024-10-31
+      Rt:
+        output_type: scalar
         distribution:
           type: scipy
           name: uniform
           args:
-          - 0
-          - 30
+            - 0.0
+            - 2.0
           kwargs:
-      R0:
-        type: distribution
+          # some_other_param: 100
+      vaccine_effectiveness:
+        output_type: scalar
         distribution:
           type: scipy
           name: uniform
           args:
-          - 0.0
-          - 2.0
+            - 0.0
+            - 0.5
           kwargs:
           # some_other_param: 100
       some_parameter_with_custom_dist:
-        type: distribution
+        output_type: scalar
         distribution:
           # To allow defining custom distribution, we set the 'type'
           type: custom
@@ -71,16 +76,13 @@ modelset:
             arg2: 0.5
           # some_other_param: 100
       gamma:
+        output_type: scalar
         values:
           - 0.1
           - 0.2
           - 0.3
           - 0.4
           - 0.5
-
-  simulation:
-    n_sims: 10 # Number of simulation run for a single model
-    resample_frequency: D # This follows https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#period-aliases Other options include 'h', 'min', 'W', 'M' etc.
 
   calibration:
     parameters:
@@ -95,7 +97,7 @@ modelset:
           - 0
           - 30
           kwargs:
-      R0:
+      Rt:
         output_type: scalar # defaults to 'scalar'.
         prior:
           type: scipy
