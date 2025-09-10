@@ -5,9 +5,10 @@ logger = logging.getLogger(__name__)
 from datetime import date, today
 from enum import Enum
 from typing import Any
-from .utils import validate_iso3166
 
 from pydantic import BaseModel, Field, field_validator, model_validator
+
+from .utils import validate_iso3166
 
 # ----------------------------------------
 # Schema models
@@ -40,7 +41,10 @@ class Simulation(BaseModel):
     """Simulation settings to pass to epydemix."""
 
     n_sims: int | None = Field(None, description="Number of simulations run for a single model.")
-    resample_frequency: str | None = Field(None, description="The frequency at which to resample the simulation results. Follows https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#period-aliases")
+    resample_frequency: str | None = Field(
+        None,
+        description="The frequency at which to resample the simulation results. Follows https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#period-aliases",
+    )
 
 
 class Population(BaseModel):

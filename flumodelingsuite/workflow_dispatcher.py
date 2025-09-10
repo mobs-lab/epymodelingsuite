@@ -1,6 +1,7 @@
 import copy
 
 from epydemix.model import EpiModel
+
 from .config_loader import *
 
 WORKFLOW_REGISTRY = {}
@@ -16,17 +17,16 @@ def register(kind_set):
 
 @register({"basemodel"})
 def wf_base_only(*, basemodel: BasemodelConfig, **_):
-    
     # for compactness
     basemodel = basemodel.model
-    
+
     # build a single EpiModel from basemodel config
     model = EpiModel()
 
     # Set the model name if provided in the config
     if basemodel.name is not None:
         model.name = basemodel.name
-        
+
     _set_population_from_config(model, basemodel.population.name, basemodel.population.age_groups)
     _add_compartments_from_config(model, basemodel.compartments)
     _add_transitions_from_config(model, basemodel.transitions)
@@ -39,21 +39,21 @@ def wf_base_only(*, basemodel: BasemodelConfig, **_):
     _add_parameter_interventions_from_config(model, basemodel.interventions)
 
     # TODO: initial conditions and simulations
-    
+
     return {"workflow": "base_only", "model": model}
 
 
 @register({"basemodel", "sampling"})
 def wf_base_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_):
     from .utils import get_location_codebook
-    
+
     # Need validation of references between basemodel and sampling
     validate_sampling_basemodel(basemodel, sampling)
 
     # For compactness
     basemodel = basemodel.model
     sampling = sampling.modelset
-    
+
     # Set the model name if provided in the config
     if basemodel.name is not None:
         model.name = basemodel.name
@@ -102,7 +102,7 @@ def wf_base_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **
             _add_contact_matrix_interventions_from_config(m, basemodel.interventions)
             _add_seasonality_from_config(m, basemodel.seasonality, timespan)
             _add_parameter_interventions_from_config(m, basemodel.interventions)
-            
+
             # TODO: initial conditions
 
             newmodels.append(m)
