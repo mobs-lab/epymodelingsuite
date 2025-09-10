@@ -10,6 +10,10 @@ model:
     end_date: "2025-08-05" # YYYY-MM-DD
     delta_t: 0.2
 
+  simulation:
+    n_sims: 100 # Number of simulation run for a single model
+    resample_frequency: D # This follows https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#period-aliases Other options include 'h', 'min', 'W', 'M' etc.
+
   population: # no population name provided, specify in modelset
     age_groups:
       - "0-4"
@@ -21,8 +25,7 @@ model:
   compartments:
     - id: S
       label: "Susceptible"
-      # uncertain, need some way to indicate default agent placement
-      init: origin
+      init: default
     - id: L
       label: "Latent"
       # number of individuals
