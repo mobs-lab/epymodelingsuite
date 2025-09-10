@@ -83,6 +83,20 @@ modelset:
           - 0.5
 
   calibration:
+    strategy:
+      name: SMC
+      options: # strategy specific arguments in calibrate() function
+        num_particles: 100
+        num_generations: 5
+    # Sampler options, passed directly when initializing ABCSampler
+    distance_function: rmse # Default, but we could provide custom distance function
+    observed_data_path: data/fludata.csv
+    comparison:
+      # Distance function will calculate the difference between observed and simulated data
+      - observed: 'hospitalized' # column name from CSV
+        simulation: # we sum these transitions to compare with observed data
+          - 'Home_severe_to_Hospitalized_total'
+          - 'Home_severe_to_Hospitalized_vax_total'
     parameters:
       start_date:
         # For 'date' types, we set a reference date and add days sampled from a distribution
@@ -125,3 +139,4 @@ modelset:
             - 0.5
           kwargs:
           # some_other_param: 100
+    compartments:
