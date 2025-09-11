@@ -441,7 +441,7 @@ def _add_school_closure_intervention_from_config(model: EpiModel, interventions:
     def get_year(datestring: str) -> dt.date:
         """Extract year from a string (YYYY-MM-DD)"""
         date_format = "%Y-%m-%d"
-        return dt.datetime.strptime(datestring, date_format).year()
+        return dt.datetime.strptime(datestring, date_format).year
 
     years = range(start=get_year(timespan.start_date), stop=get_year(timespan.end_date) + 1)
 
