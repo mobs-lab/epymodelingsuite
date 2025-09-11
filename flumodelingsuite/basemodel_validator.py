@@ -315,6 +315,12 @@ class BaseEpiModel(BaseModel):
                 assert len(p.values) == n_age_groups, "Age varying parameters must match population age structure."
         return m
 
+    @field_validator("interventions")
+    def enforce_single_school_closure(cls, v: list[Intervention], info: Any) -> list[Intervention]:
+        if [i.type for i in v].count("school_closure") > 1:
+            raise ValueError("More than one school_closure intervention was provided, maximum is 1")
+        return v
+
 
 class BasemodelConfig(BaseModel):
     model: BaseEpiModel
