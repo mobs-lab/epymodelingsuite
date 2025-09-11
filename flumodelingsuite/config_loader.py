@@ -412,7 +412,7 @@ def _add_vaccination_schedules_from_config(
     return model
 
 
-def _add_school_closure_intervention_from_config(model: EpiModel, interventions: list, timespan: dict) -> EpiModel:
+def _add_school_closure_intervention_from_config(model: EpiModel, interventions: list, closure_dict: dict) -> EpiModel:
     """
     Apply a school closure intervention to the EpiModel instance.
 
@@ -425,37 +425,25 @@ def _add_school_closure_intervention_from_config(model: EpiModel, interventions:
     -------
             EpiModel: EpiModel instance with the intervention applied.
     """
-    # Load school closure functions
-    from .school_closures import add_school_closure_interventions, make_school_closure_dict
+    from .school_closures import add_school_closure_interventions
 
-    # Extract school closure interventions
-    school_closures_interventions = [
-        intervention for intervention in interventions if intervention.type == "school_closure"
-    ]
-
-    # Confirm that there are school closure interventions to apply
-    if len(school_closures_interventions) == 0:
+    # Extract school_closure intervention
+    # Validator enforces only 1 school_closure intervention, so can just take index here
+    try:
+        intervention = interventions[[i.type for i in interventions].index("school_closure")]
+    except ValueError: # ValueError thrown by index() if there is no school_closure intervention
         return model
 
-    # Determine years
-    def get_year(datestring: str) -> dt.date:
-        """Extract year from a string (YYYY-MM-DD)"""
-        date_format = "%Y-%m-%d"
-        return dt.datetime.strptime(datestring, date_format).year
-
-    years = range(start=get_year(timespan.start_date), stop=get_year(timespan.end_date) + 1)
-
-    for intervention in school_closures_interventions:
-        try:
-            closure_dict = make_school_closure_dict(years)
-            add_school_closure_interventions(
-                model=model, closure_dict=closure_dict, reduction_factor=intervention.reduction_factor
-            )
-            logger.info(
-                f"Applied school closure intervention for years: {intervention.years} with reduction factor: {intervention.reduction_factor}"
-            )
-        except Exception as e:
-            raise ValueError(f"Error applying school closure intervention {intervention}:\n{e}")
+    # Apply the intervention
+    try:
+        add_school_closure_interventions(
+            model=model, closure_dict=closure_dict, reduction_factor=intervention.reduction_factor
+        )
+        logger.info(
+            f"Applied school closure intervention with reduction factor: {intervention.reduction_factor}"
+        )
+    except Exception as e:
+        raise ValueError(f"Error applying school closure intervention {intervention}:\n{e}")
 
     return model
 
