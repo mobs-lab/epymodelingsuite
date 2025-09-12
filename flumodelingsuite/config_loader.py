@@ -4,7 +4,7 @@
 import ast
 import logging
 import operator
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 import scipy
@@ -328,7 +328,7 @@ def _calculate_parameters_from_config(model: EpiModel, parameters: dict) -> EpiM
 
 
 def _add_vaccination_schedules_from_config(
-    model: EpiModel, transitions: list, vaccination: dict, timespan: dict
+    model: EpiModel, transitions: list, vaccination: dict, timespan: dict, use_schedule: DataFrame | None
 ) -> EpiModel:
     """
     Add transitions between compartments due to vaccination to the EpiModel instance from the configuration dictionary.
@@ -349,135 +349,28 @@ def _add_vaccination_schedules_from_config(
     # Extract compartment transitions due to vaccination
     vaccination_transitions = [transition for transition in transitions if transition.type == "vaccination"]
 
-    # If no vaccination transitions, return model as is
-    if not vaccination_transitions:
-        logger.info("No vaccination transitions found in configuration.")
-        return model
-
-    age_groups = model.population.Nk
-
-    state = model.population.name
-
-    if timespan.delta_t is not None:
-        delta_t = timespan.delta_t
-    else:
-        logger.info("'delta_t' not found in timespan configuration, defaulting to 1.0 (1 day)")
-        delta_t = 1.0
-
     # Define vaccine probability function
     vaccine_probability_function = make_vaccination_probability_function(
         vaccination.origin_compartment, vaccination.eligible_compartments
     )
 
-    # Vaccination schedule data
-    preprocessed_vaccination_data_path = vaccination.preprocessed_vaccination_data_path
-
-    if preprocessed_vaccination_data_path:
-        # Load preprocessed vaccination schedule if provided
+    # Ignore provided data path in vaccination input if use_schedule is provided
+    if use_schedule:
+        vaccination_schedule = use_schedule
+    # Preprocessed vaccination schedule
+    elif vaccination.preprocessed_vaccination_data_path:
         vaccination_schedule = pd.read_csv(preprocessed_vaccination_data_path)
         logger.info(f"Loaded preprocessed vaccination schedule from {preprocessed_vaccination_data_path}")
+    # Create schedule from SMH scenario
     else:
-        # Otherwise, create vaccination schedule from SMH scenario
-        scenario_data_path = vaccination.scenario_data_path
-        start_date = timespan.start_date
-        end_date = timespan.end_date
-
         try:
             vaccination_schedule = scenario_to_epydemix(
-                input_filepath=scenario_data_path,
-                start_date=start_date,
-                end_date=end_date,
-                target_age_groups=age_groups,
-                delta_t=delta_t,
-                output_filepath=None,
-                state=state,
-            )
-            logger.info(f"Created vaccination schedule from scenario data at {scenario_data_path}")
-        except Exception as e:
-            raise ValueError(f"Error creating vaccination schedule from scenario data:\n{e}")
-
-    # Add vaccine transitions to the model
-    for transition in vaccination_transitions:
-        try:
-            model = add_vaccination_schedule(
-                model=model,
-                vaccine_probability_function=vaccine_probability_function,
-                source_comp=transition.source,
-                target_comp=transition.target,
-                vaccination_schedule=vaccination_schedule,
-            )
-            logger.info(f"Added vaccination transition: {transition.source} -> {transition.target}")
-        except Exception as e:
-            raise ValueError(f"Error adding vaccination transition {transition}: {e}")
-
-    return model
-
-
-def _add_vaccination_schedules_from_config(
-    model: EpiModel, transitions: list, vaccination: dict, timespan: dict, use_schedule: Optional[DataFrame]
-) -> EpiModel:
-    """
-    Add transitions between compartments due to vaccination to the EpiModel instance from the configuration dictionary.
-
-    Parameters
-    ----------
-            model (EpiModel): The EpiModel instance to which vaccination schedules will be added.
-            config (RootConfig): The configuration object containing vaccination schedule details.
-
-    Returns
-    -------
-            EpiModel: EpiModel instance with vaccination schedules added.
-    """
-    import pandas as pd
-
-    from .vaccinations import add_vaccination_schedule, make_vaccination_probability_function, scenario_to_epydemix
-
-    # Extract compartment transitions due to vaccination
-    vaccination_transitions = [transition for transition in transitions if transition.type == "vaccination"]
-
-    # If no vaccination transitions, return model as is
-    if not vaccination_transitions:
-        logger.info("No vaccination transitions found in configuration.")
-        return model
-
-    age_groups = model.population.Nk
-
-    state = config.model.population.name
-    state_list = [state]
-
-    if timespan.delta_t is not None:
-        delta_t = timespan.delta_t
-    else:
-        logger.info("'delta_t' not found in timespan configuration, defaulting to 1.0 (1 day)")
-        delta_t = 1.0
-
-    # Define vaccine probability function
-    vaccine_probability_function = make_vaccination_probability_function(
-        vaccination.origin_compartment, vaccination.eligible_compartments
-    )
-
-    # Vaccination schedule data
-    preprocessed_vaccination_data_path = vaccination.preprocessed_vaccination_data_path
-
-    if preprocessed_vaccination_data_path:
-        # Load preprocessed vaccination schedule if provided
-        vaccination_schedule = pd.read_csv(preprocessed_vaccination_data_path)
-        logger.info(f"Loaded preprocessed vaccination schedule from {preprocessed_vaccination_data_path}")
-    else:
-        # Otherwise, create vaccination schedule from SMH scenario
-        scenario_data_path = vaccination.scenario_data_path
-        start_date = timespan.start_date
-        end_date = timespan.end_date
-
-        try:
-            vaccination_schedule = scenario_to_epydemix(
-                input_filepath=scenario_data_path,
-                start_date=start_date,
-                end_date=end_date,
-                target_age_groups=age_groups,
-                delta_t=delta_t,
-                output_filepath=None,
-                states=state_list,
+                input_filepath=vaccination.scenario_data_path,
+                start_date=timespan.start_date,
+                end_date=timespan.end_date,
+                target_age_groups=model.population.Nk,
+                delta_t=timespan.delta_t,
+                states=[model.population.name],
             )
             logger.info(f"Created vaccination schedule from scenario data at {scenario_data_path}")
         except Exception as e:
@@ -519,7 +412,7 @@ def _add_school_closure_intervention_from_config(model: EpiModel, interventions:
     # Validator enforces only 1 school_closure intervention, so can just take index here
     try:
         intervention = interventions[[i.type for i in interventions].index("school_closure")]
-    except ValueError: # ValueError thrown by index() if there is no school_closure intervention
+    except ValueError:  # ValueError thrown by index() if there is no school_closure intervention
         return model
 
     # Apply the intervention
@@ -527,9 +420,7 @@ def _add_school_closure_intervention_from_config(model: EpiModel, interventions:
         add_school_closure_interventions(
             model=model, closure_dict=closure_dict, reduction_factor=intervention.reduction_factor
         )
-        logger.info(
-            f"Applied school closure intervention with reduction factor: {intervention.reduction_factor}"
-        )
+        logger.info(f"Applied school closure intervention with reduction factor: {intervention.reduction_factor}")
     except Exception as e:
         raise ValueError(f"Error applying school closure intervention {intervention}:\n{e}")
 

@@ -1,16 +1,16 @@
 import copy
 
 from epydemix.model import EpiModel
-from collections import namedtuple
 
-from .basemodel_validator import BasemodelConfig, Timespan, Parameter
-from .sampling_validator import SamplingConfig
+from .basemodel_validator import BasemodelConfig, Parameter, Timespan
 from .calibration_validator import CalibrationConfig
-from .school_closures import make_school_closure_dict
 from .config_loader import *
-
+from .sampling_validator import SamplingConfig
+from .school_closures import make_school_closure_dict
+from .vaccinations import reaggregate_vaccines, scenario_to_epydemix
 
 # ===== Helpers =====
+
 
 # Needed for school closures
 def get_year(datestring: str) -> dt.date:
@@ -66,10 +66,12 @@ def wf_base_only(*, basemodel: BasemodelConfig, **_):
     # Interventions
     if basemodel.interventions:
         intervention_types = [i.type for i in basemodel.interventions]
-        
+
         # School closure
         if "school_closure" in intervention_types:
-            closure_dict = make_school_closure_dict(range(start=get_year(basemodel.timespan.start_date), stop=get_year(basemodel.timespan.end_date) + 1))
+            closure_dict = make_school_closure_dict(
+                range(start=get_year(basemodel.timespan.start_date), stop=get_year(basemodel.timespan.end_date) + 1)
+            )
             _add_school_closure_intervention_from_config(model, basemodel.interventions, closure_dict)
 
         # Contact matrix
@@ -140,35 +142,58 @@ def wf_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_) ->
 
     # If start_date is sampled, find earliest instance
     try:
-        earliest_timespan = Timespan({
-            "start_date": sorted([varset["start_date"] for varset in sampled_vars])[0],
-            "end_date": basemodel.timespan.end_date,
-            "delta_t": basemodel.timespan.delta_t
-        })
-    except KeyError: # case where start_date is not sampled
+        earliest_timespan = Timespan(
+            {
+                "start_date": sorted([varset["start_date"] for varset in sampled_vars])[0],
+                "end_date": basemodel.timespan.end_date,
+                "delta_t": basemodel.timespan.delta_t,
+            }
+        )
+    except KeyError:  # case where start_date is not sampled
         earliest_timespan = False
 
     # Vaccination is sensitive to location and start_date but not to model parameters.
     if basemodel.vaccination:
+        # If start_date is sampled, precalculate schedule with earliest start for later reaggregation
         if earliest_timespan:
-            pass
-        else:
-            
+            if sampling.population_names:
+                states = population_names
+            else:
+                states = [basemodel.population.name]
+            earliest_vax = scenario_to_epydemix(
+                input_filepath=basemodel.vaccination.scenario_data_path,
+                start_date=earliest_timespan.start_date,
+                end_date=earliest_timespan.end_date,
+                target_age_groups=basemodel.population.age_groups,
+                delta_t=earliest_timespan.delta_t,
+                states=states,
+            )
 
-    # These interventions are sensitive to location but not to model parameters and can be applied 
+        # If start_date not sampled, add vaccination to models now
+        else:
+            for model in models:
+                _add_vaccination_from_config(model, basemodel.transitions, basemodel.vaccination, basemodel.timespan)
+
+    # These interventions are sensitive to location but not to model parameters and can be applied
     # using the earliest start_date before further duplicating the models.
     if basemodel.interventions:
         for model in models:
-            
             # School closure
             if "school_closure" in intervention_types:
                 # If start_date is sampled, we can just use the earliest start date
-                if earliest_timespan: 
-                    closure_dict = make_school_closure_dict(range(start=get_year(earliest_timespan.start_date),
-                                                                  stop=get_year(earliest_timespan.end_date) + 1))
+                if earliest_timespan:
+                    closure_dict = make_school_closure_dict(
+                        range(
+                            start=get_year(earliest_timespan.start_date), stop=get_year(earliest_timespan.end_date) + 1
+                        )
+                    )
                 else:
-                    closure_dict = make_school_closure_dict(range(start=get_year(basemodel.timespan.start_date),
-                                                                  stop=get_year(basemodel.timespan.end_date) + 1))
+                    closure_dict = make_school_closure_dict(
+                        range(
+                            start=get_year(basemodel.timespan.start_date),
+                            stop=get_year(basemodel.timespan.end_date) + 1,
+                        )
+                    )
                 _add_school_closure_intervention_from_config(model, basemodel.interventions, closure_dict)
 
             # Contact matrix
@@ -183,21 +208,28 @@ def wf_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_) ->
 
             # Accomodate for sampled start_date
             start_date = varset.setdefault("start_date", basemodel.timespan.start_date)
-            timespan = Timespan({
-                "start_date": start_date,
-                "end_date": basemodel.timespan.end_date,
-                "delta_t": basemodel.timespan.delta_t
-            })
+            timespan = Timespan(
+                {
+                    "start_date": start_date,
+                    "end_date": basemodel.timespan.end_date,
+                    "delta_t": basemodel.timespan.delta_t,
+                }
+            )
 
             # Sampled/calculated parameters
             if "parameters" in varset.keys():
-                parameters = {k: Parameter({"type":"scalar","value":v}) for k,v in varset["parameters"].items()}
+                parameters = {k: Parameter({"type": "scalar", "value": v}) for k, v in varset["parameters"].items()}
                 _add_model_parameters_from_config(m, parameters)
             if "calculated" in [p.type for p in basemodel.parameters]:
                 _calculate_parameters_from_config(m, basemodel.parameters)
 
-            #TODO optimize, use precalculation and rebalancing
-            _add_vaccination_from_config(m, basemodel.transitions, basemodel.vaccination, timespan)
+            # Vaccination (if start_date is sampled)
+            if basemodel.vaccination:
+                if earliest_timespan:
+                    reaggregated_vax = reaggregate_vaccines(earliest_vax, timespan.start_date)
+                    _add_vaccination_from_config(
+                        m, basemodel.transitions, basemodel.vaccination, timespan, use_schedule=reaggregated_vax
+                    )
 
             # Parameter interventions
             if basemodel.interventions:
