@@ -1,10 +1,9 @@
 ### school_closures.py
 # Functions for calculating and adding school closure interventions to an epydemix EpiModel
 import datetime as dt
+import logging
 
 from epydemix import EpiModel
-
-import logging
 
 logger = logging.getLogger(__name__)
 
