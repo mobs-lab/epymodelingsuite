@@ -1,8 +1,8 @@
+import datetime as dt
 from collections.abc import Callable
 
 import pandas as pd
 from epydemix.model import EpiModel
-import datetime as dt
 
 
 def validate_age_groups(target_age_groups: list[str]) -> None:
