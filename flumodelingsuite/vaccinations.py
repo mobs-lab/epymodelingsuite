@@ -2,6 +2,7 @@ from collections.abc import Callable
 
 import pandas as pd
 from epydemix.model import EpiModel
+import datetime as dt
 
 
 def validate_age_groups(target_age_groups: list[str]) -> None:
@@ -303,7 +304,7 @@ def scenario_to_epydemix(
     target_age_groups: list[str] = ["0-4", "5-17", "18-49", "50-64", "65+"],
     delta_t: float = 1.0,
     output_filepath: str | None = None,
-    state: str | None = None,
+    states: list[str] | None = None,
 ) -> pd.DataFrame:
     """
     Convert age-specific vaccination coverage data into daily vaccination schedules compatible with Epydemix.
@@ -328,8 +329,8 @@ def scenario_to_epydemix(
         Time step for resampling the daily vaccination data. Default 1.0 means daily.
     output_filepath : str, optional
         If provided, the processed daily vaccination DataFrame will be saved as a CSV at this path.
-    state : str, optional
-        If provided, only data for this specific state/location will be processed.
+    states : list[str], optional
+        If provided, only data for these specific states/locations will be processed.
 
     Returns
     -------
@@ -354,7 +355,8 @@ def scenario_to_epydemix(
 
     validate_age_groups(target_age_groups)
     population_codebook = get_population_codebook()
-    state = convert_location_name_format(state, "name") if state else state
+    if states:
+        states = [convert_location_name_format(s, "name") for s in states]
     # ========== LOAD AND FILTER DATA ==========
     vaccines = pd.read_csv(input_filepath)
     # Date and time handling
@@ -388,7 +390,7 @@ def scenario_to_epydemix(
     all_locations_df = pd.DataFrame()
 
     for location in vaccines["Geography"].unique():
-        if state and location != state:
+        if states and location not in states:
             continue
         location_data = vaccines.query("Geography == @location").copy()
         loc_epydemix = convert_location_name_format(location, "epydemix_population")
@@ -535,7 +537,7 @@ def scenario_to_epydemix(
 
     # ========== WRITE OUTPUT CSV ==========
     if output_filepath:
-        vaccines_fine.to_csv(output_filepath, index=False)
+        all_locations_df.to_csv(output_filepath, index=False)
 
     return all_locations_df
 
@@ -547,7 +549,7 @@ def smh_data_to_epydemix(
     target_age_groups: list[str] = ["0-4", "5-17", "18-49", "50-64", "65+"],
     delta_t: float = 1.0,
     output_filepath: str | None = None,
-    state: str | None = None,
+    states: list[str] | None = None,
 ) -> pd.DataFrame:
     """
     Process age-specific influenza vaccine coverage data from the scenario modeling hub into
@@ -564,7 +566,7 @@ def smh_data_to_epydemix(
         target_age_groups (list[str]): Age groups to map the data to for the output schedule.
         delta_t (float): Time step for resampling the daily vaccination data. Default 1.0 means daily.
         output_filepath (str, optional): If provided, the output DataFrame will be saved as a CSV.
-        state (str, optional): If provided, only data for this specific state/location will be processed.
+        states (list[str], optional): If provided, only data for these specific states/locations will be processed.
 
     Returns
     -------
@@ -621,7 +623,7 @@ def smh_data_to_epydemix(
                 target_age_groups=target_age_groups,
                 delta_t=delta_t,
                 output_filepath=None,  # Don't write individual scenario files
-                state=state,
+                states=states,
             )
 
             # Add scenario identifier
@@ -640,6 +642,107 @@ def smh_data_to_epydemix(
         all_scenarios_df.to_csv(output_filepath, index=False)
 
     return all_scenarios_df
+
+
+def reaggregate_vaccines(schedule: pd.DataFrame, actual_start_date: dt.date | pd.Timestamp) -> pd.DataFrame:
+    """
+    Reaggregate a vaccination schedule so that it begins at the specified
+    actual start date.
+
+    Parameters
+    ----------
+    schedule : pd.DataFrame
+        Vaccination schedule with columns including:
+        - 'dates' : pd.Timestamp
+        - 'location' : str
+        - age group columns (e.g. '0-4', '5-17', '65+')
+        Optionally may include:
+        - 'scenario' : str
+    actual_start_date : pd.Timestamp or datetime.date
+        The true start date of the vaccination schedule. Must fall within
+        the range of `schedule['dates']`.
+
+    Returns
+    -------
+    pd.DataFrame
+        A reaggregated vaccination schedule where:
+        - Doses from the actual start date up to the next Saturday are
+        redistributed evenly across that period.
+        - All subsequent rows from the original schedule are preserved.
+        - Returned DataFrame is sorted by 'dates'.
+
+    Raises
+    ------
+    ValueError
+        If `actual_start_date` is earlier than the first date or later
+        than the last date in `schedule['dates']`.
+    """
+    # Normalize type
+    actual_start_date = pd.Timestamp(actual_start_date)
+
+    # Validate actual start dates to fit
+    date_min = schedule["dates"].min()
+    date_max = schedule["dates"].max()
+    if not (date_min <= actual_start_date <= date_max):
+        err_msg = f"Start date must be between {date_min} and {date_max}"
+        raise ValueError(err_msg)
+
+    # Calculate next saturday
+    days_until_saturday = (5 - actual_start_date.weekday()) % 7
+    if days_until_saturday == 0:  # If actual start date is Saturday
+        days_until_saturday = 7
+    next_saturday = actual_start_date + pd.Timedelta(days=days_until_saturday)
+
+    # Get age groups
+    # e.g. ['0-4', '5-17', '18-49', '50-64', '65+']
+    age_groups = [c for c in schedule.columns if "-" in c or "+" in c]
+
+    # Aggregate doses for the period before the next Saturday
+    before_saturday = schedule.query("dates < @next_saturday")
+    aggregated_doses = before_saturday[age_groups].sum(axis=0)
+
+    # Create a new date range for the redistribution period
+    new_dates = pd.date_range(start=actual_start_date, end=next_saturday, freq="D")
+    num_days = len(new_dates)
+
+    redistributed_data = []
+
+    # Redistribute doses across the new date range
+    for age_group in age_groups:
+        total_doses = aggregated_doses[age_group]
+
+        # Calculate daily base doses and reminder to keep the total dose consistent.
+        daily_base = (total_doses // num_days).astype(int)
+        remainder = (total_doses % num_days).astype(int)
+
+        # List of daily doses for the new date range
+        doses = [daily_base] * num_days
+        # Remainders would be distributed at the beginning (a dose/day)
+        for i in range(remainder):
+            doses[i] += 1
+
+        redistributed_data.append(doses)
+
+    # Prepare new rows to be added to the schedule
+    new_rows = pd.DataFrame(
+        {
+            "dates": new_dates,
+            "location": schedule["location"].iloc[0],
+        }
+    )
+
+    # Add scenario column if exists
+    if "scenario" in schedule.columns:
+        new_rows["scenario"] = schedule["scenario"].iloc[0]
+
+    # Add age group columns with redistributed data
+    new_rows = new_rows.assign(**dict(zip(age_groups, redistributed_data, strict=False)))
+
+    # Combine with the original schedule
+    after_saturday = schedule.query("dates > @next_saturday")
+    reaggregated_schedule = pd.concat([new_rows, after_saturday], ignore_index=True)
+
+    return reaggregated_schedule
 
 
 def make_vaccination_probability_function(origin_compartment: str, eligible_compartments: list[str]) -> callable:
