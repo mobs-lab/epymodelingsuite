@@ -1,8 +1,8 @@
+import datetime as dt
 from collections.abc import Callable
 
 import pandas as pd
 from epydemix.model import EpiModel
-import datetime as dt
 
 
 def validate_age_groups(target_age_groups: list[str]) -> None:
@@ -686,6 +686,8 @@ def reaggregate_vaccines(schedule: pd.DataFrame, actual_start_date: dt.date | pd
     if not (date_min <= actual_start_date <= date_max):
         err_msg = f"Start date must be between {date_min} and {date_max}"
         raise ValueError(err_msg)
+    if date_min == actual_start_date:
+        return schedule
 
     # Calculate next saturday
     days_until_saturday = (5 - actual_start_date.weekday()) % 7

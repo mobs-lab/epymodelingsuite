@@ -1,8 +1,11 @@
 ### school_closures.py
 # Functions for calculating and adding school closure interventions to an epydemix EpiModel
 import datetime as dt
+import logging
 
 from epydemix import EpiModel
+
+logger = logging.getLogger(__name__)
 
 
 def make_school_closure_dict(
@@ -48,7 +51,7 @@ def make_school_closure_dict(
 
     ### Determine closures for given years from school calendar data
 
-    print("Calculating closures from school calendars...\n")
+    logger.info("Calculating closures from school calendars...\n")
 
     # Iterate through years
     for year in years:
@@ -169,7 +172,7 @@ def make_school_closure_dict(
     ### Combine all state school closures for total US model, but don't add yet
     # Based on https://github.com/kwovadis/merge_overlapping_pandas_intervals
 
-    print("Merging school closures for total US model...\n")
+    logger.info("Merging school closures for total US model...\n")
 
     # Make a df from the closure dict
     closure_df = pd.DataFrame([_ for sublist in list(closure_dict.values()) for _ in sublist])
@@ -207,7 +210,7 @@ def make_school_closure_dict(
 
     ### Add all state and national holidays, check that holidays are not falling within previously defined school closures
 
-    print("Adding state and national holidays...\n")
+    logger.info("Adding state and national holidays...\n")
 
     # Helper for determining whether a date falls between two other dates
     def date_in_range(start: dt.date, end: dt.date, comp: dt.date) -> bool:
@@ -239,13 +242,13 @@ def make_school_closure_dict(
     # Add the US closures set to the closure dict
     closure_dict["US"] = us_closures
 
-    print("School closures computed.\n")
+    logger.info("School closures computed.\n")
     return closure_dict
 
 
 def add_school_closure_interventions(
     model: EpiModel, closure_dict: dict[str, set[tuple[dt.date, dt.date, str]]], reduction_factor: int
-) -> None:
+) -> EpiModel:
     """
     Add school closure interventions to a model. Called for effect.
 
@@ -259,12 +262,7 @@ def add_school_closure_interventions(
     -------
             None
     """
-    import copy
-
     from .utils import convert_location_name_format
-
-    # Make a deep copy of the model to avoid modifying the original
-    model = copy.deepcopy(model)
 
     # Get the school closures that apply to the location/population of the model
     closures = closure_dict[convert_location_name_format(model.population.name, "abbreviation")]
@@ -281,4 +279,6 @@ def add_school_closure_interventions(
         for closure in closures
     ]
 
-    print(f"School closure interventions added to model for {model.population.name}\n")
+    logger.info(f"School closure interventions added to model for {model.population.name}\n")
+
+    return model

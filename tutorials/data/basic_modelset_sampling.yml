@@ -1,0 +1,26 @@
+modelset:
+  meta: ...
+  population_names:
+    - all
+  sampling:
+    samplers:
+      - type: grid
+        variables:
+          - start_date
+          - I
+      - type: LHS
+        n_samples: 100
+        variables:
+          - beta
+          - eps
+    start_date:
+      ...
+    compartments:
+      # always use int for 'count' and float for 'proportion', so don't need 'type'
+      I:
+    parameters:
+      beta:
+        distribution:
+          ...
+      eps:
+        ...
