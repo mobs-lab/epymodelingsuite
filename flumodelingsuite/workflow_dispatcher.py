@@ -8,6 +8,7 @@ from .calibration_validator import CalibrationConfig
 from .config_loader import *
 from .sampling_validator import SamplingConfig
 from .school_closures import make_school_closure_dict
+from .utils import get_location_codebook
 from .vaccinations import reaggregate_vaccines, scenario_to_epydemix
 
 # ===== Helpers =====
@@ -57,7 +58,7 @@ def wf_base_only(*, basemodel: BasemodelConfig, **_):
 
     # Vaccination
     if basemodel.vaccination:
-        _add_vaccination_from_config(model, basemodel.transitions, basemodel.vaccination, basemodel.timespan)
+        _add_vaccination_schedules_from_config(model, basemodel.transitions, basemodel.vaccination, basemodel.timespan)
 
     # Parameters
     _add_model_parameters_from_config(model, basemodel.parameters)
@@ -122,8 +123,6 @@ def wf_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_) ->
     """
     Sampling workflow.
     """
-    from .utils import get_location_codebook
-
     # Need validation of references between basemodel and sampling
     validate_sampling_basemodel(basemodel, sampling)
 
@@ -198,7 +197,9 @@ def wf_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_) ->
         # If start_date not sampled, add vaccination to models now
         else:
             for model in models:
-                _add_vaccination_from_config(model, basemodel.transitions, basemodel.vaccination, basemodel.timespan)
+                _add_vaccination_schedules_from_config(
+                    model, basemodel.transitions, basemodel.vaccination, basemodel.timespan
+                )
 
     # These interventions are sensitive to location but not to model parameters and can be applied
     # using the earliest start_date before further duplicating the models.
@@ -254,7 +255,7 @@ def wf_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_) ->
             if basemodel.vaccination:
                 if earliest_timespan:
                     reaggregated_vax = reaggregate_vaccines(earliest_vax, timespan.start_date)
-                    _add_vaccination_from_config(
+                    _add_vaccination_schedules_from_config(
                         m, basemodel.transitions, basemodel.vaccination, timespan, use_schedule=reaggregated_vax
                     )
 
