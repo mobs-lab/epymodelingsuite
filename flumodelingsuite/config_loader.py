@@ -11,7 +11,17 @@ import scipy
 from epydemix.model import EpiModel
 from pandas import DataFrame
 
-from .basemodel_validator import BasemodelConfig, validate_basemodel
+from .basemodel_validator import (
+    BasemodelConfig,
+    Compartment,
+    Intervention,
+    Parameter,
+    Seasonality,
+    Timespan,
+    Transition,
+    Vaccination,
+    validate_basemodel,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -207,7 +217,7 @@ def _set_population_from_config(model: EpiModel, population_name: str, age_group
     return model
 
 
-def _add_model_compartments_from_config(model: EpiModel, compartments: list) -> EpiModel:
+def _add_model_compartments_from_config(model: EpiModel, compartments: list[Compartment]) -> EpiModel:
     """
     Add compartments to the EpiModel instance from the configuration dictionary.
 
@@ -231,7 +241,7 @@ def _add_model_compartments_from_config(model: EpiModel, compartments: list) -> 
     return model
 
 
-def _add_model_transitions_from_config(model: EpiModel, transitions: list) -> EpiModel:
+def _add_model_transitions_from_config(model: EpiModel, transitions: list[Transition]) -> EpiModel:
     """
     Add transitions between compartments to the EpiModel instance from the configuration dictionary.
 
@@ -275,7 +285,7 @@ def _add_model_transitions_from_config(model: EpiModel, transitions: list) -> Ep
     return model
 
 
-def _add_model_parameters_from_config(model: EpiModel, parameters: dict) -> EpiModel:
+def _add_model_parameters_from_config(model: EpiModel, parameters: dict[str, Parameter]) -> EpiModel:
     """
     Add parameters to the EpiModel instance from the configuration dictionary.
 
@@ -320,7 +330,7 @@ def _add_model_parameters_from_config(model: EpiModel, parameters: dict) -> EpiM
         raise ValueError(f"Error adding parameters to model: {e}")
 
 
-def _calculate_parameters_from_config(model: EpiModel, parameters: dict) -> EpiModel:
+def _calculate_parameters_from_config(model: EpiModel, parameters: dict[str, Parameter]) -> EpiModel:
     """
     Add calculated parameters to the model, assuming all non-calculated parameters are already in the model.
     """
@@ -328,7 +338,11 @@ def _calculate_parameters_from_config(model: EpiModel, parameters: dict) -> EpiM
 
 
 def _add_vaccination_schedules_from_config(
-    model: EpiModel, transitions: list, vaccination: dict, timespan: dict, use_schedule: DataFrame | None
+    model: EpiModel,
+    transitions: list[Transition],
+    vaccination: Vaccination,
+    timespan: Timespan,
+    use_schedule: DataFrame | None,
 ) -> EpiModel:
     """
     Add transitions between compartments due to vaccination to the EpiModel instance from the configuration dictionary.
@@ -393,7 +407,9 @@ def _add_vaccination_schedules_from_config(
     return model
 
 
-def _add_school_closure_intervention_from_config(model: EpiModel, interventions: list, closure_dict: dict) -> EpiModel:
+def _add_school_closure_intervention_from_config(
+    model: EpiModel, interventions: list[Intervention], closure_dict: dict
+) -> EpiModel:
     """
     Apply a school closure intervention to the EpiModel instance.
 
@@ -427,14 +443,14 @@ def _add_school_closure_intervention_from_config(model: EpiModel, interventions:
     return model
 
 
-def _add_contact_matrix_interventions_from_config(model: EpiModel, interventions: list) -> EpiModel:
+def _add_contact_matrix_interventions_from_config(model: EpiModel, interventions: list[Intervention]) -> EpiModel:
     """
     Apply contact matrix interventions.
     """
     return model
 
 
-def _add_seasonality_from_config(model: EpiModel, seasonality: dict, timespan: dict) -> EpiModel:
+def _add_seasonality_from_config(model: EpiModel, seasonality: Seasonality, timespan: Timespan) -> EpiModel:
     """
     Add seasonally varying transmission rate to the EpiModel from the configuration dictionary.
 
@@ -508,7 +524,7 @@ def _add_seasonality_from_config(model: EpiModel, seasonality: dict, timespan: d
     return model
 
 
-def _add_parameter_interventions_from_config(model: EpiModel, interventions: list) -> EpiModel:
+def _add_parameter_interventions_from_config(model: EpiModel, interventions: list[Intervention]) -> EpiModel:
     """
     Apply parameter interventions.
     """
