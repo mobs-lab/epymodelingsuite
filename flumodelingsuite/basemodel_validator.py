@@ -337,6 +337,7 @@ class BaseEpiModel(BaseModel):
         if sampled_vars and calibrated_vars:
             msg = f"Cannot mix sampling and calibration workflows.\nDeclared sampled variables: {sampled_vars}\nDeclared calibrated variables: {calibrated_vars}"
             raise ValueError(msg)
+        return m
 
     @field_validator("interventions")
     def enforce_single_school_closure(cls, v: list[Intervention], info: Any) -> list[Intervention]:
