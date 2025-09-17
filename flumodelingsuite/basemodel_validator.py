@@ -315,8 +315,32 @@ class BaseEpiModel(BaseModel):
                 assert len(p.values) == n_age_groups, "Age varying parameters must match population age structure."
         return m
 
+    @model_validator(mode="after")
+    def disallow_mixing_sampling_calibration(cls, m: "BaseEpiModel") -> "BaseEpiModel":
+        """Disallow mixing sampling and calibration workflows"""
+        sampled_vars = []
+        calibrated_vars = []
+        if m.timespan.start_date == "sampled":
+            sampled_vars.append("start_date")
+        elif m.timespan.start_date == "calibrated":
+            calibrated_vars.append("start_date")
+        for compartment in m.compartments:
+            if compartment.init == "sampled":
+                sampled_vars.append(compartment.id)
+            elif compartment.init == "calibrated":
+                calibrated_vars.append(compartment.id)
+        for name, param in m.parameters.items():
+            if param.type == "sampled":
+                sampled_vars.append(name)
+            elif param.type == "calibrated":
+                calibrated_vars.append(name)
+        if sampled_vars and calibrated_vars:
+            msg = f"Cannot mix sampling and calibration workflows.\nDeclared sampled variables: {sampled_vars}\nDeclared calibrated variables: {calibrated_vars}"
+            raise ValueError(msg)
+
     @field_validator("interventions")
     def enforce_single_school_closure(cls, v: list[Intervention], info: Any) -> list[Intervention]:
+        """Enforce that school closure intervention is applied only once."""
         if [i.type for i in v].count("school_closure") > 1:
             raise ValueError("More than one school_closure intervention was provided, maximum is 1")
         return v
