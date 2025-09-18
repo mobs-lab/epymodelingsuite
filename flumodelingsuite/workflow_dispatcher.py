@@ -1,12 +1,14 @@
 import copy
 
 from epydemix.model import EpiModel
+from numpy import float64, int64, ndarray
 
 from .basemodel_validator import BasemodelConfig, Parameter, Timespan
 from .calibration_validator import CalibrationConfig
 from .config_loader import *
 from .sampling_validator import SamplingConfig
 from .school_closures import make_school_closure_dict
+from .utils import get_location_codebook
 from .vaccinations import reaggregate_vaccines, scenario_to_epydemix
 
 # ===== Helpers =====
@@ -56,7 +58,7 @@ def wf_base_only(*, basemodel: BasemodelConfig, **_):
 
     # Vaccination
     if basemodel.vaccination:
-        _add_vaccination_from_config(model, basemodel.transitions, basemodel.vaccination, basemodel.timespan)
+        _add_vaccination_schedules_from_config(model, basemodel.transitions, basemodel.vaccination, basemodel.timespan)
 
     # Parameters
     _add_model_parameters_from_config(model, basemodel.parameters)
@@ -86,9 +88,37 @@ def wf_base_only(*, basemodel: BasemodelConfig, **_):
     if basemodel.seasonality:
         _add_seasonality_from_config(model, basemodel.seasonality, basemodel.timespan)
 
-    # TODO: initial conditions and simulations
+    # Initial conditions
+    compartment_inits = {}
+    # Initialize compartments with counts
+    compartment_inits.update(
+        {
+            compartment.id: compartment.init
+            for compartment in basemodel.compartments
+            if isinstance(compartment.init, (int, float, int64, float64)) and compartment.init >= 1
+        }
+    )
+    # Initialize compartments with proportions
+    compartment_inits.update(
+        {
+            compartment.id: compartment.init * model.population.Nk
+            for compartment in basemodel.compartments
+            if isinstance(compartment.init, (int, float, int64, float64)) and compartment.init < 1
+        }
+    )
+    # Initialize default compartments
+    default_compartments = [compartment for compartment in basemodel.compartments if compartment.init == "default"]
+    sum_age_structured = sum([sum(vals) for vals in compartment_inits.values() if isinstance(vals, ndarray)])
+    sum_no_age = sum([val for val in compartment_inits.values() if isinstance(val, (int, float, int64, float64))])
+    remaining = sum(model.population.Nk) - sum_age_structured - sum_no_age
+    compartment_inits.update(
+        {compartment.id: remaining / len(default_compartments) for compartment in default_compartments}
+    )
 
-    return {"workflow": "base_only", "model": model}
+    if not compartment_inits:
+        compartment_inits = None
+
+    return {"workflow": "base_only", "model": model, "compartment_inits": compartment_inits}
 
 
 @register({"basemodel", "sampling"})
@@ -96,8 +126,6 @@ def wf_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_) ->
     """
     Sampling workflow.
     """
-    from .utils import get_location_codebook
-
     # Need validation of references between basemodel and sampling
     validate_sampling_basemodel(basemodel, sampling)
 
@@ -172,7 +200,9 @@ def wf_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_) ->
         # If start_date not sampled, add vaccination to models now
         else:
             for model in models:
-                _add_vaccination_from_config(model, basemodel.transitions, basemodel.vaccination, basemodel.timespan)
+                _add_vaccination_schedules_from_config(
+                    model, basemodel.transitions, basemodel.vaccination, basemodel.timespan
+                )
 
     # These interventions are sensitive to location but not to model parameters and can be applied
     # using the earliest start_date before further duplicating the models.
@@ -201,6 +231,7 @@ def wf_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_) ->
                 _add_contact_matrix_interventions_from_config(model, basemodel.interventions)
 
     # Create models with sampled/calculated parameters, apply vaccination and interventions
+    compartment_inits = []
     final_models = []
     for model in models:
         for varset in sampled_vars:
@@ -227,7 +258,7 @@ def wf_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_) ->
             if basemodel.vaccination:
                 if earliest_timespan:
                     reaggregated_vax = reaggregate_vaccines(earliest_vax, timespan.start_date)
-                    _add_vaccination_from_config(
+                    _add_vaccination_schedules_from_config(
                         m, basemodel.transitions, basemodel.vaccination, timespan, use_schedule=reaggregated_vax
                     )
 
@@ -240,13 +271,62 @@ def wf_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_) ->
             if basemodel.seasonality:
                 _add_seasonality_from_config(m, basemodel.seasonality, timespan)
 
-            # TODO: initial conditions
+            # Initial conditions
+            compartment_init = {}
+            # Initialize non-sampled compartments with counts
+            compartment_init.update(
+                {
+                    compartment.id: compartment.init
+                    for compartment in basemodel.compartments
+                    if isinstance(compartment.init, (int, float, int64, float64)) and compartment.init >= 1
+                }
+            )
+            # Initialize non-sampled compartments with proportions
+            compartment_init.update(
+                {
+                    compartment.id: compartment.init * m.population.Nk
+                    for compartment in basemodel.compartments
+                    if isinstance(compartment.init, (int, float, int64, float64)) and compartment.init < 1
+                }
+            )
+            # Initialize sampled compartments
+            if varset.get("compartments"):
+                # Counts
+                compartment_init.update(
+                    {
+                        k: v
+                        for k, v in varset["compartments"].items()
+                        if isinstance(v, (int, float, int64, float64)) and v >= 1
+                    }
+                )
+                # Proportions
+                compartment_init.update(
+                    {
+                        k: v * m.population.Nk
+                        for k, v in varset["compartments"].items()
+                        if isinstance(v, (int, float, int64, float64)) and v < 1
+                    }
+                )
+            # Initialize default compartments
+            default_compartments = [
+                compartment for compartment in basemodel.compartments if compartment.init == "default"
+            ]
+            sum_age_structured = sum([sum(vals) for vals in compartment_init.values() if isinstance(vals, ndarray)])
+            sum_no_age = sum(
+                [val for val in compartment_init.values() if isinstance(val, (int, float, int64, float64))]
+            )
+            remaining = sum(m.population.Nk) - sum_age_structured - sum_no_age
+            compartment_init.update(
+                {compartment.id: remaining / len(default_compartments) for compartment in default_compartments}
+            )
+
+            if not compartment_init:
+                compartment_init = None
 
             final_models.append(m)
+            compartment_inits.append(compartment_init)
 
-    # TODO: simulations
-
-    return {"workflow": "sampling", "models": final_models}
+    return {"workflow": "sampling", "models": final_models, "compartment_inits": compartment_inits}
 
 
 @register({"basemodel", "calibration"})

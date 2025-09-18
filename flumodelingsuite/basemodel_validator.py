@@ -33,6 +33,12 @@ class Timespan(BaseModel):
             raise ValueError("end_date must be after start_date")
         return v
 
+    @field_validator("delta_t")
+    def check_delta_t(cls, v: float) -> float | int:
+        """Ensure delta_t > 0"""
+        assert v > 0, f"Provided delta_t={v} must be greater than 0."
+        return v
+
 
 class Simulation(BaseModel):
     """Simulation settings to pass to epydemix."""
@@ -56,7 +62,7 @@ class Population(BaseModel):
     )
 
     @field_validator("name")
-    def validate_name(cls, v):
+    def validate_name(cls, v: str):
         return validate_iso3166(v)
 
 
@@ -73,6 +79,12 @@ class Compartment(BaseModel):
     id: str = Field(..., description="Unique identifier for the compartment.")
     label: str | None = Field(None, description="Human-readable label for the compartment.")
     init: InitCompartmentEnum | float | int | None = Field(None, description="Initial conditions for compartment.")
+
+    @field_validator("init")
+    def enforce_nonnegative_init(cls, v: float, info: Any) -> float | int:
+        """Enforce that compartment initialization is non-negative"""
+        assert v >= 0, f"Negative compartment initialization {v} received for compartment {info.data.get('id')}"
+        return v
 
 
 class Transition(BaseModel):
@@ -217,9 +229,18 @@ class Seasonality(BaseModel):
 
     @field_validator("seasonality_min_date")
     def check_seasonality_dates(cls, v: date, info: Any) -> date:
+        """Ensure date of seasonality trough is after date of seasonality peak."""
         max_date = info.data.get("seasonality_max_date")
         if max_date and v < max_date:
             raise ValueError("seasonality_min_date must be after seasonality_max_date")
+        return v
+
+    @field_validator("min_value")
+    def check_scaling_minimum(cls, v: float, info: Any) -> float:
+        """Ensure minimum post-scaling seasonal parameter value is lesser than maximum value."""
+        max_val = info.data.get("max_value")
+        if max_val and v > max_val:
+            raise ValueError("Seasonality min_value must be lesser than max_value")
         return v
 
 
@@ -234,16 +255,28 @@ class Intervention(BaseModel):
         contact_matrix = "contact_matrix"
 
     type: InterventionTypeEnum
-    reduction_factor: float | None = Field(None, description="Reduction factor for interventions.")
+    scaling_factor: float = Field(..., description="Reduction factor for interventions.")
     target_parameter: str | None = Field(
         None, description="Target parameter for interventions. Only required for 'parameter' interventions."
     )
-    start_date: date | None = Field(
-        None, description="Start date of intervention. Only required for 'parameter' interventions."
-    )
-    end_date: date | None = Field(
-        None, description="End date of intervention. Only required for 'parameter' interventions."
-    )
+    start_date: date | None = Field(None, description="Start date of 'parameter' or 'contact_matrix' intervention.")
+    end_date: date | None = Field(None, description="End date of 'parameter' or 'contact_matrix' intervention.")
+
+    @field_validator("scaling_factor")
+    def check_scaling_factor(cls, v: float) -> float:
+        """Ensure scaling_factor >= 0."""
+        assert v >= 0, f"Provided scaling_factor={v} must be >= 0."
+        return v
+
+    @model_validator(mode="after")
+    def check_intervention_fields(cls, m: "Intervention") -> "Intervention":
+        """Ensure intervention configuration is consistent."""
+        if m.type == "parameter" and not m.target_parameter:
+            raise ValueError("'parameter' intervention is missing 'target_parameter'.")
+        if m.type == "parameter" or m.type == "contact_matrix":
+            assert start_date and end_date, f"'{m.type}' intervention must have 'start_date' and 'end_date'."
+        # TODO parameter override, parameter scaling
+        return m
 
 
 class BaseEpiModel(BaseModel):
@@ -306,6 +339,24 @@ class BaseEpiModel(BaseModel):
         return m
 
     @model_validator(mode="after")
+    def check_seasonality_refs(cls, m: "BaseEpiModel") -> "BaseEpiModel":
+        """Ensure that seasonality target parameter exists"""
+        if m.seasonality:
+            assert m.target_parameter in m.parameters.keys(), (
+                f"Seasonality target {m.target_parameter} missing from model parameters."
+            )
+        return m
+
+    @model_validator(mode="after")
+    def check_intervention_refs(cls, m: "BaseEpiModel") -> "BaseEpiModel":
+        """Ensure that intervention target parameters exist"""
+        if m.interventions:
+            targets = [i.target_parameter for i in m.interventions if i.target_parameter]
+            for target in targets:
+                assert target in m.parameters.keys(), f"Intervention target {target} missing from model parameters."
+        return m
+
+    @model_validator(mode="after")
     def check_age_structure_refs(cls, m: "BaseEpiModel") -> "BaseEpiModel":
         """Ensure that age-varying parameters match population age structure."""
         n_age_groups = len(m.population.age_groups)
@@ -314,8 +365,41 @@ class BaseEpiModel(BaseModel):
                 assert len(p.values) == n_age_groups, "Age varying parameters must match population age structure."
         return m
 
+    @model_validator(mode="after")
+    def require_default_init(cls, m: "BaseEpiModel") -> "BaseEpiModel":
+        """If compartment initialization is provided, require at least one default compartment."""
+        inits = [c.init for c in m.compartments if c.init]
+        if inits:
+            assert inits.count("default") > 0, "Compartment initialization requires at least one default compartment."
+        return m
+
+    @model_validator(mode="after")
+    def disallow_mixing_sampling_calibration(cls, m: "BaseEpiModel") -> "BaseEpiModel":
+        """Disallow mixing sampling and calibration workflows"""
+        sampled_vars = []
+        calibrated_vars = []
+        if m.timespan.start_date == "sampled":
+            sampled_vars.append("start_date")
+        elif m.timespan.start_date == "calibrated":
+            calibrated_vars.append("start_date")
+        for compartment in m.compartments:
+            if compartment.init == "sampled":
+                sampled_vars.append(compartment.id)
+            elif compartment.init == "calibrated":
+                calibrated_vars.append(compartment.id)
+        for name, param in m.parameters.items():
+            if param.type == "sampled":
+                sampled_vars.append(name)
+            elif param.type == "calibrated":
+                calibrated_vars.append(name)
+        if sampled_vars and calibrated_vars:
+            msg = f"Cannot mix sampling and calibration workflows.\nDeclared sampled variables: {sampled_vars}\nDeclared calibrated variables: {calibrated_vars}"
+            raise ValueError(msg)
+        return m
+
     @field_validator("interventions")
-    def enforce_single_school_closure(cls, v: list[Intervention], info: Any) -> list[Intervention]:
+    def enforce_single_school_closure(cls, v: list[Intervention]) -> list[Intervention]:
+        """Enforce that school closure intervention is applied only once."""
         if [i.type for i in v].count("school_closure") > 1:
             raise ValueError("More than one school_closure intervention was provided, maximum is 1")
         return v
