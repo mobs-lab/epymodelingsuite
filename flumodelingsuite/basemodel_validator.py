@@ -255,7 +255,14 @@ class Intervention(BaseModel):
         contact_matrix = "contact_matrix"
 
     type: InterventionTypeEnum
-    scaling_factor: float = Field(..., description="Reduction factor for interventions.")
+    scaling_factor: float | None = Field(None, description="Scaling factor for interventions.")
+    override_value: float | None = Field(
+        None, description="Override value for 'parameter' intervention, alternative to scaling_factor."
+    )
+    contact_matrix_layer: str | None = Field(
+        None,
+        description="Name of layer of contact matrix to apply intervention to, e.g. 'school', 'work', 'home', or 'community'.",
+    )
     target_parameter: str | None = Field(
         None, description="Target parameter for interventions. Only required for 'parameter' interventions."
     )
@@ -271,11 +278,32 @@ class Intervention(BaseModel):
     @model_validator(mode="after")
     def check_intervention_fields(cls, m: "Intervention") -> "Intervention":
         """Ensure intervention configuration is consistent."""
-        if m.type == "parameter" and not m.target_parameter:
-            raise ValueError("'parameter' intervention is missing 'target_parameter'.")
-        if m.type == "parameter" or m.type == "contact_matrix":
-            assert start_date and end_date, f"'{m.type}' intervention must have 'start_date' and 'end_date'."
-        # TODO parameter override, parameter scaling
+        # Apply only to parameter interventions, or apply to all except parameter interventions
+        if m.type == "parameter":
+            assert m.target_parameter, "Parameter intervention is missing 'target_parameter'."
+            assert m.start_date and m.end_date, "Parameter intervention must have 'start_date' and 'end_date'."
+            assert bool(m.scaling_factor) ^ bool(m.override_value), (
+                "Parameter intervention cannot have both 'scaling_factor' and 'override_value'."
+            )
+        else:
+            assert not m.override_value, f"{m.type} intervention cannot use 'override_value'"
+        # Apply only to contact matrix interventions, or apply to all except contact matrix interventions
+        if m.type == "contact_matrix":
+            assert m.contact_matrix_layer, (
+                "Contact matrix intervention must specify 'contact_matrix_layer' to apply intervention to."
+            )
+        else:
+            assert not m.contact_matrix_layer, f"'{m.type}' intervention cannot use 'contact_matrix_layer'."
+        # Apply only to school closure intervention, or apply to all except school closure intervention
+        if m.type == "school_closure":
+            assert not m.start_date and not m.end_date, (
+                "'school_closure' intervention cannot use 'start_date' or 'end_date'."
+            )
+        else:
+            assert m.start_date and m.end_date, f"'{m.type}' intervention must have 'start_date' and 'end_date'."
+            assert m.start_date < m.end_date, (
+                f"Start date for {m.type} intervention (given {m.start_date}) cannot be later than end date (given {m.end_date})."
+            )
         return m
 
 
