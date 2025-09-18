@@ -115,6 +115,9 @@ def wf_base_only(*, basemodel: BasemodelConfig, **_):
         {compartment.id: remaining / len(default_compartments) for compartment in default_compartments}
     )
 
+    if not compartment_inits:
+        compartment_inits = None
+
     return {"workflow": "base_only", "model": model, "compartment_inits": compartment_inits}
 
 
@@ -316,6 +319,9 @@ def wf_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_) ->
             compartment_init.update(
                 {compartment.id: remaining / len(default_compartments) for compartment in default_compartments}
             )
+
+            if not compartment_init:
+                compartment_init = None
 
             final_models.append(m)
             compartment_inits.append(compartment_init)
