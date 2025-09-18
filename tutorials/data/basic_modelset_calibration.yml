@@ -1,0 +1,63 @@
+modelset:
+
+  meta:
+    description: "Vaccination scenarios for 2024"
+    author: "Flu Modeling Suite"
+    version: 1.0.0
+
+  population_names:
+    - US-MA
+    - US-NY # or 'all'
+
+  calibration:
+
+    strategy:
+      name: SMC
+      options: # strategy specific arguments in calibrate() function
+        num_particles: 100
+        num_generations: 5
+
+    # Sampler options, passed directly when initializing ABCSampler
+    distance_function: rmse # Default, but we could provide custom distance function
+    observed_data_path: data/fludata.csv
+    comparison:
+      # Distance function will calculate the difference between observed and simulated data
+      - observed: 'hospitalized' # column name from CSV
+        simulation: # we sum these transitions to compare with observed data
+          - 'Home_severe_to_Hospitalized_total'
+          - 'Home_severe_to_Hospitalized_vax_total'
+
+    start_date:
+      # For 'date' types, we set a reference date and add days sampled from a distribution
+      reference_date: 2024-10-01
+      prior:
+        type: scipy
+        name: randint
+        args:
+        - 0
+        - 30
+
+    parameters:
+      Rt:
+        prior:
+          type: scipy
+          name: uniform
+          args:
+            - 1.0
+            - 2.0
+          kwargs:
+            some_other_param: 100
+      residual_immunity:
+        prior:
+          type: scipy
+          name: uniform
+          args:
+            - 0.02
+            - 0.35
+      vaccine_effectiveness:
+        prior:
+          type: scipy
+          name: uniform
+          args:
+            - 0.01
+            - 0.5
