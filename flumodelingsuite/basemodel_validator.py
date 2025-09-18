@@ -1,8 +1,5 @@
-import logging
-
-logger = logging.getLogger(__name__)
-
-from datetime import date, today
+import datetime
+from datetime import date
 from enum import Enum
 from typing import Any
 
@@ -254,7 +251,9 @@ class BaseEpiModel(BaseModel):
 
     name: str = Field(..., description="Name of the model")
     version: str | None = Field(None, description="Version of the model")
-    date: date | None = Field(default_factory=today, description="Date of work")
+    date: datetime.date | datetime.datetime | None = Field(
+        default_factory=datetime.datetime.now(tz=datetime.timezone.utc), description="Date of work"
+    )
     description: str | None = Field(None, description="Human-readable description of the model")
     random_seed: int | None = Field(None, description="Random seed for reproducibility")
 
