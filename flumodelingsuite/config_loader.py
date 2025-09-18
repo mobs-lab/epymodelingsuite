@@ -391,6 +391,7 @@ def _add_vaccination_schedules_from_config(model: EpiModel, config: RootConfig) 
     age_groups = config.model.population.age_groups
 
     state = config.model.population.name
+    state_list = [state]
 
     if config.model.simulation.delta_t is not None:
         delta_t = config.model.simulation.delta_t
@@ -424,7 +425,7 @@ def _add_vaccination_schedules_from_config(model: EpiModel, config: RootConfig) 
                 target_age_groups=age_groups,
                 delta_t=delta_t,
                 output_filepath=None,
-                state=state,
+                states=state_list,
             )
             logger.info(f"Created vaccination schedule from scenario data at {scenario_data_path}")
         except Exception as e:
