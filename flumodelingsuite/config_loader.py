@@ -11,7 +11,19 @@ import scipy
 from epydemix.model import EpiModel
 from pandas import DataFrame
 
-from .basemodel_validator import BasemodelConfig, validate_basemodel
+from .basemodel_validator import (
+    BasemodelConfig,
+    Compartment,
+    Intervention,
+    Parameter,
+    Seasonality,
+    Timespan,
+    Transition,
+    Vaccination,
+    validate_basemodel,
+)
+from .calibration_validator import CalibrationConfig, validate_calibration
+from .sampling_validator import SamplingConfig, validate_sampling
 
 logger = logging.getLogger(__name__)
 
@@ -207,7 +219,7 @@ def _set_population_from_config(model: EpiModel, population_name: str, age_group
     return model
 
 
-def _add_model_compartments_from_config(model: EpiModel, compartments: list) -> EpiModel:
+def _add_model_compartments_from_config(model: EpiModel, compartments: list[Compartment]) -> EpiModel:
     """
     Add compartments to the EpiModel instance from the configuration dictionary.
 
@@ -231,7 +243,7 @@ def _add_model_compartments_from_config(model: EpiModel, compartments: list) -> 
     return model
 
 
-def _add_model_transitions_from_config(model: EpiModel, transitions: list) -> EpiModel:
+def _add_model_transitions_from_config(model: EpiModel, transitions: list[Transition]) -> EpiModel:
     """
     Add transitions between compartments to the EpiModel instance from the configuration dictionary.
 
@@ -275,7 +287,7 @@ def _add_model_transitions_from_config(model: EpiModel, transitions: list) -> Ep
     return model
 
 
-def _add_model_parameters_from_config(model: EpiModel, parameters: dict) -> EpiModel:
+def _add_model_parameters_from_config(model: EpiModel, parameters: dict[str, Parameter]) -> EpiModel:
     """
     Add parameters to the EpiModel instance from the configuration dictionary.
 
@@ -320,7 +332,7 @@ def _add_model_parameters_from_config(model: EpiModel, parameters: dict) -> EpiM
         raise ValueError(f"Error adding parameters to model: {e}")
 
 
-def _calculate_parameters_from_config(model: EpiModel, parameters: dict) -> EpiModel:
+def _calculate_parameters_from_config(model: EpiModel, parameters: dict[str, Parameter]) -> EpiModel:
     """
     Add calculated parameters to the model, assuming all non-calculated parameters are already in the model.
     """
@@ -328,7 +340,11 @@ def _calculate_parameters_from_config(model: EpiModel, parameters: dict) -> EpiM
 
 
 def _add_vaccination_schedules_from_config(
-    model: EpiModel, transitions: list, vaccination: dict, timespan: dict, use_schedule: DataFrame | None
+    model: EpiModel,
+    transitions: list[Transition],
+    vaccination: Vaccination,
+    timespan: Timespan,
+    use_schedule: DataFrame | None,
 ) -> EpiModel:
     """
     Add transitions between compartments due to vaccination to the EpiModel instance from the configuration dictionary.
@@ -393,7 +409,9 @@ def _add_vaccination_schedules_from_config(
     return model
 
 
-def _add_school_closure_intervention_from_config(model: EpiModel, interventions: list, closure_dict: dict) -> EpiModel:
+def _add_school_closure_intervention_from_config(
+    model: EpiModel, interventions: list[Intervention], closure_dict: dict
+) -> EpiModel:
     """
     Apply a school closure intervention to the EpiModel instance.
 
@@ -418,23 +436,46 @@ def _add_school_closure_intervention_from_config(model: EpiModel, interventions:
     # Apply the intervention
     try:
         add_school_closure_interventions(
-            model=model, closure_dict=closure_dict, reduction_factor=intervention.reduction_factor
+            model=model, closure_dict=closure_dict, reduction_factor=intervention.scaling_factor
         )
-        logger.info(f"Applied school closure intervention with reduction factor: {intervention.reduction_factor}")
+        logger.info(f"Applied school closure intervention with reduction factor: {intervention.scaling_factor}")
     except Exception as e:
         raise ValueError(f"Error applying school closure intervention {intervention}:\n{e}")
 
     return model
 
 
-def _add_contact_matrix_interventions_from_config(model: EpiModel, interventions: list) -> EpiModel:
+def _add_contact_matrix_interventions_from_config(model: EpiModel, interventions: list[Intervention]) -> EpiModel:
     """
     Apply contact matrix interventions.
     """
+    # Extract interventions
+    cm_invs = [i for i in interventions if i.type == "contact_matrix"]
+
+    for i in cm_invs:
+        # Ensure layer is present
+        assert i.contact_matrix_layer in model.population.layers, (
+            f"Contact matrix intervention cannot use layer '{i.contact_matrix_layer}'. Available layers are {model.population.layers}."
+        )
+
+        # Apply the intervention
+        try:
+            model.add_intervention(
+                layer_name=i.contact_matrix_layer,
+                start_date=i.start_date,
+                end_date=i.end_date,
+                reduction_factor=i.scaling_factor,
+            )
+            logger.info(
+                f"Applied contact matrix intervention to layer '{i.contact_matrix_layer}' with scaling factor {i.scaling_factor}."
+            )
+        except Exception as e:
+            raise ValueError(f"Error applying contact matrix intervention {i}:\n{e}")
+
     return model
 
 
-def _add_seasonality_from_config(model: EpiModel, seasonality: dict, timespan: dict) -> EpiModel:
+def _add_seasonality_from_config(model: EpiModel, seasonality: Seasonality, timespan: Timespan) -> EpiModel:
     """
     Add seasonally varying transmission rate to the EpiModel from the configuration dictionary.
 
@@ -508,7 +549,7 @@ def _add_seasonality_from_config(model: EpiModel, seasonality: dict, timespan: d
     return model
 
 
-def _add_parameter_interventions_from_config(model: EpiModel, interventions: list) -> EpiModel:
+def _add_parameter_interventions_from_config(model: EpiModel, interventions: list[Intervention]) -> EpiModel:
     """
     Apply parameter interventions.
     """
@@ -542,10 +583,45 @@ def load_basemodel_config_from_file(path: str) -> BasemodelConfig:
 def load_sampling_config_from_file(path: str) -> SamplingConfig:
     """
     Load sampling configuration YAML from the given path and validate against the schema.
+
+    Parameters
+    ----------
+            path (str): The file path to the YAML configuration file.
+
+    Returns
+    -------
+            SamplingConfig: The validated configuration object.
     """
+    from pathlib import Path
+
+    import yaml
+
+    with Path(path).open() as f:
+        raw = yaml.safe_load(f)
+
+    root = validate_sampling(raw)
+    logger.info("Sampling configuration loaded successfully.")
+    return root
 
 
 def load_calibration_config_from_file(path: str) -> CalibrationConfig:
+    """Load calibration configuration YAML from the given path and validate against the schema.
+
+    Parameters
+    ----------
+            path (str): The file path to the YAML configuration file.
+
+    Returns
+    -------
+            CalibrationConfig: The validated configuration object.
     """
-    Load calibration configuration YAML from the given path and validate against the schema.
-    """
+    from pathlib import Path
+
+    import yaml
+
+    with Path(path).open() as f:
+        raw = yaml.safe_load(f)
+
+    root = validate_calibration(raw)
+    logger.info("Calibration configuration loaded successfully.")
+    return root

@@ -8,6 +8,8 @@ model:
     start_date: "2024-08-05" # YYYY-MM-DD
     end_date: "2025-08-05" # YYYY-MM-DD
     delta_t: 0.2
+    n_sims: 100 # Number of simulation run for a single model
+    resample_frequency: D # This follows https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#period-aliases Other options include 'h', 'min', 'W', 'M' etc.
 
   random_seed: 42
 
@@ -23,14 +25,15 @@ model:
   compartments:
     - id: S
       label: "Susceptible"
-      is_clinical: true
-      is_traveller: true
+      default: true # The remainder of the population set in initial condition goes to the 'default' compartment
+      initial_condition: 0.8 # float or 'sampled', defaults to 0 if not specified
 
     - id: S_vax
       label: "Susceptible (vaccinated)"
 
     - id: L
       label: "Latent"
+      initial_condition: 0.2
 
     - id: L_vax
       label: "Latent (vaccinated)"

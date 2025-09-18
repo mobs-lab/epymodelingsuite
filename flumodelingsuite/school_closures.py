@@ -247,7 +247,7 @@ def make_school_closure_dict(
 
 
 def add_school_closure_interventions(
-    model: EpiModel, closure_dict: dict[str, set[tuple[dt.date, dt.date, str]]], reduction_factor: int
+    model: EpiModel, closure_dict: dict[str, set[tuple[dt.date, dt.date, str]]], reduction_factor: float
 ) -> EpiModel:
     """
     Add school closure interventions to a model. Called for effect.
