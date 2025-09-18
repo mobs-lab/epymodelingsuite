@@ -11,8 +11,6 @@ import scipy
 from epydemix.model import EpiModel
 from pandas import DataFrame
 
-from .calibration_validator import CalibrationConfig, validate_calibration
-from .sampling_validator import SamplingConfig, validate_sampling
 from .basemodel_validator import (
     BasemodelConfig,
     Compartment,
@@ -24,6 +22,8 @@ from .basemodel_validator import (
     Vaccination,
     validate_basemodel,
 )
+from .calibration_validator import CalibrationConfig, validate_calibration
+from .sampling_validator import SamplingConfig, validate_sampling
 
 logger = logging.getLogger(__name__)
 
@@ -436,9 +436,9 @@ def _add_school_closure_intervention_from_config(
     # Apply the intervention
     try:
         add_school_closure_interventions(
-            model=model, closure_dict=closure_dict, reduction_factor=intervention.reduction_factor
+            model=model, closure_dict=closure_dict, reduction_factor=intervention.scaling_factor
         )
-        logger.info(f"Applied school closure intervention with reduction factor: {intervention.reduction_factor}")
+        logger.info(f"Applied school closure intervention with reduction factor: {intervention.scaling_factor}")
     except Exception as e:
         raise ValueError(f"Error applying school closure intervention {intervention}:\n{e}")
 
@@ -449,6 +449,29 @@ def _add_contact_matrix_interventions_from_config(model: EpiModel, interventions
     """
     Apply contact matrix interventions.
     """
+    # Extract interventions
+    cm_invs = [i for i in interventions if i.type == "contact_matrix"]
+
+    for i in cm_invs:
+        # Ensure layer is present
+        assert i.contact_matrix_layer in model.population.layers, (
+            f"Contact matrix intervention cannot use layer '{i.contact_matrix_layer}'. Available layers are {model.population.layers}."
+        )
+
+        # Apply the intervention
+        try:
+            model.add_intervention(
+                layer_name=i.contact_matrix_layer,
+                start_date=i.start_date,
+                end_date=i.end_date,
+                reduction_factor=i.scaling_factor,
+            )
+            logger.info(
+                f"Applied contact matrix intervention to layer '{i.contact_matrix_layer}' with scaling factor {i.scaling_factor}."
+            )
+        except Exception as e:
+            raise ValueError(f"Error applying contact matrix intervention {i}:\n{e}")
+
     return model
 
 
@@ -600,5 +623,5 @@ def load_calibration_config_from_file(path: str) -> CalibrationConfig:
         raw = yaml.safe_load(f)
 
     root = validate_calibration(raw)
-    logger.info("Sampling configuration loaded successfully.")
+    logger.info("Calibration configuration loaded successfully.")
     return root
