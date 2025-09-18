@@ -12,6 +12,8 @@ from epydemix.model import EpiModel
 from pandas import DataFrame
 
 from .basemodel_validator import BasemodelConfig, validate_basemodel
+from .calibration_validator import CalibrationConfig, validate_calibration
+from .sampling_validator import SamplingConfig, validate_sampling
 
 logger = logging.getLogger(__name__)
 
@@ -542,10 +544,45 @@ def load_basemodel_config_from_file(path: str) -> BasemodelConfig:
 def load_sampling_config_from_file(path: str) -> SamplingConfig:
     """
     Load sampling configuration YAML from the given path and validate against the schema.
+
+    Parameters
+    ----------
+            path (str): The file path to the YAML configuration file.
+
+    Returns
+    -------
+            SamplingConfig: The validated configuration object.
     """
+    from pathlib import Path
+
+    import yaml
+
+    with Path(path).open() as f:
+        raw = yaml.safe_load(f)
+
+    root = validate_sampling(raw)
+    logger.info("Sampling configuration loaded successfully.")
+    return root
 
 
 def load_calibration_config_from_file(path: str) -> CalibrationConfig:
+    """Load calibration configuration YAML from the given path and validate against the schema.
+
+    Parameters
+    ----------
+            path (str): The file path to the YAML configuration file.
+
+    Returns
+    -------
+            CalibrationConfig: The validated configuration object.
     """
-    Load calibration configuration YAML from the given path and validate against the schema.
-    """
+    from pathlib import Path
+
+    import yaml
+
+    with Path(path).open() as f:
+        raw = yaml.safe_load(f)
+
+    root = validate_calibration(raw)
+    logger.info("Sampling configuration loaded successfully.")
+    return root

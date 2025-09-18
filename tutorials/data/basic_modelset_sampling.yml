@@ -1,26 +1,77 @@
 modelset:
-  meta: ...
+
+  meta:
+    description: "Vaccination scenarios for 2024"
+    author: "Flu Modeling Suite"
+    version: 1.0.0
+
   population_names:
-    - all
+    - US-MA
+    - US-NY # or 'all'
+
   sampling:
+
     samplers:
-      - type: grid
-        variables:
+      - strategy: grid
+        parameters:
+          - gamma
+      - strategy: LHS
+        n_samples: 100 # Total number of parameter sets we sample for. Only required for sampling methods (e.g., LHS).
+        compartments:
+          - L
+          - I_symp
+        parameters:
           - start_date
-          - I
-      - type: LHS
-        n_samples: 100
-        variables:
-          - beta
-          - eps
-    start_date:
-      ...
+          - Rt
+          - vaccine_effectiveness
+
     compartments:
-      # always use int for 'count' and float for 'proportion', so don't need 'type'
-      I:
+      L:
+        min: 0
+        max: 0.25
+      I_symp:
+        min: 0
+        max: 0.1
+
+    start_date:
+      # We set a reference date and add days sampled from a distribution
+      reference_date: 2024-10-01
+      distribution:
+        type: scipy
+        name: randint
+        args:
+          - 0
+          - 30
+
     parameters:
-      beta:
+      Rt:
         distribution:
-          ...
-      eps:
-        ...
+          type: scipy
+          name: uniform
+          args:
+            - 0.0
+            - 2.0
+          kwargs:
+            some_other_param: 100
+      vaccine_effectiveness:
+        distribution:
+          type: scipy
+          name: uniform
+          args:
+            - 0.0
+            - 0.5
+      some_parameter_with_custom_dist:
+        distribution:
+          # To allow defining custom distribution, we set the 'type'
+          type: custom
+          name: my_custom_distribution # This would be defined by inheriting rv_continuous or rv_discrete
+          kwargs:
+            arg1: 0.1
+            arg2: 0.5
+      gamma:
+        values:
+          - 0.1
+          - 0.2
+          - 0.3
+          - 0.4
+          - 0.5
