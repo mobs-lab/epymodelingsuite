@@ -489,7 +489,6 @@ def _add_seasonality_from_config(model: EpiModel, seasonality: Seasonality, time
             EpiModel: EpiModel instance with seasonal transmission applied.
     """
     import numpy as np
-    from epydemix.utils import compute_simulation_dates
 
     from .seasonality import get_seasonal_transmission_balcan
 
@@ -518,21 +517,20 @@ def _add_seasonality_from_config(model: EpiModel, seasonality: Seasonality, time
         )
     else:
         raise ValueError(f"Undefined seasonality method recieved: {seasonality.method}")
-
+    
     # Handle possibilities for previous parameter value (expressions should already be evaluated at parameter definition)
-    # If existing parameter is constant, transform to array of size (T,) with time-varying values
-    if not hasattr(previous_value, "__len__"):
-        new_value = st * np.array(previous_value)
+    T = len(st)
+    N = model.population.num_groups
+    # If existing parameter is constant, transform to array of size (T, 1) with time-varying values
+    # If existing parameter is time-varying (array of size (T, 1)), do piecewise multiplication
+    if (not hasattr(previous_value, "__len__")) or previous_value.shape == (T, ):
+        new_value = np.array(st) * np.array(previous_value)
     # If existing parameter is age-varying (array of size (1, N)), transform to array of size (T, N) with time-varying and age-varying values
-    elif previous_value.shape == (1, model.population.num_groups):
-        new_value = np.zeros(
-            (
-                len(compute_simulation_dates(start_date=timespan.start_date, end_date=timespan.end_date)),
-                model.population.num_groups,
-            )
-        )
-        for i in range(model.population.num_groups):
-            new_value[:, i] = st * np.array(previous_value[0, i])
+    # If existing parameter is time-varying and age-varying (array of size (T, N)), do piecewise for each age group
+    elif previous_value.shape == (T, N) or previous_value.shape == (1, N):
+        new_value = np.zeros((T, N))
+        for i in range(N):
+            new_value[:,i] = np.array(st) * np.array(previous_value[:, i])
     # Uncertain how this will work for priors
     else:
         raise ValueError(
@@ -549,10 +547,76 @@ def _add_seasonality_from_config(model: EpiModel, seasonality: Seasonality, time
     return model
 
 
-def _add_parameter_interventions_from_config(model: EpiModel, interventions: list[Intervention]) -> EpiModel:
+def _add_parameter_interventions_from_config(model: EpiModel, interventions: list[Intervention], timespan: Timespan) -> EpiModel:
     """
     Apply parameter interventions.
     """
+    import numpy as np
+    
+    from .seasonality import get_scaled_parameter
+
+    # Extract parameter interventions
+    param_invs = [i for i in interventions if i.type == "parameter"]
+
+    # Apply scaling interventions
+    for i in [inv for inv in param_invs if inv.scaling_factor]:
+        
+        # Target parameter must already exist
+        try:
+            previous_value = model.get_parameter(i.target_parameter)
+        except KeyError:
+            raise ValueError(f"Attempted to apply scaling factor parameter intervention to undefined parameter {i.target_parameter}")
+            
+        # Calculate rescaling vector
+        dates, st = get_scaled_parameter(
+            date_start=timespan.start_date,
+            date_stop=timespan.end_date,
+            scaling_start=i.start_date,
+            scaling_stop=i.end_date,
+            scaling_factor=i.scaling_factor,
+            delta_t=timespan.delta_t
+        )
+        
+        # Handle possibilities for previous parameter value (expressions should already be evaluated at parameter definition)
+        T = len(st)
+        N = model.population.num_groups
+        # If existing parameter is constant, transform to array of size (T, 1) with time-varying values
+        # If existing parameter is time-varying (array of size (T, 1)), do piecewise multiplication
+        if (not hasattr(previous_value, "__len__")) or previous_value.shape == (T, ):
+            new_value = np.array(st) * np.array(previous_value)
+        # If existing parameter is age-varying (array of size (1, N)), transform to array of size (T, N) with time-varying and age-varying values
+        # If existing parameter is time-varying and age-varying (array of size (T, N)), do piecewise for each age group
+        elif previous_value.shape == (T, N) or previous_value.shape == (1, N):
+            new_value = np.zeros((T, N))
+            for i in range(N):
+                new_value[:,i] = np.array(st) * np.array(previous_value[:, i])
+        # Uncertain how this will work for priors
+        else:
+            raise ValueError(
+                f"Cannot apply scaling intervention to existing parameter {i.target_parameter} = {previous_value}"
+            )
+    
+        # Overwrite parameter with new scaled values
+        try:
+            model.add_parameter(i.target_parameter, new_value)
+            logger.info(f"Added scaling intervention to parameter {i.target_parameter}")
+        except Exception as e:
+            raise ValueError(f"Error adding parameter scaling intervention to model: {e}")
+
+    # Apply override interventions.
+    # This must occur at the end to ensure override values are final parameter values.
+    for i in [inv for inv in param_invs if inv.override_value]:
+        try:
+            model.override_parameter(
+                start_date = i.start_date
+                end_date = i.end_date
+                parameter_name = i.target_parameter
+                value = i.override_value
+            )
+            logger.info(f"Added override intervention to parameter {i.target_parameter}")
+        except Exception as e:
+            raise ValueError(f"Error adding parameter override intervention to model: {e}")
+            
     return model
 
 

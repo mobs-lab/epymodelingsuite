@@ -91,6 +91,32 @@ def calc_seasonality_balcan_at_date(
     return _calc_seasonality_balcan_at_t(t_units, t_max_units, val_min, val_max, period_units)
 
 
+def calc_scaling_at_date(
+    date_t: dt.date | dt.datetime, 
+    scaling_start: dt.date | dt.datetime, 
+    scaling_stop: dt.date | dt.datetime,
+    scaling_factor: float
+) -> float:
+    """
+    Return the scaling factor if target date is within intervention period, otherwise 1.0. Used for parameter intervention.
+
+    Parameters
+    ----------
+        date_t: Target date/datetime.
+        scaling_start: Start date/datetime of intervention period.
+        scaling_stop: Stop date/datetime of intervention period.
+        scaling_factor: Scaling factor for parameter intervention.
+
+    Returns
+    -------
+        float: Scaling factor at date_t.
+    """
+    if scaling_start.date() <= date_t.date() <= scaling_stop.date():
+        return scaling_factor
+    else:
+        return 1.0
+    
+
 def generate_seasonal_values(
     date_start: dt.date | dt.datetime,
     date_stop: dt.date | dt.datetime,
@@ -151,6 +177,51 @@ def generate_seasonal_values(
 
     # Calculate values for each date
     values = [seasonality_func(d) for d in dates]
+
+    return dates, values
+
+def get_scaled_parameter(
+    date_start: dt.date | dt.datetime,
+    date_stop: dt.date | dt.datetime,
+    scaling_start: dt.date | dt.datetime, 
+    scaling_stop: dt.date | dt.datetime,
+    scaling_factor: float,
+    delta_t: float = 1.0
+) -> tuple[list[dt.date | dt.datetime], list[float]]:
+    """
+    Return scaled parameter values for the specified simulation and intervention periods.
+    This is a wrapper for calc_scaling_at_date and generate_seasonal_values().
+
+    Parameters
+    ----------
+        date_start: Reference start date/datetime where t=0 (start of simulation period).
+        date_stop: End date/datetime.
+        scaling_start: Start date/datetime of intervention period.
+        scaling_stop: Stop date/datetime of intervention period.
+        scaling_factor: Scaling factor for parameter intervention.
+        delta_t : float, default 1.0
+            Time step in days for calculating seasonality. Default 1.0 means daily.
+            Examples: 0.25 for 6-hour intervals, 1/24 for hourly, 7 for weekly.
+            
+    Returns
+    -------
+        Tuple of (dates/datetimes, values).
+    """
+    from functools import partial
+
+    scaling_calculator = partial(
+        calc_scaling_at_date,
+        scaling_start=scaling_start,
+        scaling_stop=scaling_stop,
+        scaling_factor=scaling_factor
+    )
+
+    dates, values = generate_seasonal_values(
+        date_start=date_start,
+        date_stop=date_stop,
+        seasonality_func=scaling_calculator,
+        delta_t=delta_t
+    )
 
     return dates, values
 
