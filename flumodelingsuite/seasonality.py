@@ -92,10 +92,10 @@ def calc_seasonality_balcan_at_date(
 
 
 def calc_scaling_at_date(
-    date_t: dt.date | dt.datetime, 
-    scaling_start: dt.date | dt.datetime, 
+    date_t: dt.date | dt.datetime,
+    scaling_start: dt.date | dt.datetime,
     scaling_stop: dt.date | dt.datetime,
-    scaling_factor: float
+    scaling_factor: float,
 ) -> float:
     """
     Return the scaling factor if target date is within intervention period, otherwise 1.0. Used for parameter intervention.
@@ -113,9 +113,8 @@ def calc_scaling_at_date(
     """
     if scaling_start.date() <= date_t.date() <= scaling_stop.date():
         return scaling_factor
-    else:
-        return 1.0
-    
+    return 1.0
+
 
 def generate_seasonal_values(
     date_start: dt.date | dt.datetime,
@@ -180,13 +179,14 @@ def generate_seasonal_values(
 
     return dates, values
 
+
 def get_scaled_parameter(
     date_start: dt.date | dt.datetime,
     date_stop: dt.date | dt.datetime,
-    scaling_start: dt.date | dt.datetime, 
+    scaling_start: dt.date | dt.datetime,
     scaling_stop: dt.date | dt.datetime,
     scaling_factor: float,
-    delta_t: float = 1.0
+    delta_t: float = 1.0,
 ) -> tuple[list[dt.date | dt.datetime], list[float]]:
     """
     Return scaled parameter values for the specified simulation and intervention periods.
@@ -202,7 +202,7 @@ def get_scaled_parameter(
         delta_t : float, default 1.0
             Time step in days for calculating seasonality. Default 1.0 means daily.
             Examples: 0.25 for 6-hour intervals, 1/24 for hourly, 7 for weekly.
-            
+
     Returns
     -------
         Tuple of (dates/datetimes, values).
@@ -210,17 +210,11 @@ def get_scaled_parameter(
     from functools import partial
 
     scaling_calculator = partial(
-        calc_scaling_at_date,
-        scaling_start=scaling_start,
-        scaling_stop=scaling_stop,
-        scaling_factor=scaling_factor
+        calc_scaling_at_date, scaling_start=scaling_start, scaling_stop=scaling_stop, scaling_factor=scaling_factor
     )
 
     dates, values = generate_seasonal_values(
-        date_start=date_start,
-        date_stop=date_stop,
-        seasonality_func=scaling_calculator,
-        delta_t=delta_t
+        date_start=date_start, date_stop=date_stop, seasonality_func=scaling_calculator, delta_t=delta_t
     )
 
     return dates, values
