@@ -134,19 +134,22 @@ def _safe_eval(expr: str) -> Any:
 
     Parameters
     ----------
-    expr : str
-            The expression to evaluate (e.g. "1/10" or "np.exp(-2) + 3 * np.sqrt(4)").
+        expr: The expression to evaluate (e.g. "1/10" or "np.exp(-2) + 3 * np.sqrt(4)").
 
     Returns
     -------
-    Any
-            The result of evaluating the expression. Depending on the expression, this
-            may be one of:
-              - A Python numeric type: int, float, or complex.
-              - A NumPy scalar (e.g. numpy.int64, numpy.float64).
-              - A NumPy ndarray.
-              - A SciPy sparse matrix (subclass of scipy.sparse.spmatrix).
+        The result of evaluating the expression. Depending on the expression,
+        this may be one of:
+            - A Python numeric type: int, float, or complex.
+            - A NumPy scalar (e.g. numpy.int64, numpy.float64).
+            - A NumPy ndarray.
+            - A SciPy sparse matrix (subclass of scipy.sparse.spmatrix).
 
+    Raises
+    ------
+        ValueError: If the expression contains disallowed operations or syntax.
+        SyntaxError: If the expression has invalid Python syntax.
+    
     """
     # Parse into an AST
     tree = ast.parse(expr, mode="eval")
@@ -167,11 +170,11 @@ def _parse_age_group(group_str: str) -> list:
 
     Parameters
     ----------
-            group_str (str): Age group string to parse.
+        group_str: Age group string to parse.
 
     Returns
     -------
-            list: List of individual age labels as strings.
+        List of individual age labels as strings.
     """
     if group_str.endswith("+"):
         # e.g. "65+" -> start=65, end at 84 then add "84+"
@@ -188,18 +191,19 @@ def _parse_age_group(group_str: str) -> list:
 # === Model setup functions ===
 
 
-def _set_population_from_config(model: EpiModel, population_name: str, age_groups: list) -> EpiModel:
+def _set_population_from_config(model: EpiModel, population_name: str, age_groups: list[str]) -> EpiModel:
     """
-    Set the population for the EpiModel instance from the configuration dictionary.
+    Set the population for the EpiModel instance.
 
     Parameters
     ----------
-            model (EpiModel): The EpiModel instance for which the population will be set.
-            config (RootConfig): The configuration object containing population details.
+        model: The EpiModel instance for which the population will be set.
+        population_name: Name of the population to load.
+        age_groups: List of age group strings to map.
 
     Returns
     -------
-            EpiModel: EpiModel instance with the population set.
+        EpiModel instance with the population set.
     """
     from epydemix.population import load_epydemix_population
 
@@ -221,16 +225,16 @@ def _set_population_from_config(model: EpiModel, population_name: str, age_group
 
 def _add_model_compartments_from_config(model: EpiModel, compartments: list[Compartment]) -> EpiModel:
     """
-    Add compartments to the EpiModel instance from the configuration dictionary.
+    Add compartments to the EpiModel instance.
 
     Parameters
     ----------
-            model (EpiModel): The EpiModel instance to which compartments will be added.
-            config (dict): Configuration dictionary containing compartment definitions.
+        model: The EpiModel instance to which compartments will be added.
+        compartments: List of Compartment objects containing compartment definitions.
 
     Returns
     -------
-            EpiModel: EpiModel instance with compartments added.
+        EpiModel instance with compartments added.
     """
     # Add compartments to the model
     try:
@@ -245,16 +249,16 @@ def _add_model_compartments_from_config(model: EpiModel, compartments: list[Comp
 
 def _add_model_transitions_from_config(model: EpiModel, transitions: list[Transition]) -> EpiModel:
     """
-    Add transitions between compartments to the EpiModel instance from the configuration dictionary.
+    Add transitions between compartments to the EpiModel instance.
 
     Parameters
     ----------
-            model (EpiModel): The EpiModel instance to which compartment transitions will be added.
-            config (dict): Configuration dictionary containing compartment transitions.
+        model: The EpiModel instance to which compartment transitions will be added.
+        transitions: List of Transition objects defining transitions.
 
     Returns
     -------
-            EpiModel: EpiModel instance with compartment transitions added.
+        EpiModel instance with compartment transitions added.
     """
     # Check that required attributes of model configuration are not None
     if transitions is None:
@@ -289,16 +293,16 @@ def _add_model_transitions_from_config(model: EpiModel, transitions: list[Transi
 
 def _add_model_parameters_from_config(model: EpiModel, parameters: dict[str, Parameter]) -> EpiModel:
     """
-    Add parameters to the EpiModel instance from the configuration dictionary.
+    Add parameters to the EpiModel instance.
 
     Parameters
     ----------
-            model (EpiModel): The EpiModel instance to which parameters will be added.
-            config (dict): Configuration dictionary containing model parameters.
+        model: The EpiModel instance to which parameters will be added.
+        parameters: Dictionary mapping parameter names to Parameter objects.
 
     Returns
     -------
-            EpiModel: EpiModel instance with parameters added.
+        EpiModel instance with parameters added.
     """
     from epydemix.utils import convert_to_2Darray
 
@@ -334,7 +338,16 @@ def _add_model_parameters_from_config(model: EpiModel, parameters: dict[str, Par
 
 def _calculate_parameters_from_config(model: EpiModel, parameters: dict[str, Parameter]) -> EpiModel:
     """
-    Add calculated parameters to the model, assuming all non-calculated parameters are already in the model.
+    Add calculated parameters to the EpiModel, assuming all non-calculated parameters are already in the model.
+
+    Parameters
+    ----------
+        model: The EpiModel instance to which calculated parameters will be added.
+        parameters: Dictionary mapping parameter names to Parameter objects.
+    
+    Returns
+    -------
+        EpiModel instance with calculated parameters added.
     """
     return model
 
@@ -347,16 +360,19 @@ def _add_vaccination_schedules_from_config(
     use_schedule: DataFrame | None,
 ) -> EpiModel:
     """
-    Add transitions between compartments due to vaccination to the EpiModel instance from the configuration dictionary.
+    Add transitions between compartments due to vaccination to the EpiModel instance.
 
     Parameters
     ----------
-            model (EpiModel): The EpiModel instance to which vaccination schedules will be added.
-            config (RootConfig): The configuration object containing vaccination schedule details.
+        model: The EpiModel instance to which vaccination schedules will be added.
+        transitions: List of Transition objects, including vaccination transitions.
+        vaccination: Vaccination configuration object.
+        timespan: Timespan configuration object with simulation dates.
+        use_schedule: Optional pre-loaded vaccination schedule DataFrame.
 
     Returns
     -------
-            EpiModel: EpiModel instance with vaccination schedules added.
+        EpiModel instance with vaccination schedules added.
     """
     import pandas as pd
 
@@ -417,12 +433,13 @@ def _add_school_closure_intervention_from_config(
 
     Parameters
     ----------
-            model (EpiModel): The EpiModel instance to which the intervention will be applied.
-            config (RootConfig): The configuration object containing intervention details.
+        model: The EpiModel instance to which the intervention will be applied.
+        interventions: List of Intervention objects.
+        closure_dict: Dictionary containing school closure data.
 
     Returns
     -------
-            EpiModel: EpiModel instance with the intervention applied.
+        EpiModel instance with the intervention applied.
     """
     from .school_closures import add_school_closure_interventions
 
@@ -448,6 +465,15 @@ def _add_school_closure_intervention_from_config(
 def _add_contact_matrix_interventions_from_config(model: EpiModel, interventions: list[Intervention]) -> EpiModel:
     """
     Apply contact matrix interventions.
+
+    Parameters
+    ----------
+        model: The EpiModel instance to which the intervention will be applied.
+        interventions: List of Intervention objects.
+        
+    Returns
+    -------
+        EpiModel instance with contact matrix interventions applied.
     """
     # Extract interventions
     cm_invs = [i for i in interventions if i.type == "contact_matrix"]
@@ -477,16 +503,17 @@ def _add_contact_matrix_interventions_from_config(model: EpiModel, interventions
 
 def _add_seasonality_from_config(model: EpiModel, seasonality: Seasonality, timespan: Timespan) -> EpiModel:
     """
-    Add seasonally varying transmission rate to the EpiModel from the configuration dictionary.
+    Add seasonally varying transmission rate to the EpiModel.
 
     Parameters
     ----------
-            model (EpiModel): The EpiModel instance to apply seasonality to.
-            config (RootConfig): The configuration object containing seasonality parameters.
+        model: The EpiModel instance to apply seasonality to.
+        seasonality: Seasonality configuration object.
+        timespan: Timespan configuration object with simulation dates.
 
     Returns
     -------
-            EpiModel: EpiModel instance with seasonal transmission applied.
+        EpiModel instance with seasonal transmission applied.
     """
     import numpy as np
 
@@ -549,7 +576,20 @@ def _add_seasonality_from_config(model: EpiModel, seasonality: Seasonality, time
 
 def _add_parameter_interventions_from_config(model: EpiModel, interventions: list[Intervention], timespan: Timespan) -> EpiModel:
     """
-    Apply parameter interventions.
+    Apply parameter interventions to the EpiModel instance.
+    
+    Handles both scaling factor interventions and parameter override interventions.
+    Override interventions are applied last to ensure they are the final parameter values.
+
+    Parameters
+    ----------
+        model: The EpiModel instance to apply interventions to.
+        interventions: List of Intervention objects.
+        timespan: Timespan configuration object with simulation dates.
+
+    Returns
+    -------
+        EpiModel instance with parameter interventions applied.
     """
     import numpy as np
     
@@ -626,11 +666,11 @@ def load_basemodel_config_from_file(path: str) -> BasemodelConfig:
 
     Parameters
     ----------
-            path (str): The file path to the YAML configuration file.
+        path: The file path to the YAML configuration file.
 
     Returns
     -------
-            RootConfig: The validated configuration object.
+        The validated configuration object.
     """
     from pathlib import Path
 
@@ -650,11 +690,11 @@ def load_sampling_config_from_file(path: str) -> SamplingConfig:
 
     Parameters
     ----------
-            path (str): The file path to the YAML configuration file.
+        path: The file path to the YAML configuration file.
 
     Returns
     -------
-            SamplingConfig: The validated configuration object.
+        The validated configuration object.
     """
     from pathlib import Path
 
@@ -669,15 +709,16 @@ def load_sampling_config_from_file(path: str) -> SamplingConfig:
 
 
 def load_calibration_config_from_file(path: str) -> CalibrationConfig:
-    """Load calibration configuration YAML from the given path and validate against the schema.
+    """
+    Load calibration configuration YAML from the given path and validate against the schema.
 
     Parameters
     ----------
-            path (str): The file path to the YAML configuration file.
+        path: The file path to the YAML configuration file.
 
     Returns
     -------
-            CalibrationConfig: The validated configuration object.
+        The validated configuration object.
     """
     from pathlib import Path
 
