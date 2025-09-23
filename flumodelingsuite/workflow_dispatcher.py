@@ -65,6 +65,10 @@ def wf_base_only(*, basemodel: BasemodelConfig, **_):
     if "calculated" in [p.type for p in basemodel.parameters]:
         _calculate_parameters_from_config(model, basemodel.parameters)
 
+    # Seasonality (this must occur before interventions to preserve parameter overrides)
+    if basemodel.seasonality:
+        _add_seasonality_from_config(model, basemodel.seasonality, basemodel.timespan)
+
     # Interventions
     if basemodel.interventions:
         intervention_types = [i.type for i in basemodel.interventions]
@@ -82,11 +86,7 @@ def wf_base_only(*, basemodel: BasemodelConfig, **_):
 
         # Parameter
         if "parameter" in intervention_types:
-            _add_parameter_interventions_from_config(model, basemodel.interventions)
-
-    # Seasonality
-    if basemodel.seasonality:
-        _add_seasonality_from_config(model, basemodel.seasonality, basemodel.timespan)
+            _add_parameter_interventions_from_config(model, basemodel.interventions, basemodel.timespan)
 
     # Initial conditions
     compartment_inits = {}
@@ -262,14 +262,14 @@ def wf_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_) ->
                         m, basemodel.transitions, basemodel.vaccination, timespan, use_schedule=reaggregated_vax
                     )
 
+            # Seasonality (this must occur before parameterinterventions to preserve parameter overrides)
+            if basemodel.seasonality:
+                _add_seasonality_from_config(m, basemodel.seasonality, timespan)
+
             # Parameter interventions
             if basemodel.interventions:
                 if "parameter" in intervention_types:
-                    _add_parameter_interventions_from_config(m, basemodel.interventions)
-
-            # Seasonality
-            if basemodel.seasonality:
-                _add_seasonality_from_config(m, basemodel.seasonality, timespan)
+                    _add_parameter_interventions_from_config(m, basemodel.interventions, timespan)
 
             # Initial conditions
             compartment_init = {}
