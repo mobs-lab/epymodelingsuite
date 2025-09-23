@@ -127,6 +127,27 @@ class SafeEvalVisitor(ast.NodeVisitor):
             raise ValueError("Function calls other than np.xxx or scipy.xxx are not allowed")
 
 
+class RetrieveName(ast.NodeTransformer):
+    def __init__(self, model: EpiModel):
+        self.model = model
+
+    def visit_Name(self, node):
+        if node.id not in _allowed_modules:
+            if node.id == "eigenvalue":
+                try:
+                    C = np.sum([c for _, c in self.model.population.contact_matrices.items()], axis=0)
+                    eigenvalue = np.linalg.eigvals(C).real.max()
+                    return ast.Constant(value=eigenvalue)
+                except Exception as e:
+                    raise ValueError(f"Error calculating eigenvalue of contact matrix: {e}")
+            else:
+                try:
+                    value = self.model.get_parameter(node.id)
+                    return ast.Constant(value=value)
+                except Exception as e:
+                    raise ValueError(f"Error obtaining parameter value during calculation: {e}")
+
+
 def _safe_eval(expr: str) -> Any:
     """
     Safely evaluate a numeric expression from a string, allowing literal numbers,
@@ -149,7 +170,7 @@ def _safe_eval(expr: str) -> Any:
     ------
         ValueError: If the expression contains disallowed operations or syntax.
         SyntaxError: If the expression has invalid Python syntax.
-    
+
     """
     # Parse into an AST
     tree = ast.parse(expr, mode="eval")
@@ -344,11 +365,18 @@ def _calculate_parameters_from_config(model: EpiModel, parameters: dict[str, Par
     ----------
         model: The EpiModel instance to which calculated parameters will be added.
         parameters: Dictionary mapping parameter names to Parameter objects.
-    
+
     Returns
     -------
         EpiModel instance with calculated parameters added.
     """
+    calc_params = {name: param.value for name, param in parameters.items() if param.type == "calculated"}
+    parameters_dict = {}
+    for name, expr in calc_params.items():
+        tree = ast.parse(expr, mode="eval")
+        calc_expr = ast.unparse(RetrieveName(model).visit(tree))
+        parameters_dict[name] = _safe_eval(calc_expr)
+    model.add_parameter(parameters_dict=parameters_dict)
     return model
 
 
@@ -470,7 +498,7 @@ def _add_contact_matrix_interventions_from_config(model: EpiModel, interventions
     ----------
         model: The EpiModel instance to which the intervention will be applied.
         interventions: List of Intervention objects.
-        
+
     Returns
     -------
         EpiModel instance with contact matrix interventions applied.
@@ -544,20 +572,20 @@ def _add_seasonality_from_config(model: EpiModel, seasonality: Seasonality, time
         )
     else:
         raise ValueError(f"Undefined seasonality method recieved: {seasonality.method}")
-    
+
     # Handle possibilities for previous parameter value (expressions should already be evaluated at parameter definition)
     T = len(st)
     N = model.population.num_groups
     # If existing parameter is constant, transform to array of size (T, 1) with time-varying values
     # If existing parameter is time-varying (array of size (T, 1)), do piecewise multiplication
-    if (not hasattr(previous_value, "__len__")) or previous_value.shape == (T, ):
+    if (not hasattr(previous_value, "__len__")) or previous_value.shape == (T,):
         new_value = np.array(st) * np.array(previous_value)
     # If existing parameter is age-varying (array of size (1, N)), transform to array of size (T, N) with time-varying and age-varying values
     # If existing parameter is time-varying and age-varying (array of size (T, N)), do piecewise for each age group
     elif previous_value.shape == (T, N) or previous_value.shape == (1, N):
         new_value = np.zeros((T, N))
         for i in range(N):
-            new_value[:,i] = np.array(st) * np.array(previous_value[:, i])
+            new_value[:, i] = np.array(st) * np.array(previous_value[:, i])
     # Uncertain how this will work for priors
     else:
         raise ValueError(
@@ -574,10 +602,12 @@ def _add_seasonality_from_config(model: EpiModel, seasonality: Seasonality, time
     return model
 
 
-def _add_parameter_interventions_from_config(model: EpiModel, interventions: list[Intervention], timespan: Timespan) -> EpiModel:
+def _add_parameter_interventions_from_config(
+    model: EpiModel, interventions: list[Intervention], timespan: Timespan
+) -> EpiModel:
     """
     Apply parameter interventions to the EpiModel instance.
-    
+
     Handles both scaling factor interventions and parameter override interventions.
     Override interventions are applied last to ensure they are the final parameter values.
 
@@ -592,7 +622,7 @@ def _add_parameter_interventions_from_config(model: EpiModel, interventions: lis
         EpiModel instance with parameter interventions applied.
     """
     import numpy as np
-    
+
     from .seasonality import get_scaled_parameter
 
     # Extract parameter interventions
@@ -600,13 +630,14 @@ def _add_parameter_interventions_from_config(model: EpiModel, interventions: lis
 
     # Apply scaling interventions
     for i in [inv for inv in param_invs if inv.scaling_factor]:
-        
         # Target parameter must already exist
         try:
             previous_value = model.get_parameter(i.target_parameter)
         except KeyError:
-            raise ValueError(f"Attempted to apply scaling factor parameter intervention to undefined parameter {i.target_parameter}")
-            
+            raise ValueError(
+                f"Attempted to apply scaling factor parameter intervention to undefined parameter {i.target_parameter}"
+            )
+
         # Calculate rescaling vector
         dates, st = get_scaled_parameter(
             date_start=timespan.start_date,
@@ -614,28 +645,28 @@ def _add_parameter_interventions_from_config(model: EpiModel, interventions: lis
             scaling_start=i.start_date,
             scaling_stop=i.end_date,
             scaling_factor=i.scaling_factor,
-            delta_t=timespan.delta_t
+            delta_t=timespan.delta_t,
         )
-        
+
         # Handle possibilities for previous parameter value (expressions should already be evaluated at parameter definition)
         T = len(st)
         N = model.population.num_groups
         # If existing parameter is constant, transform to array of size (T, 1) with time-varying values
         # If existing parameter is time-varying (array of size (T, 1)), do piecewise multiplication
-        if (not hasattr(previous_value, "__len__")) or previous_value.shape == (T, ):
+        if (not hasattr(previous_value, "__len__")) or previous_value.shape == (T,):
             new_value = np.array(st) * np.array(previous_value)
         # If existing parameter is age-varying (array of size (1, N)), transform to array of size (T, N) with time-varying and age-varying values
         # If existing parameter is time-varying and age-varying (array of size (T, N)), do piecewise for each age group
         elif previous_value.shape == (T, N) or previous_value.shape == (1, N):
             new_value = np.zeros((T, N))
             for i in range(N):
-                new_value[:,i] = np.array(st) * np.array(previous_value[:, i])
+                new_value[:, i] = np.array(st) * np.array(previous_value[:, i])
         # Uncertain how this will work for priors
         else:
             raise ValueError(
                 f"Cannot apply scaling intervention to existing parameter {i.target_parameter} = {previous_value}"
             )
-    
+
         # Overwrite parameter with new scaled values
         try:
             model.add_parameter(i.target_parameter, new_value)
@@ -648,15 +679,12 @@ def _add_parameter_interventions_from_config(model: EpiModel, interventions: lis
     for i in [inv for inv in param_invs if inv.override_value]:
         try:
             model.override_parameter(
-                start_date = i.start_date
-                end_date = i.end_date
-                parameter_name = i.target_parameter
-                value = i.override_value
+                start_date=i.start_date, end_date=i.end_date, parameter_name=i.target_parameter, value=i.override_value
             )
             logger.info(f"Added override intervention to parameter {i.target_parameter}")
         except Exception as e:
             raise ValueError(f"Error adding parameter override intervention to model: {e}")
-            
+
     return model
 
 
