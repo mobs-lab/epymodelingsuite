@@ -194,20 +194,20 @@ class Vaccination(BaseModel):
     def check_vax_fields(cls, m: "Vaccination") -> "Vaccination":
         """Ensure vaccination configuration is consistent."""
         assert m.origin_compartment in m.eligible_compartments, "Origin compartment must be in eligible compartments."
-        if scenario_data_path is None:
-            assert preprocessed_vaccination_data_path is not None, (
+        if m.scenario_data_path is None:
+            assert m.preprocessed_vaccination_data_path is not None, (
                 "Must provide one of scenario_data_path or preprocessed_vaccination_data_path."
             )
         else:
-            assert preprocessed_vaccination_data_path is None, (
+            assert m.preprocessed_vaccination_data_path is None, (
                 "Cannot use both scenario_data_path and preprocessed_vaccination_data_path."
             )
-        if preprocessed_vaccination_data_path is None:
-            assert scenario_data_path is not None, (
+        if m.preprocessed_vaccination_data_path is None:
+            assert m.scenario_data_path is not None, (
                 "Must provide one of scenario_data_path or preprocessed_vaccination_data_path."
             )
         else:
-            assert scenario_data_path is None, (
+            assert m.scenario_data_path is None, (
                 "Cannot use both scenario_data_path and preprocessed_vaccination_data_path."
             )
         return m
