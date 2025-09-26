@@ -108,7 +108,7 @@ class SamplingConfiguration(BaseModel):
         return m
 
 
-class Modelset(BaseModel):
+class SamplingModelset(BaseModel):
     """Modelset configuration for sampling."""
 
     meta: Meta | None = Field(None, description="Metadata")
@@ -130,7 +130,7 @@ class Modelset(BaseModel):
 class SamplingConfig(BaseModel):
     """Root configuration model."""
 
-    modelset: Modelset = Field(..., description="Modelset configuration")
+    modelset: SamplingModelset = Field(..., description="Modelset configuration")
 
 
 def validate_sampling(config: dict) -> SamplingConfig:
