@@ -29,7 +29,7 @@ class Timespan(BaseModel):
     def check_end_date(cls, v: date, info: Any) -> date:
         """Ensure end_date is not before start_date."""
         start = info.data.get("start_date")
-        if type(start) is date and v < start:
+        if isinstance(start, date) and v < start:
             raise ValueError("end_date must be after start_date")
         return v
 
