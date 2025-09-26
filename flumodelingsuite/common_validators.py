@@ -16,7 +16,7 @@ class Distribution(BaseModel):
         scipy = "scipy"
         custom = "custom"
 
-    type: str | DistributionTypeEnum = Field("scipy", description="Type of distribution ('scipy' or 'custom')")
+    type: str | DistributionTypeEnum | None = Field("scipy", description="Type of distribution ('scipy' or 'custom')")
     name: str = Field(
         ...,
         description="Name of the probability distribution. Has to match scipy class (e.g., 'norm', 'uniform', etc.) or custom distribution name",
