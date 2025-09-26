@@ -345,8 +345,8 @@ class BaseEpiModel(BaseModel):
             assert t.source in compartment_ids, f"Transition.source='{t.source}' is not a valid Compartment.id"
             assert t.target in compartment_ids, f"Transition.target='{t.target}' is not a valid Compartment.id"
             if t.type == "mediated":
-                assert t.mediators.source in compartment_ids, (
-                    f"Transition.mediators.source='{t.mediators.source}' is not a valid Compartment.id"
+                assert t.mediator in compartment_ids, (
+                    f"Transition.mediator='{t.mediator}' is not a valid Compartment.id"
                 )
         return m
 
