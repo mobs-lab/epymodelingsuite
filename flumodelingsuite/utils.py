@@ -4,7 +4,7 @@
 import pandas as pd
 import scipy.stats
 
-from .config_validator import Distribution
+from .common_validators import Distribution
 
 
 def get_population_codebook() -> pd.DataFrame:
@@ -125,7 +125,7 @@ def distribution_to_scipy(distribution: Distribution):
 
     Examples
     --------
-    >>> from flumodelingsuite.config_validator import Distribution
+    >>> from flumodelingsuite.common_validators import Distribution
     >>> dist_config = Distribution(name="norm", args=[0, 1])
     >>> scipy_dist = distribution_to_scipy(dist_config)
     >>> scipy_dist.rvs(5)  # Generate 5 random samples
@@ -134,9 +134,11 @@ def distribution_to_scipy(distribution: Distribution):
     >>> scipy_dist = distribution_to_scipy(dist_config)
     >>> scipy_dist.rvs(10)  # Generate 10 random samples from uniform distribution
     """
-    # Get the distribution class from scipy.stats
-    dist_class = getattr(scipy.stats, distribution.name)
+    if distribution.type == "scipy":
+        # Get the distribution class from scipy.stats
+        dist_class = getattr(scipy.stats, distribution.name)
 
-    # Create the distribution object with args and kwargs
-    kwargs = distribution.kwargs or {}
-    return dist_class(*distribution.args, **kwargs)
+        # Create the distribution object with args and kwargs
+        kwargs = distribution.kwargs or {}
+        dist = dist_class(*distribution.args, **kwargs)
+    return dist
