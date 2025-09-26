@@ -371,8 +371,8 @@ class BaseEpiModel(BaseModel):
     def check_seasonality_refs(cls, m: "BaseEpiModel") -> "BaseEpiModel":
         """Ensure that seasonality target parameter exists"""
         if m.seasonality:
-            assert m.target_parameter in m.parameters.keys(), (
-                f"Seasonality target {m.target_parameter} missing from model parameters."
+            assert m.seasonality.target_parameter in m.parameters.keys(), (
+                f"Seasonality target {m.seasonality.target_parameter} missing from model parameters."
             )
         return m
 
