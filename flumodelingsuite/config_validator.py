@@ -8,6 +8,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from .common_validators import Distribution
+
 
 # ----------------------------------------
 # Schema models
@@ -174,22 +176,6 @@ class Seasonality(BaseModel):
         if max_date and v < max_date:
             raise ValueError("seasonality_min_date must be after seasonality_max_date")
         return v
-
-
-class Distribution(BaseModel):
-    """Data model to define a probability distribution."""
-
-    name: str = Field(
-        ...,
-        description="Name of the probability distribution. Has to match scipy class (e.g., 'norm', 'uniform', etc.)",
-    )
-    args: list[float] = Field(
-        default_factory=list,
-        description="Positional arguments for the scipy distribution initializer.  (e.g., [0, 1] for uniform distribution from 0 to 1)",
-    )
-    kwargs: dict[str, Any] | None = Field(
-        default_factory=dict, description="Keyword arguments for the scipy distribution initializer."
-    )
 
 
 class ValueTypeEnum(str, Enum):
