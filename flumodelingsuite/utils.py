@@ -23,8 +23,6 @@ def get_location_codebook() -> pd.DataFrame:
     import os
     import sys
 
-    import pandas as pd
-
     filename = os.path.join(os.path.dirname(sys.modules[__name__].__file__), "data/location_codebook.csv")
     location_codebook = pd.read_csv(filename)
 
