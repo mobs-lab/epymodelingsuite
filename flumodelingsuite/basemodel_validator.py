@@ -283,7 +283,7 @@ class Intervention(BaseModel):
             assert m.target_parameter, "Parameter intervention is missing 'target_parameter'."
             assert m.start_date and m.end_date, "Parameter intervention must have 'start_date' and 'end_date'."
             assert bool(m.scaling_factor) ^ bool(m.override_value), (
-                "Parameter intervention cannot have both 'scaling_factor' and 'override_value'."
+                "Parameter intervention must have exactly one of 'scaling_factor' or 'override_value'."
             )
         else:
             assert not m.override_value, f"{m.type} intervention cannot use 'override_value'"
