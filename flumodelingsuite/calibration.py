@@ -59,6 +59,8 @@ def calibrate(
         Function to calculate transmission rate from R0
     vax_sched : pd.DataFrame
         Vaccination schedule data with 'location' and 'scenario' columns
+    distance_function : callable
+        Function to compute distance between simulated and observed data
     scenario : str | None, default None
         Scenario name to filter vaccination schedule
     strategy : str, default 'top_fraction'
