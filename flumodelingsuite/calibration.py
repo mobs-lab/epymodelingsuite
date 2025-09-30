@@ -23,6 +23,7 @@ def calibrate(
     vaccine_probability_function: callable,
     calc_beta: callable,
     vax_sched: pd.DataFrame,
+    distance_function: callable,
     scenario: str | None = None,
     strategy: str = "top_fraction",
     **strategy_kwargs,
@@ -74,8 +75,8 @@ def calibrate(
         Results object containing posterior distributions, selected trajectories,
         distances, weights, and other calibration outputs
     """
-    from epydemix.calibration import ABCSampler, rmse
 
+    from epydemix.calibration import ABCSampler, rmse, wmape
     from .utils import convert_location_name_format
 
     location = model.population.name
@@ -103,7 +104,7 @@ def calibrate(
         priors=priors,
         parameters=fixed_parameters,
         observed_data=data_state["value"].values,
-        distance_function=rmse,
+        distance_function=distance_function,
     )
 
     results_abc = abc_sampler.calibrate(strategy=strategy, **strategy_kwargs)
@@ -119,8 +120,8 @@ def make_simulate_wrapper(
     target_transitions: list[str],
     infectious_seed_compartments: list[str],
     residual_immunity_compartments: list[str],
-    vaccine_probability_function,
-    calc_beta,
+    vaccine_probability_function: callable,
+    calc_beta: callable,
     vax_sched: pd.DataFrame,
     scenario: str | None = None,
 ) -> callable:
@@ -255,16 +256,25 @@ def make_simulate_wrapper(
         }
 
         # Run simulation
-        results = simulate(**sim_params)
-        trajectory_dates = results.dates
-        data_dates = list(pd.to_datetime(data["target_end_date"].values))
+        try:
+            results = simulate(**sim_params)
+            trajectory_dates = results.dates
+            data_dates = list(pd.to_datetime(data["target_end_date"].values))
 
-        mask = [date in data_dates for date in trajectory_dates]
+            mask = [date in data_dates for date in trajectory_dates]
 
-        total_hosp = sum(results.transitions[key] for key in target_transitions)
+            total_hosp = sum(results.transitions[key] for key in target_transitions)
 
-        total_hosp = total_hosp[mask]
+            total_hosp = total_hosp[mask]
 
+            if len(total_hosp) < len(data_dates):
+                pad_len = len(data_dates) - len(total_hosp)
+                total_hosp = np.pad(total_hosp, (pad_len, 0), constant_values=0)
+
+        except Exception as e:
+            print(f"Simulation failed with parameters {params}: {e}")
+            data_dates = list(pd.to_datetime(data["target_end_date"].values))
+            total_hosp = np.full(len(data_dates), 0)
         return {"data": total_hosp}
 
     return simulate_wrapper
