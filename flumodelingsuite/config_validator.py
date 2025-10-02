@@ -113,6 +113,7 @@ class Transition(BaseModel):
         rate: float | str
         source: str = Field(..., description="Source compartment id")
 
+    id: str = Field(..., description="Unique identifier for the transition.")
     type: TransitionTypeEnum
     source: str = Field(..., description="Source compartment id")
     target: str = Field(..., description="Target compartment id")

@@ -6,3 +6,4 @@ pandas
 pyyaml
 pydantic
 ruff
+pytest
