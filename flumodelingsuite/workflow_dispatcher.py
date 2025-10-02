@@ -1,5 +1,8 @@
 import copy
+import datetime as dt
+from typing import NamedTuple
 
+from epydemix.calibration import ABCSampler
 from epydemix.model import EpiModel
 from numpy import float64, int64, ndarray
 
@@ -21,21 +24,29 @@ def get_year(datestring: str) -> dt.date:
     return dt.datetime.strptime(datestring, date_format).year
 
 
+# Typed namedtuple for builder outputs
+class BuilderOutput(NamedTuple):
+    primary_id: int
+    model: EpiModel
+    initial_conditions: dict | None = None
+    calibrator: ABCSampler | None = None
+
+
 # ===== Workflows =====
 
-WORKFLOW_REGISTRY = {}
+BUILDER_REGISTRY = {}
 
 
-def register(kind_set):
+def register_builder(kind_set):
     def deco(fn):
-        WORKFLOW_REGISTRY[frozenset(kind_set)] = fn
+        BUILDER_REGISTRY[frozenset(kind_set)] = fn
         return fn
 
     return deco
 
 
-@register({"basemodel"})
-def wf_base_only(*, basemodel: BasemodelConfig, **_):
+@register_builder({"basemodel"})
+def build_basemodel(*, basemodel: BasemodelConfig, **_) -> BuilderOutput:
     """
     Workflow using only a basemodel.
     """
@@ -65,6 +76,10 @@ def wf_base_only(*, basemodel: BasemodelConfig, **_):
     if "calculated" in [p.type for p in basemodel.parameters]:
         _calculate_parameters_from_config(model, basemodel.parameters)
 
+    # Seasonality (this must occur before interventions to preserve parameter overrides)
+    if basemodel.seasonality:
+        _add_seasonality_from_config(model, basemodel.seasonality, basemodel.timespan)
+
     # Interventions
     if basemodel.interventions:
         intervention_types = [i.type for i in basemodel.interventions]
@@ -82,11 +97,7 @@ def wf_base_only(*, basemodel: BasemodelConfig, **_):
 
         # Parameter
         if "parameter" in intervention_types:
-            _add_parameter_interventions_from_config(model, basemodel.interventions)
-
-    # Seasonality
-    if basemodel.seasonality:
-        _add_seasonality_from_config(model, basemodel.seasonality, basemodel.timespan)
+            _add_parameter_interventions_from_config(model, basemodel.interventions, basemodel.timespan)
 
     # Initial conditions
     compartment_inits = {}
@@ -118,14 +129,16 @@ def wf_base_only(*, basemodel: BasemodelConfig, **_):
     if not compartment_inits:
         compartment_inits = None
 
-    return {"workflow": "base_only", "model": model, "compartment_inits": compartment_inits}
+    return BuilderOutput(primary_id=0, model=model, initial_conditions=compartment_inits)
 
 
-@register({"basemodel", "sampling"})
-def wf_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_) -> dict:
+@register_builder({"basemodel", "sampling"})
+def build_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_) -> list[BuilderOutput]:
     """
     Sampling workflow.
     """
+    from .sample_generator import generate_samples
+
     # Need validation of references between basemodel and sampling
     validate_sampling_basemodel(basemodel, sampling)
 
@@ -160,9 +173,9 @@ def wf_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_) ->
         _set_population_from_config(init_model, basemodel.population.name, basemodel.population.age_groups)
         models.append(init_model)
 
-    # output of this should be a list of dicts containing start_date, initial conditions, and parameter value
+    # Output of this is a list of dicts containing start_date, initial conditions, and parameter value
     # combinations where parameters is in the same format as basemodel.parameters
-    sampled_vars = _sample_vars_from_config(modelset.sampling)
+    sampled_vars = generate_samples(sampling.sampling, basemodel.random_seed)
 
     # Extract intervention types
     if basemodel.interventions:
@@ -262,14 +275,14 @@ def wf_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_) ->
                         m, basemodel.transitions, basemodel.vaccination, timespan, use_schedule=reaggregated_vax
                     )
 
+            # Seasonality (this must occur before parameterinterventions to preserve parameter overrides)
+            if basemodel.seasonality:
+                _add_seasonality_from_config(m, basemodel.seasonality, timespan)
+
             # Parameter interventions
             if basemodel.interventions:
                 if "parameter" in intervention_types:
-                    _add_parameter_interventions_from_config(m, basemodel.interventions)
-
-            # Seasonality
-            if basemodel.seasonality:
-                _add_seasonality_from_config(m, basemodel.seasonality, timespan)
+                    _add_parameter_interventions_from_config(m, basemodel.interventions, timespan)
 
             # Initial conditions
             compartment_init = {}
@@ -326,15 +339,28 @@ def wf_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_) ->
             final_models.append(m)
             compartment_inits.append(compartment_init)
 
-    return {"workflow": "sampling", "models": final_models, "compartment_inits": compartment_inits}
+    # Ensure models and inits align
+    assert len(final_models) == len(compartment_inits), (
+        f"Mismatch: created {len(final_models)} models and {len(compartment_inits)} initial conditions"
+    )
+
+    return [
+        BuilderOutput(primary_id=i, model=t[0], initial_conditions=t[1])
+        for i, t in enumerate(zip(final_models, compartment_inits, strict=False))
+    ]
 
 
-@register({"basemodel", "calibration"})
-def wf_base_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationConfig, **_):
+@register_builder({"basemodel", "calibration"})
+def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationConfig, **_) -> list[BuilderOutput]:
     models = []
-    return {"workflow": "calibration", "models": models}
+    calibrators = []
+    compartment_inits = []
+    return [
+        BuilderOutput(primary_id=i, model=t[0], initial_conditions=t[1], calibrator=t[2])
+        for i, t in enumerate(zip(final_models, compartment_inits, calibrators, strict=False))
+    ]
 
 
-def dispatch_workflow(**configs):
+def dispatch_builder(**configs):
     kinds = frozenset(k for k, v in configs.items() if v is not None)
-    return WORKFLOW_REGISTRY[kinds](**configs)
+    return BUILDER_REGISTRY[kinds](**configs)
