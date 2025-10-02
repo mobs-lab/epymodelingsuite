@@ -1,3 +1,4 @@
+import logging
 import copy
 import datetime as dt
 from typing import NamedTuple
@@ -8,11 +9,14 @@ from numpy import float64, int64, ndarray
 
 from .basemodel_validator import BasemodelConfig, Parameter, Timespan
 from .calibration_validator import CalibrationConfig
-from .config_loader import *
 from .sampling_validator import SamplingConfig
+from .general_validator import validate_modelset_consistency
+from .config_loader import *
 from .school_closures import make_school_closure_dict
-from .utils import get_location_codebook
 from .vaccinations import reaggregate_vaccines, scenario_to_epydemix
+from .utils import get_location_codebook
+
+logger = logging.getLogger(__name__)
 
 # ===== Helpers =====
 
@@ -50,6 +54,8 @@ def build_basemodel(*, basemodel: BasemodelConfig, **_) -> BuilderOutput:
     """
     Workflow using only a basemodel.
     """
+    logger.info("BUILDER: dispatched for basemodel")
+    
     # For compactness
     basemodel = basemodel.model
 
@@ -138,9 +144,10 @@ def build_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_)
     Sampling workflow.
     """
     from .sample_generator import generate_samples
+    logger.info("BUILDER: dispatched for sampling")
 
-    # Need validation of references between basemodel and sampling
-    validate_sampling_basemodel(basemodel, sampling)
+    # Validate references between basemodel and sampling
+    validate_modelset_consistency(basemodel, sampling)
 
     # For compactness
     basemodel = basemodel.model
@@ -354,11 +361,11 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
     Calibration workflow.
     """
     import pandas as pd
-
     from .utils import distribution_to_scipy
+    logger.info("BUILDER: dispatched for calibration")
 
-    # Need validation of references between basemodel and sampling
-    validate_calibration_basemodel(basemodel, calibration)
+    # Validate references between basemodel and calibration
+    validate_modelset_consistency(basemodel, calibration)
 
     # For compactness
     basemodel = basemodel.model
@@ -552,32 +559,45 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
                 "initial_conditions_dict": compartment_init,
                 "start_date": timespan.start_date,
                 "end_date": timespan.end_date,
-                "resample_frequency": params["resample_frequency"],
+                "resample_frequency": basemodel.simulation.resample_frequency,
             }
 
             # Run simulation
-            results = simulate(**sim_params)
-            trajectory_dates = results.dates
-            data_dates = list(pd.to_datetime(observed[calibration.comparison.observed].values))
-
-            mask = [date in data_dates for date in trajectory_dates]
-
-            total_hosp = sum(results.transitions[key] for key in calibration.comparison.simulation)
-
-            total_hosp = total_hosp[mask]
-
+            try:
+                results = simulate(**sim_params)
+                trajectory_dates = results.dates
+                data_dates = list(pd.to_datetime(observed[calibration.comparison.obs_date].values))
+    
+                mask = [date in data_dates for date in trajectory_dates]
+    
+                total_hosp = sum(results.transitions[key] for key in calibration.comparison.simulation)
+    
+                total_hosp = total_hosp[mask]
+    
+                if len(total_hosp) < len(data_dates):
+                    pad_len = len(data_dates) - len(total_hosp)
+                    total_hosp = np.pad(total_hosp, (pad_len, 0), constant_values=0)
+    
+            except Exception as e:
+                print(f"Simulation failed with parameters {params}: {e}")
+                data_dates = list(pd.to_datetime(data["target_end_date"].values))
+                total_hosp = np.full(len(data_dates), 0)
+                
             return {"data": total_hosp}
 
+        # Parse priors into scipy functions
         priors = {}
         priors.update({k: distribution_to_scipy(v) for k, v in calibration.parameters.items()})
+        priors.update({k: distribution_to_scipy(v) for k, v in calibration.compartments.items()})
         if earliest_timespan:
             priors["start_date"] = distribution_to_scipy(calibration.start_date.prior)
 
+        # ABCSamplers are the main outputs
         abc_sampler = ABCSampler(
             simulation_function=simulate_wrapper,
             priors=priors,
-            parameters=model.parameters,
-            observed_data=observed["value"].values,
+            parameters={k:v for k,v in model.parameters.items() if v},
+            observed_data=observed[calibration.comparison.observed].values,
             distance_function=calibration.distance_function,
         )
 
