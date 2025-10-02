@@ -128,6 +128,12 @@ class SafeEvalVisitor(ast.NodeVisitor):
 
 
 class RetrieveName(ast.NodeTransformer):
+    """
+    A NodeTransformer for substituting terms in an expression with parameter values or contact matrix eigenvalue from an EpiModel.
+    Used for calculated parameters.
+    Constructor requires an EpiModel with contact matrices.
+    """
+
     def __init__(self, model: EpiModel):
         self.model = model
 
@@ -370,14 +376,30 @@ def _calculate_parameters_from_config(model: EpiModel, parameters: dict[str, Par
     -------
         EpiModel instance with calculated parameters added.
     """
+    # Extract parameter names and expressions
     calc_params = {name: param.value for name, param in parameters.items() if param.type == "calculated"}
+
+    # Build a dictionary of calculated values
     parameters_dict = {}
     for name, expr in calc_params.items():
-        tree = ast.parse(expr, mode="eval")
-        calc_expr = ast.unparse(RetrieveName(model).visit(tree))
-        parameters_dict[name] = _safe_eval(calc_expr)
-    model.add_parameter(parameters_dict=parameters_dict)
-    return model
+        try:
+            # Parse the expression into a tree
+            tree = ast.parse(expr, mode="eval")
+            # Substitute retrieved parameter values or contact matrix eigenvalue into the tree,
+            # convert back into expression
+            calc_expr = ast.unparse(RetrieveName(model).visit(tree))
+            # Evaluate the expression
+            parameters_dict[name] = _safe_eval(calc_expr)
+        except Exception as e:
+            raise ValueError(f"Error calculating parameter {name}: {e}")
+
+    try:
+        model.add_parameter(parameters_dict=parameters_dict)
+        logger.info(f"Calculated parameters: {list(parameters_dict.keys())}")
+
+        return model
+    except Exception as e:
+        raise ValueError(f"Error adding parameters to model: {e}")
 
 
 def _add_vaccination_schedules_from_config(
