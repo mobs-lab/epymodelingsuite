@@ -1,4 +1,5 @@
 import datetime
+import logging
 from datetime import date
 from enum import Enum
 from typing import Any
@@ -6,6 +7,8 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from .utils import validate_iso3166
+
+logger = logging.getLogger(__name__)
 
 # ----------------------------------------
 # Schema models
@@ -29,7 +32,7 @@ class Timespan(BaseModel):
     def check_end_date(cls, v: date, info: Any) -> date:
         """Ensure end_date is not before start_date."""
         start = info.data.get("start_date")
-        if start and v < start:
+        if isinstance(start, date) and v < start:
             raise ValueError("end_date must be after start_date")
         return v
 
@@ -83,7 +86,8 @@ class Compartment(BaseModel):
     @field_validator("init")
     def enforce_nonnegative_init(cls, v: float, info: Any) -> float | int:
         """Enforce that compartment initialization is non-negative"""
-        assert v >= 0, f"Negative compartment initialization {v} received for compartment {info.data.get('id')}"
+        if isinstance(v, (float, int)):
+            assert v >= 0, f"Negative compartment initialization {v} received for compartment {info.data.get('id')}"
         return v
 
 
@@ -193,20 +197,20 @@ class Vaccination(BaseModel):
     def check_vax_fields(cls, m: "Vaccination") -> "Vaccination":
         """Ensure vaccination configuration is consistent."""
         assert m.origin_compartment in m.eligible_compartments, "Origin compartment must be in eligible compartments."
-        if scenario_data_path is None:
-            assert preprocessed_vaccination_data_path is not None, (
+        if m.scenario_data_path is None:
+            assert m.preprocessed_vaccination_data_path is not None, (
                 "Must provide one of scenario_data_path or preprocessed_vaccination_data_path."
             )
         else:
-            assert preprocessed_vaccination_data_path is None, (
+            assert m.preprocessed_vaccination_data_path is None, (
                 "Cannot use both scenario_data_path and preprocessed_vaccination_data_path."
             )
-        if preprocessed_vaccination_data_path is None:
-            assert scenario_data_path is not None, (
+        if m.preprocessed_vaccination_data_path is None:
+            assert m.scenario_data_path is not None, (
                 "Must provide one of scenario_data_path or preprocessed_vaccination_data_path."
             )
         else:
-            assert scenario_data_path is None, (
+            assert m.scenario_data_path is None, (
                 "Cannot use both scenario_data_path and preprocessed_vaccination_data_path."
             )
         return m
@@ -344,8 +348,8 @@ class BaseEpiModel(BaseModel):
             assert t.source in compartment_ids, f"Transition.source='{t.source}' is not a valid Compartment.id"
             assert t.target in compartment_ids, f"Transition.target='{t.target}' is not a valid Compartment.id"
             if t.type == "mediated":
-                assert t.mediators.source in compartment_ids, (
-                    f"Transition.mediators.source='{t.mediators.source}' is not a valid Compartment.id"
+                assert t.mediator in compartment_ids, (
+                    f"Transition.mediator='{t.mediator}' is not a valid Compartment.id"
                 )
         return m
 
@@ -370,8 +374,8 @@ class BaseEpiModel(BaseModel):
     def check_seasonality_refs(cls, m: "BaseEpiModel") -> "BaseEpiModel":
         """Ensure that seasonality target parameter exists"""
         if m.seasonality:
-            assert m.target_parameter in m.parameters.keys(), (
-                f"Seasonality target {m.target_parameter} missing from model parameters."
+            assert m.seasonality.target_parameter in m.parameters.keys(), (
+                f"Seasonality target {m.seasonality.target_parameter} missing from model parameters."
             )
         return m
 
