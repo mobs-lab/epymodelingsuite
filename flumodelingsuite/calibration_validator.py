@@ -36,7 +36,8 @@ class CalibrationStrategy(BaseModel):
 class ComparisonSpec(BaseModel):
     """Specification for comparing observed and simulated data."""
 
-    observed: str = Field(..., description="Column name from observed data CSV")
+    observed: str = Field(..., description="Name of column containing observed values in observed data CSV")
+    obs_date: str = Field(..., description="Name of column containing target dates in observed data CSV")
     simulation: list[str] = Field(..., description="List of transition names to sum for comparison (e.g. I_to_R)")
 
 

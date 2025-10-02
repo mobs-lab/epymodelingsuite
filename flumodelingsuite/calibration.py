@@ -1,5 +1,5 @@
-from epydemix.model import EpiModel
 import pandas as pd
+from epydemix.model import EpiModel
 
 
 def calc_beta(model_pop, Rt, mu, p_asymptomatic, r_beta_asymp):
@@ -77,6 +77,7 @@ def calibrate(
         Results object containing posterior distributions, selected trajectories,
         distances, weights, and other calibration outputs
     """
+
     from epydemix.calibration import ABCSampler, rmse, wmape
     from .utils import convert_location_name_format
 
@@ -175,12 +176,14 @@ def make_simulate_wrapper(
     """
     import copy
     import datetime as dt
-    import pandas as pd
+
     import numpy as np
+    import pandas as pd
+    from epydemix import simulate
+
+    from .seasonality import get_seasonal_transmission_balcan
     from .utils import convert_location_name_format
     from .vaccinations import add_vaccination_schedule, reaggregate_vaccines
-    from .seasonality import get_seasonal_transmission_balcan
-    from epydemix import simulate
 
     location = model.population.name
     location_iso = convert_location_name_format(location, "ISO")
