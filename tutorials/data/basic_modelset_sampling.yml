@@ -1,7 +1,7 @@
 modelset:
 
   meta:
-    description: "Vaccination scenarios for 2024"
+    description: "Example sampling for 2024"
     author: "Flu Modeling Suite"
     version: 1.0.0
 
@@ -14,22 +14,17 @@ modelset:
     samplers:
       - strategy: grid
         parameters:
-          - gamma
+          - eps
       - strategy: LHS
         n_samples: 100 # Total number of parameter sets we sample for. Only required for sampling methods (e.g., LHS).
         compartments:
-          - L
-          - I_symp
+          - I
         parameters:
+          - beta
           - start_date
-          - Rt
-          - vaccine_effectiveness
 
     compartments:
-      L:
-        min: 0
-        max: 0.25
-      I_symp:
+      I:
         min: 0
         max: 0.1
 
@@ -44,31 +39,15 @@ modelset:
           - 30
 
     parameters:
-      Rt:
+      beta:
         distribution:
           type: scipy
           name: uniform
           args:
             - 0.0
-            - 2.0
-          kwargs:
-            some_other_param: 100
-      vaccine_effectiveness:
-        distribution:
-          type: scipy
-          name: uniform
-          args:
-            - 0.0
-            - 0.5
-      some_parameter_with_custom_dist:
-        distribution:
-          # To allow defining custom distribution, we set the 'type'
-          type: custom
-          name: my_custom_distribution # This would be defined by inheriting rv_continuous or rv_discrete
-          kwargs:
-            arg1: 0.1
-            arg2: 0.5
-      gamma:
+            - 0.3
+            
+      eps:
         values:
           - 0.1
           - 0.2
