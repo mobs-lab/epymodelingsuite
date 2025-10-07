@@ -3,12 +3,15 @@ import datetime as dt
 import logging
 from typing import NamedTuple
 
-from epydemix.calibration import ABCSampler
+from epydemix.calibration import ABCSampler, CalibrationResults
 from epydemix.model import EpiModel
+from epydemix.model.simulation_results import SimulationResults
+from epydemix.population import Population
 from numpy import float64, int64, ndarray
+from numpy.random import seed
 
 from .basemodel_validator import BasemodelConfig, Parameter, Timespan
-from .calibration_validator import CalibrationConfig
+from .calibration_validator import CalibrationConfig, CalibrationStrategy
 from .config_loader import *
 from .general_validator import validate_modelset_consistency
 from .sampling_validator import SamplingConfig
@@ -18,7 +21,51 @@ from .vaccinations import reaggregate_vaccines, scenario_to_epydemix
 
 logger = logging.getLogger(__name__)
 
-# ===== Helpers =====
+
+# ===== Classes and Helpers =====
+
+
+class SimulationArguments(NamedTuple):
+    """Typed namedtuple for simulation arguments."""
+
+    start_date: int
+    end_date: int
+    initial_conditions_dict: dict | None = None
+    Nsim: int | None = None
+    dt: float | None = 1.0
+    resample_frequency: str | None = None
+
+
+class ProjectionArguments(NamedTuple):
+    """Typed namedtuple for projection arguments."""
+
+
+class BuilderOutput(NamedTuple):
+    """Typed namedtuple for builder outputs."""
+
+    primary_id: int
+    seed: int | None = None
+    model: EpiModel | None = None
+    calibrator: ABCSampler | None = None
+    simulation: SimulationArguments | None = None
+    calibration: CalibrationStrategy | None = None
+    projection: ProjectionArguments | None = None
+
+
+class SimulationOutput(NamedTuple):
+    """Typed namedtuple for simulation outputs."""
+
+    primary_id: int
+    results: SimulationResults
+    seed: int | None = None
+
+
+class CalibrationOutput(NamedTuple):
+    """Typed namedtuple for calibration outputs."""
+
+    primary_id: int
+    results: CalibrationResults
+    seed: int | None = None
 
 
 # Needed for school closures
@@ -28,15 +75,8 @@ def get_year(datestring: str) -> dt.date:
     return dt.datetime.strptime(datestring, date_format).year
 
 
-# Typed namedtuple for builder outputs
-class BuilderOutput(NamedTuple):
-    primary_id: int
-    model: EpiModel | None = None
-    initial_conditions: dict | None = None
-    calibrator: ABCSampler | None = None
+# ===== Builders =====
 
-
-# ===== Workflows =====
 
 BUILDER_REGISTRY = {}
 
@@ -54,7 +94,7 @@ def build_basemodel(*, basemodel: BasemodelConfig, **_) -> BuilderOutput:
     """
     Workflow using only a basemodel.
     """
-    logger.info("BUILDER: dispatched for basemodel")
+    logger.info("BUILDER: dispatched for single model.")
 
     # For compactness
     basemodel = basemodel.model
@@ -65,6 +105,8 @@ def build_basemodel(*, basemodel: BasemodelConfig, **_) -> BuilderOutput:
     # Set the model name if provided in the config
     if basemodel.name is not None:
         model.name = basemodel.name
+
+    logger.info("BUILDER: setting up single model...")
 
     # This workflow uses a single population
     _set_population_from_config(model, basemodel.population.name, basemodel.population.age_groups)
@@ -135,7 +177,18 @@ def build_basemodel(*, basemodel: BasemodelConfig, **_) -> BuilderOutput:
     if not compartment_inits:
         compartment_inits = None
 
-    return BuilderOutput(primary_id=0, model=model, initial_conditions=compartment_inits)
+    simulation_args = SimulationArguments(
+        start_date=basemodel.timespan.start_date,
+        end_date=basemodel.timespan.end_date,
+        initial_conditions_dict=compartment_inits,
+        Nsim=basemodel.simulation.n_sims,
+        dt=basemodel.timespan.delta_t,
+        resample_frequency=basemodel.simulation.resample_frequency,
+    )
+
+    logger.info("BUILDER: completed for single model.")
+
+    return BuilderOutput(primary_id=0, seed=basemodel.random_seed, model=model, simulation=simulation_args)
 
 
 @register_builder({"basemodel", "sampling"})
@@ -145,7 +198,7 @@ def build_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_)
     """
     from .sample_generator import generate_samples
 
-    logger.info("BUILDER: dispatched for sampling")
+    logger.info("BUILDER: dispatched for sampling.")
 
     # Validate references between basemodel and sampling
     validate_modelset_consistency(basemodel, sampling)
@@ -161,6 +214,15 @@ def build_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_)
     # Set the model name if provided in the config
     if basemodel.name is not None:
         init_model.name = basemodel.name
+
+    logger.info("BUILDER: setting up EpiModels...")
+
+    # Add dummy population with age structure (required for static age-structured parameters)
+    dummy_pop = Population(name="Dummy")
+    dummy_pop.add_population(
+        Nk=[100 for _ in basemodel.population.age_groups], Nk_names=basemodel.population.age_groups
+    )
+    init_model.set_population(dummmy_pop)
 
     # All models will share compartments, transitions, and non-sampled/calculated parameters
     _add_compartments_from_config(init_model, basemodel.compartments)
@@ -251,8 +313,10 @@ def build_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_)
             if "contact_matrix" in intervention_types:
                 _add_contact_matrix_interventions_from_config(model, basemodel.interventions)
 
+    logger.info("BUILDER: using sampled values to modify EpiModels")
+
     # Create models with sampled/calculated parameters, apply vaccination and interventions
-    compartment_inits = []
+    simulation_args = []
     final_models = []
     for model in models:
         for varset in sampled_vars:
@@ -342,17 +406,27 @@ def build_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_)
             if not compartment_init:
                 compartment_init = None
 
+            sim_args = SimulationArguments(
+                start_date=timespan.start_date,
+                end_date=timespan.end_date,
+                initial_conditions_dict=compartment_init,
+                Nsim=basemodel.simulation.n_sims,
+                dt=basemodel.timespan.delta_t,
+                resample_frequency=basemodel.simulation.resample_frequency,
+            )
+
             final_models.append(m)
-            compartment_inits.append(compartment_init)
+            simulation_args.append(sim_args)
 
     # Ensure models and inits align
-    assert len(final_models) == len(compartment_inits), (
-        f"Mismatch: created {len(final_models)} models and {len(compartment_inits)} initial conditions"
+    assert len(final_models) == len(simulation_args), (
+        f"Mismatch: created {len(final_models)} models and {len(simulation_args)} simulation specifications."
     )
 
+    logger.info("BUILDER: completed for sampling.")
     return [
-        BuilderOutput(primary_id=i, model=t[0], initial_conditions=t[1])
-        for i, t in enumerate(zip(final_models, compartment_inits, strict=True))
+        BuilderOutput(primary_id=i, seed=basemodel.random_seed, model=t[0], simulation=t[1])
+        for i, t in enumerate(zip(final_models, simulation_args, strict=True))
     ]
 
 
@@ -365,7 +439,7 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
 
     from .utils import distribution_to_scipy
 
-    logger.info("BUILDER: dispatched for calibration")
+    logger.info("BUILDER: dispatched for calibration.")
 
     # Validate references between basemodel and calibration
     validate_modelset_consistency(basemodel, calibration)
@@ -382,6 +456,15 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
     # Set the model name if provided in the config
     if basemodel.name is not None:
         init_model.name = basemodel.name
+
+    logger.info("BUILDER: setting up EpiModels...")
+
+    # Add dummy population with age structure (required for static age-structured parameters)
+    dummy_pop = Population(name="Dummy")
+    dummy_pop.add_population(
+        Nk=[100 for _ in basemodel.population.age_groups], Nk_names=basemodel.population.age_groups
+    )
+    init_model.set_population(dummmy_pop)
 
     # All models will share compartments, transitions, and non-sampled/calculated parameters
     _add_compartments_from_config(init_model, basemodel.compartments)
@@ -468,11 +551,14 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
             if "contact_matrix" in intervention_types:
                 _add_contact_matrix_interventions_from_config(model, basemodel.interventions)
 
+    logger.info("BUILDER: setting up ABCSamplers...")
+
     observed = pd.read_csv(calibration.observed_data_path)
     calibrators = []
     for model in models:
         # Create simulate wrapper
         def simulate_wrapper(params):
+            seed(basemodel.random_seed)
             m = copy.deepcopy(model)
 
             # Accomodate for sampled start_date
@@ -582,7 +668,7 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
                     total_hosp = np.pad(total_hosp, (pad_len, 0), constant_values=0)
 
             except Exception as e:
-                print(f"Simulation failed with parameters {params}: {e}")
+                logger.info(f"Simulation failed with parameters {params}: {e}")
                 data_dates = list(pd.to_datetime(data["target_end_date"].values))
                 total_hosp = np.full(len(data_dates), 0)
 
@@ -606,9 +692,110 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
 
         calibrators.append(abc_sampler)
 
-    return [BuilderOutput(primary_id=i, calibrator=c) for i, c in enumerate(calibrators)]
+    logger.info("BUILDER: completed calibration.")
+    return [
+        BuilderOutput(primary_id=i, seed=basemodel.random_seed, calibrator=c, calibration=calibration.strategy)
+        for i, c in enumerate(calibrators)
+    ]
 
 
-def dispatch_builder(**configs):
+def dispatch_builder(**configs) -> BuilderOutput | list[BuilderOutput]:
+    """"""
     kinds = frozenset(k for k, v in configs.items() if v is not None)
     return BUILDER_REGISTRY[kinds](**configs)
+
+
+# ===== Runners =====
+# This just calls the epydemix methods and passes on the results, for ease of writing workflows on gcloud
+
+
+def dispatch_runner(configs: BuilderOutput) -> SimulationOutput | CalibrationOutput:
+    """"""
+    seed(configs.seed)
+
+    # Validate configs
+    assert configs.model or configs.calibrator, "Runner dispatched without an EpiModel or ABCSampler (requires one)."
+
+    # Handle simulation
+    if configs.simulation:
+        logger.info("RUNNER: dispatched for simulation.")
+
+        # Validate configs
+        assert not configs.calibration and not configs.projection, (
+            "Simulation cannot be performed with calibration/projection."
+        )
+        assert not configs.calibrator, "Simulation requires EpiModel but received ABCSampler."
+
+        # Run simulations
+        try:
+            results = configs.model.run_simulations(*configs.simulation)
+            logger.info("RUNNER: completed simulation.")
+            return SimulationOutput(primary_id=configs.primary_id, results=results, seed=configs.seed)
+        except Exception as e:
+            raise RuntimeError(f"Error during simulation: {e}")
+
+    # Handle calibration
+    elif configs.calibration and not configs.projection:
+        logger.info("RUNNER: dispatched for calibration.")
+
+        # Validate configs
+        assert not configs.model, "Calibration requires ABCSampler but received EpiModel."
+
+        # Run calibration
+        try:
+            results = configs.calibrator.calibrate(strategy=configs.calibration.name, **configs.calibration.options)
+            logger.info("RUNNER: completed calibration.")
+            return CalibrationOutput(primary_id=configs.primary_id, results=results, seed=configs.seed)
+        except Exception as e:
+            raise ValueError(f"Error during calibration: {e}")
+
+    # Handle calibration and projection
+    elif configs.calibration and configs.projection:
+        logger.info("RUNNER: dispatched for calibration and projection.")
+
+        # Validate configs
+        assert not configs.model, "Calibration requires ABCSampler but received EpiModel."
+
+        # Run calibration and projection
+        try:
+            pass
+        except Exception as e:
+            raise ValueError(f"Error during calibration/projection: {e}")
+    # Error
+    else:
+        raise ValueError(
+            "Runner called without simulation or calibration specs. Verify that your BuilderOutputs are valid."
+        )
+
+
+# ===== Output Generators =====
+# these will convert to modeling hub format, create rate trend forecasts, create metadata files, create files with trajectories, create files with posteriors, and optionally save CalibrationResults/SimulationResults directly (pickle?)
+
+
+OUTPUT_GENERATOR_REGISTRY = {}
+
+
+def register_output_generator(kind_set):
+    def deco(fn):
+        OUTPUT_GENERATOR_REGISTRY[frozenset(kind_set)] = fn
+        return fn
+
+    return deco
+
+
+@register_output_generator({"simulation", "outputs"})
+def generate_simulation_outputs(*, simulation: SimulationOutput, outputs: OutputConfig, **_) -> None:
+    """"""
+    logger.info("OUTPUT GENERATOR: dispatched for simulation")
+
+
+@register_output_generator({"calibration_results", "outputs"})
+def generate_calibration_outputs(*, calibration: CalibrationOutput, outputs: OutputConfig, **_) -> None:
+    """"""
+    logger.info("OUTPUT GENERATOR: dispatched for calibration")
+
+
+def dispatch_output_generator(**configs) -> None:
+    """"""
+    kinds = frozenset(k for k, v in configs.items() if v is not None)
+    return OUTPUT_GENERATOR_REGISTRY[kinds](**configs)
