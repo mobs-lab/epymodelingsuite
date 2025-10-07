@@ -4,8 +4,9 @@ import logging
 from typing import NamedTuple
 
 from epydemix.calibration import ABCSampler, CalibrationResults
-from epydemix.model import EpiModel
 from epydemix.model.simulation_results import SimulationResults
+from epydemix.model import EpiModel
+from epydemix.population import Population
 from numpy import float64, int64, ndarray
 
 from .basemodel_validator import BasemodelConfig, Parameter, Timespan
@@ -40,17 +41,17 @@ class BuilderOutput(NamedTuple):
 
 # Typed namedtuple for simulation arguments
 class SimulationArguments(NamedTuple):
-    None
+    pass
 
 
 # Typed namedtuple for calibration arguments
 class CalibrationArguments(NamedTuple):
-    None
+    pass
 
 
 # Typed namedtuple for projection arguments
 class ProjectionArguments(NamedTuple):
-    None
+    pass
 
 
 # ===== Builders =====
@@ -186,6 +187,11 @@ def build_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_)
 
     logger.info("BUILDER: setting up EpiModels...")
 
+    # Add dummy population with age structure (required for static age-structured parameters)
+    dummy_pop = Population(name="Dummy")
+    dummy_pop.add_population(Nk=[100 for _ in basemodel.population.age_groups], Nk_names=basemodel.population.age_groups)
+    init_model.set_population(dummmy_pop)
+    
     # All models will share compartments, transitions, and non-sampled/calculated parameters
     _add_compartments_from_config(init_model, basemodel.compartments)
     _add_transitions_from_config(init_model, basemodel.transitions)
@@ -412,6 +418,11 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
 
     logger.info("BUILDER: setting up EpiModels...")
 
+    # Add dummy population with age structure (required for static age-structured parameters)
+    dummy_pop = Population(name="Dummy")
+    dummy_pop.add_population(Nk=[100 for _ in basemodel.population.age_groups], Nk_names=basemodel.population.age_groups)
+    init_model.set_population(dummmy_pop)
+
     # All models will share compartments, transitions, and non-sampled/calculated parameters
     _add_compartments_from_config(init_model, basemodel.compartments)
     _add_transitions_from_config(init_model, basemodel.transitions)
@@ -613,7 +624,7 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
                     total_hosp = np.pad(total_hosp, (pad_len, 0), constant_values=0)
 
             except Exception as e:
-                print(f"Simulation failed with parameters {params}: {e}")
+                logger.info(f"Simulation failed with parameters {params}: {e}")
                 data_dates = list(pd.to_datetime(data["target_end_date"].values))
                 total_hosp = np.full(len(data_dates), 0)
 
