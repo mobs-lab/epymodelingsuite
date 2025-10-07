@@ -3,8 +3,15 @@ import datetime as dt
 import logging
 from typing import NamedTuple
 
+<<<<<<< HEAD
 from epydemix.calibration import ABCSampler
 from epydemix.model import EpiModel
+=======
+from epydemix.calibration import ABCSampler, CalibrationResults
+from epydemix.model.simulation_results import SimulationResults
+from epydemix.model import EpiModel
+from epydemix.population import Population
+>>>>>>> 77aab26 (fix ordering error with dummy population)
 from numpy import float64, int64, ndarray
 
 from .basemodel_validator import BasemodelConfig, Parameter, Timespan
@@ -36,7 +43,27 @@ class BuilderOutput(NamedTuple):
     calibrator: ABCSampler | None = None
 
 
+<<<<<<< HEAD
 # ===== Workflows =====
+=======
+# Typed namedtuple for simulation arguments
+class SimulationArguments(NamedTuple):
+    pass
+
+
+# Typed namedtuple for calibration arguments
+class CalibrationArguments(NamedTuple):
+    pass
+
+
+# Typed namedtuple for projection arguments
+class ProjectionArguments(NamedTuple):
+    pass
+
+
+# ===== Builders =====
+
+>>>>>>> 77aab26 (fix ordering error with dummy population)
 
 BUILDER_REGISTRY = {}
 
@@ -162,6 +189,16 @@ def build_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_)
     if basemodel.name is not None:
         init_model.name = basemodel.name
 
+<<<<<<< HEAD
+=======
+    logger.info("BUILDER: setting up EpiModels...")
+
+    # Add dummy population with age structure (required for static age-structured parameters)
+    dummy_pop = Population(name="Dummy")
+    dummy_pop.add_population(Nk=[100 for _ in basemodel.population.age_groups], Nk_names=basemodel.population.age_groups)
+    init_model.set_population(dummmy_pop)
+    
+>>>>>>> 77aab26 (fix ordering error with dummy population)
     # All models will share compartments, transitions, and non-sampled/calculated parameters
     _add_compartments_from_config(init_model, basemodel.compartments)
     _add_transitions_from_config(init_model, basemodel.transitions)
@@ -383,6 +420,16 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
     if basemodel.name is not None:
         init_model.name = basemodel.name
 
+<<<<<<< HEAD
+=======
+    logger.info("BUILDER: setting up EpiModels...")
+
+    # Add dummy population with age structure (required for static age-structured parameters)
+    dummy_pop = Population(name="Dummy")
+    dummy_pop.add_population(Nk=[100 for _ in basemodel.population.age_groups], Nk_names=basemodel.population.age_groups)
+    init_model.set_population(dummmy_pop)
+
+>>>>>>> 77aab26 (fix ordering error with dummy population)
     # All models will share compartments, transitions, and non-sampled/calculated parameters
     _add_compartments_from_config(init_model, basemodel.compartments)
     _add_transitions_from_config(init_model, basemodel.transitions)
@@ -582,7 +629,7 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
                     total_hosp = np.pad(total_hosp, (pad_len, 0), constant_values=0)
 
             except Exception as e:
-                print(f"Simulation failed with parameters {params}: {e}")
+                logger.info(f"Simulation failed with parameters {params}: {e}")
                 data_dates = list(pd.to_datetime(data["target_end_date"].values))
                 total_hosp = np.full(len(data_dates), 0)
 
