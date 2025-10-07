@@ -1,8 +1,8 @@
 import logging
 from collections.abc import Iterable
 
-from .calibration_validator import CalibrationConfig, CalibrationConfiguration
 from .basemodel_validator import BasemodelConfig
+from .calibration_validator import CalibrationConfig, CalibrationConfiguration
 from .sampling_validator import SamplingConfig, SamplingConfiguration
 
 logger = logging.getLogger(__name__)
@@ -120,7 +120,9 @@ def _ensure_transitions_valid(base_transitions: set, calibration: CalibrationCon
             raise ValueError(err_msg)
 
 
-def validate_modelset_consistency(base_config: BasemodelConfig, modelset_config: SamplingConfig | CalibrationConfig) -> None:
+def validate_modelset_consistency(
+    base_config: BasemodelConfig, modelset_config: SamplingConfig | CalibrationConfig
+) -> None:
     """
     Cross-validate a modelset against the base model configuration.
 
