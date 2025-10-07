@@ -18,6 +18,7 @@ from .vaccinations import reaggregate_vaccines, scenario_to_epydemix
 
 logger = logging.getLogger(__name__)
 
+
 # ===== Helpers =====
 
 
@@ -36,7 +37,13 @@ class BuilderOutput(NamedTuple):
     calibrator: ABCSampler | None = None
 
 
-# ===== Workflows =====
+# Typed namedtuple for simulation arguments
+class SimulationArguments(NamedTuple):
+    
+
+
+# ===== Builders =====
+
 
 BUILDER_REGISTRY = {}
 
@@ -612,3 +619,34 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
 def dispatch_builder(**configs):
     kinds = frozenset(k for k, v in configs.items() if v is not None)
     return BUILDER_REGISTRY[kinds](**configs)
+
+
+# ===== Runners =====
+
+
+RUNNER_REGISTRY = {}
+
+
+def register_runner(kind_set):
+    def deco(fn):
+        RUNNER_REGISTRY[frozenset(kind_set)] = fn
+        return fn
+
+    return deco
+
+
+@register_runner({"model", "simulation"})
+def run_simulation(*, model: BuilderOutput, simulation: SimulationArguments, **_):
+    # model.model.run_simulations(*simulation)
+    pass
+
+@register_runner({"sampler", "calibration"})
+def run_calibration(*, sampler: BuilderOutput, calibration: CalibrationArguments, **_):
+    pass
+
+@register_runner({"sampler", "calibration", "simulation"})
+def run_calibration_projection(*, sampler: BuilderOutput, calibration: CalibrationArguments, simulation: SimulationArguments, **_):
+    pass
+
+
+
