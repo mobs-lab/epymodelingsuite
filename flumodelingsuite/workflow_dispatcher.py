@@ -22,18 +22,12 @@ from .vaccinations import reaggregate_vaccines, scenario_to_epydemix
 logger = logging.getLogger(__name__)
 
 
-# ===== Helpers =====
+# ===== Classes and Helpers =====
 
 
-# Needed for school closures
-def get_year(datestring: str) -> dt.date:
-    """Extract year from a string (YYYY-MM-DD)"""
-    date_format = "%Y-%m-%d"
-    return dt.datetime.strptime(datestring, date_format).year
-
-
-# Typed namedtuple for simulation arguments
 class SimulationArguments(NamedTuple):
+    """Typed namedtuple for simulation arguments."""
+
     start_date: int
     end_date: int
     initial_conditions_dict: dict | None = None
@@ -42,13 +36,13 @@ class SimulationArguments(NamedTuple):
     resample_frequency: str | None = None
 
 
-# Typed namedtuple for projection arguments
 class ProjectionArguments(NamedTuple):
-    pass
+    """Typed namedtuple for projection arguments."""
 
 
-# Typed namedtuple for builder outputs
 class BuilderOutput(NamedTuple):
+    """Typed namedtuple for builder outputs."""
+
     primary_id: int
     seed: int | None = None
     model: EpiModel | None = None
@@ -56,6 +50,29 @@ class BuilderOutput(NamedTuple):
     simulation: SimulationArguments | None = None
     calibration: CalibrationStrategy | None = None
     projection: ProjectionArguments | None = None
+
+
+class SimulationOutput(NamedTuple):
+    """Typed namedtuple for simulation outputs."""
+
+    primary_id: int
+    results: SimulationResults
+    seed: int | None = None
+
+
+class CalibrationOutput(NamedTuple):
+    """Typed namedtuple for calibration outputs."""
+
+    primary_id: int
+    results: CalibrationResults
+    seed: int | None = None
+
+
+# Needed for school closures
+def get_year(datestring: str) -> dt.date:
+    """Extract year from a string (YYYY-MM-DD)"""
+    date_format = "%Y-%m-%d"
+    return dt.datetime.strptime(datestring, date_format).year
 
 
 # ===== Builders =====
@@ -682,7 +699,7 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
     ]
 
 
-def dispatch_builder(**configs):
+def dispatch_builder(**configs) -> BuilderOutput | list[BuilderOutput]:
     """"""
     kinds = frozenset(k for k, v in configs.items() if v is not None)
     return BUILDER_REGISTRY[kinds](**configs)
@@ -692,7 +709,7 @@ def dispatch_builder(**configs):
 # This just calls the epydemix methods and passes on the results, for ease of writing workflows on gcloud
 
 
-def dispatch_runner(configs: BuilderOutput) -> SimulationResults | CalibrationResults:
+def dispatch_runner(configs: BuilderOutput) -> SimulationOutput | CalibrationOutput:
     """"""
     seed(configs.seed)
 
@@ -713,7 +730,7 @@ def dispatch_runner(configs: BuilderOutput) -> SimulationResults | CalibrationRe
         try:
             results = configs.model.run_simulations(*configs.simulation)
             logger.info("RUNNER: completed simulation.")
-            return results
+            return SimulationOutput(primary_id=configs.primary_id, results=results, seed=configs.seed)
         except Exception as e:
             raise RuntimeError(f"Error during simulation: {e}")
 
@@ -728,7 +745,7 @@ def dispatch_runner(configs: BuilderOutput) -> SimulationResults | CalibrationRe
         try:
             results = configs.calibrator.calibrate(strategy=configs.calibration.name, **configs.calibration.options)
             logger.info("RUNNER: completed calibration.")
-            return results
+            return CalibrationOutput(primary_id=configs.primary_id, results=results, seed=configs.seed)
         except Exception as e:
             raise ValueError(f"Error during calibration: {e}")
 
@@ -766,19 +783,19 @@ def register_output_generator(kind_set):
     return deco
 
 
-@register_output_generator({"simulation_results", "outputs"})
-def generate_simulation_outputs(*, simulation_results: SimulationResults, outputs: OutputConfig, **_) -> None:
+@register_output_generator({"simulation", "outputs"})
+def generate_simulation_outputs(*, simulation: SimulationOutput, outputs: OutputConfig, **_) -> None:
     """"""
     logger.info("OUTPUT GENERATOR: dispatched for simulation")
 
 
 @register_output_generator({"calibration_results", "outputs"})
-def generate_calibration_outputs(*, calibration_results: CalibrationResults, outputs: OutputConfig, **_) -> None:
+def generate_calibration_outputs(*, calibration: CalibrationOutput, outputs: OutputConfig, **_) -> None:
     """"""
     logger.info("OUTPUT GENERATOR: dispatched for calibration")
 
 
-def dispatch_output_generator(**configs):
+def dispatch_output_generator(**configs) -> None:
     """"""
     kinds = frozenset(k for k, v in configs.items() if v is not None)
     return OUTPUT_GENERATOR_REGISTRY[kinds](**configs)
