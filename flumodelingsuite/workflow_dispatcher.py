@@ -3,8 +3,9 @@ import datetime as dt
 import logging
 from typing import NamedTuple
 
-from epydemix.calibration import ABCSampler
+from epydemix.calibration import ABCSampler, CalibrationResults
 from epydemix.model import EpiModel
+from epydemix.model.simulation_results import SimulationResults
 from numpy import float64, int64, ndarray
 
 from .basemodel_validator import BasemodelConfig, Parameter, Timespan
@@ -39,7 +40,17 @@ class BuilderOutput(NamedTuple):
 
 # Typed namedtuple for simulation arguments
 class SimulationArguments(NamedTuple):
-    
+    None
+
+
+# Typed namedtuple for calibration arguments
+class CalibrationArguments(NamedTuple):
+    None
+
+
+# Typed namedtuple for projection arguments
+class ProjectionArguments(NamedTuple):
+    None
 
 
 # ===== Builders =====
@@ -61,7 +72,7 @@ def build_basemodel(*, basemodel: BasemodelConfig, **_) -> BuilderOutput:
     """
     Workflow using only a basemodel.
     """
-    logger.info("BUILDER: dispatched for basemodel")
+    logger.info("BUILDER: dispatched for single model.")
 
     # For compactness
     basemodel = basemodel.model
@@ -72,6 +83,8 @@ def build_basemodel(*, basemodel: BasemodelConfig, **_) -> BuilderOutput:
     # Set the model name if provided in the config
     if basemodel.name is not None:
         model.name = basemodel.name
+
+    logger.info("BUILDER: setting up single model...")
 
     # This workflow uses a single population
     _set_population_from_config(model, basemodel.population.name, basemodel.population.age_groups)
@@ -142,6 +155,8 @@ def build_basemodel(*, basemodel: BasemodelConfig, **_) -> BuilderOutput:
     if not compartment_inits:
         compartment_inits = None
 
+    logger.info("BUILDER: single model builder completed.")
+
     return BuilderOutput(primary_id=0, model=model, initial_conditions=compartment_inits)
 
 
@@ -152,7 +167,7 @@ def build_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_)
     """
     from .sample_generator import generate_samples
 
-    logger.info("BUILDER: dispatched for sampling")
+    logger.info("BUILDER: dispatched for sampling.")
 
     # Validate references between basemodel and sampling
     validate_modelset_consistency(basemodel, sampling)
@@ -168,6 +183,8 @@ def build_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_)
     # Set the model name if provided in the config
     if basemodel.name is not None:
         init_model.name = basemodel.name
+
+    logger.info("BUILDER: setting up EpiModels...")
 
     # All models will share compartments, transitions, and non-sampled/calculated parameters
     _add_compartments_from_config(init_model, basemodel.compartments)
@@ -257,6 +274,8 @@ def build_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_)
             # Contact matrix
             if "contact_matrix" in intervention_types:
                 _add_contact_matrix_interventions_from_config(model, basemodel.interventions)
+
+    logger.info("BUILDER: using sampled values to modify EpiModels")
 
     # Create models with sampled/calculated parameters, apply vaccination and interventions
     compartment_inits = []
@@ -357,6 +376,7 @@ def build_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_)
         f"Mismatch: created {len(final_models)} models and {len(compartment_inits)} initial conditions"
     )
 
+    logger.info("BUILDER: sampling builder completed.")
     return [
         BuilderOutput(primary_id=i, model=t[0], initial_conditions=t[1])
         for i, t in enumerate(zip(final_models, compartment_inits, strict=True))
@@ -372,7 +392,7 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
 
     from .utils import distribution_to_scipy
 
-    logger.info("BUILDER: dispatched for calibration")
+    logger.info("BUILDER: dispatched for calibration.")
 
     # Validate references between basemodel and calibration
     validate_modelset_consistency(basemodel, calibration)
@@ -389,6 +409,8 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
     # Set the model name if provided in the config
     if basemodel.name is not None:
         init_model.name = basemodel.name
+
+    logger.info("BUILDER: setting up EpiModels...")
 
     # All models will share compartments, transitions, and non-sampled/calculated parameters
     _add_compartments_from_config(init_model, basemodel.compartments)
@@ -474,6 +496,8 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
             # Contact matrix
             if "contact_matrix" in intervention_types:
                 _add_contact_matrix_interventions_from_config(model, basemodel.interventions)
+
+    logger.info("BUILDER: setting up ABCSamplers...")
 
     observed = pd.read_csv(calibration.observed_data_path)
     calibrators = []
@@ -613,15 +637,18 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
 
         calibrators.append(abc_sampler)
 
+    logger.info("Calibration builder completed.")
     return [BuilderOutput(primary_id=i, calibrator=c) for i, c in enumerate(calibrators)]
 
 
 def dispatch_builder(**configs):
+    """"""
     kinds = frozenset(k for k, v in configs.items() if v is not None)
     return BUILDER_REGISTRY[kinds](**configs)
 
 
 # ===== Runners =====
+# these just call the epydemix methods and pass on the results, for ease of writing workflows on gcloud
 
 
 RUNNER_REGISTRY = {}
@@ -636,17 +663,60 @@ def register_runner(kind_set):
 
 
 @register_runner({"model", "simulation"})
-def run_simulation(*, model: BuilderOutput, simulation: SimulationArguments, **_):
+def run_simulation(*, model: BuilderOutput, simulation: SimulationArguments, **_) -> SimulationResults:
+    """"""
+    logger.info("RUNNER: dispatched for simulation.")
     # model.model.run_simulations(*simulation)
-    pass
+
 
 @register_runner({"sampler", "calibration"})
-def run_calibration(*, sampler: BuilderOutput, calibration: CalibrationArguments, **_):
-    pass
-
-@register_runner({"sampler", "calibration", "simulation"})
-def run_calibration_projection(*, sampler: BuilderOutput, calibration: CalibrationArguments, simulation: SimulationArguments, **_):
-    pass
+def run_calibration(*, sampler: BuilderOutput, calibration: CalibrationArguments, **_) -> CalibrationResults:
+    """"""
+    logger.info("RUNNER: dispatched for calibration")
 
 
+@register_runner({"sampler", "calibration", "projection"})
+def run_calibration_projection(
+    *, sampler: BuilderOutput, calibration: CalibrationArguments, projection: ProjectionArguments, **_
+) -> CalibrationResults:
+    """"""
+    logger.info("RUNNER: dispatched for calibration and projection")
 
+
+def dispatch_runner(**configs):
+    """"""
+    kinds = frozenset(k for k, v in configs.items() if v is not None)
+    return RUNNER_REGISTRY[kinds](**configs)
+
+
+# ===== Output Generators =====
+# these will convert to modeling hub format, create rate trend forecasts, create metadata files, create files with trajectories, create files with posteriors, and optionally save CalibrationResults/SimulationResults directly (pickle?)
+
+
+OUTPUT_GENERATOR_REGISTRY = {}
+
+
+def register_output_generator(kind_set):
+    def deco(fn):
+        OUTPUT_GENERATOR_REGISTRY[frozenset(kind_set)] = fn
+        return fn
+
+    return deco
+
+
+@register_output_generator({"simulation_results", "outputs"})
+def generate_simulation_outputs(*, simulation_results: SimulationResults, outputs: OutputConfig, **_) -> None:
+    """"""
+    logger.info("OUTPUT GENERATOR: dispatched for simulation")
+
+
+@register_output_generator({"calibration_results", "outputs"})
+def generate_calibration_outputs(*, calibration_results: CalibrationResults, outputs: OutputConfig, **_) -> None:
+    """"""
+    logger.info("OUTPUT GENERATOR: dispatched for calibration")
+
+
+def dispatch_output_generator(**configs):
+    """"""
+    kinds = frozenset(k for k, v in configs.items() if v is not None)
+    return OUTPUT_GENERATOR_REGISTRY[kinds](**configs)
