@@ -8,6 +8,7 @@ from epydemix.model import EpiModel
 from epydemix.model.simulation_results import SimulationResults
 from epydemix.population import Population
 from numpy import float64, int64, ndarray
+from numpy.random import seed
 
 from .basemodel_validator import BasemodelConfig, Parameter, Timespan
 from .calibration_validator import CalibrationConfig
@@ -54,6 +55,7 @@ class ProjectionArguments(NamedTuple):
 # Typed namedtuple for builder outputs
 class BuilderOutput(NamedTuple):
     primary_id: int
+    seed: int | None = None
     model: EpiModel | None = None
     calibrator: ABCSampler | None = None
     simulation: SimulationArguments | None = None
@@ -174,7 +176,7 @@ def build_basemodel(*, basemodel: BasemodelConfig, **_) -> BuilderOutput:
 
     logger.info("BUILDER: single model builder completed.")
 
-    return BuilderOutput(primary_id=0, model=model, simulation=simulation_args)
+    return BuilderOutput(primary_id=0, seed=basemodel.random_seed, model=model, simulation=simulation_args)
 
 
 @register_builder({"basemodel", "sampling"})
@@ -411,7 +413,7 @@ def build_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_)
 
     logger.info("BUILDER: sampling builder completed.")
     return [
-        BuilderOutput(primary_id=i, model=t[0], simulation=t[1])
+        BuilderOutput(primary_id=i, seed=basemodel.random_seed, model=t[0], simulation=t[1])
         for i, t in enumerate(zip(final_models, simulation_args, strict=True))
     ]
 
@@ -544,6 +546,7 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
     for model in models:
         # Create simulate wrapper
         def simulate_wrapper(params):
+            seed(basemodel.random_seed)
             m = copy.deepcopy(model)
 
             # Accomodate for sampled start_date
@@ -678,7 +681,7 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
         calibrators.append(abc_sampler)
 
     logger.info("Calibration builder completed.")
-    return [BuilderOutput(primary_id=i, calibrator=c) for i, c in enumerate(calibrators)]
+    return [BuilderOutput(primary_id=i, seed=basemodel.random_seed, calibrator=c) for i, c in enumerate(calibrators)]
 
 
 def dispatch_builder(**configs):
@@ -693,6 +696,8 @@ def dispatch_builder(**configs):
 
 def dispatch_runner(configs: BuilderOutput) -> SimulationResults | CalibrationResults:
     """"""
+    seed(configs.seed)
+
     # Validate configs
     assert configs.model or configs.calibrator, "Runner dispatched without an EpiModel or ABCSampler (requires one)."
 
