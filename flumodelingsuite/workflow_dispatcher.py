@@ -11,7 +11,7 @@ from numpy import float64, int64, ndarray
 from numpy.random import seed
 
 from .basemodel_validator import BasemodelConfig, Parameter, Timespan
-from .calibration_validator import CalibrationConfig
+from .calibration_validator import CalibrationConfig, CalibrationStrategy
 from .config_loader import *
 from .general_validator import validate_modelset_consistency
 from .sampling_validator import SamplingConfig
@@ -42,11 +42,6 @@ class SimulationArguments(NamedTuple):
     resample_frequency: str | None = None
 
 
-# Typed namedtuple for calibration arguments
-class CalibrationArguments(NamedTuple):
-    pass
-
-
 # Typed namedtuple for projection arguments
 class ProjectionArguments(NamedTuple):
     pass
@@ -59,7 +54,7 @@ class BuilderOutput(NamedTuple):
     model: EpiModel | None = None
     calibrator: ABCSampler | None = None
     simulation: SimulationArguments | None = None
-    calibration: CalibrationArguments | None = None
+    calibration: CalibrationStrategy | None = None
     projection: ProjectionArguments | None = None
 
 
@@ -174,7 +169,7 @@ def build_basemodel(*, basemodel: BasemodelConfig, **_) -> BuilderOutput:
         resample_frequency=basemodel.simulation.resample_frequency,
     )
 
-    logger.info("BUILDER: single model builder completed.")
+    logger.info("BUILDER: completed for single model.")
 
     return BuilderOutput(primary_id=0, seed=basemodel.random_seed, model=model, simulation=simulation_args)
 
@@ -411,7 +406,7 @@ def build_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_)
         f"Mismatch: created {len(final_models)} models and {len(simulation_args)} simulation specifications."
     )
 
-    logger.info("BUILDER: sampling builder completed.")
+    logger.info("BUILDER: completed for sampling.")
     return [
         BuilderOutput(primary_id=i, seed=basemodel.random_seed, model=t[0], simulation=t[1])
         for i, t in enumerate(zip(final_models, simulation_args, strict=True))
@@ -680,8 +675,11 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
 
         calibrators.append(abc_sampler)
 
-    logger.info("Calibration builder completed.")
-    return [BuilderOutput(primary_id=i, seed=basemodel.random_seed, calibrator=c) for i, c in enumerate(calibrators)]
+    logger.info("BUILDER: completed calibration.")
+    return [
+        BuilderOutput(primary_id=i, seed=basemodel.random_seed, calibrator=c, calibration=calibration.strategy)
+        for i, c in enumerate(calibrators)
+    ]
 
 
 def dispatch_builder(**configs):
@@ -713,7 +711,9 @@ def dispatch_runner(configs: BuilderOutput) -> SimulationResults | CalibrationRe
 
         # Run simulations
         try:
-            return configs.model.run_simulations(*configs.simulation)
+            results = configs.model.run_simulations(*configs.simulation)
+            logger.info("RUNNER: completed simulation.")
+            return results
         except Exception as e:
             raise RuntimeError(f"Error during simulation: {e}")
 
@@ -721,10 +721,29 @@ def dispatch_runner(configs: BuilderOutput) -> SimulationResults | CalibrationRe
     elif configs.calibration and not configs.projection:
         logger.info("RUNNER: dispatched for calibration.")
 
+        # Validate configs
+        assert not configs.model, "Calibration requires ABCSampler but received EpiModel."
+
+        # Run calibration
+        try:
+            results = configs.calibrator.calibrate(strategy=configs.calibration.name, **configs.calibration.options)
+            logger.info("RUNNER: completed calibration.")
+            return results
+        except Exception as e:
+            raise ValueError(f"Error during calibration: {e}")
+
     # Handle calibration and projection
     elif configs.calibration and configs.projection:
         logger.info("RUNNER: dispatched for calibration and projection.")
 
+        # Validate configs
+        assert not configs.model, "Calibration requires ABCSampler but received EpiModel."
+
+        # Run calibration and projection
+        try:
+            pass
+        except Exception as e:
+            raise ValueError(f"Error during calibration/projection: {e}")
     # Error
     else:
         raise ValueError(
