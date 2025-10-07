@@ -1,17 +1,20 @@
 model:
-  name: "example_SLIR_standalone"
+  name: "example_SLIR_calibration"
   version: "v0.0.1"
   date: "2025-09-01" # YYYY-MM-DD
-  description: "Example SLIR model for simple workflow"
+  description: "Example SLIR model for calibration workflow"
   random_seed: 42
 
   timespan:
-    start_date: "2024-08-05"
+    start_date: calibrated
     end_date: "2025-08-05" # YYYY-MM-DD
     delta_t: 0.2
 
-  population:
-    name: US-MA
+  simulation:
+    n_sims: 100 # Number of simulation run for a single model
+    resample_frequency: D # This follows https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#period-aliases Other options include 'h', 'min', 'W', 'M' etc.
+
+  population: # no population name provided, specify in modelset
     age_groups:
       - "0-4"
       - "5-17"
@@ -22,16 +25,17 @@ model:
   compartments:
     - id: S
       label: "Susceptible"
-      # uncertain, need some way to indicate default agent placement
       init: default
     - id: L
       label: "Latent"
       # number of individuals
       init: 10
+      # proportion of population
+      #init: 0.05
     - id: I
       label: "Infectious"
-      # proportion of population
-      init: 0.02
+      # look out for potential downstream conflicts with other init values when sampling
+      init: calibrated
     - id: R
       label: "Recovered"
     - id: S_vax
@@ -88,11 +92,11 @@ model:
 
   parameters:
     beta:
+      type: 
       type: scalar
-      value: 0.2
+      value: 0.3
     eps:
-      type: scalar
-      value: 1/1.5
+      type: calibrated
     mu:
       type: scalar
       value: 1/1.5

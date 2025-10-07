@@ -1,7 +1,7 @@
 modelset:
 
   meta:
-    description: "Example calibration for 2024"
+    description: "Vaccination scenarios for 2024"
     author: "Flu Modeling Suite"
     version: 1.0.0
 
@@ -19,13 +19,13 @@ modelset:
 
     # Sampler options, passed directly when initializing ABCSampler
     distance_function: rmse # Default, but we could provide custom distance function
-    observed_data_path: data/influenza_hosp_24.csv
+    observed_data_path: data/fludata.csv
     comparison:
       # Distance function will calculate the difference between observed and simulated data
-      - observed: 'value' # column name from CSV
+      - observed: 'hospitalized' # column name from CSV
         simulation: # we sum these transitions to compare with observed data
-          - 'I_to_R_total'
-          - 'I_vax_to_R_vax_total'
+          - 'Home_severe_to_Hospitalized_total'
+          - 'Home_severe_to_Hospitalized_vax_total'
 
     start_date:
       # For 'date' types, we set a reference date and add days sampled from a distribution
@@ -34,20 +34,27 @@ modelset:
         type: scipy
         name: randint
         args:
-          - 0
-          - 30
-
-    compartments:
-      I:
-        prior:
-          type: scipy
-          name: randint
-          args:
-            - 10
-            - 100
+        - 0
+        - 30
 
     parameters:
-      eps:
+      Rt:
+        prior:
+          type: scipy
+          name: uniform
+          args:
+            - 1.0
+            - 2.0
+          kwargs:
+            some_other_param: 100
+      residual_immunity:
+        prior:
+          type: scipy
+          name: uniform
+          args:
+            - 0.02
+            - 0.35
+      vaccine_effectiveness:
         prior:
           type: scipy
           name: uniform

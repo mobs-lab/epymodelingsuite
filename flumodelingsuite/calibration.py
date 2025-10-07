@@ -77,8 +77,8 @@ def calibrate(
         Results object containing posterior distributions, selected trajectories,
         distances, weights, and other calibration outputs
     """
+    from epydemix.calibration import ABCSampler
 
-    from epydemix.calibration import ABCSampler, rmse, wmape
     from .utils import convert_location_name_format
 
     location = model.population.name
@@ -281,6 +281,7 @@ def make_simulate_wrapper(
 
     return simulate_wrapper
 
+
 def resimulate_with_posterior(
     epi_model,
     posterior: pd.DataFrame,
@@ -323,14 +324,17 @@ def resimulate_with_posterior(
     trans_stacked : pd.DataFrame
         Stacked transition trajectories
     """
-    import datetime as dt
     import copy
-    from .utils import convert_location_name_format
+    import datetime as dt
+
     import numpy as np
-    from .vaccinations import add_vaccination_schedule, reaggregate_vaccines
-    from .seasonality import get_seasonal_transmission_balcan
-    from epydemix import simulate
     import pandas as pd
+    from epydemix import simulate
+
+    from .seasonality import get_seasonal_transmission_balcan
+    from .utils import convert_location_name_format
+    from .vaccinations import add_vaccination_schedule, reaggregate_vaccines
+
     comp_stacked = []
     trans_stacked = []
 
@@ -352,9 +356,7 @@ def resimulate_with_posterior(
         date_stop = combined_parameters["end_date"]
 
         # vaccination schedule
-        vax_schedule_reag = reaggregate_vaccines(
-            schedule=vax_schedule_state, actual_start_date=actual_start_date
-        )
+        vax_schedule_reag = reaggregate_vaccines(schedule=vax_schedule_state, actual_start_date=actual_start_date)
         model_copy = add_vaccination_schedule(
             model=model_copy,
             vaccine_probability_function=vaccine_probability_function,

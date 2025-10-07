@@ -59,7 +59,12 @@ class CalibrationConfiguration(BaseModel):
 
     # What we calibrate for
     start_date: DateParameter | None = Field(None, description="Start date parameter specification")
-    parameters: dict[str, CalibrationParameter] = Field(..., description="Parameter specifications for calibration")
+    parameters: dict[str, CalibrationParameter] | None = Field(
+        None, description="Parameter specifications for calibration"
+    )
+    compartments: dict[str, CalibrationParameter] | None = Field(
+        None, description="Initial conditions specifications for calibration"
+    )
 
     @model_validator(mode="after")
     def check_calibration_consistency(cls, m: "CalibrationConfiguration") -> "CalibrationConfiguration":
@@ -75,6 +80,9 @@ class CalibrationConfiguration(BaseModel):
                 msg = f"Comparison for '{comp.observed}' must specify at least one simulation transition"
                 raise ValueError(msg)
 
+        assert m.start_date or m.parameters or m.initial_conditions, (
+            "Calibration requires at least one of start_date, parameters, or compartments"
+        )
         return m
 
 
