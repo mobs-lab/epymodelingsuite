@@ -37,7 +37,7 @@ class Timespan(BaseModel):
         return v
 
     @field_validator("delta_t")
-    def check_delta_t(cls, v: float | int) -> float:
+    def check_delta_t(cls, v: float) -> float:
         """Ensure delta_t > 0 and return as float"""
         assert v > 0, f"Provided delta_t={v} must be greater than 0."
         return float(v)
