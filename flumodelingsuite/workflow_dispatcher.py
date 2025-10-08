@@ -754,6 +754,11 @@ def dispatch_runner(configs: BuilderOutput) -> SimulationOutput | CalibrationOut
     Returns
     -------
         An object containing metadata and results of simulation/calibration/projection.
+
+    Raises
+    ------
+        RuntimeError if simulation/calibration/projection fails.
+        AssertionError if configs are invalid.
     """
     seed(configs.seed)
 
@@ -791,7 +796,7 @@ def dispatch_runner(configs: BuilderOutput) -> SimulationOutput | CalibrationOut
             logger.info("RUNNER: completed calibration.")
             return CalibrationOutput(primary_id=configs.primary_id, results=results, seed=configs.seed)
         except Exception as e:
-            raise ValueError(f"Error during calibration: {e}")
+            raise RuntimeError(f"Error during calibration: {e}")
 
     # Handle calibration and projection
     elif configs.calibration and configs.projection:
@@ -804,10 +809,10 @@ def dispatch_runner(configs: BuilderOutput) -> SimulationOutput | CalibrationOut
         try:
             pass
         except Exception as e:
-            raise ValueError(f"Error during calibration/projection: {e}")
+            raise RuntimeError(f"Error during calibration/projection: {e}")
     # Error
     else:
-        raise ValueError(
+        raise AssertionError(
             "Runner called without simulation or calibration specs. Verify that your BuilderOutputs are valid."
         )
 
