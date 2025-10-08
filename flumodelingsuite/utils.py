@@ -4,7 +4,7 @@
 import pandas as pd
 import scipy.stats
 
-from .common_validators import Distribution
+from .validation.common_validators import Distribution
 
 
 def get_population_codebook() -> pd.DataFrame:

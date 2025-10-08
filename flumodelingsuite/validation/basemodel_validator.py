@@ -6,7 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from .utils import validate_iso3166
+from ..utils import validate_iso3166
 
 logger = logging.getLogger(__name__)
 

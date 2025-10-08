@@ -11,7 +11,7 @@ import scipy
 from epydemix.model import EpiModel
 from pandas import DataFrame
 
-from .basemodel_validator import (
+from .validation.basemodel_validator import (
     BasemodelConfig,
     Compartment,
     Intervention,
@@ -22,8 +22,8 @@ from .basemodel_validator import (
     Vaccination,
     validate_basemodel,
 )
-from .calibration_validator import CalibrationConfig, validate_calibration
-from .sampling_validator import SamplingConfig, validate_sampling
+from .validation.calibration_validator import CalibrationConfig, validate_calibration
+from .validation.sampling_validator import SamplingConfig, validate_sampling
 
 logger = logging.getLogger(__name__)
 
