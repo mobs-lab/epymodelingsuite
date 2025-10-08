@@ -82,6 +82,8 @@ BUILDER_REGISTRY = {}
 
 
 def register_builder(kind_set):
+    """Decorator for builder dispatch."""
+
     def deco(fn):
         BUILDER_REGISTRY[frozenset(kind_set)] = fn
         return fn
@@ -92,7 +94,15 @@ def register_builder(kind_set):
 @register_builder({"basemodel"})
 def build_basemodel(*, basemodel: BasemodelConfig, **_) -> BuilderOutput:
     """
-    Workflow using only a basemodel.
+    Construct an EpiModel and arguments for simulation using a BasemodelConfig parsed from YAML.
+
+    Parameters
+    ----------
+        basemodel: configuration parsed from YAML
+
+    Returns
+    -------
+        BuilderOutput containing id, seed, EpiModel, and arguments for simulation.
     """
     logger.info("BUILDER: dispatched for single model.")
 
@@ -194,7 +204,16 @@ def build_basemodel(*, basemodel: BasemodelConfig, **_) -> BuilderOutput:
 @register_builder({"basemodel", "sampling"})
 def build_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_) -> list[BuilderOutput]:
     """
-    Sampling workflow.
+    Construct a set of EpiModels and arguments for simulation using a BasemodelConfig and SamplingConfig parsed from YAMLs.
+
+    Parameters
+    ----------
+        basemodel: configuration parsed from YAML
+        sampling: configuration parsed from YAML
+
+    Returns
+    -------
+        BuilderOutput containing id, seed, EpiModel, and arguments for simulation.
     """
     from .sample_generator import generate_samples
 
@@ -433,7 +452,16 @@ def build_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_)
 @register_builder({"basemodel", "calibration"})
 def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationConfig, **_) -> list[BuilderOutput]:
     """
-    Calibration workflow.
+    Construct a set of ABCSamplers and arguments for calibration/projection using a BasemodelConfig and CalibrationConfig parsed from YAML.
+
+    Parameters
+    ----------
+        basemodel: configuration parsed from YAML
+        calibration: configuration parsed from YAML
+
+    Returns
+    -------
+        BuilderOutput containing id, seed, ABCSampler, and arguments for calibration and projection.
     """
     import pandas as pd
 
@@ -700,7 +728,13 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
 
 
 def dispatch_builder(**configs) -> BuilderOutput | list[BuilderOutput]:
-    """"""
+    """
+    Dispatch builder functions using the supplied configs parsed from YAML.
+
+    Dispatch to build_basemodel if supplied configs: BasemodelConfig
+    Dispatch to build_sampling if supplied configs: BasemodelConfig, SamplingConfig
+    Dispatch to build_calibration if supplied configs: BasemodelConfig, CalibrationConfig
+    """
     kinds = frozenset(k for k, v in configs.items() if v is not None)
     return BUILDER_REGISTRY[kinds](**configs)
 
@@ -710,7 +744,17 @@ def dispatch_builder(**configs) -> BuilderOutput | list[BuilderOutput]:
 
 
 def dispatch_runner(configs: BuilderOutput) -> SimulationOutput | CalibrationOutput:
-    """"""
+    """
+    Dispatch simulation/calibration/projection using a BuilderOutput and return the results.
+
+    Parameters
+    ----------
+        configs: a single BuilderOutput created by dispatch_builder()
+
+    Returns
+    -------
+        An object containing metadata and results of simulation/calibration/projection.
+    """
     seed(configs.seed)
 
     # Validate configs
@@ -776,6 +820,8 @@ OUTPUT_GENERATOR_REGISTRY = {}
 
 
 def register_output_generator(kind_set):
+    """Decorator for output generation dispatch."""
+
     def deco(fn):
         OUTPUT_GENERATOR_REGISTRY[frozenset(kind_set)] = fn
         return fn
@@ -789,13 +835,13 @@ def generate_simulation_outputs(*, simulation: SimulationOutput, outputs: Output
     logger.info("OUTPUT GENERATOR: dispatched for simulation")
 
 
-@register_output_generator({"calibration_results", "outputs"})
+@register_output_generator({"calibration", "outputs"})
 def generate_calibration_outputs(*, calibration: CalibrationOutput, outputs: OutputConfig, **_) -> None:
     """"""
     logger.info("OUTPUT GENERATOR: dispatched for calibration")
 
 
 def dispatch_output_generator(**configs) -> None:
-    """"""
+    """Dispatch output generator functions. Write outputs to file, called for effect."""
     kinds = frozenset(k for k, v in configs.items() if v is not None)
     return OUTPUT_GENERATOR_REGISTRY[kinds](**configs)
