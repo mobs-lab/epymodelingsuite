@@ -298,11 +298,11 @@ def _add_model_transitions_from_config(model: EpiModel, transitions: list[Transi
                 model.add_transition(
                     transition.source,
                     transition.target,
-                    params=(transition.mediators.rate, transition.mediators.source),
+                    params=(transition.rate, transition.mediator),
                     kind=transition.type,
                 )
                 logger.info(
-                    f"Added mediated transition: {transition.source} -> {transition.target} (mediator: {transition.mediators.source}, rate: {transition.mediators.rate})"
+                    f"Added mediated transition: {transition.source} -> {transition.target} (mediator: {transition.mediator}, rate: {transition.rate})"
                 )
             except Exception as e:
                 raise ValueError(f"Error adding mediated transition {transition}: {e}")
@@ -437,7 +437,7 @@ def _add_vaccination_schedules_from_config(
     )
 
     # Ignore provided data path in vaccination input if use_schedule is provided
-    if use_schedule:
+    if use_schedule is not None:
         vaccination_schedule = use_schedule
     # Preprocessed vaccination schedule
     elif vaccination.preprocessed_vaccination_data_path:
