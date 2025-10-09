@@ -10,6 +10,10 @@ model:
     end_date: "2025-08-05" # YYYY-MM-DD
     delta_t: 0.2
 
+  simulation:
+    n_sims: 100 # Number of simulation run for a single model
+    resample_frequency: D # This follows https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#period-aliases Other options include 'h', 'min', 'W', 'M' etc.
+
   population:
     name: US-MA
     age_groups:
@@ -107,6 +111,14 @@ model:
     r_vax:
       type: calculated
       value: 1-VE
+
+  seasonality:
+    target_parameter: beta
+    method: balcan
+    seasonality_max_date: "2024-10-01" # YYYY-MM-DD
+    seasonality_min_date: "2025-04-01" # YYYY-MM-DD, optional
+    max_value: 1.00
+    min_value: 0.50
         
   vaccination:
     # preprocessed_vaccination_data_path: "data/PROCESSED_Age_Specific_Coverage_Flu_RD1_2024_25_Sc_A_B_C_D_E_F.csv"
@@ -119,16 +131,27 @@ model:
       - R
       
   interventions:
+    # School closure intervention
     - type: school_closure
-      reduction_factor: 0.344
-
-  seasonality:
-    target_parameter: beta
-    method: balcan
-    seasonality_max_date: "2024-10-01" # YYYY-MM-DD
-    seasonality_min_date: "2025-04-01" # YYYY-MM-DD, optional
-    max_value: 1.00
-    min_value: 0.50
+      scaling_factor: 0.344
+    # Contact matrix intervention
+    - type: contact_matrix
+      scaling_factor: 1.6
+      contact_matrix_layer: "home"
+      start_date: "2024-11-25"
+      end_date: "2025-01-01
+    # Parameter scaling intervention
+    - type: parameter
+      scaling_factor:
+      target_parameter:   # TODO
+      start_date:
+      end_date:
+    # Parameter override intervention
+    - type: parameter
+      override_value:
+      target_parameter:
+      start_date:
+      end_date:
 
 
 

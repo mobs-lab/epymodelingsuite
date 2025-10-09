@@ -807,7 +807,10 @@ def dispatch_runner(configs: BuilderOutput) -> SimulationOutput | CalibrationOut
 
         # Run calibration and projection
         try:
-            pass
+            calibration_results = configs.calibrator.calibrate(strategy=configs.calibration.name, **configs.calibration.options)
+            projection_results = configs.calibrator.run_projections(...) # TODO: args in calibration config
+            logger.info("RUNNER: completed calibration.")
+            return CalibrationOutput(primary_id=configs.primary_id, results=projection_results, seed=configs.seed)
         except Exception as e:
             raise RuntimeError(f"Error during calibration/projection: {e}")
     # Error
