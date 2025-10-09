@@ -178,7 +178,7 @@ def validate_modelset_consistency(
     # Transitions consistency checks (for calibration comparison)
     # - Get set of transitions for basemodel
     # - Ensure all transitions used in calibration comparison exist in basemodel
-    base_transitions = {transition.id for transition in basemodel.transitions or []}
+    base_transitions = {f"{t.source}_to_{t.target}_total" for t in basemodel.transitions or []}
     _ensure_transitions_valid(base_transitions, calibration)
 
     logger.info("Modelset consistency validated successfully.")
