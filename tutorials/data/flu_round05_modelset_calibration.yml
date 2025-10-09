@@ -12,30 +12,50 @@ modelset:
   calibration:
 
     strategy:
-      name: SMC
+      name: smc
       options: # strategy specific arguments in calibrate() function
-        num_particles: 100
-        num_generations: 5
+        num_particles: 10
+        num_generations: 2
 
     # Sampler options, passed directly when initializing ABCSampler
     distance_function: rmse # Default, but we could provide custom distance function
     observed_data_path: data/fludata.csv
+    
     comparison:
+      - obs_date: '2024-10-01'
       # Distance function will calculate the difference between observed and simulated data
-      - observed: 'hospitalized' # column name from CSV
+        observed: 'hospitalizations' # column name from CSV
         simulation: # we sum these transitions to compare with observed data
-          - 'Home_severe_to_Hospitalized_total'
-          - 'Home_severe_to_Hospitalized_vax_total'
-
+          - 'Home_sev_to_Hosp_total'
+          - 'Home_sev_vax_to_Hosp_vax_total'
+    
+    fitting_window:
+      window_start: "2024-09-13"
+      window_end: "2025-05-14"
+    compartments:
+      L:
+        prior:
+          type: scipy
+          name: uniform
+          args:
+            - 0.0001
+            - 0.0009
+      Initial_immune:
+        prior:
+          type: scipy
+          name: uniform
+          args:
+            - 0.02
+            - 0.33
     start_date:
       # For 'date' types, we set a reference date and add days sampled from a distribution
-      reference_date: 2024-10-01
+      reference_date: 2024-09-13
       prior:
         type: scipy
         name: randint
         args:
         - 0
-        - 30
+        - 80
 
     parameters:
       Rt:
@@ -44,22 +64,29 @@ modelset:
           name: uniform
           args:
             - 1.0
-            - 2.0
-          kwargs:
-            some_other_param: 100
-      residual_immunity:
+            - 1.0
+      # residual_immunity:
+      #   prior:
+      #     type: scipy
+      #     name: uniform
+      #     args:
+      #       - 0.02
+      #       - 0.35
+      #   compartments: ['Initial_immune']
+      # infectious_seed:
+      #   prior:
+      #     type: scipy
+      #     name: uniform
+      #     args:
+      #       - 0.0001
+      #       - 0.0010
+      #   compartments: ['Latent', 'Infectious_asymptomatic', 'Infectious_symptomatic']
+      seasonality_min:
         prior:
           type: scipy
           name: uniform
           args:
-            - 0.02
-            - 0.35
-      vaccine_effectiveness:
-        prior:
-          type: scipy
-          name: uniform
-          args:
-            - 0.01
-            - 0.5
+            - 0.65
+            - 0.20
 
         
