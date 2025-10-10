@@ -255,7 +255,7 @@ def build_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_)
     logger.info("BUILDER: setting up EpiModels...")
 
     # Add dummy population with age structure (required for static age-structured parameters)
-    dummy_pop = make_dummy_population(init_model)
+    dummy_pop = make_dummy_population(basemodel)
     init_model.set_population(dummy_pop)
 
     # All models will share compartments, transitions, and non-sampled/calculated parameters
@@ -490,7 +490,7 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
     logger.info("BUILDER: setting up EpiModels...")
 
     # Add dummy population with age structure (required for static age-structured parameters)
-    dummy_pop = make_dummy_population(init_model)
+    dummy_pop = make_dummy_population(basemodel)
     init_model.set_population(dummy_pop)
 
     # All models will share compartments, transitions, and non-sampled/calculated parameters
