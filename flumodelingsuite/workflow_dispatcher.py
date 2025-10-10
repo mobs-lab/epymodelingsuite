@@ -365,7 +365,7 @@ def build_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_)
             if "parameters" in varset.keys():
                 parameters = {k: Parameter({"type": "scalar", "value": v}) for k, v in varset["parameters"].items()}
                 _add_model_parameters_from_config(m, parameters)
-            if "calculated" in [p.type for p in basemodel.parameters]:
+            if "calculated" in [param_args.type.value for param, param_args in (basemodel.parameters).items()]:
                 _calculate_parameters_from_config(m, basemodel.parameters)
 
             # Vaccination (if start_date is sampled)
@@ -601,7 +601,7 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
             }
             if new_params:
                 _add_model_parameters_from_config(m, new_params)
-            if "calculated" in [p.type for _, p in basemodel.parameters.items()]:
+            if "calculated" in [param_args.type.value for _, param_args in basemodel.parameters.items()]:
                 _calculate_parameters_from_config(m, basemodel.parameters)
 
             # Vaccination (if start_date is sampled)
