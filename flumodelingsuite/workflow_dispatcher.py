@@ -289,11 +289,9 @@ def build_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_)
     # If start_date is sampled, find earliest instance
     try:
         earliest_timespan = Timespan(
-            {
-                "start_date": sorted([varset["start_date"] for varset in sampled_vars])[0],
-                "end_date": basemodel.timespan.end_date,
-                "delta_t": basemodel.timespan.delta_t,
-            }
+            start_date=sorted([varset["start_date"] for varset in sampled_vars])[0],
+            end_date=basemodel.timespan.end_date,
+            delta_t=basemodel.timespan.delta_t,
         )
     except KeyError:  # case where start_date is not sampled
         earliest_timespan = False
@@ -358,11 +356,9 @@ def build_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_)
             # Accomodate for sampled start_date
             start_date = varset.setdefault("start_date", basemodel.timespan.start_date)
             timespan = Timespan(
-                {
-                    "start_date": start_date,
-                    "end_date": basemodel.timespan.end_date,
-                    "delta_t": basemodel.timespan.delta_t,
-                }
+                start_date=start_date,
+                end_date=basemodel.timespan.end_date,
+                delta_t=basemodel.timespan.delta_t,
             )
 
             # Sampled/calculated parameters
