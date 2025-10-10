@@ -15,7 +15,18 @@ from numpy.random import seed
 
 from .basemodel_validator import BasemodelConfig, Parameter, Timespan
 from .calibration_validator import CalibrationConfig, CalibrationStrategy
-from .config_loader import *
+from .config_loader import (
+    _add_contact_matrix_interventions_from_config,
+    _add_model_compartments_from_config,
+    _add_model_parameters_from_config,
+    _add_model_transitions_from_config,
+    _add_parameter_interventions_from_config,
+    _add_school_closure_intervention_from_config,
+    _add_seasonality_from_config,
+    _add_vaccination_schedules_from_config,
+    _calculate_parameters_from_config,
+    _set_population_from_config,
+)
 from .general_validator import validate_modelset_consistency
 from .sampling_validator import SamplingConfig
 from .school_closures import make_school_closure_dict
@@ -142,8 +153,8 @@ def build_basemodel(*, basemodel: BasemodelConfig, **_) -> BuilderOutput:
     _set_population_from_config(model, basemodel.population.name, basemodel.population.age_groups)
 
     # Compartments and transitions
-    _add_compartments_from_config(model, basemodel.compartments)
-    _add_transitions_from_config(model, basemodel.transitions)
+    _add_model_compartments_from_config(model, basemodel.compartments)
+    _add_model_transitions_from_config(model, basemodel.transitions)
 
     # Vaccination
     if basemodel.vaccination:
@@ -255,8 +266,8 @@ def build_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_)
     init_model.set_population(dummy_pop)
 
     # All models will share compartments, transitions, and non-sampled/calculated parameters
-    _add_compartments_from_config(init_model, basemodel.compartments)
-    _add_transitions_from_config(init_model, basemodel.transitions)
+    _add_model_compartments_from_config(init_model, basemodel.compartments)
+    _add_model_transitions_from_config(init_model, basemodel.transitions)
     _add_model_parameters_from_config(init_model, basemodel.parameters)
 
     # Create models with populations set
