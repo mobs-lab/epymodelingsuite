@@ -365,7 +365,7 @@ def build_sampling(
 
             # Sampled/calculated parameters
             if "parameters" in varset.keys():
-                parameters = {k: Parameter({"type": "scalar", "value": v}) for k, v in varset["parameters"].items()}
+                parameters = {k: Parameter(type="scalar", value=v) for k, v in varset["parameters"].items()}
                 _add_model_parameters_from_config(m, parameters)
             if "calculated" in [param_args.type.value for param, param_args in (basemodel.parameters).items()]:
                 _calculate_parameters_from_config(m, basemodel.parameters)
