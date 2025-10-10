@@ -146,7 +146,5 @@ def distribution_to_scipy(distribution: Distribution):
 
 def make_dummy_population(model: EpiModel) -> Population:
     dummy_pop = Population(name="Dummy")
-    dummy_pop.add_population(
-        {"Nk": [100 for _ in model.population.age_groups], "Nk_names": model.population.age_groups}
-    )
+    dummy_pop.add_population(Nk=[100 for _ in model.population.age_groups], Nk_names=model.population.age_groups)
     return dummy_pop
