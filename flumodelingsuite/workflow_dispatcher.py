@@ -86,8 +86,8 @@ class CalibrationOutput(NamedTuple):
     seed: int | None = None
 
 
-def get_data_in_window(data: pd.DataFrame, calibration: CalibrationConfig) -> pd.DataFrame:
-    """Get data within a specified time window"""
+def _get_data_in_window(data: pd.DataFrame, calibration: CalibrationConfig) -> pd.DataFrame:
+    """Get data within a specified time window."""
     window_start = calibration.fitting_window.start_date
     window_end = calibration.fitting_window.end_date
 
@@ -578,7 +578,7 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
     logger.info("BUILDER: setting up ABCSamplers...")
 
     observed = pd.read_csv(calibration.observed_data_path)
-    data_in_window = get_data_in_window(observed, calibration)
+    data_in_window = _get_data_in_window(observed, calibration)
     calibrators = []
     for model in models:
         data_state = _get_data_in_location(data_in_window, model)
