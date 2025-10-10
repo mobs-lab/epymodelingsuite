@@ -173,7 +173,7 @@ def build_basemodel(*, basemodel: BasemodelConfig, **_) -> BuilderOutput:
         # School closure
         if "school_closure" in intervention_types:
             closure_dict = make_school_closure_dict(
-                range(start=basemodel.timespan.start_date.year, stop=basemodel.timespan.end_date.year + 1)
+                range(basemodel.timespan.start_date.year, basemodel.timespan.end_date.year + 1)
             )
             _add_school_closure_intervention_from_config(model, basemodel.interventions, closure_dict)
 
@@ -331,13 +331,13 @@ def build_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_)
                 # If start_date is sampled, we can just use the earliest start date
                 if earliest_timespan:
                     closure_dict = make_school_closure_dict(
-                        range(start=earliest_timespan.start_date.year, stop=earliest_timespan.end_date.year + 1)
+                        range(earliest_timespan.start_date.year, earliest_timespan.end_date.year + 1)
                     )
                 else:
                     closure_dict = make_school_closure_dict(
                         range(
-                            start=basemodel.timespan.start_date.year,
-                            stop=basemodel.timespan.end_date.year + 1,
+                            basemodel.timespan.start_date.year,
+                            basemodel.timespan.end_date.year + 1,
                         )
                     )
                 _add_school_closure_intervention_from_config(model, basemodel.interventions, closure_dict)
