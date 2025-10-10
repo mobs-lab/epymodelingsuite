@@ -17,7 +17,7 @@ model:
     delta_t: 1.0
 
   simulation:
-    resample_frequency: D
+    resample_frequency: W-SAT
 
   random_seed: 42
 
@@ -266,7 +266,7 @@ model:
         - 1/1.5
         
   vaccination:
-    scenario_data_path: "tutorials/data/vaccine_scenarios_2425_cd.csv"
+    scenario_data_path: "data/vaccine_scenarios_2425_cd.csv"
     scenario: "C_D"
     origin_compartment: S
     eligible_compartments:
