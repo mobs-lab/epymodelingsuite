@@ -30,8 +30,8 @@ modelset:
           - 'Home_sev_vax_to_Hosp_vax_total'
     
     fitting_window:
-      window_start: "2024-09-13"
-      window_end: "2025-05-14"
+      start_date: "2024-09-13"
+      end_date: "2025-05-14"
 
     compartments:
       L:
