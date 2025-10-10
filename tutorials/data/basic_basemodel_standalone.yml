@@ -127,7 +127,10 @@ model:
       
   interventions:
     - type: school_closure
-      reduction_factor: 0.344
+      scaling_factor: 0.344
+      years:
+        - 2024
+        - 2025
 
   seasonality:
     target_parameter: beta
