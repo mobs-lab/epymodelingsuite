@@ -98,9 +98,10 @@ def get_data_in_window(data: pd.DataFrame, calibration: CalibrationConfig) -> pd
     return data.loc[mask]
 
 
-def get_data_in_state(data: pd.DataFrame, model: EpiModel) -> pd.DataFrame:
-    """Get data for a specific state"""
+def _get_data_in_location(data: pd.DataFrame, model: EpiModel) -> pd.DataFrame:
+    """Get data for a specific location."""
     location_iso = convert_location_name_format(model.population.name, "ISO")
+    # TODO: geo_value column name should be configurable.
     return data[data["geo_value"] == location_iso]
 
 
@@ -580,7 +581,7 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
     data_in_window = get_data_in_window(observed, calibration)
     calibrators = []
     for model in models:
-        data_state = get_data_in_state(data_in_window, model)
+        data_state = _get_data_in_location(data_in_window, model)
 
         # Create simulate wrapper
         def simulate_wrapper(params):
