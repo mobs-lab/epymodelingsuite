@@ -127,15 +127,15 @@ def register_builder(kind_set):
     return deco
 
 
-@register_builder({"basemodel"})
-def build_basemodel(*, basemodel: BasemodelConfig, **_) -> BuilderOutput:
+@register_builder({"basemodel_config"})
+def build_basemodel(*, basemodel_config: BasemodelConfig, **_) -> BuilderOutput:
     """
     Workflow using only a basemodel.
     """
     logger.info("BUILDER: dispatched for single model.")
 
     # For compactness
-    basemodel = basemodel.model
+    basemodel = basemodel_config.model
 
     # build a single EpiModel from basemodel config
     model = EpiModel()
@@ -229,8 +229,10 @@ def build_basemodel(*, basemodel: BasemodelConfig, **_) -> BuilderOutput:
     return BuilderOutput(primary_id=0, seed=basemodel.random_seed, model=model, simulation=simulation_args)
 
 
-@register_builder({"basemodel", "sampling"})
-def build_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_) -> list[BuilderOutput]:
+@register_builder({"basemodel_config", "sampling_config"})
+def build_sampling(
+    *, basemodel_config: BasemodelConfig, sampling_config: SamplingConfig, **kwargs
+) -> list[BuilderOutput]:
     """
     Sampling workflow.
     """
@@ -239,11 +241,11 @@ def build_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_)
     logger.info("BUILDER: dispatched for sampling.")
 
     # Validate references between basemodel and sampling
-    validate_modelset_consistency(basemodel, sampling)
+    validate_modelset_consistency(basemodel_config, sampling_config)
 
     # For compactness
-    basemodel = basemodel.model
-    sampling = sampling.modelset
+    basemodel = basemodel_config.model
+    sampling = sampling_config.modelset
 
     # Build a collection of EpiModels
     models = []
@@ -459,8 +461,10 @@ def build_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_)
     ]
 
 
-@register_builder({"basemodel", "calibration"})
-def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationConfig, **_) -> list[BuilderOutput]:
+@register_builder({"basemodel_config", "calibration_config"})
+def build_calibration(
+    *, basemodel_config: BasemodelConfig, calibration_config: CalibrationConfig, **_
+) -> list[BuilderOutput]:
     """
     Calibration workflow.
     """
@@ -469,11 +473,11 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
     logger.info("BUILDER: dispatched for calibration.")
 
     # Validate references between basemodel and calibration
-    validate_modelset_consistency(basemodel, calibration)
+    validate_modelset_consistency(basemodel_config, calibration_config)
 
     # For compactness
-    basemodel = basemodel.model
-    modelset = calibration.modelset
+    basemodel = basemodel_config.model
+    modelset = calibration_config.modelset
     calibration = modelset.calibration
 
     # Build a collection of EpiModels
