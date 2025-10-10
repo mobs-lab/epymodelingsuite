@@ -19,7 +19,7 @@ modelset:
 
     # Sampler options, passed directly when initializing ABCSampler
     distance_function: rmse # Default, but we could provide custom distance function
-    observed_data_path: data/fludata.csv
+    observed_data_path: data/flu_hosp_24.csv
     
     comparison:
       - obs_date: '2024-10-01'
@@ -32,6 +32,7 @@ modelset:
     fitting_window:
       window_start: "2024-09-13"
       window_end: "2025-05-14"
+
     compartments:
       L:
         prior:
