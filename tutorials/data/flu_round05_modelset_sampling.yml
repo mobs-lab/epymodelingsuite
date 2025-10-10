@@ -23,7 +23,7 @@ modelset:
         parameters:
           - start_date
           - Rt
-          - vaccine_effectiveness
+          # - vaccine_effectiveness
 
     compartments:
       L:
@@ -53,13 +53,13 @@ modelset:
             - 2.0
           kwargs:
             some_other_param: 100
-      vaccine_effectiveness:
-        distribution:
-          type: scipy
-          name: uniform
-          args:
-            - 0.0
-            - 0.5
+      # vaccine_effectiveness:
+      #   distribution:
+      #     type: scipy
+      #     name: uniform
+      #     args:
+      #       - 0.0
+      #       - 0.5
       # gamma:
       #   values:
       #     - 0.1
