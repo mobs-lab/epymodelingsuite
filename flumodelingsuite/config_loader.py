@@ -393,6 +393,9 @@ def _calculate_parameters_from_config(model: EpiModel, parameters: dict[str, Par
             # Substitute retrieved parameter values or contact matrix eigenvalue into the tree,
             # convert back into expression
             calc_expr = ast.unparse(RetrieveName(model).visit(tree))
+
+            logger.info(f"Calculating parameter {name} using expression: {calc_expr}")
+
             # Evaluate the expression
             parameters_dict[name] = _safe_eval(calc_expr)
         except Exception as e:
