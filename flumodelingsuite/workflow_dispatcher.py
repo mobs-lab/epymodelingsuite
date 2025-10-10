@@ -280,7 +280,7 @@ def build_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_)
 
     # Output of this is a list of dicts containing start_date, initial conditions, and parameter value
     # combinations where parameters is in the same format as basemodel.parameters
-    sampled_vars = generate_samples(sampling.sampling, basemodel.random_seed)
+    sampled_vars = generate_samples(sampling_config, basemodel.random_seed)
 
     # Extract intervention types
     if basemodel.interventions:
