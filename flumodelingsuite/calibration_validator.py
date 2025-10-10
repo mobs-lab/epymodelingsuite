@@ -45,19 +45,14 @@ class CalibrationParameter(BaseModel):
     """Parameter specification for calibration."""
 
     prior: Distribution = Field(..., description="Prior distribution for parameter calibration")
-    
+
+
 class FittingWindow(BaseModel):
     """Specification for the time window used in calibration fitting."""
-    
-    window_start: str = Field(
-        ..., 
-        description="Start date of fitting window (ISO format: YYYY-MM-DD)"
-    )
-    window_end: str = Field(
-        ..., 
-        description="End date of fitting window (ISO format: YYYY-MM-DD)"
-    )
-    
+
+    window_start: str = Field(..., description="Start date of fitting window (ISO format: YYYY-MM-DD)")
+    window_end: str = Field(..., description="End date of fitting window (ISO format: YYYY-MM-DD)")
+
     @model_validator(mode="after")
     def validate_date_order(cls, m: "FittingWindow") -> "FittingWindow":
         """Ensure end_date is after start_date."""
@@ -65,12 +60,14 @@ class FittingWindow(BaseModel):
         # Only validate if both are actual date strings
         if isinstance(m.window_start, str) and isinstance(m.window_end, str):
             from datetime import datetime
+
             start = datetime.fromisoformat(m.window_start)
             end = datetime.fromisoformat(m.window_end)
             if end <= start:
                 raise ValueError("end_date must be after start_date")
         return m
-    
+
+
 class CalibrationConfiguration(BaseModel):
     """Calibration configuration section."""
 
@@ -89,10 +86,7 @@ class CalibrationConfiguration(BaseModel):
     compartments: dict[str, CalibrationParameter] | None = Field(
         None, description="Initial conditions specifications for calibration"
     )
-    fitting_window: FittingWindow = Field(
-        ...,
-        description="Time window for calibration fitting"
-    )
+    fitting_window: FittingWindow = Field(..., description="Time window for calibration fitting")
 
     @model_validator(mode="after")
     def check_calibration_consistency(cls, m: "CalibrationConfiguration") -> "CalibrationConfiguration":
