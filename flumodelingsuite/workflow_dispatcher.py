@@ -86,13 +86,6 @@ class CalibrationOutput(NamedTuple):
     seed: int | None = None
 
 
-# Needed for school closures
-def get_year(datestring: str) -> dt.date:
-    """Extract year from a string (YYYY-MM-DD)"""
-    date_format = "%Y-%m-%d"
-    return dt.datetime.strptime(datestring, date_format).year
-
-
 def get_data_in_window(data: pd.DataFrame, calibration: CalibrationConfig) -> pd.DataFrame:
     """Get data within a specified time window"""
     window_start = calibration.fitting_window.start_date
@@ -174,7 +167,7 @@ def build_basemodel(*, basemodel: BasemodelConfig, **_) -> BuilderOutput:
         # School closure
         if "school_closure" in intervention_types:
             closure_dict = make_school_closure_dict(
-                range(start=get_year(basemodel.timespan.start_date), stop=get_year(basemodel.timespan.end_date) + 1)
+                range(start=basemodel.timespan.start_date.year, stop=basemodel.timespan.end_date.year + 1)
             )
             _add_school_closure_intervention_from_config(model, basemodel.interventions, closure_dict)
 
@@ -332,15 +325,13 @@ def build_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_)
                 # If start_date is sampled, we can just use the earliest start date
                 if earliest_timespan:
                     closure_dict = make_school_closure_dict(
-                        range(
-                            start=get_year(earliest_timespan.start_date), stop=get_year(earliest_timespan.end_date) + 1
-                        )
+                        range(start=earliest_timespan.start_date.year, stop=earliest_timespan.end_date.year + 1)
                     )
                 else:
                     closure_dict = make_school_closure_dict(
                         range(
-                            start=get_year(basemodel.timespan.start_date),
-                            stop=get_year(basemodel.timespan.end_date) + 1,
+                            start=basemodel.timespan.start_date.year,
+                            stop=basemodel.timespan.end_date.year + 1,
                         )
                     )
                 _add_school_closure_intervention_from_config(model, basemodel.interventions, closure_dict)
@@ -563,15 +554,13 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
                 # If start_date is sampled, we can just use the earliest start date
                 if earliest_timespan:
                     closure_dict = make_school_closure_dict(
-                        range(
-                            get_year(str(earliest_timespan.start_date)), get_year(str(earliest_timespan.end_date)) + 1
-                        )
+                        range(earliest_timespan.start_date.year, earliest_timespan.end_date.year + 1)
                     )
                 else:
                     closure_dict = make_school_closure_dict(
                         range(
-                            get_year(str(basemodel.timespan.start_date)),
-                            get_year(str(basemodel.timespan.end_date)) + 1,
+                            basemodel.timespan.start_date.year,
+                            basemodel.timespan.end_date.year + 1,
                         )
                     )
                 _add_school_closure_intervention_from_config(model, basemodel.interventions, closure_dict)
