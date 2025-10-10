@@ -3,15 +3,15 @@ import datetime as dt
 import logging
 from typing import NamedTuple
 
-from epydemix.calibration import ABCSampler, CalibrationResults, rmse, wmape, ae, mae, mape
-from epydemix.model.simulation_results import SimulationResults
-from epydemix.model import EpiModel
-from epydemix.population import Population
-from epydemix import simulate
-from numpy import float64, int64, ndarray
 import numpy as np
-from numpy.random import seed
 import pandas as pd
+from epydemix import simulate
+from epydemix.calibration import ABCSampler, CalibrationResults, ae, mae, mape, rmse, wmape
+from epydemix.model import EpiModel
+from epydemix.model.simulation_results import SimulationResults
+from epydemix.population import Population
+from numpy import float64, int64, ndarray
+from numpy.random import seed
 
 from .basemodel_validator import BasemodelConfig, Parameter, Timespan
 from .calibration_validator import CalibrationConfig, CalibrationStrategy
@@ -19,9 +19,8 @@ from .config_loader import *
 from .general_validator import validate_modelset_consistency
 from .sampling_validator import SamplingConfig
 from .school_closures import make_school_closure_dict
-from .utils import get_location_codebook, convert_location_name_format
+from .utils import convert_location_name_format, get_location_codebook
 from .vaccinations import reaggregate_vaccines, scenario_to_epydemix
-
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +67,7 @@ class SimulationOutput(NamedTuple):
 class CalibrationArguments(NamedTuple):
     pass
 
-  
+
 class CalibrationOutput(NamedTuple):
     """Typed namedtuple for calibration outputs."""
 
@@ -82,18 +81,21 @@ def get_year(datestring: str) -> dt.date:
     """Extract year from a string (YYYY-MM-DD)"""
     date_format = "%Y-%m-%d"
     return dt.datetime.strptime(datestring, date_format).year
-  
+
+
 def get_data_in_window(data: pd.DataFrame, calibration: CalibrationConfig) -> pd.DataFrame:
     """Get data within a specified time window"""
     window_start = calibration.fitting_window.window_start
     window_end = calibration.fitting_window.window_end
-    mask = (data['target_end_date'] >= window_start) & (data['target_end_date'] <= window_end)
+    mask = (data["target_end_date"] >= window_start) & (data["target_end_date"] <= window_end)
     return data.loc[mask]
 
-def get_data_in_state(data: pd.DataFrame, model:EpiModel) -> pd.DataFrame:
+
+def get_data_in_state(data: pd.DataFrame, model: EpiModel) -> pd.DataFrame:
     """Get data for a specific state"""
     location_iso = convert_location_name_format(model.population.name, "ISO")
     return data[data["geo_value"] == location_iso]
+
 
 dist_func_dict = {
     "rmse": rmse,
@@ -247,9 +249,11 @@ def build_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_)
 
     # Add dummy population with age structure (required for static age-structured parameters)
     dummy_pop = Population(name="Dummy")
-    dummy_pop.add_population(Nk=[100 for _ in basemodel.population.age_groups], Nk_names=basemodel.population.age_groups)
+    dummy_pop.add_population(
+        Nk=[100 for _ in basemodel.population.age_groups], Nk_names=basemodel.population.age_groups
+    )
     init_model.set_population(dummy_pop)
-    
+
     # All models will share compartments, transitions, and non-sampled/calculated parameters
     _add_compartments_from_config(init_model, basemodel.compartments)
     _add_transitions_from_config(init_model, basemodel.transitions)
@@ -485,7 +489,9 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
 
     # Add dummy population with age structure (required for static age-structured parameters)
     dummy_pop = Population(name="Dummy")
-    dummy_pop.add_population(Nk=[100 for _ in basemodel.population.age_groups], Nk_names=basemodel.population.age_groups)
+    dummy_pop.add_population(
+        Nk=[100 for _ in basemodel.population.age_groups], Nk_names=basemodel.population.age_groups
+    )
     init_model.set_population(dummy_pop)
 
     # All models will share compartments, transitions, and non-sampled/calculated parameters
@@ -514,11 +520,9 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
     # If start_date is sampled, make earliest timespan
     if calibration.start_date:
         earliest_timespan = Timespan(
-            **{
-                "start_date": calibration.start_date.reference_date,
-                "end_date": basemodel.timespan.end_date,
-                "delta_t": basemodel.timespan.delta_t,
-            }
+            start_date=calibration.start_date.reference_date,
+            end_date=basemodel.timespan.end_date,
+            delta_t=basemodel.timespan.delta_t,
         )
     else:  # case where start_date is not sampled
         earliest_timespan = False
@@ -580,6 +584,7 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
     calibrators = []
     for model in models:
         data_state = get_data_in_state(data_in_window, model)
+
         # Create simulate wrapper
         def simulate_wrapper(params):
             seed(basemodel.random_seed)
@@ -591,19 +596,14 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
             else:
                 start_date = basemodel.timespan.start_date
             timespan = Timespan(
-                **{
-                    "start_date": start_date,
-                    "end_date": basemodel.timespan.end_date,
-                    "delta_t": basemodel.timespan.delta_t,
-                }
+                start_date=start_date, end_date=basemodel.timespan.end_date, delta_t=basemodel.timespan.delta_t
             )
 
             # Sampled/calculated parameters
             new_params = {
-                k: Parameter(**{"type": "scalar", "value": v})
+                k: Parameter(type="scalar", value=v)
                 for k, v in params.items()
-                if k in basemodel.parameters.keys()
-                and basemodel.parameters[k].type == "calibrated"
+                if k in basemodel.parameters.keys() and basemodel.parameters[k].type == "calibrated"
             }
             if new_params:
                 _add_model_parameters_from_config(m, new_params)
@@ -619,8 +619,8 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
 
             # Seasonality (this must occur before parameter interventions to preserve parameter overrides)
             if basemodel.seasonality:
-                if 'seasonality_min' in params.keys():
-                    basemodel.seasonality.min_value = params['seasonality_min']
+                if "seasonality_min" in params.keys():
+                    basemodel.seasonality.min_value = params["seasonality_min"]
                 _add_seasonality_from_config(m, basemodel.seasonality, timespan)
 
             # Parameter interventions
@@ -649,11 +649,7 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
             compartment_ids = {c.id for c in basemodel.compartments}
             # Initialize calibrated compartments with proportions
             compartment_init.update(
-                {
-                    compartment: v 
-                    for compartment, v in params.items()
-                    if compartment in compartment_ids and v >= 1
-                }
+                {compartment: v for compartment, v in params.items() if compartment in compartment_ids and v >= 1}
             )
 
             # Initialize calibrated compartments with proportions
@@ -668,8 +664,10 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
             default_compartments = [
                 compartment for compartment in basemodel.compartments if compartment.init == "default"
             ]
-            sum_age_structured = np.sum([vals for vals in compartment_init.values() if isinstance(vals, ndarray)], axis=0)
-            remaining = m.population.Nk - sum_age_structured 
+            sum_age_structured = np.sum(
+                [vals for vals in compartment_init.values() if isinstance(vals, ndarray)], axis=0
+            )
+            remaining = m.population.Nk - sum_age_structured
             compartment_init.update(
                 {compartment.id: remaining / len(default_compartments) for compartment in default_compartments}
             )
