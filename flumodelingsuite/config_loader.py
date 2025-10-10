@@ -446,8 +446,8 @@ def _add_vaccination_schedules_from_config(
         vaccination_schedule = use_schedule
     # Preprocessed vaccination schedule
     elif vaccination.preprocessed_vaccination_data_path:
-        vaccination_schedule = pd.read_csv(preprocessed_vaccination_data_path)
-        logger.info(f"Loaded preprocessed vaccination schedule from {preprocessed_vaccination_data_path}")
+        vaccination_schedule = pd.read_csv(vaccination.preprocessed_vaccination_data_path)
+        logger.info(f"Loaded preprocessed vaccination schedule from {vaccination.preprocessed_vaccination_data_path}")
     # Create schedule from SMH scenario
     else:
         try:
@@ -455,11 +455,11 @@ def _add_vaccination_schedules_from_config(
                 input_filepath=vaccination.scenario_data_path,
                 start_date=timespan.start_date,
                 end_date=timespan.end_date,
-                target_age_groups=model.population.Nk,
+                target_age_groups=model.population.Nk_names,
                 delta_t=timespan.delta_t,
                 states=[model.population.name],
             )
-            logger.info(f"Created vaccination schedule from scenario data at {scenario_data_path}")
+            logger.info(f"Created vaccination schedule from scenario data at {vaccination.scenario_data_path}")
         except Exception as e:
             raise ValueError(f"Error creating vaccination schedule from scenario data:\n{e}")
 
