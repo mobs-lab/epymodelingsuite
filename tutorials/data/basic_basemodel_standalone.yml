@@ -10,6 +10,10 @@ model:
     end_date: "2025-08-05" # YYYY-MM-DD
     delta_t: 0.2
 
+  simulation:
+    resample_frequency: W-SAT
+    n_sims: 10
+
   population:
     name: US-MA
     age_groups:
