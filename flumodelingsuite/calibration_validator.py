@@ -50,21 +50,16 @@ class CalibrationParameter(BaseModel):
 class FittingWindow(BaseModel):
     """Specification for the time window used in calibration fitting."""
 
-    window_start: str = Field(..., description="Start date of fitting window (ISO format: YYYY-MM-DD)")
-    window_end: str = Field(..., description="End date of fitting window (ISO format: YYYY-MM-DD)")
+    start_date: date = Field(..., description="Start date of fitting window.")
+    end_date: date = Field(..., description="End date of fitting window.")
 
     @model_validator(mode="after")
     def validate_date_order(cls, m: "FittingWindow") -> "FittingWindow":
         """Ensure end_date is after start_date."""
         # Note: DateParameter can be a string date or have a prior distribution
         # Only validate if both are actual date strings
-        if isinstance(m.window_start, str) and isinstance(m.window_end, str):
-            from datetime import datetime
-
-            start = datetime.fromisoformat(m.window_start)
-            end = datetime.fromisoformat(m.window_end)
-            if end <= start:
-                raise ValueError("end_date must be after start_date")
+        if m.end_date <= m.start_date:
+            raise ValueError("end_date must be after start_date")
         return m
 
 

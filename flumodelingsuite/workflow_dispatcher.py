@@ -95,9 +95,8 @@ def get_year(datestring: str) -> dt.date:
 
 def get_data_in_window(data: pd.DataFrame, calibration: CalibrationConfig) -> pd.DataFrame:
     """Get data within a specified time window"""
-    window_start = calibration.fitting_window.window_start
-    window_end = calibration.fitting_window.window_end
-    mask = (data["target_end_date"] >= window_start) & (data["target_end_date"] <= window_end)
+    window_start = calibration.fitting_window.start_date
+    window_end = calibration.fitting_window.end_date
     return data.loc[mask]
 
 
