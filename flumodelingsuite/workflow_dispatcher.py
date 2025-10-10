@@ -159,7 +159,7 @@ def build_basemodel(*, basemodel: BasemodelConfig, **_) -> BuilderOutput:
 
     # Parameters
     _add_model_parameters_from_config(model, basemodel.parameters)
-    if "calculated" in [p.type for p in basemodel.parameters]:
+    if "calculated" in [param_args.type.value for param, param_args in (basemodel.parameters).items()]:
         _calculate_parameters_from_config(model, basemodel.parameters)
 
     # Seasonality (this must occur before interventions to preserve parameter overrides)
