@@ -109,8 +109,11 @@ model:
         - 0.4
         - 0.3
     r_vax:
-      type: calculated
-      value: 1-VE
+      type: scalar
+      value: 0.3
+      # FIXME: When calculated paramaters uses an age-varying parameter, it fails.
+      # type: calculated
+      # value: 1 - VE
         
   vaccination:
     # preprocessed_vaccination_data_path: "data/PROCESSED_Age_Specific_Coverage_Flu_RD1_2024_25_Sc_A_B_C_D_E_F.csv"
