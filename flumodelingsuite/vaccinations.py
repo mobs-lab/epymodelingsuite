@@ -1,8 +1,11 @@
 import datetime as dt
+import logging
 from collections.abc import Callable
 
 import pandas as pd
 from epydemix.model import EpiModel
+
+logger = logging.getLogger(__name__)
 
 
 def validate_age_groups(target_age_groups: list[str]) -> None:
@@ -26,6 +29,8 @@ def validate_age_groups(target_age_groups: list[str]) -> None:
     ValueError
         If any of the rules above are violated.
     """
+    logger.info(f"Validating age groups: {target_age_groups}")
+
     if target_age_groups[-1][-1] != "+":
         raise ValueError("The last age group must end with '+' e.g. '80+'")
 
