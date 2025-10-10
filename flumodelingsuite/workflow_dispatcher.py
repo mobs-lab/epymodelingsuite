@@ -3,12 +3,13 @@ import datetime as dt
 import logging
 from typing import NamedTuple
 
-from epydemix.calibration import ABCSampler, CalibrationResults
+from epydemix.calibration import ABCSampler, CalibrationResults, rmse, wmape, ae, mae, mape
 from epydemix.model.simulation_results import SimulationResults
 from epydemix.model import EpiModel
 from epydemix.population import Population
 from epydemix import simulate
 from numpy import float64, int64, ndarray
+import numpy as np
 import pandas as pd
 
 from .basemodel_validator import BasemodelConfig, Parameter, Timespan
@@ -44,6 +45,13 @@ def get_data_in_state(data: pd.DataFrame, model:EpiModel) -> pd.DataFrame:
     location_iso = convert_location_name_format(model.population.name, "ISO")
     return data[data["geo_value"] == location_iso]
 
+dist_func_dict = {
+    "rmse": rmse,
+    "wmape": wmape,
+    "ae": ae,
+    "mae": mae,
+    "mape": mape,
+}
 
 # Typed namedtuple for builder outputs
 class BuilderOutput(NamedTuple):
@@ -401,8 +409,6 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
     """
     Calibration workflow.
     """
-    import pandas as pd
-
     from .utils import distribution_to_scipy
 
     logger.info("BUILDER: dispatched for calibration")
@@ -431,8 +437,8 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
     init_model.set_population(dummy_pop)
 
     # All models will share compartments, transitions, and non-sampled/calculated parameters
-    _add_compartments_from_config(init_model, basemodel.compartments)
-    _add_transitions_from_config(init_model, basemodel.transitions)
+    _add_model_compartments_from_config(init_model, basemodel.compartments)
+    _add_model_transitions_from_config(init_model, basemodel.transitions)
     _add_model_parameters_from_config(init_model, basemodel.parameters)
 
     # Create models with populations set
@@ -526,7 +532,7 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
 
             # Accomodate for sampled start_date
             if earliest_timespan:
-                start_date = earliest_timespan.start_date + dt.timedelta(days=params["start_date_offset"])
+                start_date = earliest_timespan.start_date + dt.timedelta(days=params["start_date"])
             else:
                 start_date = basemodel.timespan.start_date
             timespan = Timespan(
@@ -545,8 +551,8 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
                 and basemodel.parameters[k].type == "calibrated"
             }
             if new_params:
-                _add_model_parameters_from_config(m, parameters)
-            if "calculated" in [p.type for p in basemodel.parameters]:
+                _add_model_parameters_from_config(m, new_params)
+            if "calculated" in [p.type for _, p in basemodel.parameters.items()]:
                 _calculate_parameters_from_config(m, basemodel.parameters)
 
             # Vaccination (if start_date is sampled)
@@ -607,11 +613,8 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
             default_compartments = [
                 compartment for compartment in basemodel.compartments if compartment.init == "default"
             ]
-            sum_age_structured = sum([sum(vals) for vals in compartment_init.values() if isinstance(vals, ndarray)])
-            sum_no_age = sum(
-                [val for val in compartment_init.values() if isinstance(val, (int, float, int64, float64))]
-            )
-            remaining = sum(m.population.Nk) - sum_age_structured - sum_no_age
+            sum_age_structured = np.sum([vals for vals in compartment_init.values() if isinstance(vals, ndarray)], axis=0)
+            remaining = m.population.Nk - sum_age_structured 
             compartment_init.update(
                 {compartment.id: remaining / len(default_compartments) for compartment in default_compartments}
             )
@@ -664,7 +667,7 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
             priors=priors,
             parameters={k: v for k, v in model.parameters.items() if v is not None},
             observed_data=data_state[calibration.comparison[0].observed].values,
-            distance_function=calibration.distance_function,
+            distance_function=dist_func_dict[calibration.distance_function],
         )
 
         calibrators.append(abc_sampler)
