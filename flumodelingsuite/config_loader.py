@@ -412,7 +412,7 @@ def _add_vaccination_schedules_from_config(
     transitions: list[Transition],
     vaccination: Vaccination,
     timespan: Timespan,
-    use_schedule: DataFrame | None,
+    use_schedule: DataFrame | None = None,
 ) -> EpiModel:
     """
     Add transitions between compartments due to vaccination to the EpiModel instance.
