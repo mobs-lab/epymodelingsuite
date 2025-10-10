@@ -22,12 +22,12 @@ modelset:
     observed_data_path: data/flu_hosp_24.csv
     
     comparison:
-      - obs_date: '2024-10-01'
+      - observed_date_column: target_end_date
       # Distance function will calculate the difference between observed and simulated data
-        observed: 'hospitalizations' # column name from CSV
+        observed_value_column: hospitalizations # column name from CSV
         simulation: # we sum these transitions to compare with observed data
-          - 'Home_sev_to_Hosp_total'
-          - 'Home_sev_vax_to_Hosp_vax_total'
+          - Home_sev_to_Hosp_total
+          - Home_sev_vax_to_Hosp_vax_total
     
     fitting_window:
       start_date: "2024-09-13"
