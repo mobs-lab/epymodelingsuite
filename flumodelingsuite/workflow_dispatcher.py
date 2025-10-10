@@ -9,7 +9,6 @@ from epydemix import simulate
 from epydemix.calibration import ABCSampler, CalibrationResults, ae, mae, mape, rmse, wmape
 from epydemix.model import EpiModel
 from epydemix.model.simulation_results import SimulationResults
-from epydemix.population import Population
 from numpy import float64, int64, ndarray
 from numpy.random import seed
 
@@ -30,7 +29,7 @@ from .config_loader import (
 from .general_validator import validate_modelset_consistency
 from .sampling_validator import SamplingConfig
 from .school_closures import make_school_closure_dict
-from .utils import convert_location_name_format, get_location_codebook
+from .utils import convert_location_name_format, get_location_codebook, make_dummy_population
 from .vaccinations import reaggregate_vaccines, scenario_to_epydemix
 
 logger = logging.getLogger(__name__)
@@ -259,10 +258,7 @@ def build_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_)
     logger.info("BUILDER: setting up EpiModels...")
 
     # Add dummy population with age structure (required for static age-structured parameters)
-    dummy_pop = Population(name="Dummy")
-    dummy_pop.add_population(
-        Nk=[100 for _ in basemodel.population.age_groups], Nk_names=basemodel.population.age_groups
-    )
+    dummy_pop = make_dummy_population(init_model)
     init_model.set_population(dummy_pop)
 
     # All models will share compartments, transitions, and non-sampled/calculated parameters
@@ -499,10 +495,7 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
     logger.info("BUILDER: setting up EpiModels...")
 
     # Add dummy population with age structure (required for static age-structured parameters)
-    dummy_pop = Population(name="Dummy")
-    dummy_pop.add_population(
-        Nk=[100 for _ in basemodel.population.age_groups], Nk_names=basemodel.population.age_groups
-    )
+    dummy_pop = make_dummy_population(init_model)
     init_model.set_population(dummy_pop)
 
     # All models will share compartments, transitions, and non-sampled/calculated parameters
