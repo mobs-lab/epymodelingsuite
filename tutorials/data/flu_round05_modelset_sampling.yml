@@ -12,9 +12,9 @@ modelset:
   sampling:
 
     samplers:
-      - strategy: grid
-        parameters:
-          - gamma
+      # - strategy: grid
+      #   parameters:
+      #     - gamma
       - strategy: LHS
         n_samples: 100 # Total number of parameter sets we sample for. Only required for sampling methods (e.g., LHS).
         compartments:
@@ -60,18 +60,10 @@ modelset:
           args:
             - 0.0
             - 0.5
-      some_parameter_with_custom_dist:
-        distribution:
-          # To allow defining custom distribution, we set the 'type'
-          type: custom
-          name: my_custom_distribution # This would be defined by inheriting rv_continuous or rv_discrete
-          kwargs:
-            arg1: 0.1
-            arg2: 0.5
-      gamma:
-        values:
-          - 0.1
-          - 0.2
-          - 0.3
-          - 0.4
-          - 0.5
+      # gamma:
+      #   values:
+      #     - 0.1
+      #     - 0.2
+      #     - 0.3
+      #     - 0.4
+      #     - 0.5
