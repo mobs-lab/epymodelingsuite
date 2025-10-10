@@ -1,4 +1,5 @@
 import logging
+from datetime import date
 from enum import Enum
 from typing import Any
 
@@ -36,8 +37,10 @@ class CalibrationStrategy(BaseModel):
 class ComparisonSpec(BaseModel):
     """Specification for comparing observed and simulated data."""
 
-    observed: str = Field(..., description="Name of column containing observed values in observed data CSV")
-    obs_date: str = Field(..., description="Name of column containing target dates in observed data CSV")
+    observed_value_column: str = Field(
+        ..., description="Name of column containing observed values in observed data CSV"
+    )
+    observed_date_column: str = Field(..., description="Name of column containing target dates in observed data CSV")
     simulation: list[str] = Field(..., description="List of transition names to sum for comparison (e.g. I_to_R)")
 
 

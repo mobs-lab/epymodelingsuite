@@ -90,6 +90,11 @@ def get_data_in_window(data: pd.DataFrame, calibration: CalibrationConfig) -> pd
     """Get data within a specified time window"""
     window_start = calibration.fitting_window.start_date
     window_end = calibration.fitting_window.end_date
+
+    date_col_name = calibration.comparison[0].observed_date_column
+    date_col = pd.to_datetime(data[date_col_name]).dt.date
+
+    mask = (date_col >= window_start) & (date_col <= window_end)
     return data.loc[mask]
 
 
@@ -711,7 +716,7 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
             simulation_function=simulate_wrapper,
             priors=priors,
             parameters={k: v for k, v in model.parameters.items() if v is not None},
-            observed_data=data_state[calibration.comparison[0].observed].values,
+            observed_data=data_state[calibration.comparison[0].observed_value_column].values,
             distance_function=dist_func_dict[calibration.distance_function],
         )
 
