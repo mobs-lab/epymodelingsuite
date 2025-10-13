@@ -1,4 +1,5 @@
 import logging
+from datetime import date
 from enum import Enum
 from typing import Any
 
@@ -36,8 +37,10 @@ class CalibrationStrategy(BaseModel):
 class ComparisonSpec(BaseModel):
     """Specification for comparing observed and simulated data."""
 
-    observed: str = Field(..., description="Name of column containing observed values in observed data CSV")
-    obs_date: str = Field(..., description="Name of column containing target dates in observed data CSV")
+    observed_value_column: str = Field(
+        ..., description="Name of column containing observed values in observed data CSV"
+    )
+    observed_date_column: str = Field(..., description="Name of column containing target dates in observed data CSV")
     simulation: list[str] = Field(..., description="List of transition names to sum for comparison (e.g. I_to_R)")
 
 
@@ -45,6 +48,22 @@ class CalibrationParameter(BaseModel):
     """Parameter specification for calibration."""
 
     prior: Distribution = Field(..., description="Prior distribution for parameter calibration")
+
+
+class FittingWindow(BaseModel):
+    """Specification for the time window used in calibration fitting."""
+
+    start_date: date = Field(..., description="Start date of fitting window.")
+    end_date: date = Field(..., description="End date of fitting window.")
+
+    @model_validator(mode="after")
+    def validate_date_order(cls, m: "FittingWindow") -> "FittingWindow":
+        """Ensure end_date is after start_date."""
+        # Note: DateParameter can be a string date or have a prior distribution
+        # Only validate if both are actual date strings
+        if m.end_date <= m.start_date:
+            raise ValueError("end_date must be after start_date")
+        return m
 
 
 class CalibrationConfiguration(BaseModel):
@@ -65,6 +84,7 @@ class CalibrationConfiguration(BaseModel):
     compartments: dict[str, CalibrationParameter] | None = Field(
         None, description="Initial conditions specifications for calibration"
     )
+    fitting_window: FittingWindow = Field(..., description="Time window for calibration fitting")
 
     @model_validator(mode="after")
     def check_calibration_consistency(cls, m: "CalibrationConfiguration") -> "CalibrationConfiguration":

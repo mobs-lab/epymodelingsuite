@@ -3,20 +3,33 @@ import datetime as dt
 import logging
 from typing import NamedTuple
 
-from epydemix.calibration import ABCSampler, CalibrationResults
+import numpy as np
+import pandas as pd
+from epydemix import simulate
+from epydemix.calibration import ABCSampler, CalibrationResults, ae, mae, mape, rmse, wmape
 from epydemix.model import EpiModel
 from epydemix.model.simulation_results import SimulationResults
-from epydemix.population import Population
 from numpy import float64, int64, ndarray
 from numpy.random import seed
 
 from .basemodel_validator import BasemodelConfig, Parameter, Timespan
 from .calibration_validator import CalibrationConfig, CalibrationStrategy
-from .config_loader import *
+from .config_loader import (
+    _add_contact_matrix_interventions_from_config,
+    _add_model_compartments_from_config,
+    _add_model_parameters_from_config,
+    _add_model_transitions_from_config,
+    _add_parameter_interventions_from_config,
+    _add_school_closure_intervention_from_config,
+    _add_seasonality_from_config,
+    _add_vaccination_schedules_from_config,
+    _calculate_parameters_from_config,
+    _set_population_from_config,
+)
 from .general_validator import validate_modelset_consistency
 from .sampling_validator import SamplingConfig
 from .school_closures import make_school_closure_dict
-from .utils import get_location_codebook
+from .utils import convert_location_name_format, get_location_codebook, make_dummy_population
 from .vaccinations import reaggregate_vaccines, scenario_to_epydemix
 
 logger = logging.getLogger(__name__)
@@ -60,6 +73,11 @@ class SimulationOutput(NamedTuple):
     seed: int | None = None
 
 
+# Typed namedtuple for calibration arguments
+class CalibrationArguments(NamedTuple):
+    pass
+
+
 class CalibrationOutput(NamedTuple):
     """Typed namedtuple for calibration outputs."""
 
@@ -68,12 +86,32 @@ class CalibrationOutput(NamedTuple):
     seed: int | None = None
 
 
-# Needed for school closures
-def get_year(datestring: str) -> dt.date:
-    """Extract year from a string (YYYY-MM-DD)"""
-    date_format = "%Y-%m-%d"
-    return dt.datetime.strptime(datestring, date_format).year
+def _get_data_in_window(data: pd.DataFrame, calibration: CalibrationConfig) -> pd.DataFrame:
+    """Get data within a specified time window."""
+    window_start = calibration.fitting_window.start_date
+    window_end = calibration.fitting_window.end_date
 
+    date_col_name = calibration.comparison[0].observed_date_column
+    date_col = pd.to_datetime(data[date_col_name]).dt.date
+
+    mask = (date_col >= window_start) & (date_col <= window_end)
+    return data.loc[mask]
+
+
+def _get_data_in_location(data: pd.DataFrame, model: EpiModel) -> pd.DataFrame:
+    """Get data for a specific location."""
+    location_iso = convert_location_name_format(model.population.name, "ISO")
+    # TODO: geo_value column name should be configurable.
+    return data[data["geo_value"] == location_iso]
+
+
+dist_func_dict = {
+    "rmse": rmse,
+    "wmape": wmape,
+    "ae": ae,
+    "mae": mae,
+    "mape": mape,
+}
 
 # ===== Builders =====
 
@@ -89,15 +127,15 @@ def register_builder(kind_set):
     return deco
 
 
-@register_builder({"basemodel"})
-def build_basemodel(*, basemodel: BasemodelConfig, **_) -> BuilderOutput:
+@register_builder({"basemodel_config"})
+def build_basemodel(*, basemodel_config: BasemodelConfig, **_) -> BuilderOutput:
     """
     Workflow using only a basemodel.
     """
     logger.info("BUILDER: dispatched for single model.")
 
     # For compactness
-    basemodel = basemodel.model
+    basemodel = basemodel_config.model
 
     # build a single EpiModel from basemodel config
     model = EpiModel()
@@ -112,8 +150,8 @@ def build_basemodel(*, basemodel: BasemodelConfig, **_) -> BuilderOutput:
     _set_population_from_config(model, basemodel.population.name, basemodel.population.age_groups)
 
     # Compartments and transitions
-    _add_compartments_from_config(model, basemodel.compartments)
-    _add_transitions_from_config(model, basemodel.transitions)
+    _add_model_compartments_from_config(model, basemodel.compartments)
+    _add_model_transitions_from_config(model, basemodel.transitions)
 
     # Vaccination
     if basemodel.vaccination:
@@ -121,7 +159,7 @@ def build_basemodel(*, basemodel: BasemodelConfig, **_) -> BuilderOutput:
 
     # Parameters
     _add_model_parameters_from_config(model, basemodel.parameters)
-    if "calculated" in [p.type for p in basemodel.parameters]:
+    if "calculated" in [param_args.type.value for param, param_args in (basemodel.parameters).items()]:
         _calculate_parameters_from_config(model, basemodel.parameters)
 
     # Seasonality (this must occur before interventions to preserve parameter overrides)
@@ -135,7 +173,7 @@ def build_basemodel(*, basemodel: BasemodelConfig, **_) -> BuilderOutput:
         # School closure
         if "school_closure" in intervention_types:
             closure_dict = make_school_closure_dict(
-                range(start=get_year(basemodel.timespan.start_date), stop=get_year(basemodel.timespan.end_date) + 1)
+                range(basemodel.timespan.start_date.year, basemodel.timespan.end_date.year + 1)
             )
             _add_school_closure_intervention_from_config(model, basemodel.interventions, closure_dict)
 
@@ -191,8 +229,10 @@ def build_basemodel(*, basemodel: BasemodelConfig, **_) -> BuilderOutput:
     return BuilderOutput(primary_id=0, seed=basemodel.random_seed, model=model, simulation=simulation_args)
 
 
-@register_builder({"basemodel", "sampling"})
-def build_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_) -> list[BuilderOutput]:
+@register_builder({"basemodel_config", "sampling_config"})
+def build_sampling(
+    *, basemodel_config: BasemodelConfig, sampling_config: SamplingConfig, **kwargs
+) -> list[BuilderOutput]:
     """
     Sampling workflow.
     """
@@ -201,11 +241,11 @@ def build_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_)
     logger.info("BUILDER: dispatched for sampling.")
 
     # Validate references between basemodel and sampling
-    validate_modelset_consistency(basemodel, sampling)
+    validate_modelset_consistency(basemodel_config, sampling_config)
 
     # For compactness
-    basemodel = basemodel.model
-    sampling = sampling.modelset
+    basemodel = basemodel_config.model
+    sampling = sampling_config.modelset
 
     # Build a collection of EpiModels
     models = []
@@ -218,15 +258,12 @@ def build_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_)
     logger.info("BUILDER: setting up EpiModels...")
 
     # Add dummy population with age structure (required for static age-structured parameters)
-    dummy_pop = Population(name="Dummy")
-    dummy_pop.add_population(
-        Nk=[100 for _ in basemodel.population.age_groups], Nk_names=basemodel.population.age_groups
-    )
-    init_model.set_population(dummmy_pop)
+    dummy_pop = make_dummy_population(basemodel)
+    init_model.set_population(dummy_pop)
 
     # All models will share compartments, transitions, and non-sampled/calculated parameters
-    _add_compartments_from_config(init_model, basemodel.compartments)
-    _add_transitions_from_config(init_model, basemodel.transitions)
+    _add_model_compartments_from_config(init_model, basemodel.compartments)
+    _add_model_transitions_from_config(init_model, basemodel.transitions)
     _add_model_parameters_from_config(init_model, basemodel.parameters)
 
     # Create models with populations set
@@ -245,7 +282,7 @@ def build_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_)
 
     # Output of this is a list of dicts containing start_date, initial conditions, and parameter value
     # combinations where parameters is in the same format as basemodel.parameters
-    sampled_vars = generate_samples(sampling.sampling, basemodel.random_seed)
+    sampled_vars = generate_samples(sampling_config, basemodel.random_seed)
 
     # Extract intervention types
     if basemodel.interventions:
@@ -254,11 +291,9 @@ def build_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_)
     # If start_date is sampled, find earliest instance
     try:
         earliest_timespan = Timespan(
-            {
-                "start_date": sorted([varset["start_date"] for varset in sampled_vars])[0],
-                "end_date": basemodel.timespan.end_date,
-                "delta_t": basemodel.timespan.delta_t,
-            }
+            start_date=sorted([varset["start_date"] for varset in sampled_vars])[0],
+            end_date=basemodel.timespan.end_date,
+            delta_t=basemodel.timespan.delta_t,
         )
     except KeyError:  # case where start_date is not sampled
         earliest_timespan = False
@@ -296,15 +331,13 @@ def build_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_)
                 # If start_date is sampled, we can just use the earliest start date
                 if earliest_timespan:
                     closure_dict = make_school_closure_dict(
-                        range(
-                            start=get_year(earliest_timespan.start_date), stop=get_year(earliest_timespan.end_date) + 1
-                        )
+                        range(earliest_timespan.start_date.year, earliest_timespan.end_date.year + 1)
                     )
                 else:
                     closure_dict = make_school_closure_dict(
                         range(
-                            start=get_year(basemodel.timespan.start_date),
-                            stop=get_year(basemodel.timespan.end_date) + 1,
+                            basemodel.timespan.start_date.year,
+                            basemodel.timespan.end_date.year + 1,
                         )
                     )
                 _add_school_closure_intervention_from_config(model, basemodel.interventions, closure_dict)
@@ -325,18 +358,16 @@ def build_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_)
             # Accomodate for sampled start_date
             start_date = varset.setdefault("start_date", basemodel.timespan.start_date)
             timespan = Timespan(
-                {
-                    "start_date": start_date,
-                    "end_date": basemodel.timespan.end_date,
-                    "delta_t": basemodel.timespan.delta_t,
-                }
+                start_date=start_date,
+                end_date=basemodel.timespan.end_date,
+                delta_t=basemodel.timespan.delta_t,
             )
 
             # Sampled/calculated parameters
             if "parameters" in varset.keys():
-                parameters = {k: Parameter({"type": "scalar", "value": v}) for k, v in varset["parameters"].items()}
+                parameters = {k: Parameter(type="scalar", value=v) for k, v in varset["parameters"].items()}
                 _add_model_parameters_from_config(m, parameters)
-            if "calculated" in [p.type for p in basemodel.parameters]:
+            if "calculated" in [param_args.type.value for param, param_args in (basemodel.parameters).items()]:
                 _calculate_parameters_from_config(m, basemodel.parameters)
 
             # Vaccination (if start_date is sampled)
@@ -430,23 +461,23 @@ def build_sampling(*, basemodel: BasemodelConfig, sampling: SamplingConfig, **_)
     ]
 
 
-@register_builder({"basemodel", "calibration"})
-def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationConfig, **_) -> list[BuilderOutput]:
+@register_builder({"basemodel_config", "calibration_config"})
+def build_calibration(
+    *, basemodel_config: BasemodelConfig, calibration_config: CalibrationConfig, **_
+) -> list[BuilderOutput]:
     """
     Calibration workflow.
     """
-    import pandas as pd
-
     from .utils import distribution_to_scipy
 
     logger.info("BUILDER: dispatched for calibration.")
 
     # Validate references between basemodel and calibration
-    validate_modelset_consistency(basemodel, calibration)
+    validate_modelset_consistency(basemodel_config, calibration_config)
 
     # For compactness
-    basemodel = basemodel.model
-    modelset = calibration.modelset
+    basemodel = basemodel_config.model
+    modelset = calibration_config.modelset
     calibration = modelset.calibration
 
     # Build a collection of EpiModels
@@ -460,15 +491,12 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
     logger.info("BUILDER: setting up EpiModels...")
 
     # Add dummy population with age structure (required for static age-structured parameters)
-    dummy_pop = Population(name="Dummy")
-    dummy_pop.add_population(
-        Nk=[100 for _ in basemodel.population.age_groups], Nk_names=basemodel.population.age_groups
-    )
-    init_model.set_population(dummmy_pop)
+    dummy_pop = make_dummy_population(basemodel)
+    init_model.set_population(dummy_pop)
 
     # All models will share compartments, transitions, and non-sampled/calculated parameters
-    _add_compartments_from_config(init_model, basemodel.compartments)
-    _add_transitions_from_config(init_model, basemodel.transitions)
+    _add_model_compartments_from_config(init_model, basemodel.compartments)
+    _add_model_transitions_from_config(init_model, basemodel.transitions)
     _add_model_parameters_from_config(init_model, basemodel.parameters)
 
     # Create models with populations set
@@ -492,11 +520,9 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
     # If start_date is sampled, make earliest timespan
     if calibration.start_date:
         earliest_timespan = Timespan(
-            {
-                "start_date": calibration.start_date.reference_date,
-                "end_date": basemodel.timespan.end_date,
-                "delta_t": basemodel.timespan.delta_t,
-            }
+            start_date=calibration.start_date.reference_date,
+            end_date=basemodel.timespan.end_date,
+            delta_t=basemodel.timespan.delta_t,
         )
     else:  # case where start_date is not sampled
         earliest_timespan = False
@@ -534,15 +560,13 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
                 # If start_date is sampled, we can just use the earliest start date
                 if earliest_timespan:
                     closure_dict = make_school_closure_dict(
-                        range(
-                            start=get_year(earliest_timespan.start_date), stop=get_year(earliest_timespan.end_date) + 1
-                        )
+                        range(earliest_timespan.start_date.year, earliest_timespan.end_date.year + 1)
                     )
                 else:
                     closure_dict = make_school_closure_dict(
                         range(
-                            start=get_year(basemodel.timespan.start_date),
-                            stop=get_year(basemodel.timespan.end_date) + 1,
+                            basemodel.timespan.start_date.year,
+                            basemodel.timespan.end_date.year + 1,
                         )
                     )
                 _add_school_closure_intervention_from_config(model, basemodel.interventions, closure_dict)
@@ -554,8 +578,11 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
     logger.info("BUILDER: setting up ABCSamplers...")
 
     observed = pd.read_csv(calibration.observed_data_path)
+    data_in_window = _get_data_in_window(observed, calibration)
     calibrators = []
     for model in models:
+        data_state = _get_data_in_location(data_in_window, model)
+
         # Create simulate wrapper
         def simulate_wrapper(params):
             seed(basemodel.random_seed)
@@ -563,26 +590,22 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
 
             # Accomodate for sampled start_date
             if earliest_timespan:
-                start_date = earliest_timespan.start_date + dt.timedelta(days=params["start_date_offset"])
+                start_date = earliest_timespan.start_date + dt.timedelta(days=params["start_date"])
             else:
                 start_date = basemodel.timespan.start_date
             timespan = Timespan(
-                {
-                    "start_date": start_date,
-                    "end_date": basemodel.timespan.end_date,
-                    "delta_t": basemodel.timespan.delta_t,
-                }
+                start_date=start_date, end_date=basemodel.timespan.end_date, delta_t=basemodel.timespan.delta_t
             )
 
             # Sampled/calculated parameters
             new_params = {
-                k: Parameter({"type": "scalar", "value": v})
+                k: Parameter(type="scalar", value=v)
                 for k, v in params.items()
-                if k in basemodel.parameters.keys()
+                if k in basemodel.parameters.keys() and basemodel.parameters[k].type == "calibrated"
             }
             if new_params:
-                _add_model_parameters_from_config(m, parameters)
-            if "calculated" in [p.type for p in basemodel.parameters]:
+                _add_model_parameters_from_config(m, new_params)
+            if "calculated" in [param_args.type.value for _, param_args in basemodel.parameters.items()]:
                 _calculate_parameters_from_config(m, basemodel.parameters)
 
             # Vaccination (if start_date is sampled)
@@ -594,6 +617,8 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
 
             # Seasonality (this must occur before parameter interventions to preserve parameter overrides)
             if basemodel.seasonality:
+                if "seasonality_min" in params.keys():
+                    basemodel.seasonality.min_value = params["seasonality_min"]
                 _add_seasonality_from_config(m, basemodel.seasonality, timespan)
 
             # Parameter interventions
@@ -602,7 +627,7 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
 
             # Initial conditions
             compartment_init = {}
-            # Initialize non-sampled compartments with counts
+            # Initialize non-calibrated compartments with counts
             compartment_init.update(
                 {
                     compartment.id: compartment.init
@@ -610,7 +635,7 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
                     if isinstance(compartment.init, (int, float, int64, float64)) and compartment.init >= 1
                 }
             )
-            # Initialize non-sampled compartments with proportions
+            # Initialize non-calibrated compartments with proportions
             compartment_init.update(
                 {
                     compartment.id: compartment.init * m.population.Nk
@@ -618,23 +643,29 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
                     if isinstance(compartment.init, (int, float, int64, float64)) and compartment.init < 1
                 }
             )
-            # Initialize sampled compartments
-            """
+            # Initialize calibrated compartments
+            compartment_ids = {c.id for c in basemodel.compartments}
+            # Initialize calibrated compartments with proportions
+            compartment_init.update(
+                {compartment: v for compartment, v in params.items() if compartment in compartment_ids and v >= 1}
+            )
 
-            
-            TODO
-            
-            
-            """
+            # Initialize calibrated compartments with proportions
+            compartment_init.update(
+                {
+                    compartment: v * m.population.Nk
+                    for compartment, v in params.items()
+                    if compartment in compartment_ids and v < 1
+                }
+            )
             # Initialize default compartments
             default_compartments = [
                 compartment for compartment in basemodel.compartments if compartment.init == "default"
             ]
-            sum_age_structured = sum([sum(vals) for vals in compartment_init.values() if isinstance(vals, ndarray)])
-            sum_no_age = sum(
-                [val for val in compartment_init.values() if isinstance(val, (int, float, int64, float64))]
+            sum_age_structured = np.sum(
+                [vals for vals in compartment_init.values() if isinstance(vals, ndarray)], axis=0
             )
-            remaining = sum(m.population.Nk) - sum_age_structured - sum_no_age
+            remaining = m.population.Nk - sum_age_structured
             compartment_init.update(
                 {compartment.id: remaining / len(default_compartments) for compartment in default_compartments}
             )
@@ -655,11 +686,11 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
             try:
                 results = simulate(**sim_params)
                 trajectory_dates = results.dates
-                data_dates = list(pd.to_datetime(observed[calibration.comparison.obs_date].values))
+                data_dates = list(pd.to_datetime(data_state.target_end_date.values))
 
                 mask = [date in data_dates for date in trajectory_dates]
 
-                total_hosp = sum(results.transitions[key] for key in calibration.comparison.simulation)
+                total_hosp = sum(results.transitions[key] for key in calibration.comparison[0].simulation)
 
                 total_hosp = total_hosp[mask]
 
@@ -669,15 +700,15 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
 
             except Exception as e:
                 logger.info(f"Simulation failed with parameters {params}: {e}")
-                data_dates = list(pd.to_datetime(data["target_end_date"].values))
+                data_dates = list(pd.to_datetime(data_state["target_end_date"].values))
                 total_hosp = np.full(len(data_dates), 0)
 
             return {"data": total_hosp}
 
         # Parse priors into scipy functions
         priors = {}
-        priors.update({k: distribution_to_scipy(v) for k, v in calibration.parameters.items()})
-        priors.update({k: distribution_to_scipy(v) for k, v in calibration.compartments.items()})
+        priors.update({k: distribution_to_scipy(v.prior) for k, v in calibration.parameters.items()})
+        priors.update({k: distribution_to_scipy(v.prior) for k, v in calibration.compartments.items()})
         if earliest_timespan:
             priors["start_date"] = distribution_to_scipy(calibration.start_date.prior)
 
@@ -685,9 +716,9 @@ def build_calibration(*, basemodel: BasemodelConfig, calibration: CalibrationCon
         abc_sampler = ABCSampler(
             simulation_function=simulate_wrapper,
             priors=priors,
-            parameters={k: v for k, v in model.parameters.items() if v},
-            observed_data=observed[calibration.comparison.observed].values,
-            distance_function=calibration.distance_function,
+            parameters={k: v for k, v in model.parameters.items() if v is not None},
+            observed_data=data_state[calibration.comparison[0].observed_value_column].values,
+            distance_function=dist_func_dict[calibration.distance_function],
         )
 
         calibrators.append(abc_sampler)

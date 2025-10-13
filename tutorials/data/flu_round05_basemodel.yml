@@ -4,17 +4,25 @@ model:
   date: "2024-08-05" # YYYY-MM-DD
   description: "Flu model for the 2024-2025 season, Round 5"
 
+  # simulation:
+  #   start_date: "2024-08-05" # YYYY-MM-DD
+  #   end_date: "2025-08-05" # YYYY-MM-DD
+  #   delta_t: 0.2
+  #   n_sims: 100 # Number of simulation run for a single model
+  #   resample_frequency: D # This follows https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#period-aliases Other options include 'h', 'min', 'W', 'M' etc.
+
+  timespan:
+    start_date: "2024-09-13"
+    end_date: "2025-05-14"
+    delta_t: 1.0
+
   simulation:
-    start_date: "2024-08-05" # YYYY-MM-DD
-    end_date: "2025-08-05" # YYYY-MM-DD
-    delta_t: 0.2
-    n_sims: 100 # Number of simulation run for a single model
-    resample_frequency: D # This follows https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#period-aliases Other options include 'h', 'min', 'W', 'M' etc.
+    resample_frequency: W-SAT
 
   random_seed: 42
 
   population:
-    name: US-MA
+    # name: US-MA
     age_groups:
       - "0-4"
       - "5-17"
@@ -25,8 +33,8 @@ model:
   compartments:
     - id: S
       label: "Susceptible"
-      default: true # The remainder of the population set in initial condition goes to the 'default' compartment
-      initial_condition: 0.8 # float or 'sampled', defaults to 0 if not specified
+      init: default # The remainder of the population set in initial condition goes to the 'default' compartment
+      # initial_condition: 0.8 # float or 'sampled', defaults to 0 if not specified
     - id: S_vax
       label: "Susceptible (vaccinated)"
     - id: L
@@ -69,6 +77,8 @@ model:
       label: "Removed asymptomatic"
     - id: R_asymp_vax
       label: "Removed asymptomatic (vaccinated)"
+    - id: Initial_immune
+      label: "Initially immune"
 
   transitions:
     ### Main Compartments Branch
@@ -76,27 +86,23 @@ model:
     - type: mediated # "spontaneous" or "mediated" or "vaccination"
       source: S
       target: L
-      mediators:
-        rate: beta
-        source: I_symp
+      mediator: I_symp
+      rate: beta
     - type: mediated
       source: S
       target: L
-      mediators:
-        rate: beta*r_beta_asymp
-        source: I_asymp
+      mediator: I_asymp
+      rate: beta*r_beta_asymp
     - type: mediated
       source: S
       target: L
-      mediators:
-        rate: beta
-        source: I_symp_vax
+      mediator: I_symp_vax
+      rate: beta
     - type: mediated
       source: S
       target: L
-      mediators:
-        rate: beta*r_beta_asymp
-        source: I_asymp_vax
+      mediator: I_asymp_vax
+      rate: beta*r_beta_asymp
     # L -> I
     - type: spontaneous
       source: L
@@ -136,10 +142,7 @@ model:
       source: Hosp
       target: R_sev
       rate: mu_h
-    - type: spontaneous
-      source: Hosp_vax
-      target: R_sev_vax
-      rate: mu_h
+
     ### Vaccination Branch
     # NOTE: vaccination transition type is not actually used in code,
     # since the transition is added based on vaccination section below.
@@ -151,27 +154,23 @@ model:
     - type: mediated
       source: S_vax
       target: L_vax
-      mediators:
-        rate: beta*r_beta_vax
-        source: I_symp_vax
+      mediator: I_symp_vax
+      rate: beta*r_beta_vax
     - type: mediated
       source: S_vax
       target: L_vax
-      mediators:
-        rate: beta*r_beta_asymp*r_vax
-        source: I_asymp_vax
+      mediator: I_asymp_vax
+      rate: beta*r_beta_asymp*r_vax
     - type: mediated
       source: S_vax
       target: L_vax
-      mediators:
-        rate: beta*r_beta_vax
-        source: I_symp
+      mediator: I_symp
+      rate: beta*r_beta_vax
     - type: mediated
       source: S_vax
       target: L_vax
-      mediators:
-        rate: beta*r_beta_asymp*r_vax
-        source: I_asymp
+      mediator: I_asymp
+      rate: beta*r_beta_asymp*r_vax
     # L -> I
     - type: spontaneous
       source: L_vax
@@ -208,14 +207,18 @@ model:
       target: R_asymp_vax
       rate: eta
     - type: spontaneous
-      source: Hosp
-      target: R_sev
+      source: Hosp_vax
+      target: R_sev_vax
       rate: mu_h
         
   parameters:
     beta:
       type: calculated
-      value: R0*mu/(eigenvalue*(1-p_asymp+p_asymp*r_beta_asymp)) # eigenvalue of contact matrix sensitive to location
+      value: Rt*mu/(eigenvalue*(1-p_asymp+p_asymp*r_beta_asymp)) # eigenvalue of contact matrix sensitive to location
+    seasonality_min:
+      type: calibrated
+    Rt:
+      type: calibrated
     r_beta_asymp:
       type: scalar
       value: 0.5
@@ -263,7 +266,7 @@ model:
         - 1/1.5
         
   vaccination:
-    scenario_data_path: "tutorials/data/vaccine_scenarios_2425_cd.csv"
+    scenario_data_path: "data/vaccine_scenarios_2425_cd.csv"
     scenario: "C_D"
     origin_compartment: S
     eligible_compartments:
@@ -277,7 +280,7 @@ model:
       
   interventions:
     - type: school_closure
-      reduction_factor: 0.344
+      scaling_factor: 0.344
       years:
         - 2024
         - 2025

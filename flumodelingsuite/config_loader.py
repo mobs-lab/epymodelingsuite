@@ -25,8 +25,13 @@ from .basemodel_validator import (
 from .calibration_validator import CalibrationConfig, validate_calibration
 from .sampling_validator import SamplingConfig, validate_sampling
 
-logger = logging.getLogger(__name__)
+__all__ = [
+    "load_basemodel_config_from_file",
+    "load_calibration_config_from_file",
+    "load_sampling_config_from_file",
+]
 
+logger = logging.getLogger(__name__)
 
 # === Utility functions ===
 
@@ -298,11 +303,11 @@ def _add_model_transitions_from_config(model: EpiModel, transitions: list[Transi
                 model.add_transition(
                     transition.source,
                     transition.target,
-                    params=(transition.mediators.rate, transition.mediators.source),
+                    params=(transition.rate, transition.mediator),
                     kind=transition.type,
                 )
                 logger.info(
-                    f"Added mediated transition: {transition.source} -> {transition.target} (mediator: {transition.mediators.source}, rate: {transition.mediators.rate})"
+                    f"Added mediated transition: {transition.source} -> {transition.target} (mediator: {transition.mediator}, rate: {transition.rate})"
                 )
             except Exception as e:
                 raise ValueError(f"Error adding mediated transition {transition}: {e}")
@@ -388,6 +393,9 @@ def _calculate_parameters_from_config(model: EpiModel, parameters: dict[str, Par
             # Substitute retrieved parameter values or contact matrix eigenvalue into the tree,
             # convert back into expression
             calc_expr = ast.unparse(RetrieveName(model).visit(tree))
+
+            logger.info(f"Calculating parameter {name} using expression: {calc_expr}")
+
             # Evaluate the expression
             parameters_dict[name] = _safe_eval(calc_expr)
         except Exception as e:
@@ -407,7 +415,7 @@ def _add_vaccination_schedules_from_config(
     transitions: list[Transition],
     vaccination: Vaccination,
     timespan: Timespan,
-    use_schedule: DataFrame | None,
+    use_schedule: DataFrame | None = None,
 ) -> EpiModel:
     """
     Add transitions between compartments due to vaccination to the EpiModel instance.
@@ -437,12 +445,12 @@ def _add_vaccination_schedules_from_config(
     )
 
     # Ignore provided data path in vaccination input if use_schedule is provided
-    if use_schedule:
+    if use_schedule is not None:
         vaccination_schedule = use_schedule
     # Preprocessed vaccination schedule
     elif vaccination.preprocessed_vaccination_data_path:
-        vaccination_schedule = pd.read_csv(preprocessed_vaccination_data_path)
-        logger.info(f"Loaded preprocessed vaccination schedule from {preprocessed_vaccination_data_path}")
+        vaccination_schedule = pd.read_csv(vaccination.preprocessed_vaccination_data_path)
+        logger.info(f"Loaded preprocessed vaccination schedule from {vaccination.preprocessed_vaccination_data_path}")
     # Create schedule from SMH scenario
     else:
         try:
@@ -450,11 +458,11 @@ def _add_vaccination_schedules_from_config(
                 input_filepath=vaccination.scenario_data_path,
                 start_date=timespan.start_date,
                 end_date=timespan.end_date,
-                target_age_groups=model.population.Nk,
+                target_age_groups=model.population.Nk_names,
                 delta_t=timespan.delta_t,
                 states=[model.population.name],
             )
-            logger.info(f"Created vaccination schedule from scenario data at {scenario_data_path}")
+            logger.info(f"Created vaccination schedule from scenario data at {vaccination.scenario_data_path}")
         except Exception as e:
             raise ValueError(f"Error creating vaccination schedule from scenario data:\n{e}")
 
