@@ -109,11 +109,11 @@ model:
         - 0.4
         - 0.3
     r_vax:
-      type: scalar
-      value: 0.3
+      #type: scalar
+      #value: 0.3
       # FIXME: When calculated paramaters uses an age-varying parameter, it fails.
-      # type: calculated
-      # value: 1 - VE
+      type: calculated
+      value: 1 - VE
 
   seasonality:
     target_parameter: beta
