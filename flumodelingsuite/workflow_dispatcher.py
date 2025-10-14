@@ -3,6 +3,7 @@ import logging
 import pandas as pd
 import datetime as dt
 import numpy as np
+from datetime import date
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from epydemix import simulate
@@ -10,8 +11,10 @@ from epydemix.calibration import ABCSampler, CalibrationResults, ae, mae, mape, 
 from epydemix.model import EpiModel
 from epydemix.model.simulation_results import SimulationResults
 
-from .basemodel_validator import BasemodelConfig, Parameter, Timespan
-from .calibration_validator import CalibrationConfig, CalibrationStrategy
+from .validation.basemodel_validator import BasemodelConfig, Parameter, Timespan
+from .validation.calibration_validator import CalibrationConfig, CalibrationStrategy
+from .validation.general_validator import validate_modelset_consistency
+from .validation.sampling_validator import SamplingConfig
 from .config_loader import (
     _add_contact_matrix_interventions_from_config,
     _add_model_compartments_from_config,
@@ -24,8 +27,6 @@ from .config_loader import (
     _calculate_parameters_from_config,
     _set_population_from_config,
 )
-from .general_validator import validate_modelset_consistency
-from .sampling_validator import SamplingConfig
 from .school_closures import make_school_closure_dict
 from .utils import convert_location_name_format, get_location_codebook, make_dummy_population
 from .vaccinations import reaggregate_vaccines, scenario_to_epydemix
@@ -42,8 +43,8 @@ class SimulationArguments(BaseModel):
     Follows https://epydemix.readthedocs.io/en/stable/epydemix.model.html#epydemix.model.epimodel.EpiModel.run_simulations
     """
 
-    start_date: dt.date = Field(..., description="Start date of the simulation.")
-    end_date: dt.date = Field(..., description="End date of the simulation.")
+    start_date: date = Field(..., description="Start date of the simulation.")
+    end_date: date = Field(..., description="End date of the simulation.")
     initial_conditions_dict: dict | None = Field(None, description="Initial conditions dictionary.")
     Nsim: int | None = Field(None, description="Number of simulation runs to perform for a single EpiModel.")
     dt: float | None = Field(1.0, description="Timestep for simulation, defaults to 1.0 = 1 day.")
@@ -52,6 +53,7 @@ class SimulationArguments(BaseModel):
 
 class ProjectionArguments(BaseModel):
     """Projection arguments."""
+    # Not sure what's needed here but probably need to make this from basemodel.timespan and calibration.fitting_window
     pass
 
 
@@ -67,6 +69,9 @@ class BuilderOutput(BaseModel):
     simulation: SimulationArguments | None = Field(None, description="Arguments for a single call to EpiModel.run_simulations")
     calibration: CalibrationStrategy | None = Field(None, description="Arguments for a single call to ABCSampler.calibrate")
     projection: ProjectionArguments | None = Field(None, description="Arguments for a")
+
+    class Config:
+        arbitrary_types_allowed = True
 
     @model_validator(mode="after")
     def check_fields(cls, m: "BuilderOutput") -> "BuilderOutput":
@@ -92,6 +97,9 @@ class SimulationOutput(BaseModel):
     results: SimulationResults = Field(..., description="Results of a call to EpiModel.run_simulations()")
     seed: int | None = Field(None, description="Random seed.")
 
+    class Config:
+        arbitrary_types_allowed = True
+
 
 class CalibrationOutput(BaseModel):
     """Results of a call to ABCSampler.calibrate() or ABCSampler.run_projections() with tracking information."""
@@ -99,6 +107,9 @@ class CalibrationOutput(BaseModel):
     primary_id: int = Field(..., description="Primary identifier of an ABCSampler object paired with instructions for calibration/projection.")
     results: CalibrationResults = Field(..., description="Results of a call to ABCSampler.calibrate() or ABCSampler.run_projections()")
     seed: int | None = Field(None, description="Random seed.")
+
+    class Config:
+        arbitrary_types_allowed = True
 
 
 def _get_data_in_window(data: pd.DataFrame, calibration: CalibrationConfig) -> pd.DataFrame:
