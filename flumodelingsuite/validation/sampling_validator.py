@@ -1,6 +1,6 @@
 import logging
 
-from .utils import validate_iso3166
+from ..utils import validate_iso3166
 
 logger = logging.getLogger(__name__)
 

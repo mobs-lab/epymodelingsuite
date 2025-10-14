@@ -24,6 +24,7 @@ from .validation.basemodel_validator import (
 )
 from .validation.calibration_validator import CalibrationConfig, validate_calibration
 from .validation.sampling_validator import SamplingConfig, validate_sampling
+from .validation.output_validator import OutputConfig, validate_output
 
 __all__ = [
     "load_basemodel_config_from_file",
@@ -154,6 +155,8 @@ class RetrieveName(ast.NodeTransformer):
             else:
                 try:
                     value = self.model.get_parameter(node.id)
+                    #if type(value) == np.ndarray:
+                    #    return ast.List(
                     return ast.Constant(value=value)
                 except Exception as e:
                     raise ValueError(f"Error obtaining parameter value during calculation: {e}")
@@ -788,3 +791,28 @@ def load_calibration_config_from_file(path: str) -> CalibrationConfig:
     root = validate_calibration(raw)
     logger.info("Calibration configuration loaded successfully.")
     return root
+
+
+def load_output_config_from_file(path: str) -> OutputConfig:
+    """
+    Load output configuration YAML from the given path and validate against the schema.
+
+    Parameters
+    ----------
+        path: The file path to the YAML configuration file.
+
+    Returns
+    -------
+        The validated configuration object.
+    """
+    from pathlib import Path
+
+    import yaml
+
+    with Path(path).open() as f:
+        raw = yaml.safe_load(f)
+
+    root = validate_output(raw)
+    logger.info("Output configuration loaded successfully.")
+    return root
+    
