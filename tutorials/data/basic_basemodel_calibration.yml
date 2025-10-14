@@ -92,7 +92,6 @@ model:
 
   parameters:
     beta:
-      type: 
       type: scalar
       value: 0.3
     eps:
