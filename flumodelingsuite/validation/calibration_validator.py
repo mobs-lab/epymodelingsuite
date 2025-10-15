@@ -57,13 +57,13 @@ class FittingWindow(BaseModel):
     end_date: date = Field(..., description="End date of fitting window.")
 
     @model_validator(mode="after")
-    def validate_date_order(cls, m: "FittingWindow") -> "FittingWindow":
+    def validate_date_order(self: "FittingWindow") -> "FittingWindow":
         """Ensure end_date is after start_date."""
         # Note: DateParameter can be a string date or have a prior distribution
         # Only validate if both are actual date strings
-        if m.end_date <= m.start_date:
+        if self.end_date <= self.start_date:
             raise ValueError("end_date must be after start_date")
-        return m
+        return self
 
 
 class CalibrationConfiguration(BaseModel):
@@ -87,23 +87,23 @@ class CalibrationConfiguration(BaseModel):
     fitting_window: FittingWindow = Field(..., description="Time window for calibration fitting")
 
     @model_validator(mode="after")
-    def check_calibration_consistency(cls, m: "CalibrationConfiguration") -> "CalibrationConfiguration":
+    def check_calibration_consistency(self: "CalibrationConfiguration") -> "CalibrationConfiguration":
         """Validate calibration configuration consistency."""
         # Ensure we have at least one comparison specification
-        if not m.comparison:
+        if not self.comparison:
             msg = "At least one comparison specification is required"
             raise ValueError(msg)
 
         # Ensure all comparison specs have non-empty simulation lists
-        for comp in m.comparison:
+        for comp in self.comparison:
             if not comp.simulation:
                 msg = f"Comparison for '{comp.observed}' must specify at least one simulation transition"
                 raise ValueError(msg)
 
-        assert m.start_date or m.parameters or m.initial_conditions, (
+        assert self.start_date or self.parameters or self.initial_conditions, (
             "Calibration requires at least one of start_date, parameters, or compartments"
         )
-        return m
+        return self
 
 
 class CalibrationModelset(BaseModel):

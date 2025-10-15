@@ -38,13 +38,13 @@ class Parameter(BaseModel):
     values: list[float] | None = Field(None, description="List of discrete values for grid sampling")
 
     @model_validator(mode="after")
-    def check_parameter_specification(cls, m: "Parameter") -> "Parameter":
+    def check_parameter_specification(self: "Parameter") -> "Parameter":
         """Ensure parameter has either distribution or values specified."""
-        if m.distribution is None and m.values is None:
+        if self.distribution is None and self.values is None:
             raise ValueError("Parameter must have either 'distribution' or 'values' specified")
-        if m.distribution is not None and m.values is not None:
+        if self.distribution is not None and self.values is not None:
             raise ValueError("Parameter cannot have both 'distribution' and 'values' specified")
-        return m
+        return self
 
 
 class Sampler(BaseModel):
@@ -62,13 +62,13 @@ class Sampler(BaseModel):
     compartments: list[str] | None = Field(None, description="List of compartments to sample (for LHS/montecarlo)")
 
     @model_validator(mode="after")
-    def check_sampler_requirements(cls, m: "Sampler") -> "Sampler":
+    def check_sampler_requirements(self: "Sampler") -> "Sampler":
         """Validate sampler configuration based on strategy."""
-        if m.strategy in ["LHS"] and m.n_samples is None:
-            raise ValueError(f"{m.strategy} strategy requires 'n_samples' to be specified")
-        if m.strategy == "grid" and m.n_samples is not None:
+        if self.strategy in ["LHS"] and self.n_samples is None:
+            raise ValueError(f"{self.strategy} strategy requires 'n_samples' to be specified")
+        if self.strategy == "grid" and self.n_samples is not None:
             raise ValueError("grid strategy does not use 'n_samples'")
-        return m
+        return self
 
 
 class SamplingConfiguration(BaseModel):
@@ -82,12 +82,12 @@ class SamplingConfiguration(BaseModel):
     start_date: DateParameter | None = Field(None, description="Start date parameter specification")
 
     @model_validator(mode="after")
-    def check_sampling_consistency(cls, m: "SamplingConfiguration") -> "SamplingConfiguration":
+    def check_sampling_consistency(self: "SamplingConfiguration") -> "SamplingConfiguration":
         """Validate consistency between samplers and parameter/compartment definitions."""
         all_sampled_params = set()
         all_sampled_compartments = set()
 
-        for sampler in m.samplers:
+        for sampler in self.samplers:
             all_sampled_params.update(sampler.parameters)
             if sampler.compartments:
                 all_sampled_compartments.update(sampler.compartments)
@@ -95,17 +95,17 @@ class SamplingConfiguration(BaseModel):
         # Check that all sampled parameters are defined
         for param in all_sampled_params:
             if param == "start_date":
-                if m.start_date is None:
+                if self.start_date is None:
                     raise ValueError(f"Parameter '{param}' is sampled but not defined in sampling configuration")
-            elif param not in m.parameters:
+            elif param not in self.parameters:
                 raise ValueError(f"Parameter '{param}' is sampled but not defined in parameters section")
 
         # Check that all sampled compartments are defined
         for compartment in all_sampled_compartments:
-            if m.compartments is None or compartment not in m.compartments:
+            if self.compartments is None or compartment not in self.compartments:
                 raise ValueError(f"Compartment '{compartment}' is sampled but not defined in compartments section")
 
-        return m
+        return self
 
 
 class SamplingModelset(BaseModel):

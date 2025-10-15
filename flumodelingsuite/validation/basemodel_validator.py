@@ -118,29 +118,29 @@ class Transition(BaseModel):
     )
 
     @model_validator(mode="after")
-    def check_fields_for_type(cls, m: "Transition") -> "Transition":
+    def check_fields_for_type(self: "Transition") -> "Transition":
         """Enforce required fields for each transition type."""
-        if m.type == "spontaneous":
-            assert m.rate is not None, "Spontaneous transition must have 'rate'."
-            assert m.mediator is None, "Spontaneous transition cannot have 'mediator'."
-            assert m.mediators is None, "Spontaneous transition cannot have 'mediators'."
-        elif m.type == "mediated":
-            assert m.rate is not None, "Mediated (single) transition must have 'rate'."
-            assert m.mediator is not None, "Mediated (single) transition must have 'mediator'."
-            assert m.mediators is None, "Mediated (single) transition cannot have multiple 'mediators'."
-        elif m.type == "multi_mediated":
-            assert m.mediators is not None, "Multiple mediated transition must specify 'mediators'."
-            assert m.rate is None, (
+        if self.type == "spontaneous":
+            assert self.rate is not None, "Spontaneous transition must have 'rate'."
+            assert self.mediator is None, "Spontaneous transition cannot have 'mediator'."
+            assert self.mediators is None, "Spontaneous transition cannot have 'mediators'."
+        elif self.type == "mediated":
+            assert self.rate is not None, "Mediated (single) transition must have 'rate'."
+            assert self.mediator is not None, "Mediated (single) transition must have 'mediator'."
+            assert self.mediators is None, "Mediated (single) transition cannot have multiple 'mediators'."
+        elif self.type == "multi_mediated":
+            assert self.mediators is not None, "Multiple mediated transition must specify 'mediators'."
+            assert self.rate is None, (
                 "Multiple mediated transition must specify rates within 'mediators', but 'rate' field provided."
             )
-            assert m.mediator is None, (
+            assert self.mediator is None, (
                 "Multiple mediated transition must use 'mediators', but 'mediator' field provided."
             )
-        elif m.type == "vaccination":
-            assert m.rate is None, "Vaccination transition cannot have 'rate'."
-            assert m.mediator is None, "Vaccination transition cannot have 'mediator'."
-            assert m.mediators is None, "Vaccination transition cannot have 'mediators'."
-        return m
+        elif self.type == "vaccination":
+            assert self.rate is None, "Vaccination transition cannot have 'rate'."
+            assert self.mediator is None, "Vaccination transition cannot have 'mediator'."
+            assert self.mediators is None, "Vaccination transition cannot have 'mediators'."
+        return self
 
 
 class Parameter(BaseModel):
@@ -160,27 +160,27 @@ class Parameter(BaseModel):
     values: list[float | str] | None = Field(None, description="List of values for age-varying parameters.")
 
     @model_validator(mode="after")
-    def check_param_fields(cls, m: "Parameter") -> "Parameter":
+    def check_param_fields(self: "Parameter") -> "Parameter":
         """Ensure required fields exist for each parameter type."""
-        if m.type == "scalar":
-            assert m.value is not None, "Constant or expression (scalar) parameter requires 'value'."
-            assert m.values is None, "Scalar parameter requires a single 'value', but provided 'values' array."
-        elif m.type == "age_varying":
-            assert m.values is not None, "Age varying parameter requires 'values'."
-            assert m.value is None, "Age varying parameter requires 'values' array, but provided single 'value'."
-        elif m.type in ["sampled", "calibrated"]:
-            assert m.value is None, (
+        if self.type == "scalar":
+            assert self.value is not None, "Constant or expression (scalar) parameter requires 'value'."
+            assert self.values is None, "Scalar parameter requires a single 'value', but provided 'values' array."
+        elif self.type == "age_varying":
+            assert self.values is not None, "Age varying parameter requires 'values'."
+            assert self.value is None, "Age varying parameter requires 'values' array, but provided single 'value'."
+        elif self.type in ["sampled", "calibrated"]:
+            assert self.value is None, (
                 "Sampled or calibrated parameter provided extraneous 'value' field, sampling/calibration specs should be provided in modelset."
             )
-            assert m.values is None, (
+            assert self.values is None, (
                 "Sampled or calibrated parameter provided extraneous 'values' field, sampling/calibration specs should be provided in modelset."
             )
-        elif m.type == "calculated":
-            assert m.value is not None, "Calculated parameter requires expression in 'value' field."
-            assert m.values is None, (
+        elif self.type == "calculated":
+            assert self.value is not None, "Calculated parameter requires expression in 'value' field."
+            assert self.values is None, (
                 "Calculated parameter requires expression in 'value' field, but 'values' provided instead."
             )
-        return m
+        return self
 
 
 class Vaccination(BaseModel):
@@ -194,26 +194,28 @@ class Vaccination(BaseModel):
     eligible_compartments: list[str] = Field(..., description="Eligible compartments for vaccination.")
 
     @model_validator(mode="after")
-    def check_vax_fields(cls, m: "Vaccination") -> "Vaccination":
+    def check_vax_fields(self: "Vaccination") -> "Vaccination":
         """Ensure vaccination configuration is consistent."""
-        assert m.origin_compartment in m.eligible_compartments, "Origin compartment must be in eligible compartments."
-        if m.scenario_data_path is None:
-            assert m.preprocessed_vaccination_data_path is not None, (
+        assert self.origin_compartment in self.eligible_compartments, (
+            "Origin compartment must be in eligible compartments."
+        )
+        if self.scenario_data_path is None:
+            assert self.preprocessed_vaccination_data_path is not None, (
                 "Must provide one of scenario_data_path or preprocessed_vaccination_data_path."
             )
         else:
-            assert m.preprocessed_vaccination_data_path is None, (
+            assert self.preprocessed_vaccination_data_path is None, (
                 "Cannot use both scenario_data_path and preprocessed_vaccination_data_path."
             )
-        if m.preprocessed_vaccination_data_path is None:
-            assert m.scenario_data_path is not None, (
+        if self.preprocessed_vaccination_data_path is None:
+            assert self.scenario_data_path is not None, (
                 "Must provide one of scenario_data_path or preprocessed_vaccination_data_path."
             )
         else:
-            assert m.scenario_data_path is None, (
+            assert self.scenario_data_path is None, (
                 "Cannot use both scenario_data_path and preprocessed_vaccination_data_path."
             )
-        return m
+        return self
 
 
 class Seasonality(BaseModel):
@@ -280,35 +282,37 @@ class Intervention(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def check_intervention_fields(cls, m: "Intervention") -> "Intervention":
+    def check_intervention_fields(self: "Intervention") -> "Intervention":
         """Ensure intervention configuration is consistent."""
         # Apply only to parameter interventions, or apply to all except parameter interventions
-        if m.type == "parameter":
-            assert m.target_parameter, "Parameter intervention is missing 'target_parameter'."
-            assert m.start_date and m.end_date, "Parameter intervention must have 'start_date' and 'end_date'."
-            assert bool(m.scaling_factor) ^ bool(m.override_value), (
+        if self.type == "parameter":
+            assert self.target_parameter, "Parameter intervention is missing 'target_parameter'."
+            assert self.start_date and self.end_date, "Parameter intervention must have 'start_date' and 'end_date'."
+            assert bool(self.scaling_factor) ^ bool(self.override_value), (
                 "Parameter intervention must have exactly one of 'scaling_factor' or 'override_value'."
             )
         else:
-            assert not m.override_value, f"{m.type} intervention cannot use 'override_value'"
+            assert not self.override_value, f"{self.type} intervention cannot use 'override_value'"
         # Apply only to contact matrix interventions, or apply to all except contact matrix interventions
-        if m.type == "contact_matrix":
-            assert m.contact_matrix_layer, (
+        if self.type == "contact_matrix":
+            assert self.contact_matrix_layer, (
                 "Contact matrix intervention must specify 'contact_matrix_layer' to apply intervention to."
             )
         else:
-            assert not m.contact_matrix_layer, f"'{m.type}' intervention cannot use 'contact_matrix_layer'."
+            assert not self.contact_matrix_layer, f"'{self.type}' intervention cannot use 'contact_matrix_layer'."
         # Apply only to school closure intervention, or apply to all except school closure intervention
-        if m.type == "school_closure":
-            assert not m.start_date and not m.end_date, (
+        if self.type == "school_closure":
+            assert not self.start_date and not self.end_date, (
                 "'school_closure' intervention cannot use 'start_date' or 'end_date'."
             )
         else:
-            assert m.start_date and m.end_date, f"'{m.type}' intervention must have 'start_date' and 'end_date'."
-            assert m.start_date < m.end_date, (
-                f"Start date for {m.type} intervention (given {m.start_date}) cannot be later than end date (given {m.end_date})."
+            assert self.start_date and self.end_date, (
+                f"'{self.type}' intervention must have 'start_date' and 'end_date'."
             )
-        return m
+            assert self.start_date < self.end_date, (
+                f"Start date for {self.type} intervention (given {self.start_date}) cannot be later than end date (given {self.end_date})."
+            )
+        return self
 
 
 class BaseEpiModel(BaseModel):
@@ -338,88 +342,88 @@ class BaseEpiModel(BaseModel):
     )
 
     @model_validator(mode="after")
-    def check_transition_refs(cls, m: "BaseEpiModel") -> "BaseEpiModel":
+    def check_transition_refs(self: "BaseEpiModel") -> "BaseEpiModel":
         """Ensure that each transition.source/target refers to an existing compartment.id."""
         # Collect all defined compartment IDs
-        compartment_ids = {c.id for c in m.compartments}
+        compartment_ids = {c.id for c in self.compartments}
 
         # Validate each transition
-        for t in m.transitions:
+        for t in self.transitions:
             assert t.source in compartment_ids, f"Transition.source='{t.source}' is not a valid Compartment.id"
             assert t.target in compartment_ids, f"Transition.target='{t.target}' is not a valid Compartment.id"
             if t.type == "mediated":
                 assert t.mediator in compartment_ids, (
                     f"Transition.mediator='{t.mediator}' is not a valid Compartment.id"
                 )
-        return m
+        return self
 
     @model_validator(mode="after")
-    def check_vaccination_refs(cls, m: "BaseEpiModel") -> "BaseEpiModel":
+    def check_vaccination_refs(self: "BaseEpiModel") -> "BaseEpiModel":
         """Ensure that vaccination specs are provided if a vaccination transition is declared, and vice versa."""
-        for t in m.transitions:
+        for t in self.transitions:
             if t.type == "vaccination":
-                assert m.vaccination is not None, (
+                assert self.vaccination is not None, (
                     "Vaccination transition declared but missing vaccination configuration."
                 )
-                assert t.source == m.vaccination.origin_compartment, (
+                assert t.source == self.vaccination.origin_compartment, (
                     "Vaccination transition source must be vaccination origin compartment."
                 )
-        if m.vaccination is not None:
-            assert "vaccination" in [t.type for t in m.transitions], (
+        if self.vaccination is not None:
+            assert "vaccination" in [t.type for t in self.transitions], (
                 "Vaccination configuration supplied but no vaccination transition declared."
             )
-        return m
+        return self
 
     @model_validator(mode="after")
-    def check_seasonality_refs(cls, m: "BaseEpiModel") -> "BaseEpiModel":
+    def check_seasonality_refs(self: "BaseEpiModel") -> "BaseEpiModel":
         """Ensure that seasonality target parameter exists"""
-        if m.seasonality:
-            assert m.seasonality.target_parameter in m.parameters.keys(), (
-                f"Seasonality target {m.seasonality.target_parameter} missing from model parameters."
+        if self.seasonality:
+            assert self.seasonality.target_parameter in self.parameters.keys(), (
+                f"Seasonality target {self.seasonality.target_parameter} missing from model parameters."
             )
-        return m
+        return self
 
     @model_validator(mode="after")
-    def check_intervention_refs(cls, m: "BaseEpiModel") -> "BaseEpiModel":
+    def check_intervention_refs(self: "BaseEpiModel") -> "BaseEpiModel":
         """Ensure that intervention target parameters exist"""
-        if m.interventions:
-            targets = [i.target_parameter for i in m.interventions if i.target_parameter]
+        if self.interventions:
+            targets = [i.target_parameter for i in self.interventions if i.target_parameter]
             for target in targets:
-                assert target in m.parameters.keys(), f"Intervention target {target} missing from model parameters."
-        return m
+                assert target in self.parameters.keys(), f"Intervention target {target} missing from model parameters."
+        return self
 
     @model_validator(mode="after")
-    def check_age_structure_refs(cls, m: "BaseEpiModel") -> "BaseEpiModel":
+    def check_age_structure_refs(self: "BaseEpiModel") -> "BaseEpiModel":
         """Ensure that age-varying parameters match population age structure."""
-        n_age_groups = len(m.population.age_groups)
-        for p in m.parameters.values():
+        n_age_groups = len(self.population.age_groups)
+        for p in self.parameters.values():
             if p.type == "age_varying":
                 assert len(p.values) == n_age_groups, "Age varying parameters must match population age structure."
-        return m
+        return self
 
     @model_validator(mode="after")
-    def require_default_init(cls, m: "BaseEpiModel") -> "BaseEpiModel":
+    def require_default_init(self: "BaseEpiModel") -> "BaseEpiModel":
         """If compartment initialization is provided, require at least one default compartment."""
-        inits = [c.init for c in m.compartments if c.init]
+        inits = [c.init for c in self.compartments if c.init]
         if inits:
             assert inits.count("default") > 0, "Compartment initialization requires at least one default compartment."
-        return m
+        return self
 
     @model_validator(mode="after")
-    def disallow_mixing_sampling_calibration(cls, m: "BaseEpiModel") -> "BaseEpiModel":
+    def disallow_mixing_sampling_calibration(self: "BaseEpiModel") -> "BaseEpiModel":
         """Disallow mixing sampling and calibration workflows"""
         sampled_vars = []
         calibrated_vars = []
-        if m.timespan.start_date == "sampled":
+        if self.timespan.start_date == "sampled":
             sampled_vars.append("start_date")
-        elif m.timespan.start_date == "calibrated":
+        elif self.timespan.start_date == "calibrated":
             calibrated_vars.append("start_date")
-        for compartment in m.compartments:
+        for compartment in self.compartments:
             if compartment.init == "sampled":
                 sampled_vars.append(compartment.id)
             elif compartment.init == "calibrated":
                 calibrated_vars.append(compartment.id)
-        for name, param in m.parameters.items():
+        for name, param in self.parameters.items():
             if param.type == "sampled":
                 sampled_vars.append(name)
             elif param.type == "calibrated":
@@ -427,7 +431,7 @@ class BaseEpiModel(BaseModel):
         if sampled_vars and calibrated_vars:
             msg = f"Cannot mix sampling and calibration workflows.\nDeclared sampled variables: {sampled_vars}\nDeclared calibrated variables: {calibrated_vars}"
             raise ValueError(msg)
-        return m
+        return self
 
     @field_validator("interventions")
     def enforce_single_school_closure(cls, v: list[Intervention]) -> list[Intervention]:
