@@ -1,13 +1,12 @@
 import logging
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
 
 class OutputConfiguration(BaseModel):
     """Output configuration."""
-    pass
 
 
 class OutputConfig(BaseModel):
