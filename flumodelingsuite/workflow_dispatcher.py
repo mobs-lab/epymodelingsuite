@@ -103,18 +103,19 @@ class BuilderOutput(BaseModel):
 class SimulationOutput(BaseModel):
     """Results of a call to EpiModel.run_simulations() with tracking information."""
 
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     primary_id: int = Field(
         description="Primary identifier of an EpiModel object paired with instructions for simulation."
     )
     results: SimulationResults = Field(description="Results of a call to EpiModel.run_simulations()")
     seed: int | None = Field(None, description="Random seed.")
 
-    class Config:
-        arbitrary_types_allowed = True
-
 
 class CalibrationOutput(BaseModel):
     """Results of a call to ABCSampler.calibrate() or ABCSampler.run_projections() with tracking information."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     primary_id: int = Field(
         description="Primary identifier of an ABCSampler object paired with instructions for calibration/projection."
@@ -123,9 +124,6 @@ class CalibrationOutput(BaseModel):
         description="Results of a call to ABCSampler.calibrate() or ABCSampler.run_projections()"
     )
     seed: int | None = Field(None, description="Random seed.")
-
-    class Config:
-        arbitrary_types_allowed = True
 
 
 def _get_data_in_window(data: pd.DataFrame, calibration: CalibrationConfig) -> pd.DataFrame:
