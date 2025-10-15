@@ -1,20 +1,16 @@
 import copy
-import logging
-import pandas as pd
 import datetime as dt
-import numpy as np
+import logging
 from datetime import date
-from pydantic import BaseModel, Field, field_validator, model_validator
 
+import numpy as np
+import pandas as pd
 from epydemix import simulate
 from epydemix.calibration import ABCSampler, CalibrationResults, ae, mae, mape, rmse, wmape
 from epydemix.model import EpiModel
 from epydemix.model.simulation_results import SimulationResults
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from .validation.basemodel_validator import BasemodelConfig, Parameter, Timespan
-from .validation.calibration_validator import CalibrationConfig, CalibrationStrategy
-from .validation.general_validator import validate_modelset_consistency
-from .validation.sampling_validator import SamplingConfig
 from .config_loader import (
     _add_contact_matrix_interventions_from_config,
     _add_model_compartments_from_config,
@@ -30,6 +26,10 @@ from .config_loader import (
 from .school_closures import make_school_closure_dict
 from .utils import convert_location_name_format, get_location_codebook, make_dummy_population
 from .vaccinations import reaggregate_vaccines, scenario_to_epydemix
+from .validation.basemodel_validator import BasemodelConfig, Parameter, Timespan
+from .validation.calibration_validator import CalibrationConfig, CalibrationStrategy
+from .validation.general_validator import validate_modelset_consistency
+from .validation.sampling_validator import SamplingConfig
 
 logger = logging.getLogger(__name__)
 
@@ -43,18 +43,21 @@ class SimulationArguments(BaseModel):
     Follows https://epydemix.readthedocs.io/en/stable/epydemix.model.html#epydemix.model.epimodel.EpiModel.run_simulations
     """
 
-    start_date: date = Field(..., description="Start date of the simulation.")
-    end_date: date = Field(..., description="End date of the simulation.")
+    start_date: date = Field(description="Start date of the simulation.")
+    end_date: date = Field(description="End date of the simulation.")
     initial_conditions_dict: dict | None = Field(None, description="Initial conditions dictionary.")
     Nsim: int | None = Field(None, description="Number of simulation runs to perform for a single EpiModel.")
     dt: float | None = Field(1.0, description="Timestep for simulation, defaults to 1.0 = 1 day.")
-    resample_frequency: str | None = Field(None, description="The frequency at which to resample the simulation results. Follows https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#period-aliases")
+    resample_frequency: str | None = Field(
+        None,
+        description="The frequency at which to resample the simulation results. Follows https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#period-aliases",
+    )
 
 
 class ProjectionArguments(BaseModel):
     """Projection arguments."""
+
     # Not sure what's needed here but probably need to make this from basemodel.timespan and calibration.fitting_window
-    pass
 
 
 class BuilderOutput(BaseModel):
@@ -62,39 +65,48 @@ class BuilderOutput(BaseModel):
     A bundle containing a single EpiModel or ABCSampler object paired with instructions for simulation/calibration/projection.
     """
 
-    primary_id: int = Field(..., description="Primary identifier of an EpiModel or ABCSampler object paired with instructions for simulation/calibration/projection.")
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    primary_id: int = Field(
+        description="Primary identifier of an EpiModel or ABCSampler object paired with instructions for simulation/calibration/projection."
+    )
     seed: int | None = Field(None, description="Random seed.")
     model: EpiModel | None = Field(None, description="EpiModel object for simulation.")
     calibrator: ABCSampler | None = Field(None, description="ABCSampler object for calibration (contains an EpiModel).")
-    simulation: SimulationArguments | None = Field(None, description="Arguments for a single call to EpiModel.run_simulations")
-    calibration: CalibrationStrategy | None = Field(None, description="Arguments for a single call to ABCSampler.calibrate")
+    simulation: SimulationArguments | None = Field(
+        None, description="Arguments for a single call to EpiModel.run_simulations"
+    )
+    calibration: CalibrationStrategy | None = Field(
+        None, description="Arguments for a single call to ABCSampler.calibrate"
+    )
     projection: ProjectionArguments | None = Field(None, description="Arguments for a")
 
-    class Config:
-        arbitrary_types_allowed = True
-
     @model_validator(mode="after")
-    def check_fields(cls, m: "BuilderOutput") -> "BuilderOutput":
+    def check_fields(self: "BuilderOutput") -> "BuilderOutput":
         """
         Ensure combination of fields is valid.
         """
-        assert m.model or m.calibrator, "BuilderOutput must contain an EpiModel or ABCSampler."
-        
-        if m.simulation:
-            assert not m.calibration and not m.projection, "Simulation workflow cannot be combined with calibration/projection."
-            assert m.model, "Simulation workflow requires EpiModel but received only ABCSampler."
-        
-        elif m.calibration or m.projection:
-            assert m.calibrator, "Calibration/projection workflow requires ABCSampler but received only EpiModel."
-            
-        return m
-            
+        assert self.model or self.calibrator, "BuilderOutput must contain an EpiModel or ABCSampler."
+
+        if self.simulation:
+            assert not self.calibration and not self.projection, (
+                "Simulation workflow cannot be combined with calibration/projection."
+            )
+            assert self.model, "Simulation workflow requires EpiModel but received only ABCSampler."
+
+        elif self.calibration or self.projection:
+            assert self.calibrator, "Calibration/projection workflow requires ABCSampler but received only EpiModel."
+
+        return self
+
 
 class SimulationOutput(BaseModel):
     """Results of a call to EpiModel.run_simulations() with tracking information."""
 
-    primary_id: int = Field(..., description="Primary identifier of an EpiModel object paired with instructions for simulation.")
-    results: SimulationResults = Field(..., description="Results of a call to EpiModel.run_simulations()")
+    primary_id: int = Field(
+        description="Primary identifier of an EpiModel object paired with instructions for simulation."
+    )
+    results: SimulationResults = Field(description="Results of a call to EpiModel.run_simulations()")
     seed: int | None = Field(None, description="Random seed.")
 
     class Config:
@@ -104,8 +116,12 @@ class SimulationOutput(BaseModel):
 class CalibrationOutput(BaseModel):
     """Results of a call to ABCSampler.calibrate() or ABCSampler.run_projections() with tracking information."""
 
-    primary_id: int = Field(..., description="Primary identifier of an ABCSampler object paired with instructions for calibration/projection.")
-    results: CalibrationResults = Field(..., description="Results of a call to ABCSampler.calibrate() or ABCSampler.run_projections()")
+    primary_id: int = Field(
+        description="Primary identifier of an ABCSampler object paired with instructions for calibration/projection."
+    )
+    results: CalibrationResults = Field(
+        description="Results of a call to ABCSampler.calibrate() or ABCSampler.run_projections()"
+    )
     seed: int | None = Field(None, description="Random seed.")
 
     class Config:
@@ -778,7 +794,13 @@ def build_calibration(
 
     logger.info("BUILDER: completed calibration.")
     return [
-        BuilderOutput(primary_id=i, seed=basemodel.random_seed, calibrator=c, calibration=calibration.strategy, projection=calibration.projection)
+        BuilderOutput(
+            primary_id=i,
+            seed=basemodel.random_seed,
+            calibrator=c,
+            calibration=calibration.strategy,
+            projection=calibration.projection,
+        )
         for i, c in enumerate(calibrators)
     ]
 
@@ -842,7 +864,9 @@ def dispatch_runner(configs: BuilderOutput) -> SimulationOutput | CalibrationOut
     elif configs.calibration and configs.projection:
         logger.info("RUNNER: dispatched for calibration and projection.")
         try:
-            calibration_results = configs.calibrator.calibrate(strategy=configs.calibration.name, **configs.calibration.options)
+            calibration_results = configs.calibrator.calibrate(
+                strategy=configs.calibration.name, **configs.calibration.options
+            )
             """
             
             TODO: projection

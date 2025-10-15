@@ -24,8 +24,8 @@ class Timespan(BaseModel):
         sampled = "sampled"
         calibrated = "calibrated"
 
-    start_date: date | StartDateTypeEnum = Field(..., description="Start date of the simulation.")
-    end_date: date = Field(..., description="End date of the simulation.")
+    start_date: date | StartDateTypeEnum = Field(description="Start date of the simulation.")
+    end_date: date = Field(description="End date of the simulation.")
     delta_t: float | int = Field(1.0, description="Time step (dt) for the simulation in epydemix.")
 
     @field_validator("end_date")
@@ -61,7 +61,7 @@ class Population(BaseModel):
         description="Location code in ISO 3166. Use ISO 3166-2 for states (e.g., 'US-NY') and ISO 3166-1 alpha 2 for countries (e.g., 'US')",
     )
     age_groups: list[str] = Field(
-        ..., description="List of age groups in the population (e.g., ['0-4', '5-17', '18-49', '50-64', '65+'])"
+        description="List of age groups in the population (e.g., ['0-4', '5-17', '18-49', '50-64', '65+'])"
     )
 
     @field_validator("name")
@@ -79,7 +79,7 @@ class Compartment(BaseModel):
         sampled = "sampled"
         calibrated = "calibrated"
 
-    id: str = Field(..., description="Unique identifier for the compartment.")
+    id: str = Field(description="Unique identifier for the compartment.")
     label: str | None = Field(None, description="Human-readable label for the compartment.")
     init: InitCompartmentEnum | float | int | None = Field(None, description="Initial conditions for compartment.")
 
@@ -105,12 +105,12 @@ class Transition(BaseModel):
     class Mediator(BaseModel):
         """Required fields for multiple mediated transitions."""
 
-        rate: float | str = Field(..., description="Rate of transition.")
-        source: list[str] = Field(..., description="Infectious compartment ids for multiple mediated transition.")
+        rate: float | str = Field(description="Rate of transition.")
+        source: list[str] = Field(description="Infectious compartment ids for multiple mediated transition.")
 
-    type: TransitionTypeEnum = Field(..., description="Type of transition.")
-    source: str = Field(..., description="Source compartment id.")
-    target: str = Field(..., description="Target compartment id.")
+    type: TransitionTypeEnum = Field(description="Type of transition.")
+    source: str = Field(description="Source compartment id.")
+    target: str = Field(description="Target compartment id.")
     rate: float | str | None = Field(None, description="Rate of transition.")
     mediator: str | None = Field(None, description="Infectious compartment id for single mediated transition.")
     mediators: list[Mediator] | None = Field(
@@ -155,7 +155,7 @@ class Parameter(BaseModel):
         calibrated = "calibrated"
         calculated = "calculated"
 
-    type: ParameterTypeEnum = Field(..., description="Type of parameter.")
+    type: ParameterTypeEnum = Field(description="Type of parameter.")
     value: float | str | None = Field(None, description="Value for scalar or calculated parameters.")
     values: list[float | str] | None = Field(None, description="List of values for age-varying parameters.")
 
@@ -190,8 +190,8 @@ class Vaccination(BaseModel):
     preprocessed_vaccination_data_path: str | None = Field(
         None, description="Path to preprocessed vaccination coverage data file."
     )
-    origin_compartment: str = Field(..., description="Origin compartment for vaccination.")
-    eligible_compartments: list[str] = Field(..., description="Eligible compartments for vaccination.")
+    origin_compartment: str = Field(description="Origin compartment for vaccination.")
+    eligible_compartments: list[str] = Field(description="Eligible compartments for vaccination.")
 
     @model_validator(mode="after")
     def check_vax_fields(self: "Vaccination") -> "Vaccination":
@@ -226,12 +226,12 @@ class Seasonality(BaseModel):
 
         balcan = "balcan"
 
-    target_parameter: str = Field(..., description="Name of parameter to apply seasonality to")
-    method: SeasonalityMethodEnum = Field(..., description="Method for defining a seasonally varying function")
-    seasonality_max_date: date = Field(..., description="Date of seasonality peak (max transmissibility)")
-    seasonality_min_date: date | None = Field(..., description="Date of seasonality trough (min transmissibility)")
-    max_value: float = Field(..., description="Maximum value that the parameter can take after scaling.")
-    min_value: float = Field(..., description="Minimum value that the parameter can take after scaling.")
+    target_parameter: str = Field(description="Name of parameter to apply seasonality to")
+    method: SeasonalityMethodEnum = Field(description="Method for defining a seasonally varying function")
+    seasonality_max_date: date = Field(description="Date of seasonality peak (max transmissibility)")
+    seasonality_min_date: date | None = Field(description="Date of seasonality trough (min transmissibility)")
+    max_value: float = Field(description="Maximum value that the parameter can take after scaling.")
+    min_value: float = Field(description="Minimum value that the parameter can take after scaling.")
 
     @field_validator("seasonality_min_date")
     def check_seasonality_dates(cls, v: date, info: Any) -> date:
@@ -318,7 +318,7 @@ class Intervention(BaseModel):
 class BaseEpiModel(BaseModel):
     """Model configuration."""
 
-    name: str = Field(..., description="Name of the model")
+    name: str = Field(description="Name of the model")
     version: str | None = Field(None, description="Version of the model")
     date: datetime.date | datetime.datetime | None = Field(
         default_factory=datetime.datetime.now(tz=datetime.timezone.utc), description="Date of work"
@@ -326,13 +326,13 @@ class BaseEpiModel(BaseModel):
     description: str | None = Field(None, description="Human-readable description of the model")
     random_seed: int | None = Field(None, description="Random seed for reproducibility")
 
-    timespan: Timespan = Field(..., description="Date range and timestep for modeling")
+    timespan: Timespan = Field(description="Date range and timestep for modeling")
     simulation: Simulation | None = Field(None, description="Simulation settings")
-    population: Population = Field(..., description="Population configuration")
+    population: Population = Field(description="Population configuration")
 
-    compartments: list[Compartment] = Field(..., description="Compartments in the model")
-    transitions: list[Transition] = Field(..., description="Transitions between compartments")
-    parameters: dict[str, Parameter] = Field(..., description="Model parameters")
+    compartments: list[Compartment] = Field(description="Compartments in the model")
+    transitions: list[Transition] = Field(description="Transitions between compartments")
+    parameters: dict[str, Parameter] = Field(description="Model parameters")
 
     vaccination: Vaccination | None = Field(None, description="Vaccination configuration")
     seasonality: Seasonality | None = Field(None, description="Seasonality configuration")

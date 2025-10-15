@@ -18,7 +18,6 @@ class Distribution(BaseModel):
 
     type: str | DistributionTypeEnum | None = Field("scipy", description="Type of distribution ('scipy' or 'custom')")
     name: str = Field(
-        ...,
         description="Name of the probability distribution. Has to match scipy class (e.g., 'norm', 'uniform', etc.) or custom distribution name",
     )
     args: list[float] = Field(
@@ -33,7 +32,7 @@ class Distribution(BaseModel):
 class DateParameter(BaseModel):
     """Date parameter with reference date and distribution."""
 
-    reference_date: date = Field(..., description="Reference date for sampling")
+    reference_date: date = Field(description="Reference date for sampling")
     distribution: Distribution | None = Field(
         None, description="Distribution for date offset sampling"
     )  # Used for sampling

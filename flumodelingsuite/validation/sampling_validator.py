@@ -19,8 +19,8 @@ from .common_validators import DateParameter, Distribution, Meta
 class CompartmentSamplingRange(BaseModel):
     """Range specification for compartment sampling."""
 
-    min: float = Field(..., description="Minimum value for compartment")
-    max: float = Field(..., description="Maximum value for compartment")
+    min: float = Field(description="Minimum value for compartment")
+    max: float = Field(description="Maximum value for compartment")
 
     @field_validator("max")
     def check_max_greater_than_min(cls, v: float, info: Any) -> float:
@@ -56,9 +56,9 @@ class Sampler(BaseModel):
         grid = "grid"
         LHS = "LHS"
 
-    strategy: StrategyEnum = Field(..., description="Sampling strategy")
+    strategy: StrategyEnum = Field(description="Sampling strategy")
     n_samples: int | None = Field(None, description="Number of samples (required for LHS and montecarlo)")
-    parameters: list[str] = Field(..., description="List of parameters to sample")
+    parameters: list[str] = Field(description="List of parameters to sample")
     compartments: list[str] | None = Field(None, description="List of compartments to sample (for LHS/montecarlo)")
 
     @model_validator(mode="after")
@@ -74,11 +74,11 @@ class Sampler(BaseModel):
 class SamplingConfiguration(BaseModel):
     """Sampling configuration section."""
 
-    samplers: list[Sampler] = Field(..., description="List of samplers")
+    samplers: list[Sampler] = Field(description="List of samplers")
     compartments: dict[str, CompartmentSamplingRange] | None = Field(
         None, description="Compartment ranges for sampling"
     )
-    parameters: dict[str, Parameter] = Field(..., description="Parameter specifications")
+    parameters: dict[str, Parameter] = Field(description="Parameter specifications")
     start_date: DateParameter | None = Field(None, description="Start date parameter specification")
 
     @model_validator(mode="after")
@@ -112,8 +112,8 @@ class SamplingModelset(BaseModel):
     """Modelset configuration for sampling."""
 
     meta: Meta | None = Field(None, description="Metadata")
-    population_names: list[str] = Field(..., description="List of population names")
-    sampling: SamplingConfiguration = Field(..., description="Sampling configuration")
+    population_names: list[str] = Field(description="List of population names")
+    sampling: SamplingConfiguration = Field(description="Sampling configuration")
 
     @field_validator("population_names")
     def validate_populations(cls, v):
@@ -130,7 +130,7 @@ class SamplingModelset(BaseModel):
 class SamplingConfig(BaseModel):
     """Root configuration model."""
 
-    modelset: SamplingModelset = Field(..., description="Modelset configuration")
+    modelset: SamplingModelset = Field(description="Modelset configuration")
 
 
 def validate_sampling(config: dict) -> SamplingConfig:

@@ -12,7 +12,7 @@ class OutputConfiguration(BaseModel):
 class OutputConfig(BaseModel):
     """Root configuration model."""
 
-    output_specs: OutputConfiguration = Field(..., description="Modelset configuration")
+    output_specs: OutputConfiguration = Field(description="Modelset configuration")
 
 
 def validate_output(config: dict) -> OutputConfig:

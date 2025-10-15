@@ -26,7 +26,6 @@ class CalibrationStrategy(BaseModel):
         top_fraction = "top_fraction"
 
     name: str | CalibrationStrategyEnum = Field(
-        ...,
         description="Name of calibration strategy for epydemix.calibration.abc module (e.g., 'SMC', 'rejection', 'top_fraction')",
     )
     options: dict[str, Any] = Field(
@@ -37,24 +36,22 @@ class CalibrationStrategy(BaseModel):
 class ComparisonSpec(BaseModel):
     """Specification for comparing observed and simulated data."""
 
-    observed_value_column: str = Field(
-        ..., description="Name of column containing observed values in observed data CSV"
-    )
-    observed_date_column: str = Field(..., description="Name of column containing target dates in observed data CSV")
-    simulation: list[str] = Field(..., description="List of transition names to sum for comparison (e.g. I_to_R)")
+    observed_value_column: str = Field(description="Name of column containing observed values in observed data CSV")
+    observed_date_column: str = Field(description="Name of column containing target dates in observed data CSV")
+    simulation: list[str] = Field(description="List of transition names to sum for comparison (e.g. I_to_R)")
 
 
 class CalibrationParameter(BaseModel):
     """Parameter specification for calibration."""
 
-    prior: Distribution = Field(..., description="Prior distribution for parameter calibration")
+    prior: Distribution = Field(description="Prior distribution for parameter calibration")
 
 
 class FittingWindow(BaseModel):
     """Specification for the time window used in calibration fitting."""
 
-    start_date: date = Field(..., description="Start date of fitting window.")
-    end_date: date = Field(..., description="End date of fitting window.")
+    start_date: date = Field(description="Start date of fitting window.")
+    end_date: date = Field(description="End date of fitting window.")
 
     @model_validator(mode="after")
     def validate_date_order(self: "FittingWindow") -> "FittingWindow":
@@ -69,12 +66,12 @@ class FittingWindow(BaseModel):
 class CalibrationConfiguration(BaseModel):
     """Calibration configuration section."""
 
-    strategy: CalibrationStrategy = Field(..., description="Calibration strategy configuration")
+    strategy: CalibrationStrategy = Field(description="Calibration strategy configuration")
 
     # Sampler options, passed directly when initializing ABCSampler
     distance_function: str = Field("rmse", description="Distance function for comparing data")
-    observed_data_path: str = Field(..., description="Path to observed data CSV file")
-    comparison: list[ComparisonSpec] = Field(..., description="Specifications for data comparison")
+    observed_data_path: str = Field(description="Path to observed data CSV file")
+    comparison: list[ComparisonSpec] = Field(description="Specifications for data comparison")
 
     # What we calibrate for
     start_date: DateParameter | None = Field(None, description="Start date parameter specification")
@@ -84,7 +81,7 @@ class CalibrationConfiguration(BaseModel):
     compartments: dict[str, CalibrationParameter] | None = Field(
         None, description="Initial conditions specifications for calibration"
     )
-    fitting_window: FittingWindow = Field(..., description="Time window for calibration fitting")
+    fitting_window: FittingWindow = Field(description="Time window for calibration fitting")
 
     @model_validator(mode="after")
     def check_calibration_consistency(self: "CalibrationConfiguration") -> "CalibrationConfiguration":
@@ -110,8 +107,8 @@ class CalibrationModelset(BaseModel):
     """Modelset configuration for calibration."""
 
     meta: Meta | None = Field(None, description="Metadata")
-    population_names: list[str] = Field(..., description="List of population names")
-    calibration: CalibrationConfiguration = Field(..., description="Calibration configuration")
+    population_names: list[str] = Field(description="List of population names")
+    calibration: CalibrationConfiguration = Field(description="Calibration configuration")
 
     @field_validator("population_names")
     def validate_populations(cls, v):
@@ -128,7 +125,7 @@ class CalibrationModelset(BaseModel):
 class CalibrationConfig(BaseModel):
     """Root configuration model for calibration."""
 
-    modelset: CalibrationModelset = Field(..., description="Modelset configuration")
+    modelset: CalibrationModelset = Field(description="Modelset configuration")
 
 
 def validate_calibration(config: dict) -> CalibrationConfig:
