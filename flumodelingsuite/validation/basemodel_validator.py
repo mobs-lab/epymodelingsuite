@@ -309,7 +309,7 @@ class Intervention(BaseModel):
             assert self.start_date and self.end_date, (
                 f"'{self.type}' intervention must have 'start_date' and 'end_date'."
             )
-            assert self.start_date < self.end_date, (
+            assert self.start_date <= self.end_date, (
                 f"Start date for {self.type} intervention (given {self.start_date}) cannot be later than end date (given {self.end_date})."
             )
         return self
