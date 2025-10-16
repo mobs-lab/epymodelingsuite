@@ -6,7 +6,7 @@ import scipy.stats
 from epydemix import EpiModel
 from epydemix.population import Population
 
-from .common_validators import Distribution
+from .validation.common_validators import Distribution
 
 
 def get_population_codebook() -> pd.DataFrame:

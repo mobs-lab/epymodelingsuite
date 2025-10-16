@@ -11,7 +11,7 @@ import scipy
 from epydemix.model import EpiModel
 from pandas import DataFrame
 
-from .basemodel_validator import (
+from .validation.basemodel_validator import (
     BasemodelConfig,
     Compartment,
     Intervention,
@@ -22,12 +22,14 @@ from .basemodel_validator import (
     Vaccination,
     validate_basemodel,
 )
-from .calibration_validator import CalibrationConfig, validate_calibration
-from .sampling_validator import SamplingConfig, validate_sampling
+from .validation.calibration_validator import CalibrationConfig, validate_calibration
+from .validation.output_validator import OutputConfig, validate_output
+from .validation.sampling_validator import SamplingConfig, validate_sampling
 
 __all__ = [
     "load_basemodel_config_from_file",
     "load_calibration_config_from_file",
+    "load_output_config_from_file",
     "load_sampling_config_from_file",
 ]
 
@@ -56,7 +58,10 @@ _allowed_modules = {"np", "scipy"}
 
 
 class SafeEvalVisitor(ast.NodeVisitor):
-    """A NodeVisitor that only allows numeric, numpy, and scipy expressions."""
+    """
+    A NodeVisitor that only allows numeric, numpy, and scipy expressions,
+    and enables binary operations on numpy arrays.
+    """
 
     def visit(self, node):
         t = type(node)
@@ -66,7 +71,7 @@ class SafeEvalVisitor(ast.NodeVisitor):
             ast.BinOp,
             ast.UnaryOp,
             ast.Constant,
-            ast.Num,
+            ast.List,
             ast.Load,
             ast.Name,
             ast.Attribute,
@@ -76,10 +81,44 @@ class SafeEvalVisitor(ast.NodeVisitor):
         raise ValueError(f"Disallowed expression: {t.__name__}")
 
     def visit_BinOp(self, node):
-        self.visit(node.left)
-        self.visit(node.right)
+        left = self.visit(node.left)
+        right = self.visit(node.right)
+
         if type(node.op) not in _allowed_operators:
             raise ValueError(f"Operator {type(node.op).__name__} not allowed")
+
+        # Access node data, handle arrays
+        if isinstance(left, ast.Constant) and isinstance(right, ast.Constant):
+            left = left.value
+            right = right.value
+        elif isinstance(left, ast.Constant) and isinstance(right, ast.List):
+            left = np.array([left.value])
+            right = np.array([c.value for c in right.elts], dtype=float)
+        elif isinstance(left, ast.List) and isinstance(right, ast.Constant):
+            left = np.array([c.value for c in left.elts], dtype=float)
+            right = np.array([right.value])
+        elif isinstance(left, ast.List) and isinstance(right, ast.List):
+            left = np.array([c.value for c in left.elts], dtype=float)
+            right = np.array([c.value for c in right.elts], dtype=float)
+        else:
+            raise ValueError(f"Attempted BinOp on unsupported objects:\n\n{left}\n\n{right}")
+
+        # Perform calculation
+        calc_val = None
+        if isinstance(node.op, ast.Add):
+            calc_val = np.add(left, right, dtype=float)
+        elif isinstance(node.op, ast.Sub):
+            calc_val = np.subtract(left, right, dtype=float)
+        elif isinstance(node.op, ast.Mult):
+            calc_val = np.multiply(left, right, dtype=float)
+        elif isinstance(node.op, ast.Div):
+            calc_val = np.divide(left, right, dtype=float)
+
+        if isinstance(calc_val, np.ndarray):
+            ast_nodes = [ast.Constant(value=item) for item in calc_val.flatten()]
+            ast_list = ast.List(elts=ast_nodes, ctx=ast.Load())
+            return ast.fix_missing_locations(ast_list)
+        return ast.fix_missing_locations(ast.Constant(value=calc_val))
 
     def visit_UnaryOp(self, node):
         self.visit(node.operand)
@@ -90,11 +129,12 @@ class SafeEvalVisitor(ast.NodeVisitor):
         # Only allow numeric constants
         if not isinstance(node.value, (int, float)):
             raise ValueError(f"Constant of type {type(node.value).__name__} not allowed")
+        return node
 
-    def visit_Num(self, node):
-        # For Python <3.8
-        if not isinstance(node.n, (int, float)):
-            raise ValueError(f"Num of type {type(node.n).__name__} not allowed")
+    def visit_List(self, node):
+        for v in node.elts:
+            self.visit(v)
+        return node
 
     def visit_Name(self, node):
         # Only allow top‐level names 'np' and 'scipy'
@@ -148,13 +188,19 @@ class RetrieveName(ast.NodeTransformer):
                 try:
                     C = np.sum([c for _, c in self.model.population.contact_matrices.items()], axis=0)
                     eigenvalue = np.linalg.eigvals(C).real.max()
-                    return ast.Constant(value=eigenvalue)
+                    return ast.fix_missing_locations(ast.Constant(value=float(eigenvalue)))
                 except Exception as e:
                     raise ValueError(f"Error calculating eigenvalue of contact matrix: {e}")
             else:
                 try:
                     value = self.model.get_parameter(node.id)
-                    return ast.Constant(value=value)
+                    if type(value) == np.ndarray:
+                        assert value.shape[0] == 1, (
+                            "Parameter calculation using parameters with array values is only implemented for age-varying parameters."
+                        )
+                        ast_nodes = [ast.Constant(value=float(item)) for item in value.flatten()]
+                        return ast.fix_missing_locations(ast.List(elts=ast_nodes, ctx=ast.Load()))
+                    return ast.fix_missing_locations(ast.Constant(value=float(value)))
                 except Exception as e:
                     raise ValueError(f"Error obtaining parameter value during calculation: {e}")
 
@@ -387,17 +433,21 @@ def _calculate_parameters_from_config(model: EpiModel, parameters: dict[str, Par
     # Build a dictionary of calculated values
     parameters_dict = {}
     for name, expr in calc_params.items():
+        logger.info(f"Calculating parameter {name} using expression: {expr}")
         try:
             # Parse the expression into a tree
             tree = ast.parse(expr, mode="eval")
-            # Substitute retrieved parameter values or contact matrix eigenvalue into the tree,
-            # convert back into expression
-            calc_expr = ast.unparse(RetrieveName(model).visit(tree))
 
-            logger.info(f"Calculating parameter {name} using expression: {calc_expr}")
+            # Substitute retrieved parameter values or contact matrix eigenvalue into the tree
+            RetrieveName(model).visit(tree)
+
+            # Validate the expression
+            SafeEvalVisitor().visit(tree)
 
             # Evaluate the expression
-            parameters_dict[name] = _safe_eval(calc_expr)
+            code = compile(tree, filename="<calc_eval>", mode="eval")
+            parameters_dict[name] = eval(code, {"__builtins__": None, "np": np, "scipy": scipy}, {})
+            logger.info(f"Calculated parameter {name}: {parameters_dict[name]}")
         except Exception as e:
             raise ValueError(f"Error calculating parameter {name}: {e}")
 
@@ -408,6 +458,19 @@ def _calculate_parameters_from_config(model: EpiModel, parameters: dict[str, Par
         return model
     except Exception as e:
         raise ValueError(f"Error adding parameters to model: {e}")
+
+
+"""
+    # Parse into an AST
+    tree = ast.parse(expr, mode="eval")
+
+    # Validate AST nodes
+    SafeEvalVisitor().visit(tree)
+
+    # Compile and evaluate with restricted globals
+    code = compile(tree, filename="<safe_eval>", mode="eval")
+    return eval(code, {"__builtins__": None, "np": np, "scipy": scipy}, {})
+"""
 
 
 def _add_vaccination_schedules_from_config(
@@ -787,4 +850,28 @@ def load_calibration_config_from_file(path: str) -> CalibrationConfig:
 
     root = validate_calibration(raw)
     logger.info("Calibration configuration loaded successfully.")
+    return root
+
+
+def load_output_config_from_file(path: str) -> OutputConfig:
+    """
+    Load output configuration YAML from the given path and validate against the schema.
+
+    Parameters
+    ----------
+        path: The file path to the YAML configuration file.
+
+    Returns
+    -------
+        The validated configuration object.
+    """
+    from pathlib import Path
+
+    import yaml
+
+    with Path(path).open() as f:
+        raw = yaml.safe_load(f)
+
+    root = validate_output(raw)
+    logger.info("Output configuration loaded successfully.")
     return root

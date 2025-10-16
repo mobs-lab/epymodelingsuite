@@ -109,11 +109,19 @@ model:
         - 0.4
         - 0.3
     r_vax:
-      type: scalar
-      value: 0.3
+      #type: scalar
+      #value: 0.3
       # FIXME: When calculated paramaters uses an age-varying parameter, it fails.
-      # type: calculated
-      # value: 1 - VE
+      type: calculated
+      value: 1 - VE
+
+  seasonality:
+    target_parameter: beta
+    method: balcan
+    seasonality_max_date: "2024-10-01" # YYYY-MM-DD
+    seasonality_min_date: "2025-04-01" # YYYY-MM-DD, optional
+    max_value: 1.00
+    min_value: 0.50
         
   vaccination:
     # preprocessed_vaccination_data_path: "data/PROCESSED_Age_Specific_Coverage_Flu_RD1_2024_25_Sc_A_B_C_D_E_F.csv"
@@ -126,19 +134,27 @@ model:
       - R
       
   interventions:
+    # School closure intervention
     - type: school_closure
       scaling_factor: 0.344
-      years:
-        - 2024
-        - 2025
-
-  seasonality:
-    target_parameter: beta
-    method: balcan
-    seasonality_max_date: "2024-10-01" # YYYY-MM-DD
-    seasonality_min_date: "2025-04-01" # YYYY-MM-DD, optional
-    max_value: 1.00
-    min_value: 0.50
+    # Contact matrix intervention
+    - type: contact_matrix
+      scaling_factor: 1.6
+      contact_matrix_layer: "home"
+      start_date: "2024-11-25"
+      end_date: "2025-01-01"
+    # Parameter scaling intervention
+    - type: parameter
+      scaling_factor: 0.95
+      target_parameter: mu
+      start_date: "2024-09-01"
+      end_date: "2024-09-21"
+    # Parameter override intervention
+    - type: parameter
+      override_value: 0.25
+      target_parameter: beta
+      start_date: "2024-10-01"
+      end_date: "2024-10-01"
 
 
 

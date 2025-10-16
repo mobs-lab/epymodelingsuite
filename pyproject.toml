@@ -37,10 +37,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/mobs-lab/flu-modeling-suite"
+Homepage = "https://github.com/mobs-lab/flumodelingsuite"
 
 [tool.setuptools]
-packages = ["flumodelingsuite"]
+packages = ["flumodelingsuite", "flumodelingsuite.validation"]
 include-package-data = true
 
 [tool.ruff]

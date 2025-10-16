@@ -5,8 +5,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from ..utils import validate_iso3166
 from .common_validators import DateParameter, Distribution, Meta
-from .utils import validate_iso3166
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,6 @@ class CalibrationStrategy(BaseModel):
         top_fraction = "top_fraction"
 
     name: str | CalibrationStrategyEnum = Field(
-        ...,
         description="Name of calibration strategy for epydemix.calibration.abc module (e.g., 'SMC', 'rejection', 'top_fraction')",
     )
     options: dict[str, Any] = Field(
@@ -34,47 +33,49 @@ class CalibrationStrategy(BaseModel):
     )
 
 
+class ProjectionSpec(BaseModel):
+    """Specification for projection after calibration."""
+
+
 class ComparisonSpec(BaseModel):
     """Specification for comparing observed and simulated data."""
 
-    observed_value_column: str = Field(
-        ..., description="Name of column containing observed values in observed data CSV"
-    )
-    observed_date_column: str = Field(..., description="Name of column containing target dates in observed data CSV")
-    simulation: list[str] = Field(..., description="List of transition names to sum for comparison (e.g. I_to_R)")
+    observed_value_column: str = Field(description="Name of column containing observed values in observed data CSV")
+    observed_date_column: str = Field(description="Name of column containing target dates in observed data CSV")
+    simulation: list[str] = Field(description="List of transition names to sum for comparison (e.g. I_to_R)")
 
 
 class CalibrationParameter(BaseModel):
     """Parameter specification for calibration."""
 
-    prior: Distribution = Field(..., description="Prior distribution for parameter calibration")
+    prior: Distribution = Field(description="Prior distribution for parameter calibration")
 
 
 class FittingWindow(BaseModel):
     """Specification for the time window used in calibration fitting."""
 
-    start_date: date = Field(..., description="Start date of fitting window.")
-    end_date: date = Field(..., description="End date of fitting window.")
+    start_date: date = Field(description="Start date of fitting window.")
+    end_date: date = Field(description="End date of fitting window.")
 
     @model_validator(mode="after")
-    def validate_date_order(cls, m: "FittingWindow") -> "FittingWindow":
+    def validate_date_order(self: "FittingWindow") -> "FittingWindow":
         """Ensure end_date is after start_date."""
         # Note: DateParameter can be a string date or have a prior distribution
         # Only validate if both are actual date strings
-        if m.end_date <= m.start_date:
+        if self.end_date <= self.start_date:
             raise ValueError("end_date must be after start_date")
-        return m
+        return self
 
 
 class CalibrationConfiguration(BaseModel):
     """Calibration configuration section."""
 
-    strategy: CalibrationStrategy = Field(..., description="Calibration strategy configuration")
+    strategy: CalibrationStrategy = Field(description="Calibration strategy configuration")
 
     # Sampler options, passed directly when initializing ABCSampler
     distance_function: str = Field("rmse", description="Distance function for comparing data")
-    observed_data_path: str = Field(..., description="Path to observed data CSV file")
-    comparison: list[ComparisonSpec] = Field(..., description="Specifications for data comparison")
+    observed_data_path: str = Field(description="Path to observed data CSV file")
+    comparison: list[ComparisonSpec] = Field(description="Specifications for data comparison")
 
     # What we calibrate for
     start_date: DateParameter | None = Field(None, description="Start date parameter specification")
@@ -84,34 +85,36 @@ class CalibrationConfiguration(BaseModel):
     compartments: dict[str, CalibrationParameter] | None = Field(
         None, description="Initial conditions specifications for calibration"
     )
-    fitting_window: FittingWindow = Field(..., description="Time window for calibration fitting")
+    fitting_window: FittingWindow = Field(description="Time window for calibration fitting")
+
+    projection: ProjectionSpec | None = Field(None, description="Specification for projection")
 
     @model_validator(mode="after")
-    def check_calibration_consistency(cls, m: "CalibrationConfiguration") -> "CalibrationConfiguration":
+    def check_calibration_consistency(self: "CalibrationConfiguration") -> "CalibrationConfiguration":
         """Validate calibration configuration consistency."""
         # Ensure we have at least one comparison specification
-        if not m.comparison:
+        if not self.comparison:
             msg = "At least one comparison specification is required"
             raise ValueError(msg)
 
         # Ensure all comparison specs have non-empty simulation lists
-        for comp in m.comparison:
+        for comp in self.comparison:
             if not comp.simulation:
                 msg = f"Comparison for '{comp.observed}' must specify at least one simulation transition"
                 raise ValueError(msg)
 
-        assert m.start_date or m.parameters or m.initial_conditions, (
+        assert self.start_date or self.parameters or self.initial_conditions, (
             "Calibration requires at least one of start_date, parameters, or compartments"
         )
-        return m
+        return self
 
 
 class CalibrationModelset(BaseModel):
     """Modelset configuration for calibration."""
 
     meta: Meta | None = Field(None, description="Metadata")
-    population_names: list[str] = Field(..., description="List of population names")
-    calibration: CalibrationConfiguration = Field(..., description="Calibration configuration")
+    population_names: list[str] = Field(description="List of population names")
+    calibration: CalibrationConfiguration = Field(description="Calibration configuration")
 
     @field_validator("population_names")
     def validate_populations(cls, v):
@@ -128,7 +131,7 @@ class CalibrationModelset(BaseModel):
 class CalibrationConfig(BaseModel):
     """Root configuration model for calibration."""
 
-    modelset: CalibrationModelset = Field(..., description="Modelset configuration")
+    modelset: CalibrationModelset = Field(description="Modelset configuration")
 
 
 def validate_calibration(config: dict) -> CalibrationConfig:

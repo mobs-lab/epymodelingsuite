@@ -111,6 +111,15 @@ def calc_scaling_at_date(
     -------
         float: Scaling factor at date_t.
     """
+    # Convert dates to datetime if needed for consistent calculation
+    if isinstance(date_t, dt.date) and not isinstance(date_t, dt.datetime):
+        date_t = dt.datetime.combine(date_t, dt.time())
+    if isinstance(scaling_start, dt.date) and not isinstance(scaling_start, dt.datetime):
+        scaling_start = dt.datetime.combine(scaling_start, dt.time())
+    if isinstance(scaling_stop, dt.date) and not isinstance(scaling_stop, dt.datetime):
+        scaling_stop = dt.datetime.combine(scaling_stop, dt.time())
+
+    # Return the scaling factor
     if scaling_start.date() <= date_t.date() <= scaling_stop.date():
         return scaling_factor
     return 1.0

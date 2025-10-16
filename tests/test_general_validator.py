@@ -5,7 +5,6 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-
 from flumodelingsuite.general_validator import (
     _ensure_compartments_valid,
     _ensure_parameters_present,
