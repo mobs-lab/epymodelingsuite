@@ -885,32 +885,32 @@ def dispatch_runner(configs: BuilderOutput) -> SimulationOutput | CalibrationOut
 # these will convert to modeling hub format, create rate trend forecasts, create metadata files, create files with trajectories, create files with posteriors, and optionally save CalibrationResults/SimulationResults directly (pickle?)
 
 
-OUTPUT_GENERATOR_REGISTRY = {}
+# OUTPUT_GENERATOR_REGISTRY = {}
 
 
-def register_output_generator(kind_set):
-    """Decorator for output generation dispatch."""
+# def register_output_generator(kind_set):
+#     """Decorator for output generation dispatch."""
 
-    def deco(fn):
-        OUTPUT_GENERATOR_REGISTRY[frozenset(kind_set)] = fn
-        return fn
+#     def deco(fn):
+#         OUTPUT_GENERATOR_REGISTRY[frozenset(kind_set)] = fn
+#         return fn
 
-    return deco
-
-
-@register_output_generator({"simulation", "outputs"})
-def generate_simulation_outputs(*, simulation: SimulationOutput, outputs: OutputConfig, **_) -> None:
-    """"""
-    logger.info("OUTPUT GENERATOR: dispatched for simulation")
+#     return deco
 
 
-@register_output_generator({"calibration", "outputs"})
-def generate_calibration_outputs(*, calibration: CalibrationOutput, outputs: OutputConfig, **_) -> None:
-    """"""
-    logger.info("OUTPUT GENERATOR: dispatched for calibration")
+# @register_output_generator({"simulation", "outputs"})
+# def generate_simulation_outputs(*, simulation: SimulationOutput, outputs: OutputConfig, **_) -> None:
+#     """"""
+#     logger.info("OUTPUT GENERATOR: dispatched for simulation")
 
 
-def dispatch_output_generator(**configs) -> None:
-    """Dispatch output generator functions. Write outputs to file, called for effect."""
-    kinds = frozenset(k for k, v in configs.items() if v is not None)
-    return OUTPUT_GENERATOR_REGISTRY[kinds](**configs)
+# @register_output_generator({"calibration", "outputs"})
+# def generate_calibration_outputs(*, calibration: CalibrationOutput, outputs: OutputConfig, **_) -> None:
+#     """"""
+#     logger.info("OUTPUT GENERATOR: dispatched for calibration")
+
+
+# def dispatch_output_generator(**configs) -> None:
+#     """Dispatch output generator functions. Write outputs to file, called for effect."""
+#     kinds = frozenset(k for k, v in configs.items() if v is not None)
+#     return OUTPUT_GENERATOR_REGISTRY[kinds](**configs)
