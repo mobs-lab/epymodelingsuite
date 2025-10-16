@@ -52,6 +52,7 @@ class SimulationArguments(BaseModel):
         None,
         description="The frequency at which to resample the simulation results. Follows https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#period-aliases",
     )
+    # NOTE: percentage_in_agents, resample_aggregation_compartments, resample_aggregation_transitions, and fill_method not used
 
 
 class ProjectionArguments(BaseModel):

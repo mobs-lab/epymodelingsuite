@@ -58,7 +58,10 @@ _allowed_modules = {"np", "scipy"}
 
 
 class SafeEvalVisitor(ast.NodeVisitor):
-    """A NodeVisitor that only allows numeric, numpy, and scipy expressions."""
+    """
+    A NodeVisitor that only allows numeric, numpy, and scipy expressions,
+    and enables binary operations on numpy arrays.
+    """
 
     def visit(self, node):
         t = type(node)
@@ -80,24 +83,25 @@ class SafeEvalVisitor(ast.NodeVisitor):
     def visit_BinOp(self, node):
         left = self.visit(node.left)
         right = self.visit(node.right)
-        
+
         if type(node.op) not in _allowed_operators:
             raise ValueError(f"Operator {type(node.op).__name__} not allowed")
 
-        # Access node data
-        # TODO: find some way to wrap constant in array when doing array operation
-        if isinstance(left, ast.Constant):
+        # Access node data, handle arrays
+        if isinstance(left, ast.Constant) and isinstance(right, ast.Constant):
             left = left.value
-            print(left)
-        elif isinstance(left, ast.List):
-            left = np.array([[c.value for c in left.elts]], dtype=float)
-            print(left)
-        if isinstance(right, ast.Constant):
             right = right.value
-            print(right)
-        elif isinstance(right, ast.List):
-            right = np.array([[c.value for c in right.elts]], dtype=float)
-            print(right)
+        elif isinstance(left, ast.Constant) and isinstance(right, ast.List):
+            left = np.array([left.value])
+            right = np.array([c.value for c in right.elts], dtype=float)
+        elif isinstance(left, ast.List) and isinstance(right, ast.Constant):
+            left = np.array([c.value for c in left.elts], dtype=float)
+            right = np.array([right.value])
+        elif isinstance(left, ast.List) and isinstance(right, ast.List):
+            left = np.array([c.value for c in left.elts], dtype=float)
+            right = np.array([c.value for c in right.elts], dtype=float)
+        else:
+            raise ValueError(f"Attempted BinOp on unsupported objects:\n\n{left}\n\n{right}")
 
         # Perform calculation
         calc_val = None
@@ -109,17 +113,12 @@ class SafeEvalVisitor(ast.NodeVisitor):
             calc_val = np.multiply(left, right, dtype=float)
         elif isinstance(node.op, ast.Div):
             calc_val = np.divide(left, right, dtype=float)
-            
-        print(f"calc_val {calc_val}")
 
         if isinstance(calc_val, np.ndarray):
             ast_nodes = [ast.Constant(value=item) for item in calc_val.flatten()]
-            print('foo')
-            return ast.fix_missing_locations(ast.List(elts=ast_nodes, ctx=ast.Load()))
-        else:
-            return ast.fix_missing_locations(ast.Constant(value=calc_val))
-            
-        
+            ast_list = ast.List(elts=ast_nodes, ctx=ast.Load())
+            return ast.fix_missing_locations(ast_list)
+        return ast.fix_missing_locations(ast.Constant(value=calc_val))
 
     def visit_UnaryOp(self, node):
         self.visit(node.operand)
@@ -133,7 +132,6 @@ class SafeEvalVisitor(ast.NodeVisitor):
         return node
 
     def visit_List(self, node):
-        #values = [self.visit_Constant(v) for v in node.elts]
         for v in node.elts:
             self.visit(v)
         return node
@@ -190,14 +188,16 @@ class RetrieveName(ast.NodeTransformer):
                 try:
                     C = np.sum([c for _, c in self.model.population.contact_matrices.items()], axis=0)
                     eigenvalue = np.linalg.eigvals(C).real.max()
-                    return ast.Constant(value=eigenvalue)
+                    return ast.fix_missing_locations(ast.Constant(value=float(eigenvalue)))
                 except Exception as e:
                     raise ValueError(f"Error calculating eigenvalue of contact matrix: {e}")
             else:
                 try:
                     value = self.model.get_parameter(node.id)
                     if type(value) == np.ndarray:
-                        assert value.shape[0] == 1, "Parameter calculation using parameters with array values is only implemented for age-varying parameters."
+                        assert value.shape[0] == 1, (
+                            "Parameter calculation using parameters with array values is only implemented for age-varying parameters."
+                        )
                         ast_nodes = [ast.Constant(value=float(item)) for item in value.flatten()]
                         return ast.fix_missing_locations(ast.List(elts=ast_nodes, ctx=ast.Load()))
                     return ast.fix_missing_locations(ast.Constant(value=float(value)))
@@ -433,22 +433,21 @@ def _calculate_parameters_from_config(model: EpiModel, parameters: dict[str, Par
     # Build a dictionary of calculated values
     parameters_dict = {}
     for name, expr in calc_params.items():
-        print(name)
+        logger.info(f"Calculating parameter {name} using expression: {expr}")
         try:
             # Parse the expression into a tree
             tree = ast.parse(expr, mode="eval")
-            # Substitute retrieved parameter values or contact matrix eigenvalue into the tree,
-            # convert back into expression
-            # calc_expr = ast.unparse(RetrieveName(model).visit(tree))
+
+            # Substitute retrieved parameter values or contact matrix eigenvalue into the tree
             RetrieveName(model).visit(tree)
-            # logger.info(f"Calculating parameter {name} using expression: {ast.unparse(calc_tree)}")
+
+            # Validate the expression
+            SafeEvalVisitor().visit(tree)
 
             # Evaluate the expression
-            # parameters_dict[name] = _safe_eval(calc_expr)
-            SafeEvalVisitor().visit(tree)
             code = compile(tree, filename="<calc_eval>", mode="eval")
             parameters_dict[name] = eval(code, {"__builtins__": None, "np": np, "scipy": scipy}, {})
-            print(f"calculated parameter {name}: {parameters_dict[name]}")
+            logger.info(f"Calculated parameter {name}: {parameters_dict[name]}")
         except Exception as e:
             raise ValueError(f"Error calculating parameter {name}: {e}")
 
