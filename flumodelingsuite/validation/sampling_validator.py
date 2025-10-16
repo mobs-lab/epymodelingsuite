@@ -111,7 +111,7 @@ class SamplingConfiguration(BaseModel):
 class SamplingModelset(BaseModel):
     """Modelset configuration for sampling."""
 
-    meta: Meta | None = Field(None, description="Metadata")
+    meta: Meta | None = Field(None, description="General metadata")
     population_names: list[str] = Field(description="List of population names")
     sampling: SamplingConfiguration = Field(description="Sampling configuration")
 

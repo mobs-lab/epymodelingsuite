@@ -7,6 +7,7 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from ..utils import validate_iso3166
+from .common_validators import Meta
 
 logger = logging.getLogger(__name__)
 
@@ -318,12 +319,11 @@ class Intervention(BaseModel):
 class BaseEpiModel(BaseModel):
     """Model configuration."""
 
+    meta: Meta | None = Field(None, description="General metadata.")
     name: str = Field(description="Name of the model")
-    version: str | None = Field(None, description="Version of the model")
     date: datetime.date | datetime.datetime | None = Field(
         default_factory=datetime.datetime.now(tz=datetime.timezone.utc), description="Date of work"
     )
-    description: str | None = Field(None, description="Human-readable description of the model")
     random_seed: int | None = Field(None, description="Random seed for reproducibility")
 
     timespan: Timespan = Field(description="Date range and timestep for modeling")
@@ -442,8 +442,9 @@ class BaseEpiModel(BaseModel):
 
 
 class BasemodelConfig(BaseModel):
+    """Root model for basemodel."""
+
     model: BaseEpiModel
-    metadata: dict[str, Any] | None = None
 
 
 def validate_basemodel(config: dict) -> BasemodelConfig:
