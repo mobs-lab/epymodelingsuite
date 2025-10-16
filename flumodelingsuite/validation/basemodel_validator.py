@@ -321,9 +321,6 @@ class BaseEpiModel(BaseModel):
 
     meta: Meta | None = Field(None, description="General metadata.")
     name: str = Field(description="Name of the model")
-    date: datetime.date | datetime.datetime | None = Field(
-        default_factory=datetime.datetime.now(tz=datetime.timezone.utc), description="Date of work"
-    )
     random_seed: int | None = Field(None, description="Random seed for reproducibility")
 
     timespan: Timespan = Field(description="Date range and timestep for modeling")

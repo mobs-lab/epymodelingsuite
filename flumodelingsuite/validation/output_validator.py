@@ -37,7 +37,7 @@ class QuantilesOutput(BaseModel):
 
     @field_validator("selections")
     def check_selections(cls, v):
-        """Ensure quantiles are in (0,1)."""
+        """Ensure quantiles are in (0, 1)."""
         if not all([0.0 < q < 1.0 for q in v]):
             raise ValueError("Received quantile not in (0, 1).")
 
@@ -45,25 +45,31 @@ class QuantilesOutput(BaseModel):
 class TrajectoriesOutput(BaseModel):
     """Specifications for trajectory outputs."""
 
-    path: str = Field(description="Destination filepath for trajectory outputs.")
+    path: str = Field(description="Destination folder path for trajectory outputs.")
 
 
 class PosteriorsOutput(BaseModel):
     """Specifications for posterior outputs."""
 
-    path: str = Field(description="Destination filepath for posterior outputs.")
+    path: str = Field(description="Destination folder path for posterior outputs.")
 
 
 class RunMetaOutput(BaseModel):
     """Specifications for parameter tracking / run metadata outputs."""
 
-    path: str = Field(description="Destination filepath for parameter tracking / run metadata outputs.")
+    path: str = Field(description="Destination folder path for parameter tracking / run metadata outputs.")
 
 
 class LogsOutput(BaseModel):
     """Specifications for logger outputs."""
 
-    path: str = Field(description="Destination filepath for logger outputs.")
+    path: str = Field(description="Destination folder path for logger outputs.")
+
+
+class RawResultsOutput(BaseModel):
+    """Specifications for raw results outputs."""
+
+    path: str = Field(description="Destination folder path for raw results outputs.")
 
 
 class OutputConfiguration(BaseModel):
@@ -77,6 +83,7 @@ class OutputConfiguration(BaseModel):
         None, description="Specifications for parameter tracking / run metadata outputs."
     )
     logs: LogsOutput | None = Field(None, description="Specifications for logger outputs.")
+    raw_results: RawResultsOutput | None = Field(None, description="Specifications for raw results outputs.")
 
 
 class OutputConfig(BaseModel):
