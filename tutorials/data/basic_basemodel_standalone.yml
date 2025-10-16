@@ -153,8 +153,8 @@ model:
     - type: parameter
       override_value: 0.25
       target_parameter: beta
-      start_date: "2024-10-1"
-      end_date: "2024-10-1"
+      start_date: "2024-10-01"
+      end_date: "2024-10-01"
 
 
 

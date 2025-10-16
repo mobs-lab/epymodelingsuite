@@ -33,6 +33,10 @@ class CalibrationStrategy(BaseModel):
     )
 
 
+class ProjectionSpec(BaseModel):
+    """Specification for projection after calibration."""
+
+
 class ComparisonSpec(BaseModel):
     """Specification for comparing observed and simulated data."""
 
@@ -82,6 +86,8 @@ class CalibrationConfiguration(BaseModel):
         None, description="Initial conditions specifications for calibration"
     )
     fitting_window: FittingWindow = Field(description="Time window for calibration fitting")
+
+    projection: ProjectionSpec | None = Field(None, description="Specification for projection")
 
     @model_validator(mode="after")
     def check_calibration_consistency(self: "CalibrationConfiguration") -> "CalibrationConfiguration":

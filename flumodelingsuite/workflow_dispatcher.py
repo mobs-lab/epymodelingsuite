@@ -29,6 +29,7 @@ from .vaccinations import reaggregate_vaccines, scenario_to_epydemix
 from .validation.basemodel_validator import BasemodelConfig, Parameter, Timespan
 from .validation.calibration_validator import CalibrationConfig, CalibrationStrategy
 from .validation.general_validator import validate_modelset_consistency
+from .validation.output_validator import OutputConfig
 from .validation.sampling_validator import SamplingConfig
 
 logger = logging.getLogger(__name__)
