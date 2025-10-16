@@ -1,13 +1,16 @@
 model:
+  meta:
+    description: "Example SLIR model for simple workflow"
+    author: "epymodelingsuite"
+    version: "0.0.1"
+    date: "2038-01-19"
+    
   name: "example_SLIR_standalone"
-  version: "v0.0.1"
-  date: "2025-09-01" # YYYY-MM-DD
-  description: "Example SLIR model for simple workflow"
   random_seed: 42
 
   timespan:
     start_date: "2024-08-05"
-    end_date: "2025-08-05" # YYYY-MM-DD
+    end_date: "2025-08-05"
     delta_t: 0.2
 
   simulation:
@@ -26,7 +29,6 @@ model:
   compartments:
     - id: S
       label: "Susceptible"
-      # uncertain, need some way to indicate default agent placement
       init: default
     - id: L
       label: "Latent"
@@ -109,17 +111,17 @@ model:
         - 0.4
         - 0.3
     r_vax:
-      #type: scalar
-      #value: 0.3
+      type: scalar
+      value: 0.3
       # FIXME: When calculated paramaters uses an age-varying parameter, it fails.
-      type: calculated
-      value: 1 - VE
+      #type: calculated
+      #value: 1 - VE
 
   seasonality:
     target_parameter: beta
     method: balcan
-    seasonality_max_date: "2024-10-01" # YYYY-MM-DD
-    seasonality_min_date: "2025-04-01" # YYYY-MM-DD, optional
+    seasonality_max_date: "2024-10-01"
+    seasonality_min_date: "2025-04-01" # optional
     max_value: 1.00
     min_value: 0.50
         
