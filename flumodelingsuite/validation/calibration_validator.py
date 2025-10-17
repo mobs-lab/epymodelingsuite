@@ -38,6 +38,10 @@ class ProjectionSpec(BaseModel):
     n_trajectories: int = Field(
         "Number of trajectories to simulate from posterior after calibration"
     )
+    generation_number: int | None = Field(
+        default=None,
+        description="SMC generation number from which to draw parameter sets for projection"
+    )
 
 class ComparisonSpec(BaseModel):
     """Specification for comparing observed and simulated data."""
