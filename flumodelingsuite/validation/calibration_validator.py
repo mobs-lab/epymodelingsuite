@@ -35,7 +35,9 @@ class CalibrationStrategy(BaseModel):
 
 class ProjectionSpec(BaseModel):
     """Specification for projection after calibration."""
-
+    n_trajectories: int = Field(
+        "Number of trajectories to simulate from posterior after calibration"
+    )
 
 class ComparisonSpec(BaseModel):
     """Specification for comparing observed and simulated data."""
