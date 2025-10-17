@@ -12,8 +12,8 @@ model:
   #   resample_frequency: D # This follows https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#period-aliases Other options include 'h', 'min', 'W', 'M' etc.
 
   timespan:
-    start_date: "2024-09-13"
-    end_date: "2025-05-14"
+    start_date: "2024-09-15"
+    end_date: "2025-05-31"
     delta_t: 1.0
 
   simulation:
