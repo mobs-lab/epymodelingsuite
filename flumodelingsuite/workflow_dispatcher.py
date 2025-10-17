@@ -59,8 +59,11 @@ class SimulationArguments(BaseModel):
 class ProjectionArguments(BaseModel):
     """Projection arguments."""
 
-    # Not sure what's needed here but probably need to make this from basemodel.timespan and calibration.fitting_window
-
+    end_date: date = Field(description="End date of the projection.")
+    n_trajectories: int = Field(description="Number of trajectories to simulate from posterior after calibration.")
+    generation_number: int | None = Field(
+        default=None,
+        description="SMC generation number from which to draw parameter sets for projection.")
 
 class BuilderOutput(BaseModel):
     """
@@ -655,7 +658,7 @@ def build_calibration(
 
         # Create simulate wrapper
         def simulate_wrapper(params):
-            np.random.seed(basemodel.random_seed)
+            # np.random.seed(basemodel.random_seed)
             m = copy.deepcopy(model)
 
             # Accomodate for sampled start_date
@@ -663,8 +666,9 @@ def build_calibration(
                 start_date = earliest_timespan.start_date + dt.timedelta(days=params["start_date"])
             else:
                 start_date = basemodel.timespan.start_date
+            
             timespan = Timespan(
-                start_date=start_date, end_date=basemodel.timespan.end_date, delta_t=basemodel.timespan.delta_t
+                start_date=start_date, end_date=params['end_date'], delta_t=basemodel.timespan.delta_t
             )
 
             # Sampled/calculated parameters
@@ -747,32 +751,44 @@ def build_calibration(
                 "epimodel": m,
                 "initial_conditions_dict": compartment_init,
                 "start_date": timespan.start_date,
-                "end_date": timespan.end_date,
+                "end_date": params['end_date'],
                 "resample_frequency": basemodel.simulation.resample_frequency,
             }
 
             # Run simulation
-            try:
-                results = simulate(**sim_params)
-                trajectory_dates = results.dates
-                data_dates = list(pd.to_datetime(data_state.target_end_date.values))
+            if params['projection'] == False:
+                try:
+                    results = simulate(**sim_params)
+                    trajectory_dates = results.dates
+                    data_dates = list(pd.to_datetime(data_state.target_end_date.values))
 
-                mask = [date in data_dates for date in trajectory_dates]
+                    mask = [date in data_dates for date in trajectory_dates]
 
-                total_hosp = sum(results.transitions[key] for key in calibration.comparison[0].simulation)
+                    total_hosp = sum(results.transitions[key] for key in calibration.comparison[0].simulation)
 
-                total_hosp = total_hosp[mask]
+                    total_hosp = total_hosp[mask]
 
-                if len(total_hosp) < len(data_dates):
-                    pad_len = len(data_dates) - len(total_hosp)
-                    total_hosp = np.pad(total_hosp, (pad_len, 0), constant_values=0)
+                    if len(total_hosp) < len(data_dates):
+                        pad_len = len(data_dates) - len(total_hosp)
+                        total_hosp = np.pad(total_hosp, (pad_len, 0), constant_values=0)
 
-            except Exception as e:
-                logger.info(f"Simulation failed with parameters {params}: {e}")
-                data_dates = list(pd.to_datetime(data_state["target_end_date"].values))
-                total_hosp = np.full(len(data_dates), 0)
+                except Exception as e:
+                    logger.info(f"Simulation failed with parameters {params}: {e}")
+                    data_dates = list(pd.to_datetime(data_state["target_end_date"].values))
+                    total_hosp = np.full(len(data_dates), 0)
 
-            return {"data": total_hosp}
+                return {"data": total_hosp}
+            
+            if params['projection'] == True:
+                try:
+                    results = simulate(**sim_params)
+                    return {"dates": results.dates,
+                            "transitions": results.transitions,
+                            "compartments": results.compartments}
+                except Exception as e:
+                    logger.info(f"Projection failed with parameters {params}: {e}")
+                    
+                
 
         # Parse priors into scipy functions
         priors = {}
@@ -781,16 +797,32 @@ def build_calibration(
         if earliest_timespan:
             priors["start_date"] = distribution_to_scipy(calibration.start_date.prior)
 
+        fixed_parameters = {k: v for k, v in model.parameters.items() if v is not None}
+        fixed_parameters.update({'end_date': calibration.fitting_window.end_date})
+        fixed_parameters.update({"projection": False})
+
         # ABCSamplers are the main outputs
         abc_sampler = ABCSampler(
             simulation_function=simulate_wrapper,
             priors=priors,
-            parameters={k: v for k, v in model.parameters.items() if v is not None},
+            parameters=fixed_parameters,
             observed_data=data_state[calibration.comparison[0].observed_value_column].values,
             distance_function=dist_func_dict[calibration.distance_function],
         )
 
         calibrators.append(abc_sampler)
+
+    if calibration.projection is not None:
+        proj_options_dict = {
+            "end_date": basemodel.timespan.end_date,
+            "n_trajectories": calibration.projection.n_trajectories,
+        }
+        if calibration.projection.generation_number is not None:
+            proj_options_dict["generation_number"] = calibration.projection.generation_number
+
+        projection_options = ProjectionArguments(**proj_options_dict)
+    else:
+        projection_options = None
 
     logger.info("BUILDER: completed calibration.")
     return [
@@ -799,7 +831,7 @@ def build_calibration(
             seed=basemodel.random_seed,
             calibrator=c,
             calibration=calibration.strategy,
-            projection=calibration.projection,
+            projection=projection_options,
         )
         for i, c in enumerate(calibrators)
     ]
@@ -867,11 +899,14 @@ def dispatch_runner(configs: BuilderOutput) -> SimulationOutput | CalibrationOut
             calibration_results = configs.calibrator.calibrate(
                 strategy=configs.calibration.name, **configs.calibration.options
             )
-            """
-            
-            TODO: projection
-            
-            """
+            projection_results = configs.calibrator.run_projections(
+                parameters={
+                    "projection": True,
+                    "end_date": configs.projection.end_date,
+                    "generation": configs.projection.generation_number
+                },
+                iterations= configs.projection.n_trajectories
+            )
             logger.info("RUNNER: completed calibration.")
             return CalibrationOutput(primary_id=configs.primary_id, results=projection_results, seed=configs.seed)
         except Exception as e:
