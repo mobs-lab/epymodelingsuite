@@ -62,8 +62,9 @@ class ProjectionArguments(BaseModel):
     end_date: date = Field(description="End date of the projection.")
     n_trajectories: int = Field(description="Number of trajectories to simulate from posterior after calibration.")
     generation_number: int | None = Field(
-        default=None,
-        description="SMC generation number from which to draw parameter sets for projection.")
+        default=None, description="SMC generation number from which to draw parameter sets for projection."
+    )
+
 
 class BuilderOutput(BaseModel):
     """
@@ -113,8 +114,11 @@ class SimulationOutput(BaseModel):
     primary_id: int = Field(
         description="Primary identifier of an EpiModel object paired with instructions for simulation."
     )
-    results: SimulationResults = Field(description="Results of a call to EpiModel.run_simulations()")
     seed: int | None = Field(None, description="Random seed.")
+    results: SimulationResults = Field(description="Results of a call to EpiModel.run_simulations()")
+    objects: BuilderOutput = Field(
+        description="BuilderOutput with all objects and information used to generate the results."
+    )
 
 
 class CalibrationOutput(BaseModel):
@@ -125,10 +129,13 @@ class CalibrationOutput(BaseModel):
     primary_id: int = Field(
         description="Primary identifier of an ABCSampler object paired with instructions for calibration/projection."
     )
+    seed: int | None = Field(None, description="Random seed.")
     results: CalibrationResults = Field(
         description="Results of a call to ABCSampler.calibrate() or ABCSampler.run_projections()"
     )
-    seed: int | None = Field(None, description="Random seed.")
+    objects: BuilderOutput = Field(
+        description="BuilderOutput with all objects and information used to generate the results."
+    )
 
 
 def _get_data_in_window(data: pd.DataFrame, calibration: CalibrationConfig) -> pd.DataFrame:
@@ -513,9 +520,9 @@ def build_sampling(
             final_models.append(m)
             simulation_args.append(sim_args)
 
-    # Ensure models and inits align
+    # Ensure models and specifications align
     assert len(final_models) == len(simulation_args), (
-        f"Mismatch: created {len(final_models)} models and {len(simulation_args)} simulation specifications."
+        f"Mismatch: created {len(final_models)} EpiModels and {len(simulation_args)} simulation specifications."
     )
 
     logger.info("BUILDER: completed for sampling.")
@@ -666,10 +673,8 @@ def build_calibration(
                 start_date = earliest_timespan.start_date + dt.timedelta(days=params["start_date"])
             else:
                 start_date = basemodel.timespan.start_date
-            
-            timespan = Timespan(
-                start_date=start_date, end_date=params['end_date'], delta_t=basemodel.timespan.delta_t
-            )
+
+            timespan = Timespan(start_date=start_date, end_date=params["end_date"], delta_t=basemodel.timespan.delta_t)
 
             # Sampled/calculated parameters
             new_params = {
@@ -751,12 +756,12 @@ def build_calibration(
                 "epimodel": m,
                 "initial_conditions_dict": compartment_init,
                 "start_date": timespan.start_date,
-                "end_date": params['end_date'],
+                "end_date": params["end_date"],
                 "resample_frequency": basemodel.simulation.resample_frequency,
             }
 
             # Run simulation
-            if params['projection'] == False:
+            if params["projection"] == False:
                 try:
                     results = simulate(**sim_params)
                     trajectory_dates = results.dates
@@ -778,17 +783,17 @@ def build_calibration(
                     total_hosp = np.full(len(data_dates), 0)
 
                 return {"data": total_hosp}
-            
-            if params['projection'] == True:
+
+            if params["projection"] == True:
                 try:
                     results = simulate(**sim_params)
-                    return {"dates": results.dates,
-                            "transitions": results.transitions,
-                            "compartments": results.compartments}
+                    return {
+                        "dates": results.dates,
+                        "transitions": results.transitions,
+                        "compartments": results.compartments,
+                    }
                 except Exception as e:
                     logger.info(f"Projection failed with parameters {params}: {e}")
-                    
-                
 
         # Parse priors into scipy functions
         priors = {}
@@ -798,7 +803,7 @@ def build_calibration(
             priors["start_date"] = distribution_to_scipy(calibration.start_date.prior)
 
         fixed_parameters = {k: v for k, v in model.parameters.items() if v is not None}
-        fixed_parameters.update({'end_date': calibration.fitting_window.end_date})
+        fixed_parameters.update({"end_date": calibration.fitting_window.end_date})
         fixed_parameters.update({"projection": False})
 
         # ABCSamplers are the main outputs
@@ -824,16 +829,22 @@ def build_calibration(
     else:
         projection_options = None
 
+    # Ensure models and specifications align
+    assert len(models) == len(calibrators), (
+        f"Mismatch: created {len(models)} EpiModels and {len(calibrators)} ABCSamplers."
+    )
+
     logger.info("BUILDER: completed calibration.")
     return [
         BuilderOutput(
             primary_id=i,
             seed=basemodel.random_seed,
-            calibrator=c,
+            model=t[0],
+            calibrator=t[1],
             calibration=calibration.strategy,
             projection=projection_options,
         )
-        for i, c in enumerate(calibrators)
+        for i, t in enumerate(zip(models, calibrators, strict=True))
     ]
 
 
@@ -878,7 +889,7 @@ def dispatch_runner(configs: BuilderOutput) -> SimulationOutput | CalibrationOut
         try:
             results = configs.model.run_simulations(**dict(configs.simulation))
             logger.info("RUNNER: completed simulation.")
-            return SimulationOutput(primary_id=configs.primary_id, results=results, seed=configs.seed)
+            return SimulationOutput(primary_id=configs.primary_id, seed=configs.seed, results=results, objects=configs)
         except Exception as e:
             raise RuntimeError(f"Error during simulation: {e}")
 
@@ -888,7 +899,7 @@ def dispatch_runner(configs: BuilderOutput) -> SimulationOutput | CalibrationOut
         try:
             results = configs.calibrator.calibrate(strategy=configs.calibration.name, **configs.calibration.options)
             logger.info("RUNNER: completed calibration.")
-            return CalibrationOutput(primary_id=configs.primary_id, results=results, seed=configs.seed)
+            return CalibrationOutput(primary_id=configs.primary_id, seed=configs.seed, results=results, objects=configs)
         except Exception as e:
             raise RuntimeError(f"Error during calibration: {e}")
 
@@ -903,12 +914,14 @@ def dispatch_runner(configs: BuilderOutput) -> SimulationOutput | CalibrationOut
                 parameters={
                     "projection": True,
                     "end_date": configs.projection.end_date,
-                    "generation": configs.projection.generation_number
+                    "generation": configs.projection.generation_number,
                 },
-                iterations= configs.projection.n_trajectories
+                iterations=configs.projection.n_trajectories,
             )
             logger.info("RUNNER: completed calibration.")
-            return CalibrationOutput(primary_id=configs.primary_id, results=projection_results, seed=configs.seed)
+            return CalibrationOutput(
+                primary_id=configs.primary_id, seed=configs.seed, results=projection_results, objects=configs
+            )
         except Exception as e:
             raise RuntimeError(f"Error during calibration/projection: {e}")
     # Error
