@@ -876,7 +876,7 @@ def dispatch_runner(configs: BuilderOutput) -> SimulationOutput | CalibrationOut
     if configs.simulation:
         logger.info("RUNNER: dispatched for simulation.")
         try:
-            results = configs.model.run_simulations(*configs.simulation)
+            results = configs.model.run_simulations(**dict(configs.simulation))
             logger.info("RUNNER: completed simulation.")
             return SimulationOutput(primary_id=configs.primary_id, results=results, seed=configs.seed)
         except Exception as e:
@@ -936,13 +936,13 @@ def register_output_generator(kind_set):
 
 
 @register_output_generator({"simulation", "outputs"})
-def generate_simulation_outputs(*, simulation: SimulationOutput, outputs: OutputConfig, **_) -> None:
+def generate_simulation_outputs(*, simulation: list[SimulationOutput], outputs: OutputConfig, **_) -> None:
     """"""
     logger.info("OUTPUT GENERATOR: dispatched for simulation")
 
 
 @register_output_generator({"calibration", "outputs"})
-def generate_calibration_outputs(*, calibration: CalibrationOutput, outputs: OutputConfig, **_) -> None:
+def generate_calibration_outputs(*, calibration: list[CalibrationOutput], outputs: OutputConfig, **_) -> None:
     """"""
     logger.info("OUTPUT GENERATOR: dispatched for calibration")
 
