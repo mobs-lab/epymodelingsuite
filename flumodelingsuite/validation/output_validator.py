@@ -1,5 +1,5 @@
 import logging
-
+from enum import Enum
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from .common_validators import Meta
