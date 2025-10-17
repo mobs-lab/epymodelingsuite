@@ -35,7 +35,6 @@ modelset:
     
     projection:
       n_trajectories: 10
-      generation_number: 1
     
     compartments:
       L:
