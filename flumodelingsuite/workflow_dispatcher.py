@@ -116,9 +116,6 @@ class SimulationOutput(BaseModel):
     )
     seed: int | None = Field(None, description="Random seed.")
     results: SimulationResults = Field(description="Results of a call to EpiModel.run_simulations()")
-    objects: BuilderOutput = Field(
-        description="BuilderOutput with all objects and information used to generate the results."
-    )
 
 
 class CalibrationOutput(BaseModel):
@@ -132,9 +129,6 @@ class CalibrationOutput(BaseModel):
     seed: int | None = Field(None, description="Random seed.")
     results: CalibrationResults = Field(
         description="Results of a call to ABCSampler.calibrate() or ABCSampler.run_projections()"
-    )
-    objects: BuilderOutput = Field(
-        description="BuilderOutput with all objects and information used to generate the results."
     )
 
 
@@ -889,7 +883,7 @@ def dispatch_runner(configs: BuilderOutput) -> SimulationOutput | CalibrationOut
         try:
             results = configs.model.run_simulations(**dict(configs.simulation))
             logger.info("RUNNER: completed simulation.")
-            return SimulationOutput(primary_id=configs.primary_id, seed=configs.seed, results=results, objects=configs)
+            return SimulationOutput(primary_id=configs.primary_id, seed=configs.seed, results=results)
         except Exception as e:
             raise RuntimeError(f"Error during simulation: {e}")
 
@@ -899,7 +893,7 @@ def dispatch_runner(configs: BuilderOutput) -> SimulationOutput | CalibrationOut
         try:
             results = configs.calibrator.calibrate(strategy=configs.calibration.name, **configs.calibration.options)
             logger.info("RUNNER: completed calibration.")
-            return CalibrationOutput(primary_id=configs.primary_id, seed=configs.seed, results=results, objects=configs)
+            return CalibrationOutput(primary_id=configs.primary_id, seed=configs.seed, results=results)
         except Exception as e:
             raise RuntimeError(f"Error during calibration: {e}")
 
@@ -919,9 +913,7 @@ def dispatch_runner(configs: BuilderOutput) -> SimulationOutput | CalibrationOut
                 iterations=configs.projection.n_trajectories,
             )
             logger.info("RUNNER: completed calibration.")
-            return CalibrationOutput(
-                primary_id=configs.primary_id, seed=configs.seed, results=projection_results, objects=configs
-            )
+            return CalibrationOutput(primary_id=configs.primary_id, seed=configs.seed, results=projection_results)
         except Exception as e:
             raise RuntimeError(f"Error during calibration/projection: {e}")
     # Error
