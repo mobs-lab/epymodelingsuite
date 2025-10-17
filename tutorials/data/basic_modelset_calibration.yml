@@ -1,9 +1,9 @@
 modelset:
-
   meta:
-    description: "Example calibration for 2024"
-    author: "Flu Modeling Suite"
-    version: 1.0.0
+    description: "Example SLIR calibration"
+    author: "epymodelingsuite"
+    version: "0.0.1"
+    date: "2038-01-19"
 
   population_names:
     - US-MA

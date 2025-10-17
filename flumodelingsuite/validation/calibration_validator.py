@@ -35,13 +35,12 @@ class CalibrationStrategy(BaseModel):
 
 class ProjectionSpec(BaseModel):
     """Specification for projection after calibration."""
-    n_trajectories: int = Field(
-        "Number of trajectories to simulate from posterior after calibration"
-    )
+
+    n_trajectories: int = Field("Number of trajectories to simulate from posterior after calibration")
     generation_number: int | None = Field(
-        default=None,
-        description="SMC generation number from which to draw parameter sets for projection"
+        default=None, description="SMC generation number from which to draw parameter sets for projection"
     )
+
 
 class ComparisonSpec(BaseModel):
     """Specification for comparing observed and simulated data."""
@@ -118,7 +117,7 @@ class CalibrationConfiguration(BaseModel):
 class CalibrationModelset(BaseModel):
     """Modelset configuration for calibration."""
 
-    meta: Meta | None = Field(None, description="Metadata")
+    meta: Meta | None = Field(None, description="General metadata.")
     population_names: list[str] = Field(description="List of population names")
     calibration: CalibrationConfiguration = Field(description="Calibration configuration")
 

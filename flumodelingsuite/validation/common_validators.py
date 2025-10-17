@@ -1,6 +1,6 @@
 """Shared validator classes for sampling and calibration configurations."""
 
-from datetime import date
+import datetime
 from enum import Enum
 from typing import Any
 
@@ -32,7 +32,7 @@ class Distribution(BaseModel):
 class DateParameter(BaseModel):
     """Date parameter with reference date and distribution."""
 
-    reference_date: date = Field(description="Reference date for sampling")
+    reference_date: datetime.date = Field(description="Reference date for sampling")
     distribution: Distribution | None = Field(
         None, description="Distribution for date offset sampling"
     )  # Used for sampling
@@ -40,8 +40,11 @@ class DateParameter(BaseModel):
 
 
 class Meta(BaseModel):
-    """Metadata section."""
+    """General metadata section."""
 
-    description: str | None = Field(None, description="Description of the modelset")
-    author: str | None = Field(None, description="Author of the modelset")
-    version: str | float | None = Field(None, description="Version of the modelset")
+    description: str | None = Field(None, description="Description of the experiment / configurations.")
+    author: str | None = Field(None, description="Author of the experiment / configurations.")
+    version: str | float | None = Field(None, description="Version of the experiment / configurations.")
+    date: datetime.date | datetime.datetime | None = Field(
+        default_factory=datetime.datetime.now(tz=datetime.timezone.utc), description="Date of work"
+    )
