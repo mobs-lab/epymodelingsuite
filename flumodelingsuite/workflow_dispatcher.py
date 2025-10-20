@@ -302,7 +302,7 @@ def _setup_vaccination_schedules(
     population_names: list[str],
 ) -> dict | None:
     """
-    Setup vaccination schedules, handling start_date sampling if present.
+    Set up vaccination schedules, handling start_date sampling if present.
 
     This function handles two scenarios:
     1. If start_date is sampled (sampled_start_timespan exists): Creates an earliest
