@@ -223,6 +223,75 @@ def calculate_compartment_initial_conditions(
     return compartment_init if compartment_init else None
 
 
+def _create_model_collection(basemodel, population_names_config):
+    """
+    Create a collection of EpiModels with dummy population setup.
+
+    This function creates an initial EpiModel with a dummy population, adds
+    compartments, transitions, and parameters, then creates copies for each
+    specified population location.
+
+    Parameters
+    ----------
+    basemodel : BasemodelConfig.model
+        The base model configuration containing compartments, transitions,
+        parameters, and population settings.
+    population_names_config : list[str] | None
+        List of population names to create models for. Can contain "all" to
+        expand to all locations in the codebook. If None, uses the single
+        population from basemodel.
+
+    Returns
+    -------
+    tuple[list[EpiModel], list[str]]
+        - List of configured EpiModel instances (one per population)
+        - List of resolved population names (expanded if "all" was specified)
+
+    Examples
+    --------
+    >>> models, pop_names = _create_model_collection(basemodel, ["California", "Texas"])
+    >>> len(models)
+    2
+    >>> models, pop_names = _create_model_collection(basemodel, ["all"])
+    >>> len(models)
+    51  # All US states
+    """
+    models = []
+    init_model = EpiModel()
+
+    # Set the model name if provided in the config
+    if basemodel.name is not None:
+        init_model.name = basemodel.name
+
+    logger.info("BUILDER: setting up EpiModels...")
+
+    # Add dummy population with age structure (required for static age-structured parameters)
+    dummy_pop = make_dummy_population(basemodel)
+    init_model.set_population(dummy_pop)
+
+    # All models will share compartments, transitions, and non-sampled/calculated parameters
+    _add_model_compartments_from_config(init_model, basemodel.compartments)
+    _add_model_transitions_from_config(init_model, basemodel.transitions)
+    _add_model_parameters_from_config(init_model, basemodel.parameters)
+
+    # Create models with populations set
+    if population_names_config:
+        if "all" in population_names_config:
+            population_names = get_location_codebook()["location_name_epydemix"]
+        else:
+            population_names = population_names_config
+        for name in population_names:
+            m = copy.deepcopy(init_model)
+            _set_population_from_config(m, name, basemodel.population.age_groups)
+            models.append(m)
+    else:
+        _set_population_from_config(init_model, basemodel.population.name, basemodel.population.age_groups)
+        models.append(init_model)
+        population_names = [basemodel.population.name]
+
+    return models, population_names
+
+
 def _get_data_in_window(data: pd.DataFrame, calibration: CalibrationConfig) -> pd.DataFrame:
     """Get data within a specified time window."""
     window_start = calibration.fitting_window.start_date
@@ -380,37 +449,7 @@ def build_sampling(
     sampling = sampling_config.modelset
 
     # Build a collection of EpiModels
-    models = []
-    init_model = EpiModel()
-
-    # Set the model name if provided in the config
-    if basemodel.name is not None:
-        init_model.name = basemodel.name
-
-    logger.info("BUILDER: setting up EpiModels...")
-
-    # Add dummy population with age structure (required for static age-structured parameters)
-    dummy_pop = make_dummy_population(basemodel)
-    init_model.set_population(dummy_pop)
-
-    # All models will share compartments, transitions, and non-sampled/calculated parameters
-    _add_model_compartments_from_config(init_model, basemodel.compartments)
-    _add_model_transitions_from_config(init_model, basemodel.transitions)
-    _add_model_parameters_from_config(init_model, basemodel.parameters)
-
-    # Create models with populations set
-    if sampling.population_names:
-        if "all" in sampling.population_names:
-            population_names = get_location_codebook()["location_name_epydemix"]
-        else:
-            population_names = sampling.population_names
-        for name in population_names:
-            m = copy.deepcopy(init_model)
-            _set_population_from_config(m, name, basemodel.population.age_groups)
-            models.append(m)
-    else:
-        _set_population_from_config(init_model, basemodel.population.name, basemodel.population.age_groups)
-        models.append(init_model)
+    models, population_names = _create_model_collection(basemodel, sampling.population_names)
 
     # Output of this is a list of dicts containing start_date, initial conditions, and parameter value
     # combinations where parameters is in the same format as basemodel.parameters
@@ -577,37 +616,7 @@ def build_calibration(
     calibration = modelset.calibration
 
     # Build a collection of EpiModels
-    models = []
-    init_model = EpiModel()
-
-    # Set the model name if provided in the config
-    if basemodel.name is not None:
-        init_model.name = basemodel.name
-
-    logger.info("BUILDER: setting up EpiModels...")
-
-    # Add dummy population with age structure (required for static age-structured parameters)
-    dummy_pop = make_dummy_population(basemodel)
-    init_model.set_population(dummy_pop)
-
-    # All models will share compartments, transitions, and non-sampled/calculated parameters
-    _add_model_compartments_from_config(init_model, basemodel.compartments)
-    _add_model_transitions_from_config(init_model, basemodel.transitions)
-    _add_model_parameters_from_config(init_model, basemodel.parameters)
-
-    # Create models with populations set
-    if modelset.population_names:
-        if "all" in modelset.population_names:
-            population_names = get_location_codebook()["location_name_epydemix"]
-        else:
-            population_names = modelset.population_names
-        for name in population_names:
-            m = copy.deepcopy(init_model)
-            _set_population_from_config(m, name, basemodel.population.age_groups)
-            models.append(m)
-    else:
-        _set_population_from_config(init_model, basemodel.population.name, basemodel.population.age_groups)
-        models.append(init_model)
+    models, population_names = _create_model_collection(basemodel, modelset.population_names)
 
     # Extract intervention types
     if basemodel.interventions:
