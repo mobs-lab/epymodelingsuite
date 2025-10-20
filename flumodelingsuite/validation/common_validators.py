@@ -46,5 +46,5 @@ class Meta(BaseModel):
     author: str | None = Field(None, description="Author of the experiment / configurations.")
     version: str | float | None = Field(None, description="Version of the experiment / configurations.")
     date: datetime.date | datetime.datetime | None = Field(
-        default_factory=datetime.datetime.now(tz=datetime.timezone.utc), description="Date of work"
+        default_factory=lambda: datetime.datetime.now(tz=datetime.timezone.utc), description="Date of work"
     )
