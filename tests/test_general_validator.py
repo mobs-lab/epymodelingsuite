@@ -207,7 +207,7 @@ class TestValidateModelsetConsistency:
     ) -> DummyModelsetConfig:
         calibration = DummyCalibration(
             parameters=calibration_params or {"beta": object()},
-            comparison=comparisons or [DummyComparison(simulation=["inf"])],
+            comparison=comparisons or [DummyComparison(simulation=["S_to_I_total"])],
         )
         modelset = DummyModelset(population_names=population_names or ["US"], calibration=calibration)
         return DummyModelsetConfig(modelset=modelset)
