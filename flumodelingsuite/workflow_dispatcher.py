@@ -355,6 +355,66 @@ def _setup_vaccination_schedules(
     return models, None
 
 
+def _setup_interventions(
+    models: list[EpiModel],
+    basemodel: BaseEpiModel,
+    intervention_types: list[str],
+    sampled_start_timespan: Timespan | None,
+) -> list[EpiModel]:
+    """
+    Set up interventions that depend on location but not model parameters.
+
+    This function handles interventions that are sensitive to location/population
+    but not to model parameters, allowing them to be applied before the models
+    are further duplicated with different parameter sets.
+
+    Currently handles:
+    - School closure interventions (date-dependent)
+    - Contact matrix interventions (location-dependent)
+
+    Parameters
+    ----------
+    models : list[EpiModel]
+        List of EpiModel instances to add interventions to.
+    basemodel : BaseEpiModel
+        The base model configuration containing intervention settings and timespan.
+    intervention_types : list[str]
+        List of intervention type strings extracted from basemodel.interventions.
+    sampled_start_timespan : Timespan | None
+        The earliest timespan when start_date is sampled, or None if not sampled.
+        Used to determine the date range for school closures.
+
+    Returns
+    -------
+    list[EpiModel]
+        List of EpiModel instances with interventions applied.
+
+    Notes
+    -----
+    These interventions are applied early in the model building process because they:
+    1. Depend on location/population (different for each model in the collection)
+    2. Do NOT depend on sampled/calibrated parameters
+    3. Can be applied once before models are further duplicated with parameter variations
+    """
+    if not basemodel.interventions:
+        return models
+
+    # Determine the effective timespan for date-dependent interventions
+    effective_timespan = sampled_start_timespan if sampled_start_timespan else basemodel.timespan
+
+    for model in models:
+        # School closure
+        if "school_closure" in intervention_types:
+            closure_dict = make_school_closure_dict(
+                range(effective_timespan.start_date.year, effective_timespan.end_date.year + 1)
+            )
+            _add_school_closure_intervention_from_config(model, basemodel.interventions, closure_dict)
+
+        # Contact matrix
+        if "contact_matrix" in intervention_types:
+            _add_contact_matrix_interventions_from_config(model, basemodel.interventions)
+
+    return models
 
 
 def _get_data_in_window(data: pd.DataFrame, calibration: CalibrationConfig) -> pd.DataFrame:
@@ -539,27 +599,7 @@ def build_sampling(
 
     # These interventions are sensitive to location but not to model parameters and can be applied
     # using the earliest start_date before further duplicating the models.
-    if basemodel.interventions:
-        for model in models:
-            # School closure
-            if "school_closure" in intervention_types:
-                # If start_date is sampled, we can just use the earliest start date
-                if sampled_start_timespan:
-                    closure_dict = make_school_closure_dict(
-                        range(sampled_start_timespan.start_date.year, sampled_start_timespan.end_date.year + 1)
-                    )
-                else:
-                    closure_dict = make_school_closure_dict(
-                        range(
-                            basemodel.timespan.start_date.year,
-                            basemodel.timespan.end_date.year + 1,
-                        )
-                    )
-                _add_school_closure_intervention_from_config(model, basemodel.interventions, closure_dict)
-
-            # Contact matrix
-            if "contact_matrix" in intervention_types:
-                _add_contact_matrix_interventions_from_config(model, basemodel.interventions)
+    models = _setup_interventions(models, basemodel, intervention_types, sampled_start_timespan)
 
     logger.info("BUILDER: using sampled values to modify EpiModels")
 
@@ -681,27 +721,7 @@ def build_calibration(
 
     # These interventions are sensitive to location but not to model parameters and can be applied
     # using the earliest start_date before creating ABCSamplers.
-    if basemodel.interventions:
-        for model in models:
-            # School closure
-            if "school_closure" in intervention_types:
-                # If start_date is sampled, we can just use the earliest start date
-                if sampled_start_timespan:
-                    closure_dict = make_school_closure_dict(
-                        range(sampled_start_timespan.start_date.year, sampled_start_timespan.end_date.year + 1)
-                    )
-                else:
-                    closure_dict = make_school_closure_dict(
-                        range(
-                            basemodel.timespan.start_date.year,
-                            basemodel.timespan.end_date.year + 1,
-                        )
-                    )
-                _add_school_closure_intervention_from_config(model, basemodel.interventions, closure_dict)
-
-            # Contact matrix
-            if "contact_matrix" in intervention_types:
-                _add_contact_matrix_interventions_from_config(model, basemodel.interventions)
+    models = _setup_interventions(models, basemodel, intervention_types, sampled_start_timespan)
 
     logger.info("BUILDER: setting up ABCSamplers...")
 
