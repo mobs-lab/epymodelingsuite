@@ -300,18 +300,18 @@ def _setup_vaccination_schedules(
     models: list[EpiModel],
     sampled_start_timespan: Timespan | None,
     population_names: list[str],
-) -> dict | None:
+) -> tuple[list[EpiModel], dict | None]:
     """
     Set up vaccination schedules, handling start_date sampling if present.
 
     This function handles two scenarios:
     1. If start_date is sampled (sampled_start_timespan exists): Creates an earliest
        vaccination schedule that will later be reaggregated for each sampled start_date
-    2. If start_date is not sampled: Immediately adds vaccination schedules to all models
+    2. If start_date is not sampled: Adds vaccination schedules to all models
 
     Parameters
     ----------
-    basemodel : BasemodelConfig.model
+    basemodel : BaseEpiModel
         The base model configuration containing vaccination settings.
     models : list[EpiModel]
         List of EpiModel instances to add vaccination schedules to
@@ -323,9 +323,10 @@ def _setup_vaccination_schedules(
 
     Returns
     -------
-    dict | None
-        The earliest vaccination schedule (for later reaggregation) if start_date is sampled,
-        otherwise None.
+    tuple[list[EpiModel], dict | None]
+        - List of EpiModel instances (with vaccination applied if start_date not sampled)
+        - The earliest vaccination schedule (for later reaggregation) if start_date is sampled,
+          otherwise None.
 
     Notes
     -----
@@ -334,7 +335,7 @@ def _setup_vaccination_schedules(
     then reaggregate it later for each specific sampled start_date value.
     """
     if not basemodel.vaccination:
-        return None
+        return models, None
 
     # If start_date is sampled, precalculate schedule with earliest start for later reaggregation
     if sampled_start_timespan:
@@ -346,12 +347,14 @@ def _setup_vaccination_schedules(
             delta_t=sampled_start_timespan.delta_t,
             states=population_names,
         )
-        return earliest_vax
+        return models, earliest_vax
 
     # If start_date not sampled, add vaccination to models now
     for model in models:
         _add_vaccination_schedules_from_config(model, basemodel.transitions, basemodel.vaccination, basemodel.timespan)
-    return None
+    return models, None
+
+
 
 
 def _get_data_in_window(data: pd.DataFrame, calibration: CalibrationConfig) -> pd.DataFrame:
@@ -532,7 +535,7 @@ def build_sampling(
         sampled_start_timespan = None
 
     # Vaccination is sensitive to location and start_date but not to model parameters.
-    earliest_vax = _setup_vaccination_schedules(basemodel, models, sampled_start_timespan, population_names)
+    models, earliest_vax = _setup_vaccination_schedules(basemodel, models, sampled_start_timespan, population_names)
 
     # These interventions are sensitive to location but not to model parameters and can be applied
     # using the earliest start_date before further duplicating the models.
@@ -674,7 +677,7 @@ def build_calibration(
         sampled_start_timespan = None
 
     # Vaccination is sensitive to location and start_date but not to model parameters.
-    earliest_vax = _setup_vaccination_schedules(basemodel, models, sampled_start_timespan, population_names)
+    models, earliest_vax = _setup_vaccination_schedules(basemodel, models, sampled_start_timespan, population_names)
 
     # These interventions are sensitive to location but not to model parameters and can be applied
     # using the earliest start_date before creating ABCSamplers.
