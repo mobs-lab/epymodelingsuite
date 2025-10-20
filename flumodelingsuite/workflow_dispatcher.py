@@ -244,9 +244,10 @@ def build_basemodel(*, basemodel_config: BasemodelConfig, **_) -> BuilderOutput:
     # Initial conditions
     compartment_inits = {}
     # Initialize compartments with counts
+    # Distribute counts proportionally across age groups
     compartment_inits.update(
         {
-            compartment.id: compartment.init
+            compartment.id: compartment.init * model.population.Nk / sum(model.population.Nk)
             for compartment in basemodel.compartments
             if isinstance(compartment.init, (int, float, np.int64, np.float64)) and compartment.init >= 1
         }
@@ -260,12 +261,13 @@ def build_basemodel(*, basemodel_config: BasemodelConfig, **_) -> BuilderOutput:
         }
     )
     # Initialize default compartments
+    # Distribute remaining population proportionally across age groups
     default_compartments = [compartment for compartment in basemodel.compartments if compartment.init == "default"]
     sum_age_structured = sum([sum(vals) for vals in compartment_inits.values() if isinstance(vals, np.ndarray)])
     sum_no_age = sum([val for val in compartment_inits.values() if isinstance(val, (int, float, np.int64, np.float64))])
     remaining = sum(model.population.Nk) - sum_age_structured - sum_no_age
     compartment_inits.update(
-        {compartment.id: remaining / len(default_compartments) for compartment in default_compartments}
+        {compartment.id: remaining * model.population.Nk / sum(model.population.Nk) / len(default_compartments) for compartment in default_compartments}
     )
 
     if not compartment_inits:
@@ -453,9 +455,10 @@ def build_sampling(
             # Initial conditions
             compartment_init = {}
             # Initialize non-sampled compartments with counts
+            # Distribute counts proportionally across age groups
             compartment_init.update(
                 {
-                    compartment.id: compartment.init
+                    compartment.id: compartment.init * m.population.Nk / sum(m.population.Nk)
                     for compartment in basemodel.compartments
                     if isinstance(compartment.init, (int, float, np.int64, np.float64)) and compartment.init >= 1
                 }
@@ -470,10 +473,10 @@ def build_sampling(
             )
             # Initialize sampled compartments
             if varset.get("compartments"):
-                # Counts
+                # Counts : Distribute proportionally
                 compartment_init.update(
                     {
-                        k: v
+                        k: v * m.population.Nk / sum(m.population.Nk)
                         for k, v in varset["compartments"].items()
                         if isinstance(v, (int, float, np.int64, np.float64)) and v >= 1
                     }
@@ -487,6 +490,7 @@ def build_sampling(
                     }
                 )
             # Initialize default compartments
+            # Distribute remaining population proportionally across age groups
             default_compartments = [
                 compartment for compartment in basemodel.compartments if compartment.init == "default"
             ]
@@ -496,7 +500,7 @@ def build_sampling(
             )
             remaining = sum(m.population.Nk) - sum_age_structured - sum_no_age
             compartment_init.update(
-                {compartment.id: remaining / len(default_compartments) for compartment in default_compartments}
+                {compartment.id: remaining * m.population.Nk / sum(m.population.Nk) / len(default_compartments) for compartment in default_compartments}
             )
 
             if not compartment_init:
@@ -701,9 +705,10 @@ def build_calibration(
             # Initial conditions
             compartment_init = {}
             # Initialize non-calibrated compartments with counts
+            # Distribute counts proportionally across age groups
             compartment_init.update(
                 {
-                    compartment.id: compartment.init
+                    compartment.id: compartment.init * m.population.Nk / sum(m.population.Nk)
                     for compartment in basemodel.compartments
                     if isinstance(compartment.init, (int, float, np.int64, np.float64)) and compartment.init >= 1
                 }
@@ -718,9 +723,9 @@ def build_calibration(
             )
             # Initialize calibrated compartments
             compartment_ids = {c.id for c in basemodel.compartments}
-            # Initialize calibrated compartments with counts
+            # Initialize calibrated compartments with counts: Distribute proportionally
             compartment_init.update(
-                {compartment: v for compartment, v in params.items() if compartment in compartment_ids and v >= 1}
+                {compartment: v * m.population.Nk / sum(m.population.Nk) for compartment, v in params.items() if compartment in compartment_ids and v >= 1}
             )
             # Initialize calibrated compartments with proportions
             compartment_init.update(
@@ -731,6 +736,7 @@ def build_calibration(
                 }
             )
             # Initialize default compartments
+            # Already age-structured in calibration (remaining is per age group)
             default_compartments = [
                 compartment for compartment in basemodel.compartments if compartment.init == "default"
             ]
