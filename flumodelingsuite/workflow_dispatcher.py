@@ -26,7 +26,7 @@ from .config_loader import (
 from .school_closures import make_school_closure_dict
 from .utils import convert_location_name_format, get_location_codebook, make_dummy_population
 from .vaccinations import reaggregate_vaccines, scenario_to_epydemix
-from .validation.basemodel_validator import BasemodelConfig, Parameter, Timespan
+from .validation.basemodel_validator import BaseEpiModel, BasemodelConfig, Parameter, Timespan
 from .validation.calibration_validator import CalibrationConfig, CalibrationStrategy
 from .validation.general_validator import validate_modelset_consistency
 from .validation.output_validator import OutputConfig
@@ -292,6 +292,65 @@ def _create_model_collection(basemodel, population_names_config):
     return models, population_names
 
 
+def _setup_vaccination_schedules(
+    basemodel: BaseEpiModel,
+    models: list[EpiModel],
+    sampled_start_timespan: Timespan | None,
+    population_names: list[str],
+) -> dict | None:
+    """
+    Setup vaccination schedules, handling start_date sampling if present.
+
+    This function handles two scenarios:
+    1. If start_date is sampled (sampled_start_timespan exists): Creates an earliest
+       vaccination schedule that will later be reaggregated for each sampled start_date
+    2. If start_date is not sampled: Immediately adds vaccination schedules to all models
+
+    Parameters
+    ----------
+    basemodel : BasemodelConfig.model
+        The base model configuration containing vaccination settings.
+    models : list[EpiModel]
+        List of EpiModel instances to add vaccination schedules to
+        (only used if start_date is not sampled).
+    sampled_start_timespan : Timespan | None
+        The earliest timespan when start_date is sampled, or None if not sampled.
+    population_names : list[str]
+        List of population/location names (states) to create vaccination schedules for.
+
+    Returns
+    -------
+    dict | None
+        The earliest vaccination schedule (for later reaggregation) if start_date is sampled,
+        otherwise None.
+
+    Notes
+    -----
+    Vaccination schedules are sensitive to location and start_date but not to model parameters.
+    When start_date is sampled, we precalculate the schedule from the earliest possible date,
+    then reaggregate it later for each specific sampled start_date value.
+    """
+    if not basemodel.vaccination:
+        return None
+
+    # If start_date is sampled, precalculate schedule with earliest start for later reaggregation
+    if sampled_start_timespan:
+        earliest_vax = scenario_to_epydemix(
+            input_filepath=basemodel.vaccination.scenario_data_path,
+            start_date=sampled_start_timespan.start_date,
+            end_date=sampled_start_timespan.end_date,
+            target_age_groups=basemodel.population.age_groups,
+            delta_t=sampled_start_timespan.delta_t,
+            states=population_names,
+        )
+        return earliest_vax
+
+    # If start_date not sampled, add vaccination to models now
+    for model in models:
+        _add_vaccination_schedules_from_config(model, basemodel.transitions, basemodel.vaccination, basemodel.timespan)
+    return None
+
+
 def _get_data_in_window(data: pd.DataFrame, calibration: CalibrationConfig) -> pd.DataFrame:
     """Get data within a specified time window."""
     window_start = calibration.fitting_window.start_date
@@ -461,37 +520,16 @@ def build_sampling(
 
     # If start_date is sampled, find earliest instance
     try:
-        earliest_timespan = Timespan(
+        sampled_start_timespan = Timespan(
             start_date=sorted([varset["start_date"] for varset in sampled_vars])[0],
             end_date=basemodel.timespan.end_date,
             delta_t=basemodel.timespan.delta_t,
         )
     except KeyError:  # case where start_date is not sampled
-        earliest_timespan = False
+        sampled_start_timespan = None
 
     # Vaccination is sensitive to location and start_date but not to model parameters.
-    if basemodel.vaccination:
-        # If start_date is sampled, precalculate schedule with earliest start for later reaggregation
-        if earliest_timespan:
-            if sampling.population_names:
-                states = population_names
-            else:
-                states = [basemodel.population.name]
-            earliest_vax = scenario_to_epydemix(
-                input_filepath=basemodel.vaccination.scenario_data_path,
-                start_date=earliest_timespan.start_date,
-                end_date=earliest_timespan.end_date,
-                target_age_groups=basemodel.population.age_groups,
-                delta_t=earliest_timespan.delta_t,
-                states=states,
-            )
-
-        # If start_date not sampled, add vaccination to models now
-        else:
-            for model in models:
-                _add_vaccination_schedules_from_config(
-                    model, basemodel.transitions, basemodel.vaccination, basemodel.timespan
-                )
+    earliest_vax = _setup_vaccination_schedules(basemodel, models, sampled_start_timespan, population_names)
 
     # These interventions are sensitive to location but not to model parameters and can be applied
     # using the earliest start_date before further duplicating the models.
@@ -500,9 +538,9 @@ def build_sampling(
             # School closure
             if "school_closure" in intervention_types:
                 # If start_date is sampled, we can just use the earliest start date
-                if earliest_timespan:
+                if sampled_start_timespan:
                     closure_dict = make_school_closure_dict(
-                        range(earliest_timespan.start_date.year, earliest_timespan.end_date.year + 1)
+                        range(sampled_start_timespan.start_date.year, sampled_start_timespan.end_date.year + 1)
                     )
                 else:
                     closure_dict = make_school_closure_dict(
@@ -542,7 +580,7 @@ def build_sampling(
                 _calculate_parameters_from_config(m, basemodel.parameters)
 
             # Vaccination (if start_date is sampled)
-            if basemodel.vaccination and earliest_timespan:
+            if basemodel.vaccination and sampled_start_timespan:
                 reaggregated_vax = reaggregate_vaccines(earliest_vax, timespan.start_date)
                 _add_vaccination_schedules_from_config(
                     m, basemodel.transitions, basemodel.vaccination, timespan, use_schedule=reaggregated_vax
@@ -624,37 +662,16 @@ def build_calibration(
 
     # If start_date is sampled, make earliest timespan
     if calibration.start_date:
-        earliest_timespan = Timespan(
+        sampled_start_timespan = Timespan(
             start_date=calibration.start_date.reference_date,
             end_date=basemodel.timespan.end_date,
             delta_t=basemodel.timespan.delta_t,
         )
     else:  # case where start_date is not sampled
-        earliest_timespan = False
+        sampled_start_timespan = None
 
     # Vaccination is sensitive to location and start_date but not to model parameters.
-    if basemodel.vaccination:
-        # If start_date is sampled, precalculate schedule with earliest start for later reaggregation
-        if earliest_timespan:
-            if modelset.population_names:
-                states = population_names
-            else:
-                states = [basemodel.population.name]
-            earliest_vax = scenario_to_epydemix(
-                input_filepath=basemodel.vaccination.scenario_data_path,
-                start_date=earliest_timespan.start_date,
-                end_date=earliest_timespan.end_date,
-                target_age_groups=basemodel.population.age_groups,
-                delta_t=earliest_timespan.delta_t,
-                states=states,
-            )
-
-        # If start_date not sampled, add vaccination to models now
-        else:
-            for model in models:
-                _add_vaccination_schedules_from_config(
-                    model, basemodel.transitions, basemodel.vaccination, basemodel.timespan
-                )
+    earliest_vax = _setup_vaccination_schedules(basemodel, models, sampled_start_timespan, population_names)
 
     # These interventions are sensitive to location but not to model parameters and can be applied
     # using the earliest start_date before creating ABCSamplers.
@@ -663,9 +680,9 @@ def build_calibration(
             # School closure
             if "school_closure" in intervention_types:
                 # If start_date is sampled, we can just use the earliest start date
-                if earliest_timespan:
+                if sampled_start_timespan:
                     closure_dict = make_school_closure_dict(
-                        range(earliest_timespan.start_date.year, earliest_timespan.end_date.year + 1)
+                        range(sampled_start_timespan.start_date.year, sampled_start_timespan.end_date.year + 1)
                     )
                 else:
                     closure_dict = make_school_closure_dict(
@@ -694,8 +711,8 @@ def build_calibration(
             m = copy.deepcopy(model)
 
             # Accomodate for sampled start_date
-            if earliest_timespan:
-                start_date = earliest_timespan.start_date + dt.timedelta(days=params["start_date"])
+            if sampled_start_timespan:
+                start_date = sampled_start_timespan.start_date + dt.timedelta(days=params["start_date"])
             else:
                 start_date = basemodel.timespan.start_date
 
@@ -713,7 +730,7 @@ def build_calibration(
                 _calculate_parameters_from_config(m, basemodel.parameters)
 
             # Vaccination (if start_date is sampled)
-            if basemodel.vaccination and earliest_timespan:
+            if basemodel.vaccination and sampled_start_timespan:
                 reaggregated_vax = reaggregate_vaccines(earliest_vax, timespan.start_date)
                 _add_vaccination_schedules_from_config(
                     m, basemodel.transitions, basemodel.vaccination, timespan, use_schedule=reaggregated_vax
@@ -784,7 +801,7 @@ def build_calibration(
         priors = {}
         priors.update({k: distribution_to_scipy(v.prior) for k, v in calibration.parameters.items()})
         priors.update({k: distribution_to_scipy(v.prior) for k, v in calibration.compartments.items()})
-        if earliest_timespan:
+        if sampled_start_timespan:
             priors["start_date"] = distribution_to_scipy(calibration.start_date.prior)
 
         fixed_parameters = {k: v for k, v in model.parameters.items() if v is not None}
