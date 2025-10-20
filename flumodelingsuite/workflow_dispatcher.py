@@ -223,7 +223,10 @@ def calculate_compartment_initial_conditions(
     return compartment_init if compartment_init else None
 
 
-def _create_model_collection(basemodel, population_names_config):
+def _create_model_collection(
+    basemodel: BaseEpiModel,
+    population_names: list[str] | None,
+) -> tuple[list[EpiModel], list[str]]:
     """
     Create a collection of EpiModels with dummy population setup.
 
@@ -233,10 +236,10 @@ def _create_model_collection(basemodel, population_names_config):
 
     Parameters
     ----------
-    basemodel : BasemodelConfig.model
+    basemodel : BaseEpiModel
         The base model configuration containing compartments, transitions,
         parameters, and population settings.
-    population_names_config : list[str] | None
+    population_names : list[str] | None
         List of population names to create models for. Can contain "all" to
         expand to all locations in the codebook. If None, uses the single
         population from basemodel.
@@ -275,21 +278,21 @@ def _create_model_collection(basemodel, population_names_config):
     _add_model_parameters_from_config(init_model, basemodel.parameters)
 
     # Create models with populations set
-    if population_names_config:
-        if "all" in population_names_config:
-            population_names = get_location_codebook()["location_name_epydemix"]
+    if population_names:
+        if "all" in population_names:
+            resolved_names = get_location_codebook()["location_name_epydemix"]
         else:
-            population_names = population_names_config
-        for name in population_names:
+            resolved_names = population_names
+        for name in resolved_names:
             m = copy.deepcopy(init_model)
             _set_population_from_config(m, name, basemodel.population.age_groups)
             models.append(m)
     else:
         _set_population_from_config(init_model, basemodel.population.name, basemodel.population.age_groups)
         models.append(init_model)
-        population_names = [basemodel.population.name]
+        resolved_names = [basemodel.population.name]
 
-    return models, population_names
+    return models, resolved_names
 
 
 def _setup_vaccination_schedules(
