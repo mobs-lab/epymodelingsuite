@@ -5,3 +5,4 @@
 .DS_Store
 cov_annotate/
 .coverage
+*,cover
