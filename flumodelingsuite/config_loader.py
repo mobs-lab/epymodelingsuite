@@ -403,7 +403,9 @@ def _add_model_parameters_from_config(model: EpiModel, parameters: dict[str, Par
                     f"Array values supplied for parameter {key} do not match model population age structure"
                 )
         elif data.type in ["sampled", "calibrated", "calculated"]:
-            parameters_dict[key] = None
+            # Skip parameters without values.
+            # They will be set later during calibration/sampling or calculated after all other parameters are defined
+            pass
 
     try:
         model.add_parameter(parameters_dict=parameters_dict)
