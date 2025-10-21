@@ -115,6 +115,7 @@ class SimulationOutput(BaseModel):
         description="Primary identifier of an EpiModel object paired with instructions for simulation."
     )
     seed: int | None = Field(None, description="Random seed.")
+    population: str = Field(description="Population name (epydemix).")
     results: SimulationResults = Field(description="Results of a call to EpiModel.run_simulations()")
 
 
@@ -127,6 +128,7 @@ class CalibrationOutput(BaseModel):
         description="Primary identifier of an ABCSampler object paired with instructions for calibration/projection."
     )
     seed: int | None = Field(None, description="Random seed.")
+    population: str = Field(description="Population name (epydemix).")
     results: CalibrationResults = Field(
         description="Results of a call to ABCSampler.calibrate() or ABCSampler.run_projections()"
     )
@@ -991,7 +993,7 @@ def dispatch_runner(configs: BuilderOutput) -> SimulationOutput | CalibrationOut
         try:
             results = configs.model.run_simulations(**dict(configs.simulation))
             logger.info("RUNNER: completed simulation.")
-            return SimulationOutput(primary_id=configs.primary_id, seed=configs.seed, results=results)
+            return SimulationOutput(primary_id=configs.primary_id, seed=configs.seed, population=configs.model.population.name, results=results)
         except Exception as e:
             raise RuntimeError(f"Error during simulation: {e}")
 
@@ -1001,7 +1003,7 @@ def dispatch_runner(configs: BuilderOutput) -> SimulationOutput | CalibrationOut
         try:
             results = configs.calibrator.calibrate(strategy=configs.calibration.name, **configs.calibration.options)
             logger.info("RUNNER: completed calibration.")
-            return CalibrationOutput(primary_id=configs.primary_id, seed=configs.seed, results=results)
+            return CalibrationOutput(primary_id=configs.primary_id, seed=configs.seed, population=configs.model.population.name, results=results)
         except Exception as e:
             raise RuntimeError(f"Error during calibration: {e}")
 
@@ -1022,7 +1024,7 @@ def dispatch_runner(configs: BuilderOutput) -> SimulationOutput | CalibrationOut
                 iterations=configs.projection.n_trajectories,
             )
             logger.info("RUNNER: completed calibration.")
-            return CalibrationOutput(primary_id=configs.primary_id, seed=configs.seed, results=projection_results)
+            return CalibrationOutput(primary_id=configs.primary_id, seed=configs.seed, population=configs.model.population.name, results=projection_results)
         except Exception as e:
             raise RuntimeError(f"Error during calibration/projection: {e}")
     # Error
@@ -1064,6 +1066,8 @@ def generate_simulation_outputs(*, simulation: list[SimulationOutput], outputs: 
         if outputs.quantiles:
             quan_df = model.results.get_quantiles_compartments(outputs.quantiles.selections)
             quan_df.insert(0, "primary_id", model.primary_id)
+            quan_df.insert(1, "seed", model.seed)
+            quan_df.insert(2, "population", model.population)
             quantiles = pd.concat([quantiles, quan_df])
 
         # Trajectories
@@ -1072,6 +1076,8 @@ def generate_simulation_outputs(*, simulation: list[SimulationOutput], outputs: 
                 traj_df = pd.DataFrame(traj.compartments)
                 traj_df.insert(0, "primary_id", model.primary_id)
                 traj_df.insert(1, "sim_id", i)
+                traj_df.insert(2, "seed", model.seed)
+                traj_df.insert(3, "population", model.population)
                 trajectories = pd.concat([trajectories, traj_df])
             
     return {"quantiles.csv.gz": quantiles, "trajectories.csv.gz": trajectories}
