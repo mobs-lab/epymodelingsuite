@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from unittest.mock import patch
 
 import numpy as np
 import pytest
 
 from flumodelingsuite.workflow_dispatcher import (
     _create_model_collection,
+    _setup_vaccination_schedules,
     calculate_compartment_initial_conditions,
 )
 
@@ -566,3 +568,231 @@ class TestCreateModelCollection:
 
             # Check parameters
             assert len(model.parameters) >= 2  # At least beta and gamma
+
+
+class TestSetupVaccinationSchedules:
+    """Tests for _setup_vaccination_schedules function."""
+
+    @pytest.fixture
+    def base_model_config(self):
+        """Create a minimal BaseEpiModel configuration for testing."""
+        from datetime import date
+
+        from flumodelingsuite.validation.basemodel_validator import (
+            BaseEpiModel,
+            Compartment,
+            Parameter,
+            Population,
+            Simulation,
+            Timespan,
+            Transition,
+        )
+
+        compartments = [
+            Compartment(id="S", label="Susceptible", init="default"),
+            Compartment(id="I", label="Infected", init=10),
+            Compartment(id="R", label="Recovered", init=0),
+        ]
+
+        transitions = [
+            Transition(
+                source="S",
+                target="I",
+                type="mediated",
+                rate="beta",
+                mediator="I",
+            ),
+            Transition(
+                source="I",
+                target="R",
+                type="spontaneous",
+                rate="gamma",
+            ),
+        ]
+
+        parameters = {
+            "beta": Parameter(type="scalar", value=0.5),
+            "gamma": Parameter(type="scalar", value=0.1),
+        }
+
+        population = Population(name="US-CA", age_groups=["0-4", "5-17", "18-49", "50-64", "65+"])
+
+        timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
+
+        simulation = Simulation(n_sims=10, resample_frequency="W-SAT")
+
+        return BaseEpiModel(
+            name="test_model",
+            compartments=compartments,
+            transitions=transitions,
+            parameters=parameters,
+            population=population,
+            timespan=timespan,
+            simulation=simulation,
+        )
+
+    @pytest.fixture
+    def base_model_with_vaccination(self, base_model_config, tmp_path):
+        """Create a BaseEpiModel with vaccination configuration."""
+        # Create a minimal vaccination data file
+        import pandas as pd
+
+        from flumodelingsuite.validation.basemodel_validator import Transition, Vaccination
+
+        vax_data = pd.DataFrame(
+            {
+                "date": ["2024-01-01", "2024-01-08", "2024-01-15"],
+                "location": ["06", "06", "06"],  # California FIPS
+                "age_group": ["0-4", "0-4", "0-4"],
+                "doses": [100, 150, 200],
+            }
+        )
+        vax_file = tmp_path / "vaccination_data.csv"
+        vax_data.to_csv(vax_file, index=False)
+
+        vaccination = Vaccination(
+            scenario_data_path=str(vax_file),
+            origin_compartment="S",
+            eligible_compartments=["S"],
+        )
+
+        # Add vaccination transition
+        vax_transition = Transition(
+            source="S",
+            target="R",
+            type="vaccination",
+            rate=None,
+        )
+        base_model_config.transitions.append(vax_transition)
+        base_model_config.vaccination = vaccination
+        return base_model_config
+
+    @pytest.fixture
+    def sample_models(self, base_model_config):
+        """Create a collection of test models."""
+        models, population_names = _create_model_collection(base_model_config, ["US-CA", "US-TX"])
+        return models, population_names
+
+    def test_returns_models_and_none_when_no_vaccination(self, base_model_config, sample_models):
+        """Test that function returns (models, None) when vaccination is not configured."""
+        base_model_config.vaccination = None
+        models, population_names = sample_models
+
+        result_models, earliest_vax = _setup_vaccination_schedules(
+            basemodel=base_model_config, models=models, sampled_start_timespan=None, population_names=population_names
+        )
+
+        # Should return the same models unchanged and None for earliest_vax
+        assert result_models == models
+        assert earliest_vax is None
+        assert len(result_models) == len(models)
+
+    def test_returns_models_and_earliest_vax_when_start_date_sampled(self, base_model_with_vaccination, sample_models):
+        """Test that function returns (models, earliest_vax) when start_date is sampled."""
+        from datetime import date
+
+        from flumodelingsuite.validation.basemodel_validator import Timespan
+
+        models, population_names = sample_models
+
+        sampled_start_timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
+
+        # Mock scenario_to_epydemix to return a predictable DataFrame
+        import pandas as pd
+
+        mock_vax_schedule = pd.DataFrame({"date": ["2024-01-01"], "doses": [100]})
+
+        with patch(
+            "flumodelingsuite.workflow_dispatcher.scenario_to_epydemix", return_value=mock_vax_schedule
+        ) as mock_scenario_to_epydemix:
+            result_models, earliest_vax = _setup_vaccination_schedules(
+                basemodel=base_model_with_vaccination,
+                models=models,
+                sampled_start_timespan=sampled_start_timespan,
+                population_names=population_names,
+            )
+
+            # Should return models unchanged and the earliest vaccination schedule
+            assert len(result_models) == len(models)
+            assert earliest_vax is not None
+            assert isinstance(earliest_vax, pd.DataFrame)
+
+            # Verify scenario_to_epydemix was called with correct parameters
+            mock_scenario_to_epydemix.assert_called_once()
+            call_kwargs = mock_scenario_to_epydemix.call_args[1]
+            assert call_kwargs["start_date"] == date(2024, 1, 1)
+            assert call_kwargs["end_date"] == date(2024, 12, 31)
+            assert call_kwargs["states"] == population_names
+
+    def test_adds_vaccination_to_models_when_start_date_not_sampled(self, base_model_with_vaccination, sample_models):
+        """Test that vaccination is added directly to models when start_date is not sampled."""
+        models, population_names = sample_models
+
+        # Mock _add_vaccination_schedules_from_config
+        with patch("flumodelingsuite.workflow_dispatcher._add_vaccination_schedules_from_config") as mock_add_vax:
+            result_models, earliest_vax = _setup_vaccination_schedules(
+                basemodel=base_model_with_vaccination,
+                models=models,
+                sampled_start_timespan=None,
+                population_names=population_names,
+            )
+
+            # Should return models and None
+            assert len(result_models) == len(models)
+            assert earliest_vax is None
+
+            # Verify _add_vaccination_schedules_from_config was called for each model
+            assert mock_add_vax.call_count == len(models)
+            for call in mock_add_vax.call_args_list:
+                assert call[0][0] in models  # First arg is a model
+                assert call[0][1] == base_model_with_vaccination.transitions
+                assert call[0][2] == base_model_with_vaccination.vaccination
+                assert call[0][3] == base_model_with_vaccination.timespan
+
+    def test_scenario_to_epydemix_not_called_when_no_vaccination(self, base_model_config, sample_models):
+        """Test that scenario_to_epydemix is not called when vaccination is None."""
+        from datetime import date
+
+        from flumodelingsuite.validation.basemodel_validator import Timespan
+
+        base_model_config.vaccination = None
+        models, population_names = sample_models
+
+        sampled_start_timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
+
+        with patch("flumodelingsuite.workflow_dispatcher.scenario_to_epydemix") as mock_scenario_to_epydemix:
+            _setup_vaccination_schedules(
+                basemodel=base_model_config,
+                models=models,
+                sampled_start_timespan=sampled_start_timespan,
+                population_names=population_names,
+            )
+
+            # scenario_to_epydemix should not be called when vaccination is None
+            mock_scenario_to_epydemix.assert_not_called()
+
+    def test_add_vaccination_not_called_when_start_date_sampled(self, base_model_with_vaccination, sample_models):
+        """Test that _add_vaccination_schedules_from_config is not called when start_date is sampled."""
+        from datetime import date
+
+        from flumodelingsuite.validation.basemodel_validator import Timespan
+
+        models, population_names = sample_models
+
+        sampled_start_timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
+
+        import pandas as pd
+
+        mock_vax_schedule = pd.DataFrame({"date": ["2024-01-01"], "doses": [100]})
+
+        with patch("flumodelingsuite.workflow_dispatcher.scenario_to_epydemix", return_value=mock_vax_schedule):
+            with patch("flumodelingsuite.workflow_dispatcher._add_vaccination_schedules_from_config") as mock_add_vax:
+                _setup_vaccination_schedules(
+                    basemodel=base_model_with_vaccination,
+                    models=models,
+                    sampled_start_timespan=sampled_start_timespan,
+                    population_names=population_names,
+                )
+
+                # _add_vaccination_schedules_from_config should not be called when start_date is sampled
+                mock_add_vax.assert_not_called()
