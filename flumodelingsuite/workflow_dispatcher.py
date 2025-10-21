@@ -47,7 +47,7 @@ class SimulationArguments(BaseModel):
     start_date: date = Field(description="Start date of the simulation.")
     end_date: date = Field(description="End date of the simulation.")
     initial_conditions_dict: dict | None = Field(None, description="Initial conditions dictionary.")
-    Nsim: int | None = Field(None, description="Number of simulation runs to perform for a single EpiModel.")
+    Nsim: int | None = Field(10, description="Number of simulation runs to perform for a single EpiModel.")
     dt: float | None = Field(1.0, description="Timestep for simulation, defaults to 1.0 = 1 day.")
     resample_frequency: str | None = Field(
         None,
