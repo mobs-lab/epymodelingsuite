@@ -28,6 +28,3 @@ output:
 
   logs:
     path: ""
-
-  raw_results:
-    path: ""

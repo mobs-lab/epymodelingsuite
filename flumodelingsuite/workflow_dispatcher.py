@@ -78,14 +78,14 @@ class BuilderOutput(BaseModel):
     )
     seed: int | None = Field(None, description="Random seed.")
     model: EpiModel | None = Field(None, description="EpiModel object for simulation.")
-    calibrator: ABCSampler | None = Field(None, description="ABCSampler object for calibration (contains an EpiModel).")
+    calibrator: ABCSampler | None = Field(None, description="ABCSampler object for calibration.")
     simulation: SimulationArguments | None = Field(
         None, description="Arguments for a single call to EpiModel.run_simulations"
     )
     calibration: CalibrationStrategy | None = Field(
         None, description="Arguments for a single call to ABCSampler.calibrate"
     )
-    projection: ProjectionArguments | None = Field(None, description="Arguments for a")
+    projection: ProjectionArguments | None = Field(None, description="Arguments for a single call to ABCSampler.run_projections")
 
     @model_validator(mode="after")
     def check_fields(self: "BuilderOutput") -> "BuilderOutput":
@@ -923,9 +923,32 @@ def register_output_generator(kind_set):
 
 
 @register_output_generator({"simulation", "outputs"})
-def generate_simulation_outputs(*, simulation: list[SimulationOutput], outputs: OutputConfig, **_) -> None:
+def generate_simulation_outputs(*, simulation: list[SimulationOutput], outputs: OutputConfig, **_) -> dict:
     """"""
+    
     logger.info("OUTPUT GENERATOR: dispatched for simulation")
+
+    quantiles = pd.DataFrame()
+    trajectories = pd.DataFrame()
+    
+    for model in simulation:
+
+        # Quantiles
+        if outputs.quantiles:
+            quan_df = model.results.get_quantiles_compartments(outputs.quantiles.selections)
+            quan_df.insert(0, "primary_id", model.primary_id)
+            quantiles = pd.concat([quantiles, quan_df])
+
+        # Trajectories
+        if outputs.trajectories:
+            for i, traj in enumerate(model.results.trajectories):
+                traj_df = pd.DataFrame(traj.compartments)
+                traj_df.insert(0, "primary_id", model.primary_id)
+                traj_df.insert(1, "sim_id", i)
+                trajectories = pd.concat([trajectories, traj_df])
+            
+    return {"quantiles.csv.gz": quantiles, "trajectories.csv.gz": trajectories}
+        
 
 
 @register_output_generator({"calibration", "outputs"})

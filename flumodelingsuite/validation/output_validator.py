@@ -19,7 +19,6 @@ class QuantilesOutput(BaseModel):
         flusmh = "flusmh"
         covid19forecast = "covid19forecast"
 
-    path: str = Field(description="Destination filepath for quantile outputs.")
     selections: list[float] = Field("Desired quantiles expressed as floats.")
     data_format: str | QuantileFormatEnum = Field(
         "default", description="Create quantile outputs in the default format or a supported HubVerse format."
@@ -46,31 +45,20 @@ class QuantilesOutput(BaseModel):
 class TrajectoriesOutput(BaseModel):
     """Specifications for trajectory outputs."""
 
-    path: str = Field(description="Destination folder path for trajectory outputs.")
+    # Optional resampling?
 
 
 class PosteriorsOutput(BaseModel):
     """Specifications for posterior outputs."""
 
-    path: str = Field(description="Destination folder path for posterior outputs.")
 
 
 class RunMetaOutput(BaseModel):
     """Specifications for parameter tracking / run metadata outputs."""
 
-    path: str = Field(description="Destination folder path for parameter tracking / run metadata outputs.")
 
 
-class LogsOutput(BaseModel):
-    """Specifications for logger outputs."""
 
-    path: str = Field(description="Destination folder path for logger outputs.")
-
-
-class RawResultsOutput(BaseModel):
-    """Specifications for raw results outputs."""
-
-    path: str = Field(description="Destination folder path for raw results outputs.")
 
 
 class OutputConfiguration(BaseModel):
@@ -83,8 +71,6 @@ class OutputConfiguration(BaseModel):
     run_meta: RunMetaOutput | None = Field(
         None, description="Specifications for parameter tracking / run metadata outputs."
     )
-    logs: LogsOutput | None = Field(None, description="Specifications for logger outputs.")
-    raw_results: RawResultsOutput | None = Field(None, description="Specifications for raw results outputs.")
 
 
 class OutputConfig(BaseModel):
