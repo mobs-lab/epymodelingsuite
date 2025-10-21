@@ -34,6 +34,7 @@ license-files = ["LICEN[CS]E*"]
 dev = [
     "ruff",
     "pytest",
+    "pytest-cov",
 ]
 
 [project.urls]
