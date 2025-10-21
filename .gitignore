@@ -3,3 +3,5 @@
 **/flumodelingsuite.egg-info/
 **/__pycache__/
 .DS_Store
+cov_annotate/
+.coverage
