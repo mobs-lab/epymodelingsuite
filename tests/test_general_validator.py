@@ -5,7 +5,8 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from flumodelingsuite.general_validator import (
+
+from flumodelingsuite.validation.general_validator import (
     _ensure_compartments_valid,
     _ensure_parameters_present,
     _ensure_populations_valid,
@@ -206,7 +207,7 @@ class TestValidateModelsetConsistency:
     ) -> DummyModelsetConfig:
         calibration = DummyCalibration(
             parameters=calibration_params or {"beta": object()},
-            comparison=comparisons or [DummyComparison(simulation=["inf"])],
+            comparison=comparisons or [DummyComparison(simulation=["S_to_I_total"])],
         )
         modelset = DummyModelset(population_names=population_names or ["US"], calibration=calibration)
         return DummyModelsetConfig(modelset=modelset)

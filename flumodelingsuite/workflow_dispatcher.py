@@ -132,6 +132,97 @@ class CalibrationOutput(BaseModel):
     )
 
 
+def calculate_compartment_initial_conditions(
+    compartments: list,
+    population_array: np.ndarray,
+    sampled_compartments: dict | None = None,
+) -> dict | None:
+    """
+    Calculate initial conditions for compartments based on their initialization values.
+
+    This function handles three types of compartment initialization:
+    1. Counts (value >= 1): Distributed proportionally across age groups
+    2. Proportions (value < 1): Applied directly to population by age group
+    3. Default: Remaining population distributed per age group
+
+    Parameters
+    ----------
+    compartments : list
+        List of compartment objects with `id` and `init` attributes.
+        `init` can be a numeric value (int/float) or the string "default".
+    population_array : np.ndarray
+        Population counts by age group obtained from EpiModel (model.population.Nk).
+    sampled_compartments : dict | None, optional
+        Dictionary of sampled/calibrated compartment values to override base configuration.
+        Keys are compartment IDs, values are numeric initial conditions.
+
+    Returns
+    -------
+    dict | None
+        Dictionary mapping compartment IDs to initial condition arrays (age-structured)
+        or None if no initial conditions are specified.
+
+    Notes
+    -----
+    The remaining population for default compartments is calculated per age group
+    to preserve exact population counts: remaining = population_array - sum_age_structured
+    """
+    compartment_init = {}
+    compartment_ids = {c.id for c in compartments}
+
+    # Initialize non-sampled compartments with counts
+    # Distribute counts proportionally across age groups
+    compartment_init.update(
+        {
+            compartment.id: compartment.init * population_array / sum(population_array)
+            for compartment in compartments
+            if isinstance(compartment.init, (int, float, np.int64, np.float64)) and compartment.init >= 1
+        }
+    )
+
+    # Initialize non-sampled compartments with proportions
+    compartment_init.update(
+        {
+            compartment.id: compartment.init * population_array
+            for compartment in compartments
+            if isinstance(compartment.init, (int, float, np.int64, np.float64)) and compartment.init < 1
+        }
+    )
+
+    # Initialize sampled/calibrated compartments (if provided)
+    if sampled_compartments:
+        # Counts: Distribute proportionally
+        compartment_init.update(
+            {
+                k: v * population_array / sum(population_array)
+                for k, v in sampled_compartments.items()
+                if k in compartment_ids and isinstance(v, (int, float, np.int64, np.float64)) and v >= 1
+            }
+        )
+        # Proportions
+        compartment_init.update(
+            {
+                k: v * population_array
+                for k, v in sampled_compartments.items()
+                if k in compartment_ids and isinstance(v, (int, float, np.int64, np.float64)) and v < 1
+            }
+        )
+
+    # Initialize default compartments
+    # Calculate remaining population per age group to preserve exact counts
+    default_compartments = [compartment for compartment in compartments if compartment.init == "default"]
+    if default_compartments:
+        sum_age_structured = np.sum(
+            [vals for vals in compartment_init.values() if isinstance(vals, np.ndarray)], axis=0
+        )
+        remaining = population_array - sum_age_structured
+        compartment_init.update(
+            {compartment.id: remaining / len(default_compartments) for compartment in default_compartments}
+        )
+
+    return compartment_init if compartment_init else None
+
+
 def _get_data_in_window(data: pd.DataFrame, calibration: CalibrationConfig) -> pd.DataFrame:
     """Get data within a specified time window."""
     window_start = calibration.fitting_window.start_date
@@ -242,34 +333,10 @@ def build_basemodel(*, basemodel_config: BasemodelConfig, **_) -> BuilderOutput:
             _add_parameter_interventions_from_config(model, basemodel.interventions, basemodel.timespan)
 
     # Initial conditions
-    compartment_inits = {}
-    # Initialize compartments with counts
-    compartment_inits.update(
-        {
-            compartment.id: compartment.init
-            for compartment in basemodel.compartments
-            if isinstance(compartment.init, (int, float, np.int64, np.float64)) and compartment.init >= 1
-        }
+    compartment_inits = calculate_compartment_initial_conditions(
+        compartments=basemodel.compartments,
+        population_array=model.population.Nk,
     )
-    # Initialize compartments with proportions
-    compartment_inits.update(
-        {
-            compartment.id: compartment.init * model.population.Nk
-            for compartment in basemodel.compartments
-            if isinstance(compartment.init, (int, float, np.int64, np.float64)) and compartment.init < 1
-        }
-    )
-    # Initialize default compartments
-    default_compartments = [compartment for compartment in basemodel.compartments if compartment.init == "default"]
-    sum_age_structured = sum([sum(vals) for vals in compartment_inits.values() if isinstance(vals, np.ndarray)])
-    sum_no_age = sum([val for val in compartment_inits.values() if isinstance(val, (int, float, np.int64, np.float64))])
-    remaining = sum(model.population.Nk) - sum_age_structured - sum_no_age
-    compartment_inits.update(
-        {compartment.id: remaining / len(default_compartments) for compartment in default_compartments}
-    )
-
-    if not compartment_inits:
-        compartment_inits = None
 
     simulation_args = SimulationArguments(
         start_date=basemodel.timespan.start_date,
@@ -451,56 +518,11 @@ def build_sampling(
                 _add_parameter_interventions_from_config(m, basemodel.interventions, timespan)
 
             # Initial conditions
-            compartment_init = {}
-            # Initialize non-sampled compartments with counts
-            compartment_init.update(
-                {
-                    compartment.id: compartment.init
-                    for compartment in basemodel.compartments
-                    if isinstance(compartment.init, (int, float, np.int64, np.float64)) and compartment.init >= 1
-                }
+            compartment_init = calculate_compartment_initial_conditions(
+                compartments=basemodel.compartments,
+                population_array=m.population.Nk,
+                sampled_compartments=varset.get("compartments"),
             )
-            # Initialize non-sampled compartments with proportions
-            compartment_init.update(
-                {
-                    compartment.id: compartment.init * m.population.Nk
-                    for compartment in basemodel.compartments
-                    if isinstance(compartment.init, (int, float, np.int64, np.float64)) and compartment.init < 1
-                }
-            )
-            # Initialize sampled compartments
-            if varset.get("compartments"):
-                # Counts
-                compartment_init.update(
-                    {
-                        k: v
-                        for k, v in varset["compartments"].items()
-                        if isinstance(v, (int, float, np.int64, np.float64)) and v >= 1
-                    }
-                )
-                # Proportions
-                compartment_init.update(
-                    {
-                        k: v * m.population.Nk
-                        for k, v in varset["compartments"].items()
-                        if isinstance(v, (int, float, np.int64, np.float64)) and v < 1
-                    }
-                )
-            # Initialize default compartments
-            default_compartments = [
-                compartment for compartment in basemodel.compartments if compartment.init == "default"
-            ]
-            sum_age_structured = sum([sum(vals) for vals in compartment_init.values() if isinstance(vals, np.ndarray)])
-            sum_no_age = sum(
-                [val for val in compartment_init.values() if isinstance(val, (int, float, np.int64, np.float64))]
-            )
-            remaining = sum(m.population.Nk) - sum_age_structured - sum_no_age
-            compartment_init.update(
-                {compartment.id: remaining / len(default_compartments) for compartment in default_compartments}
-            )
-
-            if not compartment_init:
-                compartment_init = None
 
             sim_args = SimulationArguments(
                 start_date=timespan.start_date,
@@ -699,51 +721,11 @@ def build_calibration(
                 _add_parameter_interventions_from_config(m, basemodel.interventions, timespan)
 
             # Initial conditions
-            compartment_init = {}
-            # Initialize non-calibrated compartments with counts
-            compartment_init.update(
-                {
-                    compartment.id: compartment.init
-                    for compartment in basemodel.compartments
-                    if isinstance(compartment.init, (int, float, np.int64, np.float64)) and compartment.init >= 1
-                }
+            compartment_init = calculate_compartment_initial_conditions(
+                compartments=basemodel.compartments,
+                population_array=m.population.Nk,
+                sampled_compartments=params,
             )
-            # Initialize non-calibrated compartments with proportions
-            compartment_init.update(
-                {
-                    compartment.id: compartment.init * m.population.Nk
-                    for compartment in basemodel.compartments
-                    if isinstance(compartment.init, (int, float, np.int64, np.float64)) and compartment.init < 1
-                }
-            )
-            # Initialize calibrated compartments
-            compartment_ids = {c.id for c in basemodel.compartments}
-            # Initialize calibrated compartments with counts
-            compartment_init.update(
-                {compartment: v for compartment, v in params.items() if compartment in compartment_ids and v >= 1}
-            )
-            # Initialize calibrated compartments with proportions
-            compartment_init.update(
-                {
-                    compartment: v * m.population.Nk
-                    for compartment, v in params.items()
-                    if compartment in compartment_ids and v < 1
-                }
-            )
-            # Initialize default compartments
-            default_compartments = [
-                compartment for compartment in basemodel.compartments if compartment.init == "default"
-            ]
-            sum_age_structured = np.sum(
-                [vals for vals in compartment_init.values() if isinstance(vals, np.ndarray)], axis=0
-            )
-            remaining = m.population.Nk - sum_age_structured
-            compartment_init.update(
-                {compartment.id: remaining / len(default_compartments) for compartment in default_compartments}
-            )
-
-            if not compartment_init:
-                compartment_init = None
 
             # Collect settings
             sim_params = {
