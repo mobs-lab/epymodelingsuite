@@ -417,6 +417,161 @@ def _setup_interventions(
     return models
 
 
+def _make_simulate_wrapper(
+    basemodel: BaseEpiModel,
+    calibration: CalibrationConfig,
+    data_state: pd.DataFrame,
+    intervention_types: list[str],
+    sampled_start_timespan: Timespan | None = None,
+    earliest_vax: dict | None = None,
+) -> callable:
+    """
+    Create a simulate_wrapper function for ABCSampler calibration.
+    simulate_wrapper takes param dictionary and runs a simulation/projection.
+
+    Parameters
+    ----------
+    basemodel : BaseEpiModel
+        Base model configuration with compartments, parameters, interventions, etc.
+    calibration : CalibrationConfig
+        Calibration settings including comparison targets, priors, and fitting window.
+    data_state : pd.DataFrame
+        Observed data for this specific location/model (already filtered to location).
+    intervention_types : list[str]
+        List of intervention types to apply (e.g., ["parameter", "school_closure"]).
+    sampled_start_timespan : Timespan | None, optional
+        Earliest timespan if start_date is being sampled/calibrated.
+        If provided, enables start_date sampling and vaccination reaggregation.
+    earliest_vax : dict | None, optional
+        Pre-calculated vaccination schedule from earliest start_date.
+        Required when sampled_start_timespan is provided and vaccinations are used.
+
+    Returns
+    -------
+    callable
+        A simulate_wrapper function, which takes params:dict and returns dict.
+        This wrapper is passed to ABCSampler and will be called during calibration.
+
+    Notes
+    -----
+    The wrapper function expects params dict to contain:
+    - "epimodel": The model to simulate (passed via fixed_parameters)
+    - "end_date": Simulation end date
+    - "projection": Boolean indicating calibration vs projection mode
+    - Calibrated parameter values (e.g., "beta", "initial_infected")
+    - Optional "start_date" (offset in days, if start_date is calibrated)
+    - Optional "seasonality_min" (if seasonality is calibrated)
+
+    The wrapper returns:
+    - For calibration (projection=False): {"data": np.ndarray} of simulated values
+      at observation times, aligned with observed data dates
+    - For projection (projection=True): {"dates": list, "transitions": dict,
+      "compartments": dict} with full simulation results
+
+    """
+
+    def simulate_wrapper(params: dict) -> dict:
+        # Extract model from params
+        wrapper_model = params["epimodel"]
+        m = copy.deepcopy(wrapper_model)
+
+        # Accommodate for sampled start_date
+        if sampled_start_timespan:
+            start_date = sampled_start_timespan.start_date + dt.timedelta(days=params["start_date"])
+        else:
+            start_date = basemodel.timespan.start_date
+
+        timespan = Timespan(start_date=start_date, end_date=params["end_date"], delta_t=basemodel.timespan.delta_t)
+
+        # Sampled/calculated parameters
+        new_params = {
+            k: Parameter(type="scalar", value=v)
+            for k, v in params.items()
+            if k in basemodel.parameters and basemodel.parameters[k].type == "calibrated"
+        }
+        if new_params:
+            _add_model_parameters_from_config(m, new_params)
+        if "calculated" in [param_args.type.value for _, param_args in basemodel.parameters.items()]:
+            _calculate_parameters_from_config(m, basemodel.parameters)
+
+        # Vaccination (if start_date is sampled)
+        if basemodel.vaccination and sampled_start_timespan:
+            reaggregated_vax = reaggregate_vaccines(earliest_vax, timespan.start_date)
+            _add_vaccination_schedules_from_config(
+                m, basemodel.transitions, basemodel.vaccination, timespan, use_schedule=reaggregated_vax
+            )
+
+        # Seasonality (this must occur before parameter interventions to preserve parameter overrides)
+        if basemodel.seasonality:
+            if "seasonality_min" in params:
+                basemodel.seasonality.min_value = params["seasonality_min"]
+            _add_seasonality_from_config(m, basemodel.seasonality, timespan)
+
+        # Parameter interventions
+        if basemodel.interventions and "parameter" in intervention_types:
+            _add_parameter_interventions_from_config(m, basemodel.interventions, timespan)
+
+        # Initial conditions
+        compartment_init = calculate_compartment_initial_conditions(
+            compartments=basemodel.compartments,
+            population_array=m.population.Nk,
+            sampled_compartments=params,
+        )
+
+        # Collect settings
+        sim_params = {
+            "epimodel": m,
+            "initial_conditions_dict": compartment_init,
+            "start_date": timespan.start_date,
+            "end_date": params["end_date"],
+            "resample_frequency": basemodel.simulation.resample_frequency,
+        }
+
+        # Run simulation
+        if not params["projection"]:
+            try:
+                results = simulate(**sim_params)
+                trajectory_dates = results.dates
+                data_dates = list(pd.to_datetime(data_state.target_end_date.values))
+
+                mask = [date in data_dates for date in trajectory_dates]
+
+                total_hosp = sum(results.transitions[key] for key in calibration.comparison[0].simulation)
+
+                total_hosp = total_hosp[mask]
+
+                if len(total_hosp) < len(data_dates):
+                    pad_len = len(data_dates) - len(total_hosp)
+                    total_hosp = np.pad(total_hosp, (pad_len, 0), constant_values=0)
+
+            except Exception as e:  # noqa: BLE001
+                failed_params = params.copy()
+                failed_params.pop("epimodel", None)
+                logger.info("Simulation failed with parameters %s: %s", failed_params, e)
+                data_dates = list(pd.to_datetime(data_state["target_end_date"].values))
+                total_hosp = np.full(len(data_dates), 0)
+
+            return {"data": total_hosp}
+
+        # Run projection if params["projection"] is True
+        try:
+            results = simulate(**sim_params)
+        except Exception as e:  # noqa: BLE001
+            failed_params = params.copy()
+            failed_params.pop("epimodel", None)
+            logger.info("Projection failed with parameters %s: %s", failed_params, e)
+            return {}
+        else:
+            # Return results from successful projection
+            return {
+                "dates": results.dates,
+                "transitions": results.transitions,
+                "compartments": results.compartments,
+            }
+
+    return simulate_wrapper
+
+
 def _get_data_in_window(data: pd.DataFrame, calibration: CalibrationConfig) -> pd.DataFrame:
     """Get data within a specified time window."""
     window_start = calibration.fitting_window.start_date
@@ -731,102 +886,15 @@ def build_calibration(
     for model in models:
         data_state = _get_data_in_location(data_in_window, model)
 
-        # Create simulate wrapper
-        def simulate_wrapper(params):
-            # np.random.seed(basemodel.random_seed)
-            model = params["epimodel"]
-            m = copy.deepcopy(model)
-
-            # Accomodate for sampled start_date
-            if sampled_start_timespan:
-                start_date = sampled_start_timespan.start_date + dt.timedelta(days=params["start_date"])
-            else:
-                start_date = basemodel.timespan.start_date
-
-            timespan = Timespan(start_date=start_date, end_date=params["end_date"], delta_t=basemodel.timespan.delta_t)
-
-            # Sampled/calculated parameters
-            new_params = {
-                k: Parameter(type="scalar", value=v)
-                for k, v in params.items()
-                if k in basemodel.parameters.keys() and basemodel.parameters[k].type == "calibrated"
-            }
-            if new_params:
-                _add_model_parameters_from_config(m, new_params)
-            if "calculated" in [param_args.type.value for _, param_args in basemodel.parameters.items()]:
-                _calculate_parameters_from_config(m, basemodel.parameters)
-
-            # Vaccination (if start_date is sampled)
-            if basemodel.vaccination and sampled_start_timespan:
-                reaggregated_vax = reaggregate_vaccines(earliest_vax, timespan.start_date)
-                _add_vaccination_schedules_from_config(
-                    m, basemodel.transitions, basemodel.vaccination, timespan, use_schedule=reaggregated_vax
-                )
-
-            # Seasonality (this must occur before parameter interventions to preserve parameter overrides)
-            if basemodel.seasonality:
-                if "seasonality_min" in params.keys():
-                    basemodel.seasonality.min_value = params["seasonality_min"]
-                _add_seasonality_from_config(m, basemodel.seasonality, timespan)
-
-            # Parameter interventions
-            if basemodel.interventions and "parameter" in intervention_types:
-                _add_parameter_interventions_from_config(m, basemodel.interventions, timespan)
-
-            # Initial conditions
-            compartment_init = calculate_compartment_initial_conditions(
-                compartments=basemodel.compartments,
-                population_array=m.population.Nk,
-                sampled_compartments=params,
-            )
-
-            # Collect settings
-            sim_params = {
-                "epimodel": m,
-                "initial_conditions_dict": compartment_init,
-                "start_date": timespan.start_date,
-                "end_date": params["end_date"],
-                "resample_frequency": basemodel.simulation.resample_frequency,
-            }
-
-            # Run simulation
-            if params["projection"] == False:
-                try:
-                    results = simulate(**sim_params)
-                    trajectory_dates = results.dates
-                    data_dates = list(pd.to_datetime(data_state.target_end_date.values))
-
-                    mask = [date in data_dates for date in trajectory_dates]
-
-                    total_hosp = sum(results.transitions[key] for key in calibration.comparison[0].simulation)
-
-                    total_hosp = total_hosp[mask]
-
-                    if len(total_hosp) < len(data_dates):
-                        pad_len = len(data_dates) - len(total_hosp)
-                        total_hosp = np.pad(total_hosp, (pad_len, 0), constant_values=0)
-
-                except Exception as e:
-                    failed_params = params.copy()
-                    failed_params.pop("epimodel", None)
-                    logger.info(f"Simulation failed with parameters {failed_params}: {e}")
-                    data_dates = list(pd.to_datetime(data_state["target_end_date"].values))
-                    total_hosp = np.full(len(data_dates), 0)
-
-                return {"data": total_hosp}
-
-            if params["projection"] == True:
-                try:
-                    results = simulate(**sim_params)
-                    return {
-                        "dates": results.dates,
-                        "transitions": results.transitions,
-                        "compartments": results.compartments,
-                    }
-                except Exception as e:
-                    failed_params = params.copy()
-                    failed_params.pop("epimodel", None)
-                    logger.info(f"Projection failed with parameters {failed_params}: {e}")
+        # Create simulate_wrapper
+        simulate_wrapper = _make_simulate_wrapper(
+            basemodel=basemodel,
+            calibration=calibration,
+            data_state=data_state,
+            intervention_types=intervention_types,
+            sampled_start_timespan=sampled_start_timespan,
+            earliest_vax=earliest_vax,
+        )
 
         # Parse priors into scipy functions
         priors = {}
@@ -836,9 +904,9 @@ def build_calibration(
             priors["start_date"] = distribution_to_scipy(calibration.start_date.prior)
 
         fixed_parameters = {k: v for k, v in model.parameters.items() if v is not None}
-        fixed_parameters.update({"end_date": calibration.fitting_window.end_date,
-                                 "projection": False,
-                                 "epimodel": model})
+        fixed_parameters.update(
+            {"end_date": calibration.fitting_window.end_date, "projection": False, "epimodel": model}
+        )
 
         # ABCSamplers are the main outputs
         abc_sampler = ABCSampler(
