@@ -734,6 +734,7 @@ def build_calibration(
         # Create simulate wrapper
         def simulate_wrapper(params):
             # np.random.seed(basemodel.random_seed)
+            model = params["epimodel"]
             m = copy.deepcopy(model)
 
             # Accomodate for sampled start_date
@@ -806,7 +807,9 @@ def build_calibration(
                         total_hosp = np.pad(total_hosp, (pad_len, 0), constant_values=0)
 
                 except Exception as e:
-                    logger.info(f"Simulation failed with parameters {params}: {e}")
+                    failed_params = params.copy()
+                    failed_params.pop("epimodel", None)
+                    logger.info(f"Simulation failed with parameters {failed_params}: {e}")
                     data_dates = list(pd.to_datetime(data_state["target_end_date"].values))
                     total_hosp = np.full(len(data_dates), 0)
 
@@ -821,7 +824,9 @@ def build_calibration(
                         "compartments": results.compartments,
                     }
                 except Exception as e:
-                    logger.info(f"Projection failed with parameters {params}: {e}")
+                    failed_params = params.copy()
+                    failed_params.pop("epimodel", None)
+                    logger.info(f"Projection failed with parameters {failed_params}: {e}")
 
         # Parse priors into scipy functions
         priors = {}
@@ -831,8 +836,9 @@ def build_calibration(
             priors["start_date"] = distribution_to_scipy(calibration.start_date.prior)
 
         fixed_parameters = {k: v for k, v in model.parameters.items() if v is not None}
-        fixed_parameters.update({"end_date": calibration.fitting_window.end_date})
-        fixed_parameters.update({"projection": False})
+        fixed_parameters.update({"end_date": calibration.fitting_window.end_date,
+                                 "projection": False,
+                                 "epimodel": model})
 
         # ABCSamplers are the main outputs
         abc_sampler = ABCSampler(
@@ -943,6 +949,7 @@ def dispatch_runner(configs: BuilderOutput) -> SimulationOutput | CalibrationOut
                     "projection": True,
                     "end_date": configs.projection.end_date,
                     "generation": configs.projection.generation_number,
+                    "epimodel": configs.model,
                 },
                 iterations=configs.projection.n_trajectories,
             )
