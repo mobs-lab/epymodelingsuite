@@ -14,7 +14,7 @@ from typing import Any
 
 from .config_loader import load_sampling_config_from_file
 from .sampler import generate_parameter_samples
-from .validation.sampling_validator import Sampler, SamplingConfiguration
+from .schema.sampling import Sampler, SamplingConfiguration
 
 logger = logging.getLogger(__name__)
 

@@ -8,7 +8,7 @@ import scipy.stats
 from epydemix import EpiModel
 from epydemix.population import Population
 
-from .validation.common_validators import Distribution
+from .schema.common import Distribution
 
 
 def identify_config_type(file_path: str) -> str | None:
