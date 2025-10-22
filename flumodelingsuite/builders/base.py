@@ -173,7 +173,7 @@ class RetrieveName(ast.NodeTransformer):
             else:
                 try:
                     value = self.model.get_parameter(node.id)
-                    if type(value) == np.ndarray:
+                    if isinstance(value, np.ndarray):
                         assert value.shape[0] == 1, (
                             "Parameter calculation using parameters with array values is only implemented for age-varying parameters."
                         )
@@ -356,7 +356,6 @@ def add_model_parameters_from_config(model: EpiModel, parameters: dict[str, Para
     """
     # Add parameters to the model
     parameters_dict = {}
-    scan_dict = {}
     for key, data in parameters.items():
         if data.type == "scalar":
             if type(data.value) is str:
@@ -541,8 +540,7 @@ def calculate_compartment_initial_conditions(
     if default_compartment_id:
         if np.any(remaining_population < 0):
             raise ValueError(
-                f"Initial conditions exceed population in some age groups. "
-                f"Remaining population: {remaining_population}"
+                f"Initial conditions exceed population in some age groups. Remaining population: {remaining_population}"
             )
         initial_conditions_dict[default_compartment_id] = remaining_population.astype(int)
 

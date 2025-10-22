@@ -9,6 +9,11 @@ import pandas as pd
 from epydemix import simulate
 from epydemix.model import EpiModel
 
+from ..schema.basemodel import BaseEpiModel, Parameter, Timespan
+from ..schema.calibration import CalibrationConfig
+from ..school_closures import make_school_closure_dict
+from ..utils import get_location_codebook, make_dummy_population
+from ..vaccinations import reaggregate_vaccines, scenario_to_epydemix
 from .base import (
     add_model_compartments_from_config,
     add_model_parameters_from_config,
@@ -23,11 +28,6 @@ from .interventions import (
 )
 from .seasonality import add_seasonality_from_config
 from .vaccination import add_vaccination_schedules_from_config
-from ..schema.basemodel import BaseEpiModel, Parameter, Timespan
-from ..schema.calibration import CalibrationConfig
-from ..school_closures import make_school_closure_dict
-from ..utils import get_location_codebook, make_dummy_population
-from ..vaccinations import reaggregate_vaccines, scenario_to_epydemix
 
 logger = logging.getLogger(__name__)
 

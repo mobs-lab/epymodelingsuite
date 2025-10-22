@@ -89,9 +89,7 @@ def run_calibration_with_projection(configs: BuilderOutput) -> CalibrationOutput
     """
     logger.info("RUNNER: running calibration and projection.")
     try:
-        calibration_results = configs.calibrator.calibrate(
-            strategy=configs.calibration.name, **configs.calibration.options
-        )
+        configs.calibrator.calibrate(strategy=configs.calibration.name, **configs.calibration.options)
         projection_results = configs.calibrator.run_projections(
             parameters={
                 "projection": True,
@@ -132,17 +130,16 @@ def dispatch_runner(configs: BuilderOutput) -> SimulationOutput | CalibrationOut
         return run_simulation(configs)
 
     # Handle calibration
-    elif configs.calibration and not configs.projection:
+    if configs.calibration and not configs.projection:
         logger.info("RUNNER: dispatched for calibration.")
         return run_calibration(configs)
 
     # Handle calibration and projection
-    elif configs.calibration and configs.projection:
+    if configs.calibration and configs.projection:
         logger.info("RUNNER: dispatched for calibration and projection.")
         return run_calibration_with_projection(configs)
 
     # Error
-    else:
-        raise AssertionError(
-            "Runner called without simulation or calibration specs. Verify that your BuilderOutputs are valid."
-        )
+    raise AssertionError(
+        "Runner called without simulation or calibration specs. Verify that your BuilderOutputs are valid."
+    )
