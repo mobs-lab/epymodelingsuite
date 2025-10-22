@@ -339,8 +339,8 @@ def build_calibration(
     data_in_window = get_data_in_window(observed, calibration)
     calibrators = []
     for model in models:
-        data_state = get_data_in_location(data_in_window, model)
-
+        data_state = get_data_in_location(data_in_window, model, "geo_value")
+        vax_state = get_data_in_location(earliest_vax, model, "location")
         # Create simulate_wrapper
         simulate_wrapper = make_simulate_wrapper(
             basemodel=basemodel,
@@ -348,7 +348,7 @@ def build_calibration(
             data_state=data_state,
             intervention_types=intervention_types,
             sampled_start_timespan=sampled_start_timespan,
-            earliest_vax=earliest_vax,
+            earliest_vax=vax_state,
         )
 
         # Parse priors into scipy functions
