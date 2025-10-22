@@ -124,7 +124,7 @@ class TestSetupInterventions:
         with (
             patch("flumodelingsuite.builders.orchestrators.make_school_closure_dict") as mock_closure_dict,
             patch(
-                "flumodelingsuite.builders.interventions.add_school_closure_intervention_from_config"
+                "flumodelingsuite.builders.orchestrators.add_school_closure_intervention_from_config"
             ) as mock_add_closure,
         ):
             mock_closure_dict.return_value = {"2024": []}
@@ -171,7 +171,7 @@ class TestSetupInterventions:
         intervention_types = ["contact_matrix"]
 
         with patch(
-            "flumodelingsuite.builders.interventions.add_contact_matrix_interventions_from_config"
+            "flumodelingsuite.builders.orchestrators.add_contact_matrix_interventions_from_config"
         ) as mock_add_contact:
             result = setup_interventions(
                 models=models,
@@ -210,10 +210,10 @@ class TestSetupInterventions:
         with (
             patch("flumodelingsuite.builders.orchestrators.make_school_closure_dict") as mock_closure_dict,
             patch(
-                "flumodelingsuite.builders.interventions.add_school_closure_intervention_from_config"
+                "flumodelingsuite.builders.orchestrators.add_school_closure_intervention_from_config"
             ) as mock_add_closure,
             patch(
-                "flumodelingsuite.builders.interventions.add_contact_matrix_interventions_from_config"
+                "flumodelingsuite.builders.orchestrators.add_contact_matrix_interventions_from_config"
             ) as mock_add_contact,
         ):
             mock_closure_dict.return_value = {"2024": []}
@@ -243,7 +243,7 @@ class TestSetupInterventions:
         with (
             patch("flumodelingsuite.builders.orchestrators.make_school_closure_dict") as mock_closure_dict,
             patch(
-                "flumodelingsuite.builders.interventions.add_school_closure_intervention_from_config"
+                "flumodelingsuite.builders.orchestrators.add_school_closure_intervention_from_config"
             ) as mock_add_closure,
         ):
             mock_closure_dict.return_value = {"2024": []}
@@ -273,7 +273,7 @@ class TestSetupInterventions:
         with (
             patch("flumodelingsuite.builders.orchestrators.make_school_closure_dict") as mock_closure_dict,
             patch(
-                "flumodelingsuite.builders.interventions.add_school_closure_intervention_from_config"
+                "flumodelingsuite.builders.orchestrators.add_school_closure_intervention_from_config"
             ) as mock_add_closure,
         ):
             mock_closure_dict.return_value = {"2023": [], "2024": [], "2025": []}
@@ -305,7 +305,7 @@ class TestSetupInterventions:
         with (
             patch("flumodelingsuite.builders.orchestrators.make_school_closure_dict") as mock_closure_dict,
             patch(
-                "flumodelingsuite.builders.interventions.add_school_closure_intervention_from_config"
+                "flumodelingsuite.builders.orchestrators.add_school_closure_intervention_from_config"
             ) as mock_add_closure,
         ):
             mock_closure_dict.return_value = {"2022": [], "2023": [], "2024": []}
@@ -345,7 +345,7 @@ class TestSetupInterventions:
         with (
             patch("flumodelingsuite.builders.orchestrators.make_school_closure_dict") as mock_closure_dict,
             patch(
-                "flumodelingsuite.builders.interventions.add_school_closure_intervention_from_config"
+                "flumodelingsuite.builders.orchestrators.add_school_closure_intervention_from_config"
             ) as mock_add_closure,
         ):
             setup_interventions(
@@ -378,7 +378,7 @@ class TestSetupInterventions:
         intervention_types = ["school_closure"]  # contact_matrix not included
 
         with patch(
-            "flumodelingsuite.builders.interventions.add_contact_matrix_interventions_from_config"
+            "flumodelingsuite.builders.orchestrators.add_contact_matrix_interventions_from_config"
         ) as mock_add_contact:
             setup_interventions(
                 models=models,
@@ -410,10 +410,10 @@ class TestSetupInterventions:
         with (
             patch("flumodelingsuite.builders.orchestrators.make_school_closure_dict") as mock_closure_dict,
             patch(
-                "flumodelingsuite.builders.interventions.add_school_closure_intervention_from_config"
+                "flumodelingsuite.builders.orchestrators.add_school_closure_intervention_from_config"
             ) as mock_add_closure,
             patch(
-                "flumodelingsuite.builders.interventions.add_contact_matrix_interventions_from_config"
+                "flumodelingsuite.builders.orchestrators.add_contact_matrix_interventions_from_config"
             ) as mock_add_contact,
         ):
             result = setup_interventions(
@@ -445,7 +445,7 @@ class TestSetupInterventions:
         with (
             patch("flumodelingsuite.builders.orchestrators.make_school_closure_dict") as mock_closure_dict,
             patch(
-                "flumodelingsuite.builders.interventions.add_school_closure_intervention_from_config"
+                "flumodelingsuite.builders.orchestrators.add_school_closure_intervention_from_config"
             ) as mock_add_closure,
         ):
             mock_closure_dict.return_value = {"2024": []}
@@ -481,7 +481,7 @@ class TestSetupInterventions:
         intervention_types = ["contact_matrix"]
 
         with patch(
-            "flumodelingsuite.builders.interventions.add_contact_matrix_interventions_from_config"
+            "flumodelingsuite.builders.orchestrators.add_contact_matrix_interventions_from_config"
         ) as mock_add_contact:
             result = setup_interventions(
                 models=models,
@@ -503,7 +503,7 @@ class TestSetupInterventions:
         intervention_types = ["school_closure"]
 
         with patch("flumodelingsuite.builders.orchestrators.make_school_closure_dict", return_value={"2024": []}):
-            with patch("flumodelingsuite.builders.interventions.add_school_closure_intervention_from_config"):
+            with patch("flumodelingsuite.builders.orchestrators.add_school_closure_intervention_from_config"):
                 result = setup_interventions(
                     models=models,
                     basemodel=base_model_config,
@@ -534,10 +534,10 @@ class TestSetupInterventions:
         with (
             patch("flumodelingsuite.builders.orchestrators.make_school_closure_dict") as mock_closure_dict,
             patch(
-                "flumodelingsuite.builders.interventions.add_school_closure_intervention_from_config"
+                "flumodelingsuite.builders.orchestrators.add_school_closure_intervention_from_config"
             ) as mock_add_closure,
             patch(
-                "flumodelingsuite.builders.interventions.add_contact_matrix_interventions_from_config"
+                "flumodelingsuite.builders.orchestrators.add_contact_matrix_interventions_from_config"
             ) as mock_add_contact,
         ):
             result = setup_interventions(
