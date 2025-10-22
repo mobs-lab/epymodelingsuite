@@ -52,5 +52,4 @@ def get_data_in_location(data: pd.DataFrame, model: EpiModel, location_key: str)
         Filtered data for the model's location.
     """
     location_iso = convert_location_name_format(model.population.name, "ISO")
-    # TODO: geo_value column name should be configurable.
     return data[data[location_key] == location_iso]
