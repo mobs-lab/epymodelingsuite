@@ -18,10 +18,8 @@ output:
     rate_trends: True
 
   trajectories:
-    path: ""
 
   posteriors:
-    path: ""
 
   run_meta:
     path: ""

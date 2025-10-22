@@ -19,11 +19,14 @@ class QuantilesOutput(BaseModel):
         flusmh = "flusmh"
         covid19forecast = "covid19forecast"
 
-    selections: list[float] = Field("Desired quantiles expressed as floats.")
-    data_format: str | QuantileFormatEnum = Field(
+    selections: list[float] | None = Field(
+        [0.025, 0.05, 0.25, 0.5, 0.75, 0.95, 0.975],
+        description="Desired quantiles expressed as floats, default [0.025, 0.05, 0.25, 0.5, 0.75, 0.95, 0.975].",
+    )
+    data_format: str | QuantileFormatEnum | None = Field(
         "default", description="Create quantile outputs in the default format or a supported HubVerse format."
     )
-    rate_trends: bool = Field(
+    rate_trends: bool | None = Field(
         False,
         description="Option to add rate-trend forecasts to quantile outputs if generating a format for which rate-trend categories are defined e.g. flusightforecast format.",
     )
@@ -33,7 +36,9 @@ class QuantilesOutput(BaseModel):
         """Ensure rate-trend categories are available with the selected format."""
         available_formats = ["flusightforecast"]
         if self.data_format not in available_formats and self.rate_trends:
-            raise ValueError
+            logger.warning(
+                f"Rate-trend forecasts are not defined for selected format {self.data_format}, available formats are {available_formats}"
+            )
 
     @field_validator("selections")
     def check_selections(cls, v):
@@ -45,20 +50,20 @@ class QuantilesOutput(BaseModel):
 class TrajectoriesOutput(BaseModel):
     """Specifications for trajectory outputs."""
 
-    # Optional resampling?
+    compartments: list[str] | None = Field(
+        None, description="Filter trajectories for selected compartments, default is all compartments."
+    )
+    resample_freq: str | None = Field(
+        None, description="Resample trajectories to a new frequency, e.g. 'D' or 'W-SAT'."
+    )
 
 
 class PosteriorsOutput(BaseModel):
     """Specifications for posterior outputs."""
 
 
-
-class RunMetaOutput(BaseModel):
+class ModelMetaOutput(BaseModel):
     """Specifications for parameter tracking / run metadata outputs."""
-
-
-
-
 
 
 class OutputConfiguration(BaseModel):
@@ -68,8 +73,8 @@ class OutputConfiguration(BaseModel):
     quantiles: QuantilesOutput | None = Field(None, description="Specifications for quantile outputs.")
     trajectories: TrajectoriesOutput | None = Field(None, description="Specifications for trajectory outputs.")
     posteriors: PosteriorsOutput | None = Field(None, description="Specifications for posterior outputs.")
-    run_meta: RunMetaOutput | None = Field(
-        None, description="Specifications for parameter tracking / run metadata outputs."
+    model_meta: ModelMetaOutput | None = Field(
+        None, description="Specifications for parameter tracking / model metadata outputs."
     )
 
 
