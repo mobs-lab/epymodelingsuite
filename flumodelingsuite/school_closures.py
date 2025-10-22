@@ -256,7 +256,12 @@ def add_school_closure_interventions(
     -------
             None
     """
+    import copy
+
     from .utils import convert_location_name_format
+
+    # Make a deep copy of the model to avoid modifying the original
+    model = copy.deepcopy(model)
 
     # Get the school closures that apply to the location/population of the model
     closures = closure_dict[convert_location_name_format(model.population.name, "abbreviation")]
