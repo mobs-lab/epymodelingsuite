@@ -1,8 +1,10 @@
 """Core model building functions for EpiModel instances."""
 
+import ast
 import logging
 
 import numpy as np
+import scipy
 from epydemix.model import EpiModel
 from epydemix.population import load_epydemix_population
 from epydemix.utils import convert_to_2Darray
