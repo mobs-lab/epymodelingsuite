@@ -729,7 +729,7 @@ class TestSetupVaccinationSchedules:
         models, population_names = sample_models
 
         # Mock _add_vaccination_schedules_from_config
-        with patch("flumodelingsuite.builders.vaccination.add_vaccination_schedules_from_config") as mock_add_vax:
+        with patch("flumodelingsuite.builders.orchestrators.add_vaccination_schedules_from_config") as mock_add_vax:
             result_models, earliest_vax = setup_vaccination_schedules(
                 basemodel=base_model_with_vaccination,
                 models=models,
