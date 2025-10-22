@@ -1,4 +1,4 @@
-"""Tests for _make_simulate_wrapper function - verifies closure bug fix."""
+"""Tests for make_simulate_wrapper function - verifies closure bug fix."""
 
 from __future__ import annotations
 
@@ -9,7 +9,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from flumodelingsuite.validation.basemodel_validator import (
+from flumodelingsuite.builders.orchestrators import create_model_collection, make_simulate_wrapper
+from flumodelingsuite.schema.basemodel import (
     BaseEpiModel,
     Compartment,
     Intervention,
@@ -20,11 +21,10 @@ from flumodelingsuite.validation.basemodel_validator import (
     Timespan,
     Transition,
 )
-from flumodelingsuite.workflow_dispatcher import _create_model_collection, _make_simulate_wrapper
 
 
 class TestMakeSimulateWrapper:
-    """Tests for _make_simulate_wrapper function."""
+    """Tests for make_simulate_wrapper function."""
 
     @pytest.fixture
     def base_model_config(self):
@@ -74,12 +74,12 @@ class TestMakeSimulateWrapper:
         return pd.DataFrame({"target_end_date": dates, "observed": np.arange(10, dtype=float) * 10})
 
     def test_returns_callable(self, base_model_config, mock_calibration, data_state):
-        """Test that _make_simulate_wrapper returns a callable function and can be invoked."""
-        # Create EpiModels using _create_model_collection
-        models, _ = _create_model_collection(base_model_config, None)
+        """Test that make_simulate_wrapper returns a callable function and can be invoked."""
+        # Create EpiModels using create_model_collection
+        models, _ = create_model_collection(base_model_config, None)
         model = models[0]
 
-        simulate_wrapper = _make_simulate_wrapper(
+        simulate_wrapper = make_simulate_wrapper(
             basemodel=base_model_config,
             calibration=mock_calibration,
             data_state=data_state,
@@ -113,7 +113,7 @@ class TestMakeSimulateWrapper:
         it correctly uses that data_state for calibration output alignment.
         """
         # Create a single EpiModel
-        models, _ = _create_model_collection(base_model_config, None)
+        models, _ = create_model_collection(base_model_config, None)
         model = models[0]
 
         # Create a data_state with the specified number of observations
@@ -125,7 +125,7 @@ class TestMakeSimulateWrapper:
         )
 
         # Create wrapper with this data_state
-        wrapper = _make_simulate_wrapper(
+        wrapper = make_simulate_wrapper(
             basemodel=base_model_config,
             calibration=mock_calibration,
             data_state=data_state,
@@ -163,10 +163,10 @@ class TestMakeSimulateWrapper:
         Calibration mode should return a dict with a "data" key containing a numpy array
         of simulated values aligned to the observation dates in data_state.
         """
-        models, _ = _create_model_collection(base_model_config, None)
+        models, _ = create_model_collection(base_model_config, None)
         model = models[0]
 
-        wrapper = _make_simulate_wrapper(
+        wrapper = make_simulate_wrapper(
             basemodel=base_model_config,
             calibration=mock_calibration,
             data_state=data_state,
@@ -202,10 +202,10 @@ class TestMakeSimulateWrapper:
         Projection mode should return a dict with "dates", "transitions", and "compartments"
         keys containing the full simulation results.
         """
-        models, _ = _create_model_collection(base_model_config, None)
+        models, _ = create_model_collection(base_model_config, None)
         model = models[0]
 
-        wrapper = _make_simulate_wrapper(
+        wrapper = make_simulate_wrapper(
             basemodel=base_model_config,
             calibration=mock_calibration,
             data_state=data_state,
@@ -247,10 +247,10 @@ class TestMakeSimulateWrapper:
         # Modify base model to have a calibrated parameter (no value for calibrated type)
         base_model_config.parameters["beta"] = Parameter(type="calibrated")
 
-        models, _ = _create_model_collection(base_model_config, None)
+        models, _ = create_model_collection(base_model_config, None)
         model = models[0]
 
-        wrapper = _make_simulate_wrapper(
+        wrapper = make_simulate_wrapper(
             basemodel=base_model_config,
             calibration=mock_calibration,
             data_state=data_state,
@@ -288,10 +288,10 @@ class TestMakeSimulateWrapper:
             min_value=0.3,
         )
 
-        models, _ = _create_model_collection(base_model_config, None)
+        models, _ = create_model_collection(base_model_config, None)
         model = models[0]
 
-        wrapper = _make_simulate_wrapper(
+        wrapper = make_simulate_wrapper(
             basemodel=base_model_config,
             calibration=mock_calibration,
             data_state=data_state,
@@ -331,10 +331,10 @@ class TestMakeSimulateWrapper:
             )
         ]
 
-        models, _ = _create_model_collection(base_model_config, None)
+        models, _ = create_model_collection(base_model_config, None)
         model = models[0]
 
-        wrapper = _make_simulate_wrapper(
+        wrapper = make_simulate_wrapper(
             basemodel=base_model_config,
             calibration=mock_calibration,
             data_state=data_state,
@@ -361,7 +361,7 @@ class TestMakeSimulateWrapper:
 
         Tests: start_date calculation when sampled_start_timespan is provided.
         """
-        models, _ = _create_model_collection(base_model_config, None)
+        models, _ = create_model_collection(base_model_config, None)
         model = models[0]
 
         # Create a sampled_start_timespan (earliest possible start date)
@@ -371,7 +371,7 @@ class TestMakeSimulateWrapper:
             delta_t=1.0,
         )
 
-        wrapper = _make_simulate_wrapper(
+        wrapper = make_simulate_wrapper(
             basemodel=base_model_config,
             calibration=mock_calibration,
             data_state=data_state,
@@ -401,10 +401,10 @@ class TestMakeSimulateWrapper:
 
         Tests: exception handling in projection mode.
         """
-        models, _ = _create_model_collection(base_model_config, None)
+        models, _ = create_model_collection(base_model_config, None)
         model = models[0]
 
-        wrapper = _make_simulate_wrapper(
+        wrapper = make_simulate_wrapper(
             basemodel=base_model_config,
             calibration=mock_calibration,
             data_state=data_state,
@@ -440,10 +440,10 @@ class TestMakeSimulateWrapper:
         # Add a calculated parameter to base model
         base_model_config.parameters["R0"] = Parameter(type="calculated", value="beta / gamma")
 
-        models, _ = _create_model_collection(base_model_config, None)
+        models, _ = create_model_collection(base_model_config, None)
         model = models[0]
 
-        wrapper = _make_simulate_wrapper(
+        wrapper = make_simulate_wrapper(
             basemodel=base_model_config,
             calibration=mock_calibration,
             data_state=data_state,

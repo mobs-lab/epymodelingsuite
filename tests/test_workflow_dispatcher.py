@@ -6,10 +6,10 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 
-from flumodelingsuite.workflow_dispatcher import (
-    _create_model_collection,
-    _setup_vaccination_schedules,
-    calculate_compartment_initial_conditions,
+from flumodelingsuite.builders.base import calculate_compartment_initial_conditions
+from flumodelingsuite.builders.orchestrators import (
+    create_model_collection,
+    setup_vaccination_schedules,
 )
 
 
@@ -322,14 +322,14 @@ class TestCalculateCompartmentInitialConditions:
 
 
 class TestCreateModelCollection:
-    """Tests for _create_model_collection function."""
+    """Tests for create_model_collection function."""
 
     @pytest.fixture
     def base_model_config(self):
         """Create a minimal BaseEpiModel configuration for testing."""
         from datetime import date
 
-        from flumodelingsuite.validation.basemodel_validator import (
+        from flumodelingsuite.schema.basemodel import (
             BaseEpiModel,
             Compartment,
             Parameter,
@@ -384,7 +384,7 @@ class TestCreateModelCollection:
 
     def test_creates_single_model_when_population_names_none(self, base_model_config):
         """Test that a single model is created when population_names is None."""
-        models, resolved_names = _create_model_collection(base_model_config, None)
+        models, resolved_names = create_model_collection(base_model_config, None)
 
         # Should create exactly one model
         assert len(models) == 1
@@ -399,7 +399,7 @@ class TestCreateModelCollection:
     def test_creates_multiple_models_for_multiple_populations(self, base_model_config):
         """Test that multiple models are created for a list of population names."""
         population_names = ["US-CA", "US-TX", "US-NY"]
-        models, resolved_names = _create_model_collection(base_model_config, population_names)
+        models, resolved_names = create_model_collection(base_model_config, population_names)
 
         # Should create one model per population
         assert len(models) == 3
@@ -416,7 +416,7 @@ class TestCreateModelCollection:
         from flumodelingsuite.utils import get_location_codebook
 
         population_names = ["all"]
-        models, resolved_names = _create_model_collection(base_model_config, population_names)
+        models, resolved_names = create_model_collection(base_model_config, population_names)
 
         # Should create models for all locations in codebook
         codebook = get_location_codebook()
@@ -435,7 +435,7 @@ class TestCreateModelCollection:
     def test_all_models_share_compartments(self, base_model_config):
         """Test that all models have the same compartments."""
         population_names = ["US-CA", "US-TX"]
-        models, _ = _create_model_collection(base_model_config, population_names)
+        models, _ = create_model_collection(base_model_config, population_names)
 
         # Check compartments exist on all models
         # In epydemix, model.compartments is a list of compartment IDs (strings)
@@ -448,7 +448,7 @@ class TestCreateModelCollection:
     def test_all_models_share_transitions(self, base_model_config):
         """Test that all models have the same transitions."""
         population_names = ["US-CA", "US-TX"]
-        models, _ = _create_model_collection(base_model_config, population_names)
+        models, _ = create_model_collection(base_model_config, population_names)
 
         # Check transitions exist on all models
         # In epydemix, model.transitions is a dict mapping compartment IDs to transition objects
@@ -464,7 +464,7 @@ class TestCreateModelCollection:
     def test_all_models_share_parameters(self, base_model_config):
         """Test that all models have the same non-sampled parameters."""
         population_names = ["US-CA", "US-TX"]
-        models, _ = _create_model_collection(base_model_config, population_names)
+        models, _ = create_model_collection(base_model_config, population_names)
 
         # Check parameters exist on all models
         for model in models:
@@ -476,7 +476,7 @@ class TestCreateModelCollection:
     def test_models_have_different_populations(self, base_model_config):
         """Test that each model has a different population assigned."""
         population_names = ["US-CA", "US-TX", "US-NY"]
-        models, _ = _create_model_collection(base_model_config, population_names)
+        models, _ = create_model_collection(base_model_config, population_names)
 
         # Extract population names from models
         model_pop_names = [model.population.name for model in models]
@@ -489,14 +489,14 @@ class TestCreateModelCollection:
 
     def test_model_name_is_set_from_config(self, base_model_config):
         """Test that model name is set from basemodel config."""
-        models, _ = _create_model_collection(base_model_config, ["US-CA"])
+        models, _ = create_model_collection(base_model_config, ["US-CA"])
 
         assert models[0].name == "test_model"
 
     def test_model_name_not_set_when_none(self, base_model_config):
         """Test that model name is not set when basemodel.name is None."""
         base_model_config.name = None
-        models, _ = _create_model_collection(base_model_config, ["US-CA"])
+        models, _ = create_model_collection(base_model_config, ["US-CA"])
 
         # epydemix.EpiModel initializes name as 'EpiModel' by default when not set
         assert models[0].name == "EpiModel"
@@ -504,7 +504,7 @@ class TestCreateModelCollection:
     def test_models_have_age_structure(self, base_model_config):
         """Test that all models have proper age-structured population."""
         population_names = ["US-CA", "US-TX"]
-        models, _ = _create_model_collection(base_model_config, population_names)
+        models, _ = create_model_collection(base_model_config, population_names)
 
         for model in models:
             # Check that population is set and has age structure
@@ -516,7 +516,7 @@ class TestCreateModelCollection:
 
     def test_returns_tuple_of_list_and_names(self, base_model_config):
         """Test that function returns tuple of (models, resolved_names)."""
-        result = _create_model_collection(base_model_config, ["US-CA"])
+        result = create_model_collection(base_model_config, ["US-CA"])
 
         assert isinstance(result, tuple)
         assert len(result) == 2
@@ -528,14 +528,14 @@ class TestCreateModelCollection:
     def test_resolved_names_matches_models_length(self, base_model_config):
         """Test that resolved_names list has same length as models list."""
         population_names = ["US-CA", "US-TX", "US-NY"]
-        models, resolved_names = _create_model_collection(base_model_config, population_names)
+        models, resolved_names = create_model_collection(base_model_config, population_names)
 
         assert len(models) == len(resolved_names)
 
     def test_models_are_independent_copies(self, base_model_config):
         """Test that models are independent deepcopies, not references."""
         population_names = ["US-CA", "US-TX"]
-        models, _ = _create_model_collection(base_model_config, population_names)
+        models, _ = create_model_collection(base_model_config, population_names)
 
         # Modify first model's parameter
         models[0].parameters["beta"] = 0.9
@@ -546,7 +546,7 @@ class TestCreateModelCollection:
     def test_handles_empty_population_list(self, base_model_config):
         """Test behavior with empty population list."""
         # Empty list creates a dummy model with base population (implementation detail)
-        models, resolved_names = _create_model_collection(base_model_config, [])
+        models, resolved_names = create_model_collection(base_model_config, [])
 
         # Actually creates one model from basemodel population when list is empty
         # This is because the code path falls through to use the base population
@@ -557,7 +557,7 @@ class TestCreateModelCollection:
     def test_maintains_model_configuration_integrity(self, base_model_config):
         """Test that model configuration is properly maintained across copies."""
         population_names = ["US-CA", "US-TX"]
-        models, _ = _create_model_collection(base_model_config, population_names)
+        models, _ = create_model_collection(base_model_config, population_names)
 
         for model in models:
             # Check compartments
@@ -571,14 +571,14 @@ class TestCreateModelCollection:
 
 
 class TestSetupVaccinationSchedules:
-    """Tests for _setup_vaccination_schedules function."""
+    """Tests for setup_vaccination_schedules function."""
 
     @pytest.fixture
     def base_model_config(self):
         """Create a minimal BaseEpiModel configuration for testing."""
         from datetime import date
 
-        from flumodelingsuite.validation.basemodel_validator import (
+        from flumodelingsuite.schema.basemodel import (
             BaseEpiModel,
             Compartment,
             Parameter,
@@ -637,7 +637,7 @@ class TestSetupVaccinationSchedules:
         # Create a minimal vaccination data file
         import pandas as pd
 
-        from flumodelingsuite.validation.basemodel_validator import Transition, Vaccination
+        from flumodelingsuite.schema.basemodel import Transition, Vaccination
 
         vax_data = pd.DataFrame(
             {
@@ -670,7 +670,7 @@ class TestSetupVaccinationSchedules:
     @pytest.fixture
     def sample_models(self, base_model_config):
         """Create a collection of test models."""
-        models, population_names = _create_model_collection(base_model_config, ["US-CA", "US-TX"])
+        models, population_names = create_model_collection(base_model_config, ["US-CA", "US-TX"])
         return models, population_names
 
     def test_returns_models_and_none_when_no_vaccination(self, base_model_config, sample_models):
@@ -678,7 +678,7 @@ class TestSetupVaccinationSchedules:
         base_model_config.vaccination = None
         models, population_names = sample_models
 
-        result_models, earliest_vax = _setup_vaccination_schedules(
+        result_models, earliest_vax = setup_vaccination_schedules(
             basemodel=base_model_config, models=models, sampled_start_timespan=None, population_names=population_names
         )
 
@@ -691,7 +691,7 @@ class TestSetupVaccinationSchedules:
         """Test that function returns (models, earliest_vax) when start_date is sampled."""
         from datetime import date
 
-        from flumodelingsuite.validation.basemodel_validator import Timespan
+        from flumodelingsuite.schema.basemodel import Timespan
 
         models, population_names = sample_models
 
@@ -703,9 +703,9 @@ class TestSetupVaccinationSchedules:
         mock_vax_schedule = pd.DataFrame({"date": ["2024-01-01"], "doses": [100]})
 
         with patch(
-            "flumodelingsuite.workflow_dispatcher.scenario_to_epydemix", return_value=mock_vax_schedule
+            "flumodelingsuite.builders.orchestrators.scenario_to_epydemix", return_value=mock_vax_schedule
         ) as mock_scenario_to_epydemix:
-            result_models, earliest_vax = _setup_vaccination_schedules(
+            result_models, earliest_vax = setup_vaccination_schedules(
                 basemodel=base_model_with_vaccination,
                 models=models,
                 sampled_start_timespan=sampled_start_timespan,
@@ -729,8 +729,8 @@ class TestSetupVaccinationSchedules:
         models, population_names = sample_models
 
         # Mock _add_vaccination_schedules_from_config
-        with patch("flumodelingsuite.workflow_dispatcher._add_vaccination_schedules_from_config") as mock_add_vax:
-            result_models, earliest_vax = _setup_vaccination_schedules(
+        with patch("flumodelingsuite.builders.vaccination.add_vaccination_schedules_from_config") as mock_add_vax:
+            result_models, earliest_vax = setup_vaccination_schedules(
                 basemodel=base_model_with_vaccination,
                 models=models,
                 sampled_start_timespan=None,
@@ -753,15 +753,15 @@ class TestSetupVaccinationSchedules:
         """Test that scenario_to_epydemix is not called when vaccination is None."""
         from datetime import date
 
-        from flumodelingsuite.validation.basemodel_validator import Timespan
+        from flumodelingsuite.schema.basemodel import Timespan
 
         base_model_config.vaccination = None
         models, population_names = sample_models
 
         sampled_start_timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
 
-        with patch("flumodelingsuite.workflow_dispatcher.scenario_to_epydemix") as mock_scenario_to_epydemix:
-            _setup_vaccination_schedules(
+        with patch("flumodelingsuite.builders.orchestrators.scenario_to_epydemix") as mock_scenario_to_epydemix:
+            setup_vaccination_schedules(
                 basemodel=base_model_config,
                 models=models,
                 sampled_start_timespan=sampled_start_timespan,
@@ -775,7 +775,7 @@ class TestSetupVaccinationSchedules:
         """Test that _add_vaccination_schedules_from_config is not called when start_date is sampled."""
         from datetime import date
 
-        from flumodelingsuite.validation.basemodel_validator import Timespan
+        from flumodelingsuite.schema.basemodel import Timespan
 
         models, population_names = sample_models
 
@@ -785,9 +785,9 @@ class TestSetupVaccinationSchedules:
 
         mock_vax_schedule = pd.DataFrame({"date": ["2024-01-01"], "doses": [100]})
 
-        with patch("flumodelingsuite.workflow_dispatcher.scenario_to_epydemix", return_value=mock_vax_schedule):
-            with patch("flumodelingsuite.workflow_dispatcher._add_vaccination_schedules_from_config") as mock_add_vax:
-                _setup_vaccination_schedules(
+        with patch("flumodelingsuite.builders.orchestrators.scenario_to_epydemix", return_value=mock_vax_schedule):
+            with patch("flumodelingsuite.builders.vaccination.add_vaccination_schedules_from_config") as mock_add_vax:
+                setup_vaccination_schedules(
                     basemodel=base_model_with_vaccination,
                     models=models,
                     sampled_start_timespan=sampled_start_timespan,
