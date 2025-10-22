@@ -496,10 +496,14 @@ def _make_simulate_wrapper(
 
         # Vaccination (if start_date is sampled)
         if basemodel.vaccination and sampled_start_timespan:
+            # print("Earliest vax", earliest_vax) 
             reaggregated_vax = reaggregate_vaccines(earliest_vax, timespan.start_date)
+            # print("start date", timespan.start_date)
+            # print("Vax schedule", reaggregated_vax)
             _add_vaccination_schedules_from_config(
                 m, basemodel.transitions, basemodel.vaccination, timespan, use_schedule=reaggregated_vax
             )
+            
 
         # Seasonality (this must occur before parameter interventions to preserve parameter overrides)
         if basemodel.seasonality:
@@ -517,6 +521,7 @@ def _make_simulate_wrapper(
             population_array=m.population.Nk,
             sampled_compartments=params,
         )
+        # print("Init", compartment_init)
 
         # Collect settings
         sim_params = {
@@ -548,6 +553,7 @@ def _make_simulate_wrapper(
                 failed_params = params.copy()
                 failed_params.pop("epimodel", None)
                 logger.info("Simulation failed with parameters %s: %s", failed_params, e)
+                print("Simulation failed with parameters %s: %s", failed_params, e)
                 data_dates = list(pd.to_datetime(data_state["target_end_date"].values))
                 total_hosp = np.full(len(data_dates), 0)
 
@@ -560,6 +566,7 @@ def _make_simulate_wrapper(
             failed_params = params.copy()
             failed_params.pop("epimodel", None)
             logger.info("Projection failed with parameters %s: %s", failed_params, e)
+            print("Projection failed with parameters %s: %s", failed_params, e)
             return {}
         else:
             # Return results from successful projection
@@ -584,11 +591,11 @@ def _get_data_in_window(data: pd.DataFrame, calibration: CalibrationConfig) -> p
     return data.loc[mask]
 
 
-def _get_data_in_location(data: pd.DataFrame, model: EpiModel) -> pd.DataFrame:
+def _get_data_in_location(data: pd.DataFrame, model: EpiModel, location_key: str) -> pd.DataFrame:
     """Get data for a specific location."""
     location_iso = convert_location_name_format(model.population.name, "ISO")
     # TODO: geo_value column name should be configurable.
-    return data[data["geo_value"] == location_iso]
+    return data[data[location_key] == location_iso]
 
 
 dist_func_dict = {
@@ -884,8 +891,8 @@ def build_calibration(
     data_in_window = _get_data_in_window(observed, calibration)
     calibrators = []
     for model in models:
-        data_state = _get_data_in_location(data_in_window, model)
-
+        data_state = _get_data_in_location(data_in_window, model, "geo_value")
+        vax_state = _get_data_in_location(earliest_vax, model, "location")
         # Create simulate_wrapper
         simulate_wrapper = _make_simulate_wrapper(
             basemodel=basemodel,
@@ -893,7 +900,7 @@ def build_calibration(
             data_state=data_state,
             intervention_types=intervention_types,
             sampled_start_timespan=sampled_start_timespan,
-            earliest_vax=earliest_vax,
+            earliest_vax=vax_state,
         )
 
         # Parse priors into scipy functions
