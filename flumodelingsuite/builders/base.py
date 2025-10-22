@@ -468,37 +468,35 @@ def calculate_compartment_initial_conditions(
     Examples
     --------
     >>> compartments = [
-    ...     Compartment(id="S", initial=None, default=True),
-    ...     Compartment(id="I", initial=100, default=False),
-    ...     Compartment(id="R", initial=0.1, default=False)
+    ...     Compartment(id="S", init="default"),
+    ...     Compartment(id="I", init=100),
+    ...     Compartment(id="R", init=0.1)
     ... ]
     >>> population = np.array([1000, 2000, 3000])
     >>> calculate_compartment_initial_conditions(compartments, population)
     {'S': array([...]), 'I': array([...]), 'R': array([...])}
     """
     # Initialize tracking variables
-    default_compartment_id = None
+    default_compartment_ids = []
     initial_conditions_dict = {}
-    remaining_population = population_array.copy()
+    remaining_population = population_array.astype(float)
 
-    # First pass: identify default compartment and validate
+    # First pass: identify default compartments
     for compartment in compartments:
-        if compartment.default:
-            if default_compartment_id is not None:
-                raise ValueError("Multiple compartments cannot be marked as default")
-            default_compartment_id = compartment.id
+        if compartment.init == "default":
+            default_compartment_ids.append(compartment.id)
 
     # Second pass: calculate non-default compartment initial conditions
     for compartment in compartments:
         # Skip default compartment for now
-        if compartment.default:
+        if compartment.init == "default":
             continue
 
         # Get initialization value (from samples if provided, otherwise from config)
         initial_value = (
-            sampled_compartments.get(compartment.id, compartment.initial)
+            sampled_compartments.get(compartment.id, compartment.init)
             if sampled_compartments
-            else compartment.initial
+            else compartment.init
         )
 
         # Skip compartments with no initial value
@@ -508,40 +506,35 @@ def calculate_compartment_initial_conditions(
         # Case 1: Count-based initialization (value >= 1)
         if initial_value >= 1:
             # Distribute total count proportionally across age groups
-            compartment_total = int(initial_value)
-            proportions = population_array / population_array.sum()
-            initial_conditions = (proportions * compartment_total).astype(int)
-
-            # Adjust for rounding errors to ensure exact total
-            difference = compartment_total - initial_conditions.sum()
-            if difference != 0:
-                # Add/subtract difference to the largest age group
-                max_idx = np.argmax(population_array)
-                initial_conditions[max_idx] += difference
-
+            initial_conditions = initial_value * population_array / population_array.sum()
             initial_conditions_dict[compartment.id] = initial_conditions
             remaining_population -= initial_conditions
 
         # Case 2: Proportion-based initialization (0 < value < 1)
         elif 0 < initial_value < 1:
             # Apply proportion to each age group
-            initial_conditions = (population_array * initial_value).astype(int)
+            initial_conditions = population_array * initial_value
             initial_conditions_dict[compartment.id] = initial_conditions
             remaining_population -= initial_conditions
 
         # Case 3: Zero initialization
         elif initial_value == 0:
-            initial_conditions_dict[compartment.id] = np.zeros_like(population_array, dtype=int)
+            initial_conditions_dict[compartment.id] = np.zeros_like(population_array)
 
         else:
             raise ValueError(f"Invalid initial value for compartment {compartment.id}: {initial_value}")
 
-    # Third pass: assign remaining population to default compartment
-    if default_compartment_id:
+    # Third pass: assign remaining population to default compartment(s)
+    if default_compartment_ids:
         if np.any(remaining_population < 0):
             raise ValueError(
                 f"Initial conditions exceed population in some age groups. Remaining population: {remaining_population}"
             )
-        initial_conditions_dict[default_compartment_id] = remaining_population.astype(int)
+        # If multiple default compartments, split remaining population equally
+        num_defaults = len(default_compartment_ids)
+        per_default = remaining_population / num_defaults
+
+        for compartment_id in default_compartment_ids:
+            initial_conditions_dict[compartment_id] = per_default
 
     return initial_conditions_dict if initial_conditions_dict else None
