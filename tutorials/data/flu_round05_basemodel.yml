@@ -277,6 +277,7 @@ model:
       - R_sev
       - R_mild
       - R_asymp
+      - Initial_immune
       
   interventions:
     - type: school_closure
