@@ -8,6 +8,13 @@ from .common_validators import Meta
 logger = logging.getLogger(__name__)
 
 
+def get_flusight_quantiles() -> list[float]:
+    """
+    Return an array containing the quantiles needed for FluSight submissions.
+    """
+    import numpy as np
+    return np.append(np.append([0.01,0.025],np.arange(0.05,0.95+0.05,0.05)), [0.975,0.99]).astype(float).tolist()
+
 class QuantilesOutput(BaseModel):
     """Specifications for quantile outputs."""
 
@@ -20,7 +27,7 @@ class QuantilesOutput(BaseModel):
         covid19forecast = "covid19forecast"
 
     selections: list[float] | None = Field(
-        [0.025, 0.05, 0.25, 0.5, 0.75, 0.95, 0.975],
+        default_factory=get_flusight_quantiles,
         description="Desired quantiles expressed as floats, default [0.025, 0.05, 0.25, 0.5, 0.75, 0.95, 0.975].",
     )
     data_format: str | QuantileFormatEnum | None = Field(

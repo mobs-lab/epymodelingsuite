@@ -29,7 +29,7 @@ from .vaccinations import reaggregate_vaccines, scenario_to_epydemix
 from .validation.basemodel_validator import BaseEpiModel, BasemodelConfig, Parameter, Timespan
 from .validation.calibration_validator import CalibrationConfig, CalibrationStrategy
 from .validation.general_validator import validate_modelset_consistency
-from .validation.output_validator import OutputConfig
+from .validation.output_validator import OutputConfig, get_flusight_quantiles
 from .validation.sampling_validator import SamplingConfig
 
 logger = logging.getLogger(__name__)
@@ -1202,8 +1202,7 @@ def generate_calibration_outputs(*, calibration: list[CalibrationOutput], output
             quantiles = pd.concat([quantiles, quan_df])
 
             if outputs.quantiles.data_format == "flusightforecast":
-                selections = np.append(np.append([0.01, 0.025], np.arange(0.05, 0.95 + 0.05, 0.05)), [0.975, 0.99])
-                quanf_df = model.results.get_projection_quantiles(selections)
+                quanf_df = model.results.get_projection_quantiles(get_flusight_quantiles())
                 quanf_df.insert(0, "population", model.population)
                 quanf_df = format_quantiles_flusightforecast(quanf_df)
                 quantiles_formatted = pd.concat([quantiles_formatted, quanf_df])
