@@ -52,8 +52,3 @@ def get_data_in_location(data: pd.DataFrame, model: EpiModel) -> pd.DataFrame:
     location_iso = convert_location_name_format(model.population.name, "ISO")
     # TODO: geo_value column name should be configurable.
     return data[data["geo_value"] == location_iso]
-
-
-# Backward compatibility aliases
-_get_data_in_window = get_data_in_window
-_get_data_in_location = get_data_in_location
