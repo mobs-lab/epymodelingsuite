@@ -10,3 +10,5 @@ output:
     rate_trends: True
 
   trajectories:
+
+  model_meta:

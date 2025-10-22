@@ -13,7 +13,9 @@ def get_flusight_quantiles() -> list[float]:
     Return an array containing the quantiles needed for FluSight submissions.
     """
     import numpy as np
-    return np.append(np.append([0.01,0.025],np.arange(0.05,0.95+0.05,0.05)), [0.975,0.99]).astype(float).tolist()
+
+    return np.append(np.append([0.01, 0.025], np.arange(0.05, 0.95 + 0.05, 0.05)), [0.975, 0.99]).astype(float).tolist()
+
 
 class QuantilesOutput(BaseModel):
     """Specifications for quantile outputs."""
@@ -63,6 +65,8 @@ class TrajectoriesOutput(BaseModel):
     resample_freq: str | None = Field(
         None, description="Resample trajectories to a new frequency, e.g. 'D' or 'W-SAT'."
     )
+    calibration: bool | None = Field(False, "Whether to record calibration trajectories.")
+    projection: bool | None = Field(False, "Whether to record projection trajectories.")
 
 
 class PosteriorsOutput(BaseModel):
@@ -71,6 +75,11 @@ class PosteriorsOutput(BaseModel):
 
 class ModelMetaOutput(BaseModel):
     """Specifications for parameter tracking / run metadata outputs."""
+
+    projection_parameters: bool | None = Field(
+        False,
+        "Whether to record projection parameters (calibration parameters always recorded in calibration workflow).",
+    )
 
 
 class OutputConfiguration(BaseModel):

@@ -77,6 +77,7 @@ class BuilderOutput(BaseModel):
         description="Primary identifier of an EpiModel or ABCSampler object paired with instructions for simulation/calibration/projection."
     )
     seed: int | None = Field(None, description="Random seed.")
+    delta_t: float | None = Field(None, description="Timestep.")
     model: EpiModel | None = Field(None, description="EpiModel object for simulation.")
     calibrator: ABCSampler | None = Field(None, description="ABCSampler object for calibration.")
     simulation: SimulationArguments | None = Field(
@@ -117,6 +118,7 @@ class SimulationOutput(BaseModel):
         description="Primary identifier of an EpiModel object paired with instructions for simulation."
     )
     seed: int | None = Field(None, description="Random seed.")
+    delta_t: float | None = Field(None, description="Timestep.")
     population: str = Field(description="Population name (epydemix).")
     results: SimulationResults = Field(description="Results of a call to EpiModel.run_simulations()")
 
@@ -130,6 +132,7 @@ class CalibrationOutput(BaseModel):
         description="Primary identifier of an ABCSampler object paired with instructions for calibration/projection."
     )
     seed: int | None = Field(None, description="Random seed.")
+    delta_t: float | None = Field(None, description="Timestep.")
     population: str = Field(description="Population name (epydemix).")
     results: CalibrationResults = Field(
         description="Results of a call to ABCSampler.calibrate() or ABCSampler.run_projections()"
@@ -702,7 +705,13 @@ def build_basemodel(*, basemodel_config: BasemodelConfig, **_) -> BuilderOutput:
 
     logger.info("BUILDER: completed for single model.")
 
-    return BuilderOutput(primary_id=0, seed=basemodel.random_seed, model=model, simulation=simulation_args)
+    return BuilderOutput(
+        primary_id=0,
+        seed=basemodel.random_seed,
+        delta_t=basemodel.timespan.delta_t,
+        model=model,
+        simulation=simulation_args,
+    )
 
 
 @register_builder({"basemodel_config", "sampling_config"})
@@ -825,7 +834,9 @@ def build_sampling(
 
     logger.info("BUILDER: completed for sampling.")
     return [
-        BuilderOutput(primary_id=i, seed=basemodel.random_seed, model=t[0], simulation=t[1])
+        BuilderOutput(
+            primary_id=i, seed=basemodel.random_seed, delta_t=basemodel.timespan.delta_t, model=t[0], simulation=t[1]
+        )
         for i, t in enumerate(zip(final_models, simulation_args, strict=True))
     ]
 
@@ -945,6 +956,7 @@ def build_calibration(
         BuilderOutput(
             primary_id=i,
             seed=basemodel.random_seed,
+            delta_t=basemodel.timespan.delta_t,
             model=t[0],
             calibrator=t[1],
             calibration=calibration.strategy,
@@ -998,6 +1010,7 @@ def dispatch_runner(configs: BuilderOutput) -> SimulationOutput | CalibrationOut
             return SimulationOutput(
                 primary_id=configs.primary_id,
                 seed=configs.seed,
+                delta_t=configs.delta_t,
                 population=configs.model.population.name,
                 results=results,
             )
@@ -1013,6 +1026,7 @@ def dispatch_runner(configs: BuilderOutput) -> SimulationOutput | CalibrationOut
             return CalibrationOutput(
                 primary_id=configs.primary_id,
                 seed=configs.seed,
+                delta_t=configs.delta_t,
                 population=configs.model.population.name,
                 results=results,
             )
@@ -1039,6 +1053,7 @@ def dispatch_runner(configs: BuilderOutput) -> SimulationOutput | CalibrationOut
             return CalibrationOutput(
                 primary_id=configs.primary_id,
                 seed=configs.seed,
+                delta_t=configs.delta_t,
                 population=configs.model.population.name,
                 results=projection_results,
             )
@@ -1118,16 +1133,13 @@ def generate_simulation_outputs(*, simulation: list[SimulationOutput], outputs: 
     quantiles = pd.DataFrame()
     quantiles_formatted = pd.DataFrame()
     trajectories = pd.DataFrame()
+    model_meta = pd.DataFrame()
 
     # Quantiles
     if outputs.quantiles:
-        if outputs.quantiles.data_format == "flusightforecast":
-            warnings.add(
-                "OUTPUT GENERATOR: quantiles format flusightforecast not available for simulation workflow, using default format."
-            )
-        elif outputs.quantiles.data_format == "covid19forecast":
-            warnings.add(
-                "OUTPUT GENERATOR: quantiles format covid19forecast not available for simulation workflow, using default format."
+        if outputs.quantiles.data_format in ["flusightforecast", "covid19forecast"]:
+            logger.warning(
+                f"OUTPUT GENERATOR: quantiles format {outputs.quantiles.data_format} not available for simulation workflow, using default format."
             )
 
         for model in simulation:
@@ -1138,11 +1150,16 @@ def generate_simulation_outputs(*, simulation: list[SimulationOutput], outputs: 
             quantiles = pd.concat([quantiles, quan_df])
 
             if outputs.quantiles.data_format == "flusmh":
-                quanf_df = format_quantiles_flusightforecast(quan_df)
+                quanf_df = format_quantiles_flusmh(quan_df)
                 quantiles_formatted = pd.concat([quantiles_formatted, quanf_df])
 
     # Trajectories
     if outputs.trajectories:
+        if outputs.trajectories.calibration or outputs.trajectories.projection:
+            logger.warning(
+                "OUTPUT GENERATOR: Requested calibration/projection trajectories in simulation workflow, ignoring."
+            )
+
         for model in simulation:
             for i, traj in enumerate(model.results.trajectories):
                 if outputs.trajectories.resample_freq:
@@ -1166,6 +1183,48 @@ def generate_simulation_outputs(*, simulation: list[SimulationOutput], outputs: 
                 traj_df.insert(3, "population", model.population)
                 trajectories = pd.concat([trajectories, traj_df])
 
+    # Model Metadata
+    if outputs.model_meta:
+        if outputs.model_meta.projection_parameters:
+            logger.warning(
+                "OUTPUT_GENERATOR: Requested projection parameter metadata in simulation workflow, ignoring."
+            )
+
+        meta_dict = {}
+        for model in simulation:
+            meta_dict.set_default("primary_id", [])
+            meta_dict["primary_id"].append(model.primary_id)
+
+            meta_dict.set_default("seed", [])
+            meta_dict["seed"].append(model.seed)
+
+            meta_dict.set_default("delta_t", [])
+            meta_dict["delta_t"].append(model.delta_t)
+
+            meta_dict.set_default("population", [])
+            meta_dict["population"].append(model.population)
+
+            meta_dict.set_default("n_sims", [])
+            meta_dict["n_sims"].append(model.results.Nsim)
+
+            meta_dict.set_default("start_date", [])
+            meta_dict["start_date"].append(str(sorted(model.results.dates)[0]))
+
+            meta_dict.set_default("end_date", [])
+            meta_dict["end_date"].append(str(sorted(model.results.dates)[-1]))
+
+            for p, v in model.results.parameters.items():
+                meta_dict.set_default(p, [])
+                meta_dict[p].append(str(v))
+
+            inits = {k: [int(v[0]) for v in vs] for k, vs in model.results.get_stacked_compartments().items()}
+            for c, i in inits:
+                colname = f"init_{c}"
+                meta_dict.set_default(colname, [])
+                meta_dict[colname].append(str(i))
+
+        model_meta = pd.DataFrame(meta_dict)
+
     for warning in warnings:
         logger.warning(warning)
 
@@ -1179,6 +1238,12 @@ def generate_simulation_outputs(*, simulation: list[SimulationOutput], outputs: 
         out_dict["trajectories.csv.gz"] = trajectories.to_csv(
             path_or_buf=None, header=True, index=False, compression="gzip"
         )
+    if not model_meta.empty:
+        out_dict["model_metadata.csv.gz"] = model_meta.to_csv(
+            path_or_buf=None, header=True, index=False, compression="gzip"
+        )
+
+    logger.info("OUTPUT GENERATOR: completed for simulation")
 
     return out_dict
 
@@ -1191,10 +1256,17 @@ def generate_calibration_outputs(*, calibration: list[CalibrationOutput], output
     quantiles = pd.DataFrame()
     quantiles_formatted = pd.DataFrame()
     trajectories = pd.DataFrame()
+    posteriors = pd.DataFrame()
+    model_meta = pd.DataFrame()
 
-    for model in calibration:
-        # Quantiles
-        if outputs.quantiles:
+    # Quantiles
+    if outputs.quantiles:
+        if outputs.quantiles.data_format in ["flusmh"]:
+            logger.warning(
+                f"OUTPUT GENERATOR: quantiles format {outputs.quantiles.data_format} not available for calibration/projection workflow, using default format."
+            )
+
+        for model in calibration:
             quan_df = model.results.get_projection_quantiles(outputs.quantiles.selections)
             quan_df.insert(0, "primary_id", model.primary_id)
             quan_df.insert(1, "seed", model.seed)
@@ -1211,12 +1283,13 @@ def generate_calibration_outputs(*, calibration: list[CalibrationOutput], output
                     trends_df = make_rate_trends_flusightforecast(quanf_df)
                     quantiles_formatted = pd.concat([quantiles_formatted, trends_df])
 
-            elif outputs.quantiles.data_format == "flusmh" or outputs.quantiles.data_format == "covid19forecast":
-                quanf_df = format_quantiles_flusightforecast(quan_df)
+            elif outputs.quantiles.data_format == "covid19forecast":
+                quanf_df = format_quantiles_covid19forecast(quan_df)
                 quantiles_formatted = pd.concat([quantiles_formatted, quanf_df])
 
-        # Trajectories
-        if outputs.trajectories:
+    # Trajectories
+    if outputs.trajectories:
+        for model in calibration:
             for i, traj in enumerate(model.results.get_projection_trajectories()):
                 if outputs.trajectories.resample_freq:
                     try:
