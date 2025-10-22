@@ -15,6 +15,7 @@ dependencies = [
     "epydemix",
     "pandas",
     "numpy",
+    "scipy",
     "holidays",
     "matplotlib",
     "pydantic",
@@ -41,7 +42,13 @@ dev = [
 Homepage = "https://github.com/mobs-lab/flumodelingsuite"
 
 [tool.setuptools]
-packages = ["flumodelingsuite", "flumodelingsuite.validation"]
+packages = [
+    "flumodelingsuite",
+    "flumodelingsuite.schema",
+    "flumodelingsuite.builders",
+    "flumodelingsuite.dispatcher",
+    "flumodelingsuite.data",
+]
 include-package-data = true
 
 [tool.ruff]
