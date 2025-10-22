@@ -47,6 +47,7 @@ packages = [
     "flumodelingsuite.schema",
     "flumodelingsuite.builders",
     "flumodelingsuite.dispatcher",
+    "flumodelingsuite.utils",
     "flumodelingsuite.data",
 ]
 include-package-data = true
