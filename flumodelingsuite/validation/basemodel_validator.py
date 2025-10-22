@@ -46,7 +46,7 @@ class Timespan(BaseModel):
 class Simulation(BaseModel):
     """Simulation settings to pass to epydemix."""
 
-    n_sims: int | None = Field(None, description="Number of simulations run for a single model.")
+    n_sims: int | None = Field(10, description="Number of simulations run for a single model.")
     resample_frequency: str | None = Field(
         None,
         description="The frequency at which to resample the simulation results. Follows https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#period-aliases",
