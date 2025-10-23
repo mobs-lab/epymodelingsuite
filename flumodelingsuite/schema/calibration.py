@@ -33,6 +33,7 @@ class CalibrationStrategy(BaseModel):
     )
 
     @field_validator("options")
+    @classmethod
     def parse_max_time(cls, v: dict[str, Any]) -> dict[str, Any]:
         """
         Parse max_time option from string to timedelta if present.
@@ -164,6 +165,7 @@ class CalibrationModelset(BaseModel):
     calibration: CalibrationConfiguration = Field(description="Calibration configuration")
 
     @field_validator("population_names")
+    @classmethod
     def validate_populations(cls, v):
         """Validate each population name in the list."""
         validated_populations = []
