@@ -4,17 +4,9 @@ from enum import Enum
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from .common_validators import Meta
+from ../workflow_dispatcher import get_flusight_quantiles
 
 logger = logging.getLogger(__name__)
-
-
-def get_flusight_quantiles() -> list[float]:
-    """
-    Return an array containing the quantiles needed for FluSight submissions.
-    """
-    import numpy as np
-
-    return np.append(np.append([0.01, 0.025], np.arange(0.05, 0.95 + 0.05, 0.05)), [0.975, 0.99]).astype(float).tolist()
 
 
 class QuantilesOutput(BaseModel):
