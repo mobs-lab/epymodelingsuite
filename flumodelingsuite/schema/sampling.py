@@ -9,7 +9,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from .common_validators import DateParameter, Distribution, Meta
+from .common import DateParameter, Distribution, Meta
 
 # ----------------------------------------
 # Schema models

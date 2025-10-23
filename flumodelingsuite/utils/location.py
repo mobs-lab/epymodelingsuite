@@ -1,87 +1,6 @@
-### utils.py
-# Utility functions
-
-from pathlib import Path
+"""Location validation and conversion utilities."""
 
 import pandas as pd
-import scipy.stats
-from epydemix import EpiModel
-from epydemix.population import Population
-
-from .validation.common_validators import Distribution
-
-
-def identify_config_type(file_path: str) -> str | None:
-    """
-    Identify the config type of a single YAML file by checking its structure.
-
-    Checks the YAML structure to determine config type:
-    - Has 'modelset.calibration' -> 'calibration'
-    - Has 'modelset.sampling' -> 'sampling'
-    - Has 'model' (without 'modelset') -> 'basemodel'
-    - Otherwise -> None
-
-    Parameters
-    ----------
-    file_path : str
-        Path to the YAML config file (str or Path)
-
-    Returns
-    -------
-    str | None
-        Config type string: 'basemodel', 'sampling', 'calibration', or None
-        Example: 'basemodel', 'sampling', None
-
-    Raises
-    ------
-    FileNotFoundError
-        If the file doesn't exist
-    ValueError
-        If the file is not a YAML file (.yml or .yaml)
-    """
-    import yaml
-
-    path = Path(file_path)
-
-    if not path.exists():
-        msg = f"Config file not found: {file_path}"
-        raise FileNotFoundError(msg)
-
-    if path.suffix.lower() not in [".yml", ".yaml"]:
-        msg = f"File must be a YAML file (.yml or .yaml): {file_path}"
-        raise ValueError(msg)
-
-    # Load the YAML file
-    with open(path) as f:
-        data = yaml.safe_load(f)
-
-    if not isinstance(data, dict):
-        return None
-
-    # Check for config type based on structure
-    # Calibration: has modelset.calibration
-    if "modelset" in data and isinstance(data["modelset"], dict):
-        if "calibration" in data["modelset"]:
-            return "calibration"
-        if "sampling" in data["modelset"]:
-            return "sampling"
-
-    # Basemodel: has 'model' key (without modelset)
-    if "model" in data:
-        return "basemodel"
-
-    return None
-
-
-def get_population_codebook() -> pd.DataFrame:
-    """Retrieve the population codebook as a Pandas DataFrame."""
-    import os
-    import sys
-
-    filename = os.path.join(os.path.dirname(sys.modules[__name__].__file__), "data/population_codebook.csv")
-    population_codebook = pd.read_csv(filename)
-
-    return population_codebook
 
 
 def get_location_codebook() -> pd.DataFrame:
@@ -89,7 +8,7 @@ def get_location_codebook() -> pd.DataFrame:
     import os
     import sys
 
-    filename = os.path.join(os.path.dirname(sys.modules[__name__].__file__), "data/location_codebook.csv")
+    filename = os.path.join(os.path.dirname(sys.modules[__name__].__file__), "../data/location_codebook.csv")
     location_codebook = pd.read_csv(filename)
 
     return location_codebook
@@ -171,44 +90,3 @@ def validate_iso3166(value: str) -> str:
             return value
 
     raise ValueError(f"Invalid ISO 3166 code: {value}")
-
-
-def distribution_to_scipy(distribution: Distribution):
-    """
-    Convert a Distribution object to a scipy distribution object.
-
-    Parameters
-    ----------
-    distribution : Distribution
-        A Distribution instance containing name, args, and kwargs for the scipy distribution.
-
-    Returns
-    -------
-    scipy.stats distribution object
-        The scipy distribution object created from the Distribution parameters.
-
-    Examples
-    --------
-    >>> from flumodelingsuite.common_validators import Distribution
-    >>> dist_config = Distribution(name="norm", args=[0, 1])
-    >>> scipy_dist = distribution_to_scipy(dist_config)
-    >>> scipy_dist.rvs(5)  # Generate 5 random samples
-
-    >>> dist_config = Distribution(name="uniform", args=[0, 1])
-    >>> scipy_dist = distribution_to_scipy(dist_config)
-    >>> scipy_dist.rvs(10)  # Generate 10 random samples from uniform distribution
-    """
-    if distribution.type == "scipy":
-        # Get the distribution class from scipy.stats
-        dist_class = getattr(scipy.stats, distribution.name)
-
-        # Create the distribution object with args and kwargs
-        kwargs = distribution.kwargs or {}
-        dist = dist_class(*distribution.args, **kwargs)
-    return dist
-
-
-def make_dummy_population(model: EpiModel) -> Population:
-    dummy_pop = Population(name="Dummy")
-    dummy_pop.add_population(Nk=[100 for _ in model.population.age_groups], Nk_names=model.population.age_groups)
-    return dummy_pop
