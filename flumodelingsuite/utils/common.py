@@ -108,8 +108,5 @@ def parse_timedelta(text: str) -> timedelta:
         return timedelta(weeks=off.n)
 
     # Otherwise it's calendar/anchored/variable; cannot be a pure timedelta
-    msg = (
-        f"Frequency {text!r} is not a fixed-length duration and "
-        "cannot be represented as a datetime.timedelta."
-    )
+    msg = f"Frequency {text!r} is not a fixed-length duration and cannot be represented as a datetime.timedelta."
     raise ValueError(msg)
