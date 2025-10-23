@@ -3,7 +3,7 @@ from datetime import date
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from .common_validators import Meta
+from .common import Meta
 
 # from ..workflow_dispatcher import get_flusight_quantiles
 

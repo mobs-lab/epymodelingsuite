@@ -14,8 +14,8 @@ modelset:
     strategy:
       name: smc
       options: # strategy specific arguments in calibrate() function
-        num_particles: 10
-        num_generations: 2
+        num_particles: 20
+        num_generations: 5
 
     # Sampler options, passed directly when initializing ABCSampler
     distance_function: rmse # Default, but we could provide custom distance function
@@ -34,7 +34,7 @@ modelset:
       end_date: "2025-05-17"
     
     projection:
-      n_trajectories: 10
+      n_trajectories: 20
     
     compartments:
       L:
@@ -53,7 +53,7 @@ modelset:
             - 0.33
     start_date:
       # For 'date' types, we set a reference date and add days sampled from a distribution
-      reference_date: 2024-09-15
+      reference_date: 2024-09-16
       prior:
         type: scipy
         name: randint

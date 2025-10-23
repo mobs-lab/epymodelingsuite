@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from flumodelingsuite.validation.general_validator import (
+from flumodelingsuite.schema.general import (
     _ensure_compartments_valid,
     _ensure_parameters_present,
     _ensure_populations_valid,

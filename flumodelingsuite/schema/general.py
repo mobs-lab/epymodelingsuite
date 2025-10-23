@@ -1,9 +1,9 @@
 import logging
 from collections.abc import Iterable
 
-from .basemodel_validator import BasemodelConfig
-from .calibration_validator import CalibrationConfig, CalibrationConfiguration
-from .sampling_validator import SamplingConfig, SamplingConfiguration
+from .basemodel import BasemodelConfig
+from .calibration import CalibrationConfig, CalibrationConfiguration
+from .sampling import SamplingConfig, SamplingConfiguration
 
 logger = logging.getLogger(__name__)
 
