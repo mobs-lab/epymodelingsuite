@@ -15,7 +15,7 @@ class DummyCompartment:
     """Mock compartment for testing."""
 
     id: str
-    init: float | int | str
+    init: float | int | str | list[float | int]
 
 
 class TestCalculateCompartmentInitialConditions:
@@ -314,3 +314,113 @@ class TestCalculateCompartmentInitialConditions:
         result = calculate_compartment_initial_conditions(compartments, population_array)
 
         # Should be applied as proportion
+        expected = 0.9999 * population_array
+        np.testing.assert_array_almost_equal(result["I"], expected)
+
+    def test_age_varying_proportion_initialization(self, population_array):
+        """Test age-varying initialization with proportions."""
+        compartments = [
+            DummyCompartment(id="M", init=[0.3, 0.0, 0.0, 0.0, 0.0]),  # Maternal immunity in first age group
+        ]
+
+        result = calculate_compartment_initial_conditions(compartments, population_array)
+
+        # Should apply proportions to each age group
+        expected = np.array(
+            [
+                population_array[0] * 0.3,
+                population_array[1] * 0.0,
+                population_array[2] * 0.0,
+                population_array[3] * 0.0,
+                population_array[4] * 0.0,
+            ]
+        )
+        np.testing.assert_array_almost_equal(result["M"], expected)
+
+    def test_age_varying_count_initialization(self, population_array):
+        """Test age-varying initialization with counts."""
+        compartments = [
+            DummyCompartment(id="I", init=[10, 20, 30, 40, 50]),  # Specific counts per age group
+        ]
+
+        result = calculate_compartment_initial_conditions(compartments, population_array)
+
+        # Counts should be applied directly to each age group
+        expected = np.array([10, 20, 30, 40, 50], dtype=float)
+        np.testing.assert_array_almost_equal(result["I"], expected)
+
+    def test_age_varying_mixed_values(self, population_array):
+        """Test age-varying initialization with mixed counts and proportions."""
+        compartments = [
+            DummyCompartment(id="I", init=[0.1, 10, 0.05, 0, 100]),  # Mix of proportions, counts, and zeros
+        ]
+
+        result = calculate_compartment_initial_conditions(compartments, population_array)
+
+        # Mixed values should be handled correctly per age group
+        expected = np.array(
+            [
+                population_array[0] * 0.1,  # Proportion
+                10,  # Count
+                population_array[2] * 0.05,  # Proportion
+                0,  # Zero
+                100,  # Count
+            ],
+            dtype=float,
+        )
+        np.testing.assert_array_almost_equal(result["I"], expected)
+
+    def test_age_varying_with_default_compartment(self, population_array, total_population):
+        """Test age-varying initialization combined with default compartment."""
+        compartments = [
+            DummyCompartment(id="S", init="default"),
+            DummyCompartment(id="M", init=[0.3, 0.0, 0.0, 0.0, 0.0]),
+            DummyCompartment(id="I", init=[0.02, 0.01, 0.0, 0.0, 0.0]),
+        ]
+
+        result = calculate_compartment_initial_conditions(compartments, population_array)
+
+        # Calculate expected values
+        expected_M = np.array([population_array[0] * 0.3, 0, 0, 0, 0])
+        expected_I = np.array([population_array[0] * 0.02, population_array[1] * 0.01, 0, 0, 0])
+        expected_S = population_array - expected_M - expected_I
+
+        np.testing.assert_array_almost_equal(result["M"], expected_M)
+        np.testing.assert_array_almost_equal(result["I"], expected_I)
+        np.testing.assert_array_almost_equal(result["S"], expected_S)
+
+        # Verify population conservation
+        total_initial = sum(result["S"]) + sum(result["M"]) + sum(result["I"])
+        assert np.isclose(total_initial, total_population)
+
+    def test_age_varying_and_scalar_mixed(self, population_array, total_population):
+        """Test mixing age-varying and scalar initialization types."""
+        compartments = [
+            DummyCompartment(id="S", init="default"),
+            DummyCompartment(id="M", init=[0.3, 0.0, 0.0, 0.0, 0.0]),  # Age-varying
+            DummyCompartment(id="I", init=0.02),  # Scalar proportion
+            DummyCompartment(id="R", init=100),  # Scalar count
+        ]
+
+        result = calculate_compartment_initial_conditions(compartments, population_array)
+
+        # All compartments should have correct values
+        assert "S" in result
+        assert "M" in result
+        assert "I" in result
+        assert "R" in result
+
+        # Verify population conservation
+        total_initial = sum(result["S"]) + sum(result["M"]) + sum(result["I"]) + sum(result["R"])
+        assert np.isclose(total_initial, total_population, rtol=1e-5)
+
+    def test_age_varying_all_zeros(self, population_array):
+        """Test age-varying initialization with all zeros."""
+        compartments = [
+            DummyCompartment(id="I", init=[0, 0, 0, 0, 0]),
+        ]
+
+        result = calculate_compartment_initial_conditions(compartments, population_array)
+
+        expected = np.zeros_like(population_array)
+        np.testing.assert_array_almost_equal(result["I"], expected)
