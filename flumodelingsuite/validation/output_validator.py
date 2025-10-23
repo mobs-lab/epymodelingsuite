@@ -1,76 +1,135 @@
 import logging
-from enum import Enum
+from datetime import date
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from .common_validators import Meta
-from ../workflow_dispatcher import get_flusight_quantiles
+
+# from ..workflow_dispatcher import get_flusight_quantiles
 
 logger = logging.getLogger(__name__)
+
+
+def get_flusight_quantiles() -> list[float]:
+    """
+    Return an array containing the quantiles needed for FluSight submissions.
+    The set of quantiles is defined at https://github.com/cdcepi/FluSight-forecast-hub/tree/main/model-output#quantile-output
+    """
+    import numpy as np
+
+    return np.append(np.append([0.01, 0.025], np.arange(0.05, 0.95 + 0.05, 0.05)), [0.975, 0.99]).astype(float).tolist()
+
+
+class FluScenariosOutput(BaseModel):
+    """Specifications for quantile outputs in Flu Scenario Modeling Hub format."""
+
+
+class Covid19ForecastOutput(BaseModel):
+    """Specifications for quantile outputs in Covid 19 Forecast Hub format."""
+
+
+class FlusightForecastOutput(BaseModel):
+    """Specifications for quantile outputs in flusight forecast hub format."""
+
+    reference_date: date = Field(
+        description="'YYYY-MM-DD' date to treat as reference date when creating horizons and target dates for submission file."
+    )
+    target_transitions: list[str] = Field(
+        description="Identifiers of transitions to count for target data, as encoded by epydemix e.g. ['Home_sev_to_Hosp_total', 'Home_sev_vax_to_Hosp_vax_total']"
+    )
+    rate_trends: bool = Field(
+        False,
+        description="Add rate-trend forecasts to submission file.",
+    )
+
+
+class SimulationQuantilesOutput(BaseModel):
+    """Specifications for simulation quantile outputs in default format."""
+
+    compartments: list[str] | bool = Field(
+        False,
+        description="Return quantiles for compartments. Set `True` to get all compartments, or provide a list of identifiers (e.g. 'I_total') to select compartments.",
+    )
+    transitions: list[str] | bool = Field(
+        False,
+        description="Return quantiles for transitions. Set `True` to get all transitions, or provide a list of identifiers (e.g. 'I_to_R_total') to select transitions.",
+    )
+
+
+class CalibrationQuantilesOutput(BaseModel):
+    """Specifications for calibration/projection quantile outputs in default format."""
 
 
 class QuantilesOutput(BaseModel):
     """Specifications for quantile outputs."""
 
-    class QuantileFormatEnum(str, Enum):
-        """Types of quantile output formats."""
-
-        default = "default"
-        flusightforecast = "flusightforecast"
-        flusmh = "flusmh"
-        covid19forecast = "covid19forecast"
-
-    selections: list[float] | None = Field(
+    selections: list[float] = Field(
         default_factory=get_flusight_quantiles,
-        description="Desired quantiles expressed as floats, default [0.025, 0.05, 0.25, 0.5, 0.75, 0.95, 0.975].",
+        description="Desired quantiles expressed as floats.",
     )
-    data_format: str | QuantileFormatEnum | None = Field(
-        "default", description="Create quantile outputs in the default format or a supported HubVerse format."
+    simulation_default: SimulationQuantilesOutput | None = Field(
+        None, description="Specifications for simulation quantile outputs in default format."
     )
-    rate_trends: bool | None = Field(
-        False,
-        description="Option to add rate-trend forecasts to quantile outputs if generating a format for which rate-trend categories are defined e.g. flusightforecast format.",
+    calibration_default: CalibrationQuantilesOutput | None = Field(
+        None, description="Specifications for calibration quantile outputs in default format."
+    )
+    flusight_format: FlusightForecastOutput | None = Field(
+        None, description="Specifications for quantile outputs in FluSight Forecast Hub format."
+    )
+    covid19_format: Covid19ForecastOutput | None = Field(
+        None, description="Specifications for quantile outputs in Covid 19 Forecast Hub format."
+    )
+    flusmh_format: FluScenariosOutput | None = Field(
+        None, description="Specifications for quantile outputs in Flu Scenario Modeling Hub format."
     )
 
     @model_validator(mode="after")
-    def check_rate_trend(self):
-        """Ensure rate-trend categories are available with the selected format."""
-        available_formats = ["flusightforecast"]
-        if self.data_format not in available_formats and self.rate_trends:
-            logger.warning(
-                f"Rate-trend forecasts are not defined for selected format {self.data_format}, available formats are {available_formats}"
-            )
+    def check_formats(self):
+        """Ensure output format selections are compatible."""
+        hub_formats = [self.flusight_format, self.covid19_format, self.flusmh_format]
+
+        if self.simulation_default and self.calibration_default:
+            raise ValueError("Received specifications for both simulation and calibration quantile outputs.")
+        if len([1 for _ in hub_formats if bool(_)]) > 1:
+            raise ValueError("Received specifications for more than one hub format.")
+        if self.simulation_default and (self.flusight_format or self.covid19_format):
+            raise ValueError("Simulation results are incompatible with forecast hub formats.")
+
+        return self
 
     @field_validator("selections")
     def check_selections(cls, v):
         """Ensure quantiles are in (0, 1)."""
         if not all([0.0 < q < 1.0 for q in v]):
             raise ValueError("Received quantile not in (0, 1).")
+        return v
 
 
 class TrajectoriesOutput(BaseModel):
     """Specifications for trajectory outputs."""
 
-    compartments: list[str] | None = Field(
-        None, description="Filter trajectories for selected compartments, default is all compartments."
+    compartments: list[str] | bool = Field(
+        False,
+        description="Return trajectories for compartments. Set `True` to get all compartments, or provide a list of identifiers (e.g. 'I_total') to select compartments.",
     )
-    resample_freq: str | None = Field(
-        None, description="Resample trajectories to a new frequency, e.g. 'D' or 'W-SAT'."
+    transitions: list[str] | bool = Field(
+        False,
+        description="Return trajectories for transitions. Set `True` to get all transitions, or provide a list of identifiers (e.g. 'I_to_R_total') to select transitions.",
     )
-    calibration: bool | None = Field(False, "Whether to record calibration trajectories.")
-    projection: bool | None = Field(False, "Whether to record projection trajectories.")
 
 
 class PosteriorsOutput(BaseModel):
     """Specifications for posterior outputs."""
 
+    generation: int | None = Field(None, description="Generation of SMC to get posteriors for")
+
 
 class ModelMetaOutput(BaseModel):
     """Specifications for parameter tracking / run metadata outputs."""
 
-    projection_parameters: bool | None = Field(
+    projection_parameters: bool = Field(
         False,
-        "Whether to record projection parameters (calibration parameters always recorded in calibration workflow).",
+        description="Whether to record projection parameters (calibration parameters always recorded in calibration workflow).",
     )
 
 
@@ -78,11 +137,14 @@ class OutputConfiguration(BaseModel):
     """Output configuration."""
 
     meta: Meta | None = Field(None, description="General metadata.")
+    resample_freq: str | None = Field(
+        None, description="Resample to a new frequency for all outputs, e.g. 'D' or 'W-SAT'."
+    )
     quantiles: QuantilesOutput | None = Field(None, description="Specifications for quantile outputs.")
     trajectories: TrajectoriesOutput | None = Field(None, description="Specifications for trajectory outputs.")
     posteriors: PosteriorsOutput | None = Field(None, description="Specifications for posterior outputs.")
-    model_meta: ModelMetaOutput | None = Field(
-        None, description="Specifications for parameter tracking / model metadata outputs."
+    model_meta: ModelMetaOutput = Field(
+        default_factory=ModelMetaOutput, description="Specifications for parameter tracking / model metadata outputs."
     )
 
 
