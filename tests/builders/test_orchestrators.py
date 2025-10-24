@@ -30,15 +30,7 @@ class TestCreateModelCollection:
     @pytest.fixture
     def base_model_config(self):
         """Create a minimal BaseEpiModel configuration for testing."""
-        from datetime import date
-
         from flumodelingsuite.schema.basemodel import (
-            BaseEpiModel,
-            Compartment,
-            Parameter,
-            Population,
-            Simulation,
-            Timespan,
             Transition,
         )
 
@@ -279,15 +271,7 @@ class TestSetupVaccinationSchedules:
     @pytest.fixture
     def base_model_config(self):
         """Create a minimal BaseEpiModel configuration for testing."""
-        from datetime import date
-
         from flumodelingsuite.schema.basemodel import (
-            BaseEpiModel,
-            Compartment,
-            Parameter,
-            Population,
-            Simulation,
-            Timespan,
             Transition,
         )
 
@@ -340,8 +324,6 @@ class TestSetupVaccinationSchedules:
         # Create a minimal vaccination data file
         import pandas as pd
 
-        from flumodelingsuite.schema.basemodel import Transition, Vaccination
-
         vax_data = pd.DataFrame(
             {
                 "date": ["2024-01-01", "2024-01-08", "2024-01-15"],
@@ -392,10 +374,6 @@ class TestSetupVaccinationSchedules:
 
     def test_returns_models_and_earliest_vax_when_start_date_sampled(self, base_model_with_vaccination, sample_models):
         """Test that function returns (models, earliest_vax) when start_date is sampled."""
-        from datetime import date
-
-        from flumodelingsuite.schema.basemodel import Timespan
-
         models, population_names = sample_models
 
         sampled_start_timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
@@ -454,10 +432,6 @@ class TestSetupVaccinationSchedules:
 
     def test_scenario_to_epydemix_not_called_when_no_vaccination(self, base_model_config, sample_models):
         """Test that scenario_to_epydemix is not called when vaccination is None."""
-        from datetime import date
-
-        from flumodelingsuite.schema.basemodel import Timespan
-
         base_model_config.vaccination = None
         models, population_names = sample_models
 
@@ -476,10 +450,6 @@ class TestSetupVaccinationSchedules:
 
     def test_add_vaccination_not_called_when_start_date_sampled(self, base_model_with_vaccination, sample_models):
         """Test that _add_vaccination_schedules_from_config is not called when start_date is sampled."""
-        from datetime import date
-
-        from flumodelingsuite.schema.basemodel import Timespan
-
         models, population_names = sample_models
 
         sampled_start_timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)

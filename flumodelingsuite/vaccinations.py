@@ -884,7 +884,6 @@ def remove_vaccination_transitions(model: EpiModel, source_comp: str, target_com
     Manually remove vaccination transitions from model.
     This prevents `add_vaccination_schedule` from creating duplicate transitions if it is called multiple times.
     """
-
     import copy
 
     # Make a deep copy of the model to avoid modifying the original
