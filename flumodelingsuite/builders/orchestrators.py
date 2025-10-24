@@ -82,9 +82,9 @@ def create_model_collection(
     init_model.set_population(dummy_pop)
 
     # All models will share compartments, transitions, and non-sampled/calculated parameters
-    add_model_compartments_from_config(init_model, basemodel.compartments)
-    add_model_transitions_from_config(init_model, basemodel.transitions)
-    add_model_parameters_from_config(init_model, basemodel.parameters)
+    init_model = add_model_compartments_from_config(init_model, basemodel.compartments)
+    init_model = add_model_transitions_from_config(init_model, basemodel.transitions)
+    init_model = add_model_parameters_from_config(init_model, basemodel.parameters)
 
     # Create models with populations set
     if population_names:
@@ -93,11 +93,11 @@ def create_model_collection(
         else:
             resolved_names = population_names
         for name in resolved_names:
-            m = copy.deepcopy(init_model)
-            set_population_from_config(m, name, basemodel.population.age_groups)
-            models.append(m)
+            model = copy.deepcopy(init_model)
+            model = set_population_from_config(model, name, basemodel.population.age_groups)
+            models.append(model)
     else:
-        set_population_from_config(init_model, basemodel.population.name, basemodel.population.age_groups)
+        init_model = set_population_from_config(init_model, basemodel.population.name, basemodel.population.age_groups)
         models.append(init_model)
         resolved_names = [basemodel.population.name]
 
@@ -159,9 +159,13 @@ def setup_vaccination_schedules(
         return models, earliest_vax
 
     # If start_date not sampled, add vaccination to models now
+    updated_models = []
     for model in models:
-        add_vaccination_schedules_from_config(model, basemodel.transitions, basemodel.vaccination, basemodel.timespan)
-    return models, None
+        updated_model = add_vaccination_schedules_from_config(
+            model, basemodel.transitions, basemodel.vaccination, basemodel.timespan
+        )
+        updated_models.append(updated_model)
+    return updated_models, None
 
 
 def setup_interventions(
@@ -211,19 +215,22 @@ def setup_interventions(
     # Determine the effective timespan for date-dependent interventions
     effective_timespan = sampled_start_timespan if sampled_start_timespan else basemodel.timespan
 
+    updated_models = []
     for model in models:
         # School closure
         if "school_closure" in intervention_types:
             closure_dict = make_school_closure_dict(
                 range(effective_timespan.start_date.year, effective_timespan.end_date.year + 1)
             )
-            add_school_closure_intervention_from_config(model, basemodel.interventions, closure_dict)
+            model = add_school_closure_intervention_from_config(model, basemodel.interventions, closure_dict)
 
         # Contact matrix
         if "contact_matrix" in intervention_types:
-            add_contact_matrix_interventions_from_config(model, basemodel.interventions)
+            model = add_contact_matrix_interventions_from_config(model, basemodel.interventions)
 
-    return models
+        updated_models.append(model)
+
+    return updated_models
 
 
 def make_simulate_wrapper(
@@ -282,7 +289,7 @@ def make_simulate_wrapper(
     def simulate_wrapper(params: dict) -> dict:
         # Extract model from params
         wrapper_model = params["epimodel"]
-        m = copy.deepcopy(wrapper_model)
+        model = copy.deepcopy(wrapper_model)
 
         # Accommodate for sampled start_date
         if sampled_start_timespan:
@@ -299,39 +306,39 @@ def make_simulate_wrapper(
             if k in basemodel.parameters and basemodel.parameters[k].type == "calibrated"
         }
         if new_params:
-            add_model_parameters_from_config(m, new_params)
+            model = add_model_parameters_from_config(model, new_params)
         if "calculated" in [param_args.type.value for _, param_args in basemodel.parameters.items()]:
-            calculate_parameters_from_config(m, basemodel.parameters)
+            model = calculate_parameters_from_config(model, basemodel.parameters)
 
         # Vaccination (if start_date is sampled)
         if basemodel.vaccination and sampled_start_timespan:
             reaggregated_vax = reaggregate_vaccines(earliest_vax, timespan.start_date)
-            add_vaccination_schedules_from_config(
-                m, basemodel.transitions, basemodel.vaccination, timespan, use_schedule=reaggregated_vax
+            model = add_vaccination_schedules_from_config(
+                model, basemodel.transitions, basemodel.vaccination, timespan, use_schedule=reaggregated_vax
             )
 
         # Seasonality (this must occur before parameter interventions to preserve parameter overrides)
         if basemodel.seasonality:
             if "seasonality_min" in params:
                 basemodel.seasonality.min_value = params["seasonality_min"]
-            add_seasonality_from_config(m, basemodel.seasonality, timespan)
+            model = add_seasonality_from_config(model, basemodel.seasonality, timespan)
 
         # Parameter interventions
         if basemodel.interventions and "parameter" in intervention_types:
-            add_parameter_interventions_from_config(m, basemodel.interventions, timespan)
+            model = add_parameter_interventions_from_config(model, basemodel.interventions, timespan)
 
         # Initial conditions
         from .base import calculate_compartment_initial_conditions
 
         compartment_init = calculate_compartment_initial_conditions(
             compartments=basemodel.compartments,
-            population_array=m.population.Nk,
+            population_array=model.population.Nk,
             sampled_compartments=params,
         )
 
         # Collect settings
         sim_params = {
-            "epimodel": m,
+            "epimodel": model,
             "initial_conditions_dict": compartment_init,
             "start_date": timespan.start_date,
             "end_date": params["end_date"],

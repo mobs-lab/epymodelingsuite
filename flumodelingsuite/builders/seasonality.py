@@ -1,5 +1,6 @@
 """Seasonality building functions for EpiModel instances."""
 
+import copy
 import logging
 
 import numpy as np
@@ -25,6 +26,8 @@ def add_seasonality_from_config(model: EpiModel, seasonality: Seasonality, times
     -------
         EpiModel instance with seasonal transmission applied.
     """
+    model = copy.deepcopy(model)
+
     # Parameter must already be defined
     try:
         previous_value = model.get_parameter(seasonality.target_parameter)

@@ -98,24 +98,26 @@ def build_basemodel(*, basemodel_config: BasemodelConfig, **_) -> BuilderOutput:
     logger.info("BUILDER: setting up single model...")
 
     # This workflow uses a single population
-    set_population_from_config(model, basemodel.population.name, basemodel.population.age_groups)
+    model = set_population_from_config(model, basemodel.population.name, basemodel.population.age_groups)
 
     # Compartments and transitions
-    add_model_compartments_from_config(model, basemodel.compartments)
-    add_model_transitions_from_config(model, basemodel.transitions)
+    model = add_model_compartments_from_config(model, basemodel.compartments)
+    model = add_model_transitions_from_config(model, basemodel.transitions)
 
     # Vaccination
     if basemodel.vaccination:
-        add_vaccination_schedules_from_config(model, basemodel.transitions, basemodel.vaccination, basemodel.timespan)
+        model = add_vaccination_schedules_from_config(
+            model, basemodel.transitions, basemodel.vaccination, basemodel.timespan
+        )
 
     # Parameters
-    add_model_parameters_from_config(model, basemodel.parameters)
+    model = add_model_parameters_from_config(model, basemodel.parameters)
     if "calculated" in [param_args.type.value for param, param_args in (basemodel.parameters).items()]:
-        calculate_parameters_from_config(model, basemodel.parameters)
+        model = calculate_parameters_from_config(model, basemodel.parameters)
 
     # Seasonality (this must occur before interventions to preserve parameter overrides)
     if basemodel.seasonality:
-        add_seasonality_from_config(model, basemodel.seasonality, basemodel.timespan)
+        model = add_seasonality_from_config(model, basemodel.seasonality, basemodel.timespan)
 
     # Interventions
     if basemodel.interventions:
@@ -126,15 +128,15 @@ def build_basemodel(*, basemodel_config: BasemodelConfig, **_) -> BuilderOutput:
             closure_dict = make_school_closure_dict(
                 range(basemodel.timespan.start_date.year, basemodel.timespan.end_date.year + 1)
             )
-            add_school_closure_intervention_from_config(model, basemodel.interventions, closure_dict)
+            model = add_school_closure_intervention_from_config(model, basemodel.interventions, closure_dict)
 
         # Contact matrix
         if "contact_matrix" in intervention_types:
-            add_contact_matrix_interventions_from_config(model, basemodel.interventions)
+            model = add_contact_matrix_interventions_from_config(model, basemodel.interventions)
 
         # Parameter
         if "parameter" in intervention_types:
-            add_parameter_interventions_from_config(model, basemodel.interventions, basemodel.timespan)
+            model = add_parameter_interventions_from_config(model, basemodel.interventions, basemodel.timespan)
 
     # Initial conditions
     compartment_inits = calculate_compartment_initial_conditions(
@@ -218,7 +220,7 @@ def build_sampling(
     final_models = []
     for model in models:
         for varset in sampled_vars:
-            m = copy.deepcopy(model)
+            sampled_model = copy.deepcopy(model)
 
             # Accomodate for sampled start_date
             start_date = varset.setdefault("start_date", basemodel.timespan.start_date)
@@ -231,29 +233,31 @@ def build_sampling(
             # Sampled/calculated parameters
             if "parameters" in varset.keys():
                 parameters = {k: Parameter(type="scalar", value=v) for k, v in varset["parameters"].items()}
-                add_model_parameters_from_config(m, parameters)
+                sampled_model = add_model_parameters_from_config(sampled_model, parameters)
             if "calculated" in [param_args.type.value for param, param_args in (basemodel.parameters).items()]:
-                calculate_parameters_from_config(m, basemodel.parameters)
+                sampled_model = calculate_parameters_from_config(sampled_model, basemodel.parameters)
 
             # Vaccination (if start_date is sampled)
             if basemodel.vaccination and sampled_start_timespan:
                 reaggregated_vax = reaggregate_vaccines(earliest_vax, timespan.start_date)
-                add_vaccination_schedules_from_config(
-                    m, basemodel.transitions, basemodel.vaccination, timespan, use_schedule=reaggregated_vax
+                sampled_model = add_vaccination_schedules_from_config(
+                    sampled_model, basemodel.transitions, basemodel.vaccination, timespan, use_schedule=reaggregated_vax
                 )
 
             # Seasonality (this must occur before parameter interventions to preserve parameter overrides)
             if basemodel.seasonality:
-                add_seasonality_from_config(m, basemodel.seasonality, timespan)
+                sampled_model = add_seasonality_from_config(sampled_model, basemodel.seasonality, timespan)
 
             # Parameter interventions
             if basemodel.interventions and "parameter" in intervention_types:
-                add_parameter_interventions_from_config(m, basemodel.interventions, timespan)
+                sampled_model = add_parameter_interventions_from_config(
+                    sampled_model, basemodel.interventions, timespan
+                )
 
             # Initial conditions
             compartment_init = calculate_compartment_initial_conditions(
                 compartments=basemodel.compartments,
-                population_array=m.population.Nk,
+                population_array=sampled_model.population.Nk,
                 sampled_compartments=varset.get("compartments"),
             )
 
@@ -266,7 +270,7 @@ def build_sampling(
                 resample_frequency=basemodel.simulation.resample_frequency,
             )
 
-            final_models.append(m)
+            final_models.append(sampled_model)
             simulation_args.append(sim_args)
 
     # Ensure models and specifications align

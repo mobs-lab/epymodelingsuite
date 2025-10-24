@@ -1,5 +1,6 @@
 """Intervention building functions for EpiModel instances."""
 
+import copy
 import logging
 
 import numpy as np
@@ -37,7 +38,7 @@ def add_school_closure_intervention_from_config(
 
     # Apply the intervention
     try:
-        add_school_closure_interventions(
+        model = add_school_closure_interventions(
             model=model, closure_dict=closure_dict, reduction_factor=intervention.scaling_factor
         )
         logger.info(f"Applied school closure intervention with reduction factor: {intervention.scaling_factor}")
@@ -60,6 +61,8 @@ def add_contact_matrix_interventions_from_config(model: EpiModel, interventions:
     -------
         EpiModel instance with contact matrix interventions applied.
     """
+    model = copy.deepcopy(model)
+
     # Extract interventions
     cm_invs = [i for i in interventions if i.type == "contact_matrix"]
 
@@ -105,6 +108,8 @@ def add_parameter_interventions_from_config(
     -------
         EpiModel instance with parameter interventions applied.
     """
+    model = copy.deepcopy(model)
+
     # Extract parameter interventions
     param_invs = [i for i in interventions if i.type == "parameter"]
 

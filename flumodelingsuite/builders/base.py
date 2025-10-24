@@ -1,6 +1,7 @@
 """Core model building functions for EpiModel instances."""
 
 import ast
+import copy
 import logging
 
 import numpy as np
@@ -56,6 +57,8 @@ def set_population_from_config(model: EpiModel, population_name: str, age_groups
     -------
         EpiModel instance with the population set.
     """
+    model = copy.deepcopy(model)
+
     try:
         # Convert to "epydemix_population" name
         population_name = convert_location_name_format(population_name, "epydemix_population")
@@ -83,6 +86,8 @@ def add_model_compartments_from_config(model: EpiModel, compartments: list[Compa
     -------
         EpiModel instance with compartments added.
     """
+    model = copy.deepcopy(model)
+
     # Add compartments to the model
     try:
         compartment_ids = [compartment.id for compartment in compartments]
@@ -107,6 +112,8 @@ def add_model_transitions_from_config(model: EpiModel, transitions: list[Transit
     -------
         EpiModel instance with compartment transitions added.
     """
+    model = copy.deepcopy(model)
+
     # Check that required attributes of model configuration are not None
     if transitions is None:
         return model
@@ -151,6 +158,8 @@ def add_model_parameters_from_config(model: EpiModel, parameters: dict[str, Para
     -------
         EpiModel instance with parameters added.
     """
+    model = copy.deepcopy(model)
+
     # Add parameters to the model
     parameters_dict = {}
     for key, data in parameters.items():
@@ -195,6 +204,8 @@ def calculate_parameters_from_config(model: EpiModel, parameters: dict[str, Para
     -------
         EpiModel instance with calculated parameters added.
     """
+    model = copy.deepcopy(model)
+
     # Extract parameter names and expressions
     calc_params = {name: param.value for name, param in parameters.items() if param.type == "calculated"}
 
