@@ -81,13 +81,24 @@ class Compartment(BaseModel):
 
     id: str = Field(description="Unique identifier for the compartment.")
     label: str | None = Field(None, description="Human-readable label for the compartment.")
-    init: InitCompartmentEnum | float | int | None = Field(None, description="Initial conditions for compartment.")
+    init: InitCompartmentEnum | float | int | list[float | int] | None = Field(
+        None,
+        description=(
+            "Initial conditions for compartment. Can be a scalar (count or proportion), "
+            "age-varying list, or special value (default/sampled/calibrated)."
+        ),
+    )
 
     @field_validator("init")
-    def enforce_nonnegative_init(cls, v: float, info: Any) -> float | int:
+    def enforce_nonnegative_init(cls, v: float | list[float | int], info: Any) -> float | int | list[float | int]:
         """Enforce that compartment initialization is non-negative"""
         if isinstance(v, (float, int)):
             assert v >= 0, f"Negative compartment initialization {v} received for compartment {info.data.get('id')}"
+        elif isinstance(v, list):
+            for i, val in enumerate(v):
+                assert val >= 0, (
+                    f"Negative compartment initialization {val} at age group {i} for compartment {info.data.get('id')}"
+                )
         return v
 
 
@@ -390,11 +401,17 @@ class BaseEpiModel(BaseModel):
 
     @model_validator(mode="after")
     def check_age_structure_refs(self: "BaseEpiModel") -> "BaseEpiModel":
-        """Ensure that age-varying parameters match population age structure."""
+        """Ensure that age-varying parameters and compartment inits match population age structure."""
         n_age_groups = len(self.population.age_groups)
         for p in self.parameters.values():
             if p.type == "age_varying":
                 assert len(p.values) == n_age_groups, "Age varying parameters must match population age structure."
+        for c in self.compartments:
+            if isinstance(c.init, list):
+                assert len(c.init) == n_age_groups, (
+                    f"Age varying initialization for compartment '{c.id}' has {len(c.init)} values "
+                    f"but population has {n_age_groups} age groups."
+                )
         return self
 
     @model_validator(mode="after")
@@ -403,6 +420,39 @@ class BaseEpiModel(BaseModel):
         inits = [c.init for c in self.compartments if c.init]
         if inits:
             assert inits.count("default") > 0, "Compartment initialization requires at least one default compartment."
+        return self
+
+    @model_validator(mode="after")
+    def check_init_proportions_sum(self: "BaseEpiModel") -> "BaseEpiModel":
+        """Ensure that sum of initialization proportions doesn't exceed 1.0 in any age group."""
+        n_age_groups = len(self.population.age_groups)
+
+        # Track proportion sums per age group (excluding default compartments)
+        proportion_sums = [0.0] * n_age_groups
+
+        for c in self.compartments:
+            if c.init == "default" or c.init is None or c.init in ["sampled", "calibrated"]:
+                continue
+
+            if isinstance(c.init, list):
+                # Age-varying initialization
+                for age_idx, val in enumerate(c.init):
+                    if 0 < val < 1:  # Only count proportions, not counts
+                        proportion_sums[age_idx] += val
+            elif isinstance(c.init, (float, int)) and 0 < c.init < 1:
+                # Scalar proportion applied to all age groups
+                for age_idx in range(n_age_groups):
+                    proportion_sums[age_idx] += c.init
+
+        # Check if any age group exceeds 1.0
+        for age_idx, total in enumerate(proportion_sums):
+            if total > 1.0:
+                age_group_label = self.population.age_groups[age_idx]
+                raise ValueError(
+                    f"Sum of initialization proportions for age group '{age_group_label}' "
+                    f"(index {age_idx}) exceeds 1.0: {total:.3f}"
+                )
+
         return self
 
     @model_validator(mode="after")
