@@ -337,7 +337,7 @@ class BaseEpiModel(BaseModel):
     """Model configuration."""
 
     meta: Meta | None = Field(None, description="General metadata.")
-    name: str = Field(description="Name of the model")
+    name: str | None = Field(None, description="Name of the model")
     random_seed: int | None = Field(None, description="Random seed for reproducibility")
 
     timespan: Timespan = Field(description="Date range and timestep for modeling")
