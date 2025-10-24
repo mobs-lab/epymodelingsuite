@@ -236,10 +236,13 @@ def calculate_compartment_initial_conditions(
     """
     Calculate initial conditions for compartments based on their initialization values.
 
-    This function handles three types of compartment initialization:
-    1. Counts (value >= 1): Distributed proportionally across age groups
-    2. Proportions (value < 1): Applied directly to population by age group
-    3. Default: Remaining population distributed per age group
+    This function handles four types of compartment initialization:
+    1. Age-varying (list): Each value applied to corresponding age group
+       - Values >= 1: Counts applied directly to that age group
+       - Values 0 < v < 1: Proportions applied to that age group's population
+    2. Scalar counts (value >= 1): Distributed proportionally across age groups
+    3. Scalar proportions (0 < value < 1): Applied to all age groups
+    4. Default: Remaining population distributed per age group
 
     Parameters
     ----------
@@ -267,11 +270,12 @@ def calculate_compartment_initial_conditions(
     >>> compartments = [
     ...     Compartment(id="S", init="default"),
     ...     Compartment(id="I", init=100),
-    ...     Compartment(id="R", init=0.1)
+    ...     Compartment(id="R", init=0.1),
+    ...     Compartment(id="M", init=[0.3, 0, 0])  # 30% of first age group only
     ... ]
     >>> population = np.array([1000, 2000, 3000])
     >>> calculate_compartment_initial_conditions(compartments, population)
-    {'S': array([...]), 'I': array([...]), 'R': array([...])}
+    {'S': array([...]), 'I': array([...]), 'R': array([...]), 'M': array([300, 0, 0])}
     """
     # Initialize tracking variables
     default_compartment_ids = []
@@ -291,30 +295,47 @@ def calculate_compartment_initial_conditions(
 
         # Get initialization value (from samples if provided, otherwise from config)
         initial_value = (
-            sampled_compartments.get(compartment.id, compartment.init)
-            if sampled_compartments
-            else compartment.init
+            sampled_compartments.get(compartment.id, compartment.init) if sampled_compartments else compartment.init
         )
 
         # Skip compartments with no initial value
         if initial_value is None:
             continue
 
-        # Case 1: Count-based initialization (value >= 1)
-        if initial_value >= 1:
+        # Case 1: Age-varying initialization (list)
+        if isinstance(initial_value, list):
+            initial_conditions = np.zeros_like(population_array, dtype=float)
+            for age_idx, val in enumerate(initial_value):
+                if val >= 1:
+                    # Count for this age group (applied directly)
+                    initial_conditions[age_idx] = val
+                elif 0 < val < 1:
+                    # Proportion for this age group
+                    initial_conditions[age_idx] = population_array[age_idx] * val
+                elif val == 0:
+                    initial_conditions[age_idx] = 0
+                else:
+                    raise ValueError(
+                        f"Invalid initial value {val} at age group {age_idx} for compartment {compartment.id}"
+                    )
+            initial_conditions_dict[compartment.id] = initial_conditions
+            remaining_population -= initial_conditions
+
+        # Case 2: Scalar count-based initialization (value >= 1)
+        elif initial_value >= 1:
             # Distribute total count proportionally across age groups
             initial_conditions = initial_value * population_array / population_array.sum()
             initial_conditions_dict[compartment.id] = initial_conditions
             remaining_population -= initial_conditions
 
-        # Case 2: Proportion-based initialization (0 < value < 1)
+        # Case 3: Scalar proportion-based initialization (0 < value < 1)
         elif 0 < initial_value < 1:
             # Apply proportion to each age group
             initial_conditions = population_array * initial_value
             initial_conditions_dict[compartment.id] = initial_conditions
             remaining_population -= initial_conditions
 
-        # Case 3: Zero initialization
+        # Case 4: Zero initialization
         elif initial_value == 0:
             initial_conditions_dict[compartment.id] = np.zeros_like(population_array)
 
