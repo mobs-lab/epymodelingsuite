@@ -23,6 +23,7 @@ class CompartmentSamplingRange(BaseModel):
     max: float = Field(description="Maximum value for compartment")
 
     @field_validator("max")
+    @classmethod
     def check_max_greater_than_min(cls, v: float, info: Any) -> float:
         """Ensure max is greater than min."""
         min_val = info.data.get("min")
@@ -116,6 +117,7 @@ class SamplingModelset(BaseModel):
     sampling: SamplingConfiguration = Field(description="Sampling configuration")
 
     @field_validator("population_names")
+    @classmethod
     def validate_populations(cls, v):
         """Validate each population name in the list."""
         validated_populations = []

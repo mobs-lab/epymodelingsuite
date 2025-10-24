@@ -1,11 +1,11 @@
 import logging
-from datetime import date
+from datetime import date, timedelta
 from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from ..utils import validate_iso3166
+from ..utils import parse_timedelta, validate_iso3166
 from .common import DateParameter, Distribution, Meta
 
 logger = logging.getLogger(__name__)
@@ -31,6 +31,49 @@ class CalibrationStrategy(BaseModel):
     options: dict[str, Any] = Field(
         default_factory=dict, description="Strategy-specific arguments for calibrate() function"
     )
+
+    @field_validator("options")
+    @classmethod
+    def parse_max_time(cls, v: dict[str, Any]) -> dict[str, Any]:
+        """
+        Parse max_time option from string to timedelta if present.
+
+        If the options dict contains a 'max_time' key with a string value,
+        it will be converted to a datetime.timedelta using parse_timedelta().
+        If max_time is already a timedelta, it will be kept as-is.
+
+        Supported formats include pandas Timedelta strings (e.g., '30m', '2H', '1h30m')
+        and frequency aliases (e.g., 'W', '2D'). See pandas documentation for details:
+        https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases
+
+        Parameters
+        ----------
+        v : dict[str, Any]
+            The options dictionary to validate.
+
+        Returns
+        -------
+        dict[str, Any]
+            The options dictionary with max_time converted to timedelta if applicable.
+
+        Raises
+        ------
+        ValueError
+            If max_time string cannot be parsed into a valid timedelta.
+
+        Examples
+        --------
+        >>> strategy = CalibrationStrategy(name="SMC", options={"max_time": "4h"})
+        >>> strategy.options["max_time"]
+        datetime.timedelta(seconds=14400)
+        """
+        if "max_time" in v and isinstance(v["max_time"], str):
+            try:
+                v["max_time"] = parse_timedelta(v["max_time"])
+            except ValueError as e:
+                msg = f"Invalid max_time value: {e}"
+                raise ValueError(msg) from e
+        return v
 
 
 class ProjectionSpec(BaseModel):
@@ -108,9 +151,65 @@ class CalibrationConfiguration(BaseModel):
                 msg = f"Comparison for '{comp.observed}' must specify at least one simulation transition"
                 raise ValueError(msg)
 
-        assert self.start_date or self.parameters or self.initial_conditions, (
+        assert self.start_date or self.parameters or self.compartments, (
             "Calibration requires at least one of start_date, parameters, or compartments"
         )
+        return self
+
+    @model_validator(mode="after")
+    def validate_sampled_start_date_against_fitting_window(
+        self: "CalibrationConfiguration",
+    ) -> "CalibrationConfiguration":
+        """Check that sampled start_date does not exceed fitting window end_date."""
+        # Only validate if start_date with prior is specified
+        if not self.start_date or not self.start_date.prior:
+            return self
+
+        prior = self.start_date.prior
+        reference_date = self.start_date.reference_date
+        fitting_window_end = self.fitting_window.end_date
+
+        # Determine max offset based on distribution type
+        max_offset = None
+
+        if prior.name == "randint":
+            # randint(low, high) samples integers in [low, high), so max is high - 1
+            if len(prior.args) >= 2:
+                max_offset = int(prior.args[1]) - 1
+        elif prior.name == "uniform":
+            # uniform(loc, scale) samples in [loc, loc+scale]
+            if len(prior.args) >= 2:
+                max_offset = int(prior.args[0] + prior.args[1])
+        else:
+            # Unsupported distribution - skip validation with warning
+            warn_msg = (
+                f"Start date uses distribution '{prior.name}' which does not get validated for not exceeding fitting window."
+                "Only 'randint' and 'uniform' distributions are validated against fitting window. "
+                "Please ensure your start_date prior is compatible with the fitting window manually."
+            )
+            logger.warning(warn_msg)
+            return self
+
+        # If we couldn't extract max_offset, warn and skip
+        if max_offset is None:
+            warn_msg = f"Could not determine max offset from start_date prior distribution '{prior.name}' with args {prior.args}. Skipping validation."
+            logger.warning(warn_msg)
+            return self
+
+        # Calculate maximum possible start date
+        max_start_date = reference_date + timedelta(days=max_offset)
+
+        # Raise error if max start date exceeds fitting window end
+        if max_start_date > fitting_window_end:
+            msg = (
+                "Sampled start_date could extend beyond fitting window. "
+                f"Reference date: {reference_date}, Max offset: {max_offset} days, "
+                f"Max possible start date: {max_start_date}, "
+                f"Fitting window end: {fitting_window_end}. "
+                "Consider reducing the prior upper bound or extending the fitting window end date."
+            )
+            raise ValueError(msg)
+
         return self
 
 
@@ -122,6 +221,7 @@ class CalibrationModelset(BaseModel):
     calibration: CalibrationConfiguration = Field(description="Calibration configuration")
 
     @field_validator("population_names")
+    @classmethod
     def validate_populations(cls, v):
         """Validate each population name in the list."""
         validated_populations = []

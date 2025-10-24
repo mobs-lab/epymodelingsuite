@@ -6,9 +6,11 @@ This package contains utility functions organized by category:
 - populations: Population-related utilities
 - config: Configuration file utilities
 - distributions: Distribution conversion utilities
+- common: Common utility functions
 """
 
 # Import all public functions from submodules
+from .common import parse_timedelta
 from .config import identify_config_type
 from .distributions import distribution_to_scipy
 from .expression_eval import RetrieveName, SafeEvalVisitor, safe_eval
@@ -16,6 +18,8 @@ from .location import convert_location_name_format, get_location_codebook, valid
 from .populations import get_population_codebook, make_dummy_population
 
 __all__ = [
+    # Common utilities
+    "parse_timedelta",
     # Config utilities
     "identify_config_type",
     # Distribution utilities

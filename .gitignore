@@ -6,3 +6,4 @@
 cov_annotate/
 .coverage
 *,cover
+build/

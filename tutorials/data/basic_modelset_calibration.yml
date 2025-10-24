@@ -16,6 +16,7 @@ modelset:
       options: # strategy specific arguments in calibrate() function
         num_particles: 100
         num_generations: 5
+        max_time: "6h"  # Optional: Maximum time for calibration (e.g., "30m", "2h", "1D", "W")
 
     # Sampler options, passed directly when initializing ABCSampler
     distance_function: rmse # Default, but we could provide custom distance function

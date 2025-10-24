@@ -98,6 +98,7 @@ class QuantilesOutput(BaseModel):
         return self
 
     @field_validator("selections")
+    @classmethod
     def check_selections(cls, v):
         """Ensure quantiles are in (0, 1)."""
         if not all([0.0 < q < 1.0 for q in v]):
