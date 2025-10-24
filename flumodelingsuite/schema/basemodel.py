@@ -93,6 +93,7 @@ class Compartment(BaseModel):
     )
 
     @field_validator("init")
+    @classmethod
     def enforce_nonnegative_init(cls, v: float | list[float | int], info: Any) -> float | int | list[float | int]:
         """Enforce that compartment initialization is non-negative"""
         if isinstance(v, (float, int)):
