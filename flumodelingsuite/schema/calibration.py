@@ -1,5 +1,5 @@
 import logging
-from datetime import date
+from datetime import date, timedelta
 from enum import Enum
 from typing import Any
 
@@ -151,9 +151,65 @@ class CalibrationConfiguration(BaseModel):
                 msg = f"Comparison for '{comp.observed}' must specify at least one simulation transition"
                 raise ValueError(msg)
 
-        assert self.start_date or self.parameters or self.initial_conditions, (
+        assert self.start_date or self.parameters or self.compartments, (
             "Calibration requires at least one of start_date, parameters, or compartments"
         )
+        return self
+
+    @model_validator(mode="after")
+    def validate_sampled_start_date_against_fitting_window(
+        self: "CalibrationConfiguration",
+    ) -> "CalibrationConfiguration":
+        """Check that sampled start_date does not exceed fitting window end_date."""
+        # Only validate if start_date with prior is specified
+        if not self.start_date or not self.start_date.prior:
+            return self
+
+        prior = self.start_date.prior
+        reference_date = self.start_date.reference_date
+        fitting_window_end = self.fitting_window.end_date
+
+        # Determine max offset based on distribution type
+        max_offset = None
+
+        if prior.name == "randint":
+            # randint(low, high) samples integers in [low, high), so max is high - 1
+            if len(prior.args) >= 2:
+                max_offset = int(prior.args[1]) - 1
+        elif prior.name == "uniform":
+            # uniform(loc, scale) samples in [loc, loc+scale]
+            if len(prior.args) >= 2:
+                max_offset = int(prior.args[0] + prior.args[1])
+        else:
+            # Unsupported distribution - skip validation with warning
+            warn_msg = (
+                f"Start date uses distribution '{prior.name}' which does not get validated for not exceeding fitting window."
+                "Only 'randint' and 'uniform' distributions are validated against fitting window. "
+                "Please ensure your start_date prior is compatible with the fitting window manually."
+            )
+            logger.warning(warn_msg)
+            return self
+
+        # If we couldn't extract max_offset, warn and skip
+        if max_offset is None:
+            warn_msg = f"Could not determine max offset from start_date prior distribution '{prior.name}' with args {prior.args}. Skipping validation."
+            logger.warning(warn_msg)
+            return self
+
+        # Calculate maximum possible start date
+        max_start_date = reference_date + timedelta(days=max_offset)
+
+        # Raise error if max start date exceeds fitting window end
+        if max_start_date > fitting_window_end:
+            msg = (
+                "Sampled start_date could extend beyond fitting window. "
+                f"Reference date: {reference_date}, Max offset: {max_offset} days, "
+                f"Max possible start date: {max_start_date}, "
+                f"Fitting window end: {fitting_window_end}. "
+                "Consider reducing the prior upper bound or extending the fitting window end date."
+            )
+            raise ValueError(msg)
+
         return self
 
 
