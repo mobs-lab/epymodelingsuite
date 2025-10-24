@@ -59,13 +59,16 @@ class SimulationQuantilesOutput(BaseModel):
 class CalibrationQuantilesOutput(BaseModel):
     """Specifications for calibration/projection quantile outputs in default format."""
 
-    
+    # We need to add a section in schema.calibration to specify transitions and compartments to record in the simulate_wrapper.
+    # With that done, this section will contain `compartments` and `transitions` selections like for simulation.
+    # I will also include an option to choose the source as calibration (with option for choosing generation) or projection.
+    # The data used in calibration (e.g. total_hosp) will always be included in default format outputs.
 
 
 class QuantilesOutput(BaseModel):
     """Specifications for quantile outputs."""
 
-    selections: list[float] = Field(
+    selections: list[float] | None = Field(
         default_factory=get_flusight_quantiles,
         description="Desired quantiles expressed as floats.",
     )
