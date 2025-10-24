@@ -244,7 +244,7 @@ class Seasonality(BaseModel):
     target_parameter: str = Field(description="Name of parameter to apply seasonality to")
     method: SeasonalityMethodEnum = Field(description="Method for defining a seasonally varying function")
     seasonality_max_date: date = Field(description="Date of seasonality peak (max transmissibility)")
-    seasonality_min_date: date | None = Field(description="Date of seasonality trough (min transmissibility)")
+    seasonality_min_date: date | None = Field(None, description="Date of seasonality trough (min transmissibility)")
     max_value: float = Field(description="Maximum value that the parameter can take after scaling.")
     min_value: float = Field(description="Minimum value that the parameter can take after scaling.")
 
