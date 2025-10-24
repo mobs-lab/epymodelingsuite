@@ -262,6 +262,14 @@ def generate_calibration_outputs(*, calibration: list[CalibrationOutput], output
     # Quantiles
     if outputs.quantiles:
         for model in calibration:
+            # Default format
+            if outputs.quantiles.calibration_default:
+                #
+                pass
+
+
+
+                
             try:
                 quan_df = model.results.get_projection_quantiles(outputs.quantiles.selections)
             except ValueError:

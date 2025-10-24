@@ -59,6 +59,8 @@ class SimulationQuantilesOutput(BaseModel):
 class CalibrationQuantilesOutput(BaseModel):
     """Specifications for calibration/projection quantile outputs in default format."""
 
+    
+
 
 class QuantilesOutput(BaseModel):
     """Specifications for quantile outputs."""
@@ -138,9 +140,6 @@ class OutputConfiguration(BaseModel):
     """Output configuration."""
 
     meta: Meta | None = Field(None, description="General metadata.")
-    resample_freq: str | None = Field(
-        None, description="Resample to a new frequency for all outputs, e.g. 'D' or 'W-SAT'."
-    )
     quantiles: QuantilesOutput | None = Field(None, description="Specifications for quantile outputs.")
     trajectories: TrajectoriesOutput | None = Field(None, description="Specifications for trajectory outputs.")
     posteriors: PosteriorsOutput | None = Field(None, description="Specifications for posterior outputs.")
