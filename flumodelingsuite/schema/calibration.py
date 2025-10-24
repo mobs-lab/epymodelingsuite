@@ -5,7 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from ..utils import validate_iso3166
+from ..utils import parse_timedelta, validate_iso3166
 from .common import DateParameter, Distribution, Meta
 
 logger = logging.getLogger(__name__)
@@ -31,6 +31,49 @@ class CalibrationStrategy(BaseModel):
     options: dict[str, Any] = Field(
         default_factory=dict, description="Strategy-specific arguments for calibrate() function"
     )
+
+    @field_validator("options")
+    @classmethod
+    def parse_max_time(cls, v: dict[str, Any]) -> dict[str, Any]:
+        """
+        Parse max_time option from string to timedelta if present.
+
+        If the options dict contains a 'max_time' key with a string value,
+        it will be converted to a datetime.timedelta using parse_timedelta().
+        If max_time is already a timedelta, it will be kept as-is.
+
+        Supported formats include pandas Timedelta strings (e.g., '30m', '2H', '1h30m')
+        and frequency aliases (e.g., 'W', '2D'). See pandas documentation for details:
+        https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases
+
+        Parameters
+        ----------
+        v : dict[str, Any]
+            The options dictionary to validate.
+
+        Returns
+        -------
+        dict[str, Any]
+            The options dictionary with max_time converted to timedelta if applicable.
+
+        Raises
+        ------
+        ValueError
+            If max_time string cannot be parsed into a valid timedelta.
+
+        Examples
+        --------
+        >>> strategy = CalibrationStrategy(name="SMC", options={"max_time": "4h"})
+        >>> strategy.options["max_time"]
+        datetime.timedelta(seconds=14400)
+        """
+        if "max_time" in v and isinstance(v["max_time"], str):
+            try:
+                v["max_time"] = parse_timedelta(v["max_time"])
+            except ValueError as e:
+                msg = f"Invalid max_time value: {e}"
+                raise ValueError(msg) from e
+        return v
 
 
 class ProjectionSpec(BaseModel):
@@ -122,6 +165,7 @@ class CalibrationModelset(BaseModel):
     calibration: CalibrationConfiguration = Field(description="Calibration configuration")
 
     @field_validator("population_names")
+    @classmethod
     def validate_populations(cls, v):
         """Validate each population name in the list."""
         validated_populations = []

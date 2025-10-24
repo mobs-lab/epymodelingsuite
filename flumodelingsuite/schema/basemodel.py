@@ -29,6 +29,7 @@ class Timespan(BaseModel):
     delta_t: float | int = Field(1.0, description="Time step (dt) for the simulation in epydemix.")
 
     @field_validator("end_date")
+    @classmethod
     def check_end_date(cls, v: date, info: Any) -> date:
         """Ensure end_date is not before start_date."""
         start = info.data.get("start_date")
@@ -37,6 +38,7 @@ class Timespan(BaseModel):
         return v
 
     @field_validator("delta_t")
+    @classmethod
     def check_delta_t(cls, v: float) -> float:
         """Ensure delta_t > 0 and return as float"""
         assert v > 0, f"Provided delta_t={v} must be greater than 0."
@@ -65,6 +67,7 @@ class Population(BaseModel):
     )
 
     @field_validator("name")
+    @classmethod
     def validate_name(cls, v: str):
         return validate_iso3166(v)
 
@@ -90,6 +93,7 @@ class Compartment(BaseModel):
     )
 
     @field_validator("init")
+    @classmethod
     def enforce_nonnegative_init(cls, v: float | list[float | int], info: Any) -> float | int | list[float | int]:
         """Enforce that compartment initialization is non-negative"""
         if isinstance(v, (float, int)):
@@ -245,6 +249,7 @@ class Seasonality(BaseModel):
     min_value: float = Field(description="Minimum value that the parameter can take after scaling.")
 
     @field_validator("seasonality_min_date")
+    @classmethod
     def check_seasonality_dates(cls, v: date, info: Any) -> date:
         """Ensure date of seasonality trough is after date of seasonality peak."""
         max_date = info.data.get("seasonality_max_date")
@@ -253,6 +258,7 @@ class Seasonality(BaseModel):
         return v
 
     @field_validator("min_value")
+    @classmethod
     def check_scaling_minimum(cls, v: float, info: Any) -> float:
         """Ensure minimum post-scaling seasonal parameter value is lesser than maximum value."""
         max_val = info.data.get("max_value")
@@ -287,6 +293,7 @@ class Intervention(BaseModel):
     end_date: date | None = Field(None, description="End date of 'parameter' or 'contact_matrix' intervention.")
 
     @field_validator("scaling_factor")
+    @classmethod
     def check_scaling_factor(cls, v: float) -> float:
         """Ensure scaling_factor >= 0."""
         assert v >= 0, f"Provided scaling_factor={v} must be >= 0."
@@ -480,6 +487,7 @@ class BaseEpiModel(BaseModel):
         return self
 
     @field_validator("interventions")
+    @classmethod
     def enforce_single_school_closure(cls, v: list[Intervention]) -> list[Intervention]:
         """Enforce that school closure intervention is applied only once."""
         if [i.type for i in v].count("school_closure") > 1:
