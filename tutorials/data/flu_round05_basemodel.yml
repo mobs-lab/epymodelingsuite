@@ -6,7 +6,7 @@ model:
     date: "2038-01-19"
 
   timespan:
-    start_date: calibrated
+    start_date: calibrated #"2024-09-15"
     end_date: "2025-05-31"
     delta_t: 1.0
 
