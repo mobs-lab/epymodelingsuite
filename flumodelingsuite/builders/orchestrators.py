@@ -603,11 +603,11 @@ def make_simulate_wrapper(
             logger.warning("Simulation failed with parameters %s: %s", failed_params, e)
 
             # Handle simulation failure
-            # Projection mode: return empty dict
+            # Projection: return empty dict
             if params["projection"]:
                 return {}
 
-            # Calibration mode: return zero-filled array
+            # Calibration: return zero-filled array
             return {"data": np.full(len(data_dates), 0)}
 
         # 11. Format output based on mode
