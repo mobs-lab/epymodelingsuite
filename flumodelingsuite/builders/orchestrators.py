@@ -339,6 +339,10 @@ def make_simulate_wrapper(
             "resample_frequency": basemodel.simulation.resample_frequency,
         }
 
+        # Extract observed dates for calibration (before simulation to avoid duplication)
+        if not params["projection"]:
+            data_dates = list(pd.to_datetime(data_state.target_end_date.values))
+
         # Run simulation
         try:
             results = simulate(**sim_params)
@@ -351,7 +355,6 @@ def make_simulate_wrapper(
                 return {}
 
             # Calibration mode: return zero-filled array
-            data_dates = list(pd.to_datetime(data_state.target_end_date.values))
             return {"data": np.full(len(data_dates), 0)}
 
         # Format output based on mode
@@ -365,7 +368,6 @@ def make_simulate_wrapper(
 
         # Calibration: align to observed dates
         trajectory_dates = results.dates
-        data_dates = list(pd.to_datetime(data_state.target_end_date.values))
 
         mask = [date in data_dates for date in trajectory_dates]
 
