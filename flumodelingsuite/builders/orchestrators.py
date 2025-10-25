@@ -355,22 +355,25 @@ def make_simulate_wrapper(
 
                 mask = [date in data_dates for date in trajectory_dates]
 
-                total_hosp = sum(results.transitions[key] for key in calibration.comparison[0].simulation)
+                # Sum transitions specified in calibration config (e.g., Hospitalization = Hosp_vax + Hosp_unvax)
+                comparison_transitions = [results.transitions[key] for key in calibration.comparison[0].simulation]
+                simulated_data = sum(comparison_transitions)
 
-                total_hosp = total_hosp[mask]
+                simulated_data = simulated_data[mask]
 
-                if len(total_hosp) < len(data_dates):
-                    pad_len = len(data_dates) - len(total_hosp)
-                    total_hosp = np.pad(total_hosp, (pad_len, 0), constant_values=0)
+                # Pad with zeros at beginning if sampled start_date is later than earliest observation date
+                if len(simulated_data) < len(data_dates):
+                    pad_len = len(data_dates) - len(simulated_data)
+                    simulated_data = np.pad(simulated_data, (pad_len, 0), constant_values=0)
 
             except Exception as e:  # noqa: BLE001
                 failed_params = params.copy()
                 failed_params.pop("epimodel", None)
                 logger.info("Simulation failed with parameters %s: %s", failed_params, e)
                 data_dates = list(pd.to_datetime(data_state["target_end_date"].values))
-                total_hosp = np.full(len(data_dates), 0)
+                simulated_data = np.full(len(data_dates), 0)
 
-            return {"data": total_hosp}
+            return {"data": simulated_data}
 
         # Run projection if params["projection"] is True
         try:
