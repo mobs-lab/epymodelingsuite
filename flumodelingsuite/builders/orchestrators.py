@@ -228,6 +228,42 @@ def setup_interventions(
     return models
 
 
+def apply_seasonality_with_sampled_min(
+    model: EpiModel,
+    basemodel: BaseEpiModel,
+    timespan: Timespan,
+    params: dict,
+) -> None:
+    """
+    Apply seasonality configuration, using sampled min_value if provided.
+
+    Creates a deep copy of seasonality config to avoid mutating shared state,
+    optionally overrides min_value if it's being calibrated, then applies to model.
+
+    Parameters
+    ----------
+    model : EpiModel
+        Model to add seasonality to.
+    basemodel : BaseEpiModel
+        Base configuration with seasonality settings.
+    timespan : Timespan
+        Simulation timespan.
+    params : dict
+        Simulation parameters, may contain "seasonality_min" if being calibrated.
+    """
+    if not basemodel.seasonality:
+        return
+
+    # Use copy to avoid mutating shared basemodel
+    seasonality_config = copy.deepcopy(basemodel.seasonality)
+
+    # Override min_value if sampled/calibrated
+    if "seasonality_min" in params:
+        seasonality_config.min_value = params["seasonality_min"]
+
+    add_seasonality_from_config(model, seasonality_config, timespan)
+
+
 def apply_vaccination_for_sampled_start(
     model: EpiModel,
     basemodel: BaseEpiModel,
@@ -415,12 +451,8 @@ def make_simulate_wrapper(
         # Apply vaccination (reaggregating if start_date is sampled)
         apply_vaccination_for_sampled_start(m, basemodel, timespan, earliest_vax, sampled_start_timespan)
 
-        # Seasonality (this must occur before parameter interventions to preserve parameter overrides)
-        if basemodel.seasonality:
-            seasonality_config = copy.deepcopy(basemodel.seasonality)
-            if "seasonality_min" in params:
-                seasonality_config.min_value = params["seasonality_min"]
-            add_seasonality_from_config(m, seasonality_config, timespan)
+        # Apply seasonality (this must occur before parameter interventions to preserve parameter overrides)
+        apply_seasonality_with_sampled_min(m, basemodel, timespan, params)
 
         # Parameter interventions
         if basemodel.interventions and "parameter" in intervention_types:
