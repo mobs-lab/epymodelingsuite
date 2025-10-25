@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date
 from unittest.mock import Mock, patch
 
 import numpy as np
@@ -10,13 +10,14 @@ import pandas as pd
 import pytest
 
 from flumodelingsuite.builders.orchestrators import (
-    align_simulation_to_observed_dates,
     apply_calibrated_parameters,
     apply_seasonality_with_sampled_min,
     apply_vaccination_for_sampled_start,
     compute_simulation_start_date,
     create_model_collection,
     flatten_simulation_results,
+    format_calibration_data,
+    format_projection_trajectories,
     setup_vaccination_schedules,
 )
 from flumodelingsuite.schema.basemodel import (
@@ -41,13 +42,8 @@ class TestCreateModelCollection:
         from datetime import date
 
         from flumodelingsuite.schema.basemodel import (
-            BaseEpiModel,
-            Compartment,
             Parameter,
-            Population,
-            Simulation,
             Timespan,
-            Transition,
         )
 
         compartments = [
@@ -290,13 +286,8 @@ class TestSetupVaccinationSchedules:
         from datetime import date
 
         from flumodelingsuite.schema.basemodel import (
-            BaseEpiModel,
-            Compartment,
             Parameter,
-            Population,
-            Simulation,
             Timespan,
-            Transition,
         )
 
         compartments = [
@@ -347,8 +338,6 @@ class TestSetupVaccinationSchedules:
         """Create a BaseEpiModel with vaccination configuration."""
         # Create a minimal vaccination data file
         import pandas as pd
-
-        from flumodelingsuite.schema.basemodel import Transition, Vaccination
 
         vax_data = pd.DataFrame(
             {
@@ -508,6 +497,7 @@ class TestSetupVaccinationSchedules:
                 # _add_vaccination_schedules_from_config should not be called when start_date is sampled
                 mock_add_vax.assert_not_called()
 
+
 class TestComputeSimulationStartDate:
     """Tests for compute_simulation_start_date function."""
 
@@ -523,16 +513,16 @@ class TestComputeSimulationStartDate:
 
         assert result == date(2024, 1, 1)
 
-    def test_projection_mode_returns_earliest_start(self):
-        """Test that projection mode uses earliest start date for consistent trajectory lengths."""
+    def test_projection_mode_uses_sampled_offset(self):
+        """Test that projection mode applies sampled offset (same as calibration)."""
         params = {"projection": True, "start_date": 10}
         basemodel_timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
         reference_start_date = date(2024, 1, 5)
 
         result = compute_simulation_start_date(params, basemodel_timespan, reference_start_date)
 
-        # Should use earliest start, not the offset
-        assert result == date(2024, 1, 5)
+        # Should use earliest + offset (Jan 5 + 10 days = Jan 15), same as calibration
+        assert result == date(2024, 1, 15)
 
     def test_calibration_mode_uses_sampled_offset(self):
         """Test that calibration mode applies sampled offset to earliest start."""
@@ -605,9 +595,10 @@ class TestApplyCalibratedParameters:
             "derived": Parameter(type="calculated", value="beta * 2"),
         }
 
-        with patch("flumodelingsuite.builders.orchestrators.add_model_parameters_from_config") as mock_add, patch(
-            "flumodelingsuite.builders.orchestrators.calculate_parameters_from_config"
-        ) as mock_calc:
+        with (
+            patch("flumodelingsuite.builders.orchestrators.add_model_parameters_from_config") as mock_add,
+            patch("flumodelingsuite.builders.orchestrators.calculate_parameters_from_config") as mock_calc,
+        ):
             apply_calibrated_parameters(model, params, parameter_config)
 
             # Should call both add and calculate
@@ -624,9 +615,10 @@ class TestApplyVaccinationForSampledStart:
         basemodel = Mock(vaccination=None)
         timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
 
-        with patch("flumodelingsuite.builders.orchestrators.reaggregate_vaccines") as mock_reagg, patch(
-            "flumodelingsuite.builders.orchestrators.add_vaccination_schedules_from_config"
-        ) as mock_add:
+        with (
+            patch("flumodelingsuite.builders.orchestrators.reaggregate_vaccines") as mock_reagg,
+            patch("flumodelingsuite.builders.orchestrators.add_vaccination_schedules_from_config") as mock_add,
+        ):
             apply_vaccination_for_sampled_start(model, basemodel, timespan, None, None)
 
             # Should not call vaccination functions
@@ -639,9 +631,10 @@ class TestApplyVaccinationForSampledStart:
         basemodel = Mock(vaccination=Mock())
         timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
 
-        with patch("flumodelingsuite.builders.orchestrators.reaggregate_vaccines") as mock_reagg, patch(
-            "flumodelingsuite.builders.orchestrators.add_vaccination_schedules_from_config"
-        ) as mock_add:
+        with (
+            patch("flumodelingsuite.builders.orchestrators.reaggregate_vaccines") as mock_reagg,
+            patch("flumodelingsuite.builders.orchestrators.add_vaccination_schedules_from_config") as mock_add,
+        ):
             apply_vaccination_for_sampled_start(model, basemodel, timespan, None, sampled_start_timespan=None)
 
             # Should not reaggregate since start_date not sampled
@@ -656,9 +649,10 @@ class TestApplyVaccinationForSampledStart:
         earliest_vax = {"vax_data": "some_data"}
         sampled_start_timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
 
-        with patch("flumodelingsuite.builders.orchestrators.reaggregate_vaccines") as mock_reagg, patch(
-            "flumodelingsuite.builders.orchestrators.add_vaccination_schedules_from_config"
-        ) as mock_add:
+        with (
+            patch("flumodelingsuite.builders.orchestrators.reaggregate_vaccines") as mock_reagg,
+            patch("flumodelingsuite.builders.orchestrators.add_vaccination_schedules_from_config") as mock_add,
+        ):
             mock_reagg.return_value = {"reaggregated": "data"}
 
             apply_vaccination_for_sampled_start(model, basemodel, timespan, earliest_vax, sampled_start_timespan)
@@ -757,8 +751,8 @@ class TestApplySeasonalityWithSampledMin:
             assert basemodel.seasonality.min_value == 0.5
 
 
-class TestAlignSimulationToObservedDates:
-    """Tests for align_simulation_to_observed_dates function."""
+class TestFormatCalibrationData:
+    """Tests for format_calibration_data function."""
 
     def test_aligns_simulation_to_observed_dates(self):
         """Test that simulation results are aligned to observation dates."""
@@ -773,7 +767,7 @@ class TestAlignSimulationToObservedDates:
         comparison_transitions = ["Hosp_vax", "Hosp_unvax"]
         data_dates = [date(2024, 1, 2), date(2024, 1, 4)]
 
-        result = align_simulation_to_observed_dates(results, comparison_transitions, data_dates)
+        result = format_calibration_data(results, comparison_transitions, data_dates)
 
         # Should sum transitions and extract only dates matching data_dates
         expected = np.array([30, 60])  # [20+10, 40+20] for dates Jan 2 and Jan 4
@@ -790,7 +784,7 @@ class TestAlignSimulationToObservedDates:
         comparison_transitions = ["Hosp"]
         data_dates = [date(2024, 1, 1), date(2024, 1, 2), date(2024, 1, 3), date(2024, 1, 4), date(2024, 1, 5)]
 
-        result = align_simulation_to_observed_dates(results, comparison_transitions, data_dates)
+        result = format_calibration_data(results, comparison_transitions, data_dates)
 
         # Should pad with 2 zeros at beginning
         expected = np.array([0, 0, 30, 40, 50])
@@ -810,7 +804,7 @@ class TestAlignSimulationToObservedDates:
         comparison_transitions = ["Hosp_vax_0_4", "Hosp_vax_5_17", "Hosp_unvax_0_4", "Hosp_unvax_5_17"]
         data_dates = [date(2024, 1, 1), date(2024, 1, 2)]
 
-        result = align_simulation_to_observed_dates(results, comparison_transitions, data_dates)
+        result = format_calibration_data(results, comparison_transitions, data_dates)
 
         # Should sum all transitions: [1+3+5+7, 2+4+6+8]
         expected = np.array([16, 20])
