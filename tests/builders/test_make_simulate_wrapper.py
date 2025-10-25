@@ -531,3 +531,21 @@ class TestMakeSimulateWrapper:
 
         # Verify basemodel config still wasn't mutated
         assert base_model_config.seasonality.min_value == original_min
+
+    def test_duplicate_dates_raises_error(self, base_model_config, mock_calibration):
+        """Test that duplicate dates in observed_data raise a clear error."""
+        # Create observed_data with duplicate dates (simulating mixed location data)
+        dates = [date(2024, 1, 1), date(2024, 1, 2), date(2024, 1, 1)]  # Date 1 appears twice
+        observed_data_with_duplicates = pd.DataFrame({
+            "target_end_date": dates,
+            "observed": [10.0, 20.0, 30.0],
+        })
+
+        # Attempt to create wrapper should raise ValueError
+        with pytest.raises(ValueError, match="Duplicate dates found in observed_data"):
+            make_simulate_wrapper(
+                basemodel=base_model_config,
+                calibration=mock_calibration,
+                observed_data=observed_data_with_duplicates,
+                intervention_types=[],
+            )
