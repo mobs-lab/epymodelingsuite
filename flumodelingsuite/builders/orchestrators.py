@@ -552,6 +552,8 @@ def make_simulate_wrapper(
             failed_params.pop("epimodel", None)
             logger.warning("Simulation failed with parameters %s: %s", failed_params, e)
 
+            # Handle simulation failure
+            # Projection mode: return empty dict
             if params["projection"]:
                 return {}
 
@@ -559,6 +561,7 @@ def make_simulate_wrapper(
             return {"data": np.full(len(data_dates), 0)}
 
         # Format output based on mode
+        # Projection: return full results flattened
         if params["projection"]:
             return flatten_simulation_results(results)
 
