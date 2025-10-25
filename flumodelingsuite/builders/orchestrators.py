@@ -496,6 +496,10 @@ def make_simulate_wrapper(
     earliest_vax : dict | None, optional
         Pre-calculated vaccination schedule from earliest start_date.
         Required when sampled_start_timespan is provided and vaccinations are used.
+        Should be a DataFrame with columns: "dates", "location", and age group columns
+        (e.g., "0-4", "5-17", "18-49", "50-64", "65+").
+        Typically created by `setup_vaccination_schedules()` which calls
+        `scenario_to_epydemix()` with the earliest start date.
 
     Returns
     -------
