@@ -228,6 +228,47 @@ def setup_interventions(
     return models
 
 
+def apply_vaccination_for_sampled_start(
+    model: EpiModel,
+    basemodel: BaseEpiModel,
+    timespan: Timespan,
+    earliest_vax: dict | None,
+    sampled_start_timespan: Timespan | None,
+) -> None:
+    """
+    Apply vaccination schedules, reaggregating if start_date is sampled.
+
+    Only applies vaccination when start_date is sampled. When start_date is sampled,
+    the vaccination schedule must be reaggregated to match the actual simulation
+    start date.
+
+    Parameters
+    ----------
+    model : EpiModel
+        Model to add vaccination to.
+    basemodel : BaseEpiModel
+        Base configuration with vaccination settings.
+    timespan : Timespan
+        Actual simulation timespan (may differ from basemodel if start_date sampled).
+    earliest_vax : dict | None
+        Pre-calculated earliest vaccination schedule for reaggregation.
+    sampled_start_timespan : Timespan | None
+        If not None, indicates start_date is sampled and vaccination needs reaggregation.
+    """
+    if not basemodel.vaccination:
+        return
+
+    if sampled_start_timespan is None:
+        # No start_date sampling, vaccination already applied in setup
+        return
+
+    # Start_date is sampled, need to reaggregate
+    reaggregated_vax = reaggregate_vaccines(earliest_vax, timespan.start_date)
+    add_vaccination_schedules_from_config(
+        model, basemodel.transitions, basemodel.vaccination, timespan, use_schedule=reaggregated_vax
+    )
+
+
 def apply_calibrated_parameters(
     model: EpiModel,
     params: dict,
@@ -371,12 +412,8 @@ def make_simulate_wrapper(
         # Apply calibrated parameters
         apply_calibrated_parameters(m, params, basemodel.parameters)
 
-        # Vaccination (if start_date is sampled)
-        if basemodel.vaccination and sampled_start_timespan:
-            reaggregated_vax = reaggregate_vaccines(earliest_vax, timespan.start_date)
-            add_vaccination_schedules_from_config(
-                m, basemodel.transitions, basemodel.vaccination, timespan, use_schedule=reaggregated_vax
-            )
+        # Apply vaccination (reaggregating if start_date is sampled)
+        apply_vaccination_for_sampled_start(m, basemodel, timespan, earliest_vax, sampled_start_timespan)
 
         # Seasonality (this must occur before parameter interventions to preserve parameter overrides)
         if basemodel.seasonality:
