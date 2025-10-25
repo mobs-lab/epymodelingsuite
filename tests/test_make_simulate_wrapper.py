@@ -467,3 +467,68 @@ class TestMakeSimulateWrapper:
         assert isinstance(result, dict)
         assert "data" in result
         assert isinstance(result["data"], np.ndarray)
+
+    def test_no_shared_state_mutation_across_wrappers(self, base_model_config, mock_calibration, data_state):
+        """
+        Test that wrappers don't mutate shared basemodel config (P0 Critical Issue).
+
+        This verifies the fix for the seasonality.min_value mutation bug described in the review.
+        Multiple wrappers sharing the same basemodel config should not interfere with each other.
+        """
+        # Add seasonality to base model
+        base_model_config.seasonality = Seasonality(
+            target_parameter="beta",
+            method="balcan",
+            seasonality_max_date=date(2024, 1, 15),
+            seasonality_min_date=date(2024, 7, 15),
+            max_value=1.0,
+            min_value=0.5,
+            
+        )
+        original_min = base_model_config.seasonality.min_value
+
+        # Create two wrappers sharing the same basemodel config
+        models, _ = create_model_collection(base_model_config, None)
+        model = models[0]
+
+        wrapper1 = make_simulate_wrapper(
+            basemodel=base_model_config,
+            calibration=mock_calibration,
+            data_state=data_state,
+            intervention_types=[],
+        )
+
+        wrapper2 = make_simulate_wrapper(
+            basemodel=base_model_config,
+            calibration=mock_calibration,
+            data_state=data_state,
+            intervention_types=[],
+        )
+
+        # First wrapper uses custom seasonality_min
+        params1 = {
+            "epimodel": model,
+            "end_date": date(2024, 3, 31),
+            "projection": False,
+            "beta": 0.5,
+            "gamma": 0.1,
+            "seasonality_min": 0.25,  # Different from original
+        }
+        wrapper1(params1)
+
+        # Verify basemodel config wasn't mutated
+        assert base_model_config.seasonality.min_value == original_min
+
+        # Second wrapper should still see original value (not 0.25 from wrapper1)
+        params2 = {
+            "epimodel": model,
+            "end_date": date(2024, 3, 31),
+            "projection": False,
+            "beta": 0.5,
+            "gamma": 0.1,
+            # No seasonality_min specified - should use original 0.5
+        }
+        wrapper2(params2)
+
+        # Verify basemodel config still wasn't mutated
+        assert base_model_config.seasonality.min_value == original_min
