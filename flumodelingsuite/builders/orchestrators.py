@@ -229,6 +229,95 @@ def setup_interventions(
     return models
 
 
+def pad_array_with_zeros(
+    array: np.ndarray,
+    pad_length: int,
+) -> np.ndarray:
+    """
+    Pad a numpy array with zeros at the beginning.
+
+    Parameters
+    ----------
+    array : np.ndarray
+            Array to pad.
+    pad_length : int
+            Number of zeros to add at the beginning.
+
+    Returns
+    -------
+    np.ndarray
+            Padded array.
+    """
+    if pad_length <= 0:
+        return array
+
+    return np.pad(array, (pad_length, 0), constant_values=0)
+
+
+def pad_trajectory_arrays(
+    arrays_dict: dict[str, np.ndarray],
+    pad_length: int,
+) -> dict[str, np.ndarray]:
+    """
+    Pad all arrays in a dictionary with zeros at the beginning.
+
+    Parameters
+    ----------
+    arrays_dict : dict[str, np.ndarray]
+            Dictionary of arrays to pad.
+    pad_length : int
+            Number of zeros to add at the beginning of each array.
+
+    Returns
+    -------
+    dict[str, np.ndarray]
+            Dictionary with all arrays padded.
+    """
+    if pad_length <= 0:
+        return arrays_dict
+
+    return {key: pad_array_with_zeros(value, pad_length) for key, value in arrays_dict.items()}
+
+
+def calculate_padding_for_date_alignment(
+    actual_dates: np.ndarray | list,
+    target_dates: np.ndarray | list,
+) -> int:
+    """
+    Calculate padding needed to align actual dates to target date grid.
+
+    Determines how many padding steps are needed at the beginning when
+    actual dates start later than target dates.
+
+    Parameters
+    ----------
+    actual_dates : np.ndarray | list
+            Dates from simulation results.
+    target_dates : np.ndarray | list
+            Target date grid to align to (e.g., from reference start or observed data).
+
+    Returns
+    -------
+    int
+            Number of padding steps needed (0 if no padding required).
+
+    Examples
+    --------
+    >>> actual = [date(2024, 1, 10), date(2024, 1, 11)]
+    >>> target = [date(2024, 1, 5), date(2024, 1, 6), ..., date(2024, 1, 11)]
+    >>> calculate_padding_for_date_alignment(actual, target)
+    5  # Need 5 zeros for dates Jan 5-9
+    """
+    # Find which target dates are covered by actual dates
+    mask = np.isin(target_dates, actual_dates)
+    covered_count = mask.sum()
+
+    # Padding needed = total target length - covered dates
+    pad_len = len(target_dates) - covered_count
+
+    return max(0, pad_len)  # Ensure non-negative
+
+
 def flatten_simulation_results(results: Any) -> dict:
     """
     Flatten simulation results for projection mode.
