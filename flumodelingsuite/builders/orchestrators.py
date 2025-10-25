@@ -504,35 +504,35 @@ def make_simulate_wrapper(
     def simulate_wrapper(params: dict) -> dict:
         # Extract model from params
         wrapper_model = params["epimodel"]
-        m = copy.deepcopy(wrapper_model)
+        model = copy.deepcopy(wrapper_model)
 
         # Calculate start date
         start_date = compute_simulation_start_date(params, basemodel.timespan, sampled_start_timespan)
         timespan = Timespan(start_date=start_date, end_date=params["end_date"], delta_t=basemodel.timespan.delta_t)
 
         # Apply calibrated parameters
-        apply_calibrated_parameters(m, params, basemodel.parameters)
+        apply_calibrated_parameters(model, params, basemodel.parameters)
 
         # Apply vaccination (reaggregating if start_date is sampled)
-        apply_vaccination_for_sampled_start(m, basemodel, timespan, earliest_vax, sampled_start_timespan)
+        apply_vaccination_for_sampled_start(model, basemodel, timespan, earliest_vax, sampled_start_timespan)
 
         # Apply seasonality (this must occur before parameter interventions to preserve parameter overrides)
-        apply_seasonality_with_sampled_min(m, basemodel, timespan, params)
+        apply_seasonality_with_sampled_min(model, basemodel, timespan, params)
 
         # Parameter interventions
         if basemodel.interventions and "parameter" in intervention_types:
-            add_parameter_interventions_from_config(m, basemodel.interventions, timespan)
+            add_parameter_interventions_from_config(model, basemodel.interventions, timespan)
 
         # Initial conditions
         compartment_init = calculate_compartment_initial_conditions(
             compartments=basemodel.compartments,
-            population_array=m.population.Nk,
+            population_array=model.population.Nk,
             sampled_compartments=params,
         )
 
         # Collect settings
         sim_params = {
-            "epimodel": m,
+            "epimodel": model,
             "initial_conditions_dict": compartment_init,
             "start_date": timespan.start_date,
             "end_date": params["end_date"],
