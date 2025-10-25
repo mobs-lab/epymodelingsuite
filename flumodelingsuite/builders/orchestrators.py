@@ -341,13 +341,105 @@ def flatten_simulation_results(results: Any) -> dict:
     return output
 
 
-def align_simulation_to_observed_dates(
+def format_projection_trajectories(
+    results: Any,
+    reference_start_date: dt.date | None = None,
+    actual_start_date: dt.date | None = None,
+    target_end_date: dt.date | None = None,
+    resample_frequency: str | None = None,
+) -> dict:
+    """
+    Format simulation results for projection mode (flatten + pad for stacking).
+
+    Flattens structure and pads trajectories to a consistent target length
+    when start_date is sampled. This ensures all trajectories have the same length
+    for np.stack() in epydemix's get_projection_trajectories().
+
+    Parameters
+    ----------
+    results : SimulationResults
+            Output from epydemix.simulate().
+    reference_start_date : date | None, optional
+            The earliest possible start date (used when start_date is sampled).
+            If provided, trajectories will be padded to align with this date.
+    actual_start_date : date | None, optional
+            The actual start date of this specific trajectory.
+            Required if reference_start_date is provided.
+    target_end_date : date | None, optional
+            The target end date for all trajectories (projection end date).
+            Used to calculate consistent target length for all trajectories.
+    resample_frequency : str | None, optional
+            Resampling frequency (e.g., "W-SAT", "D").
+            Required if padding is needed to compute the target length.
+
+    Returns
+    -------
+    dict
+            Dictionary with "dates" and all transition/compartment arrays.
+            Arrays are padded with zeros at the beginning to match target length.
+    """
+    # Flatten results structure
+    output = flatten_simulation_results(results)
+
+    # If no padding needed, return as-is
+    if reference_start_date is None or actual_start_date is None or target_end_date is None:
+        return output
+
+    # Calculate target length from reference start to target end
+    target_date_range = pd.date_range(
+        start=reference_start_date,
+        end=target_end_date,
+        freq=resample_frequency if resample_frequency else "D",
+    )
+    target_length = len(target_date_range)
+
+    # Calculate padding needed to reach target length
+    current_length = len(results.dates)
+    pad_len = target_length - current_length
+
+    if pad_len < 0:
+        logger.warning(
+            "Trajectory length (%d) exceeds target length (%d). "
+            "This may indicate inconsistent resampling or end dates.",
+            current_length,
+            target_length,
+        )
+        return output
+
+    if pad_len > 0:
+        # Pad all arrays except 'dates'
+        arrays_to_pad = {k: v for k, v in output.items() if k != "dates" and isinstance(v, np.ndarray)}
+        padded_arrays = pad_trajectory_arrays(arrays_to_pad, pad_len)
+        output.update(padded_arrays)
+
+        # Generate exactly pad_len dates to prepend
+        # Use periods parameter to ensure we get exactly the right number
+        prepend_dates = pd.date_range(
+            start=reference_start_date,
+            periods=pad_len,
+            freq=resample_frequency if resample_frequency else "D",
+        )
+
+        # Convert to Timestamp and concatenate with existing dates
+        prepend_dates = [pd.Timestamp(d) for d in prepend_dates]
+        results_dates_list = list(results.dates)
+        output["dates"] = prepend_dates + results_dates_list
+
+    return output
+
+
+def format_calibration_data(
     results: Any,
     comparison_transitions: list[str],
     data_dates: list,
 ) -> np.ndarray:
     """
-    Align simulation output to observation dates and aggregate specified transitions.
+    Format simulation results for calibration mode (aggregate + filter + pad).
+
+    Processes simulation results through three steps:
+    1. Aggregates specified transitions (e.g., sum Hosp_vax + Hosp_unvax)
+    2. Filters to observed dates only
+    3. Pads to align with full observation date grid
 
     Parameters
     ----------
@@ -356,31 +448,33 @@ def align_simulation_to_observed_dates(
     comparison_transitions : list[str]
         List of transition keys to sum (e.g., ["Hosp_vax", "Hosp_unvax"]).
     data_dates : list
-        List of observation dates to align to.
+        List of observation dates from observed data.
 
     Returns
     -------
     np.ndarray
         Aggregated simulation values aligned to observation dates.
-        Pads with zeros if simulation starts after observations.
+        Padded with zeros at the beginning if simulation starts after first observation.
     """
-    trajectory_dates = results.dates
+    # Step 1: Aggregate specified transitions
+    # Match simulation outputs to observed data granularity.
+    # e.g. observed "hospitalizations" = sum(Home_sev_to_Hosp_total + Home_sev_vax_to_Hosp_vax_total)
+transition_arrays = [results.transitions[key] for key in comparison_transitions]
+    aggregated_data = sum(transition_arrays)
 
-    # Use numpy.isin for efficient masking
-    mask = np.isin(trajectory_dates, data_dates)
+    # Step 2: Filter to observed dates
+    # Simulation may run at different frequency (daily) than observations (weekly).
+    # Extract only the dates that match the observed data for comparison.
+    mask = np.isin(results.dates, data_dates)
+    filtered_data = aggregated_data[mask]
 
-    # Sum transitions specified in calibration config (e.g., Hospitalization = Hosp_vax + Hosp_unvax)
-    comparison_transition_arrays = [results.transitions[key] for key in comparison_transitions]
-    simulated_data = sum(comparison_transition_arrays)
+    # Step 3: Pad to align with full observation grid
+    # When start_date is sampled, simulation may start later than first observation.
+    # Pad with zeros at beginning to align arrays for distance calculation.
+    pad_len = calculate_padding_for_date_alignment(results.dates, data_dates)
+    aligned_data = pad_array_with_zeros(filtered_data, pad_len)
 
-    simulated_data = simulated_data[mask]
-
-    # Pad with zeros at beginning if sampled start_date is later than earliest observation date
-    if len(simulated_data) < len(data_dates):
-        pad_len = len(data_dates) - len(simulated_data)
-        simulated_data = np.pad(simulated_data, (pad_len, 0), constant_values=0)
-
-    return simulated_data
+    return aligned_data
 
 
 def apply_seasonality_with_sampled_min(
@@ -504,10 +598,9 @@ def compute_simulation_start_date(
     """
     Calculate simulation start date based on sampling configuration.
 
-    Handles three cases:
+    Handles two cases:
     1. No sampling: use fixed start date from basemodel
-    2. Projection mode: use reference start for consistent trajectory lengths
-    3. Calibration mode: use sampled offset from reference start
+    2. Sampling enabled: use sampled offset from reference start
 
     Parameters
     ----------
@@ -529,12 +622,7 @@ def compute_simulation_start_date(
     if reference_start_date is None:
         return basemodel_timespan.start_date
 
-    # Case 2: Projection mode - use reference start for consistent trajectory lengths
-    is_projection_mode = params.get("projection", False)
-    if is_projection_mode:
-        return reference_start_date
-
-    # Case 3: Calibration mode - use sampled offset
+    # Case 2: Sampling enabled - use sampled offset from reference
     offset_days = params["start_date"]
     return reference_start_date + dt.timedelta(days=offset_days)
 
@@ -716,12 +804,18 @@ def make_simulate_wrapper(
             return {"data": np.full(len(data_dates), 0)}
 
         # 11. Format output based on mode
-        # Projection: return full results flattened
+        # Projection: return full trajectories (flattened + padded)
         if params["projection"]:
-            return flatten_simulation_results(results=results)
+            return format_projection_trajectories(
+                results=results,
+                reference_start_date=reference_start_date,
+                actual_start_date=start_date,
+                target_end_date=params["end_date"],
+                resample_frequency=basemodel.simulation.resample_frequency,
+            )
 
-        # Calibration: align to observed dates
-        aligned_data = align_simulation_to_observed_dates(
+        # Calibration: return aggregated data (aligned to observed dates)
+        aligned_data = format_calibration_data(
             results=results,
             comparison_transitions=calibration.comparison[0].simulation,
             data_dates=data_dates,
