@@ -370,7 +370,7 @@ def build_calibration(
             simulation_function=simulate_wrapper,
             priors=priors,
             parameters=fixed_parameters,
-            observed_data=data_state[calibration.comparison[0].observed_value_column].values,
+            observed_data=observed_data[calibration.comparison[0].observed_value_column].values,
             distance_function=dist_func_dict[calibration.distance_function],
         )
 
