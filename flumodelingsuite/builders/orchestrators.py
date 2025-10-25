@@ -279,6 +279,8 @@ def align_simulation_to_observed_dates(
     """
     trajectory_dates = results.dates
 
+    # TODO: Performance optimization - convert data_dates to set for O(1) lookup instead of O(m)
+    # Currently O(n*m), could be O(n+m) with: data_dates_set = set(data_dates)
     mask = np.array([date in data_dates for date in trajectory_dates])
 
     # Sum transitions specified in calibration config (e.g., Hospitalization = Hosp_vax + Hosp_unvax)
