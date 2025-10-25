@@ -280,7 +280,7 @@ def align_simulation_to_observed_dates(
     """
     trajectory_dates = results.dates
 
-    mask = [date in data_dates for date in trajectory_dates]
+    mask = np.array([date in data_dates for date in trajectory_dates])
 
     # Sum specified transitions
     total_hosp = sum(results.transitions[key] for key in comparison_transitions)
