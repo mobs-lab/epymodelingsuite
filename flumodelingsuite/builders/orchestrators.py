@@ -320,9 +320,9 @@ def calculate_padding_for_date_alignment(
 
 def flatten_simulation_results(results: Any) -> dict:
     """
-    Flatten simulation results for projection mode.
+    Flatten simulation results structure for projection output.
 
-    Flattens results structure into a single dict with dates, transitions,
+    Flattens nested results structure into a single dict with dates, transitions,
     and compartments at the top level.
 
     Parameters
@@ -335,9 +335,7 @@ def flatten_simulation_results(results: Any) -> dict:
     dict
         Flattened results with "dates" key and all transition/compartment keys at top level.
     """
-    # Flatten results for stacking in get_projection_trajectories
-    # Return dates as array and flatten transitions/compartments dicts into top level
-    output = {"dates": results.dates}
+        output = {"dates": results.dates}
     output.update(results.transitions)
     output.update(results.compartments)
     return output
