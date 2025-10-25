@@ -312,9 +312,10 @@ def make_simulate_wrapper(
 
         # Seasonality (this must occur before parameter interventions to preserve parameter overrides)
         if basemodel.seasonality:
+            seasonality_config = copy.deepcopy(basemodel.seasonality)
             if "seasonality_min" in params:
-                basemodel.seasonality.min_value = params["seasonality_min"]
-            add_seasonality_from_config(m, basemodel.seasonality, timespan)
+                seasonality_config.min_value = params["seasonality_min"]
+            add_seasonality_from_config(m, seasonality_config, timespan)
 
         # Parameter interventions
         if basemodel.interventions and "parameter" in intervention_types:
