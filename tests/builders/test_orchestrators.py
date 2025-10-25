@@ -515,6 +515,8 @@ class TestComputeSimulationStartDate:
         """Test that without sampling, returns basemodel start date."""
         params = {"projection": False}
         basemodel_timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
+        # reference_start_date is None when calibration.start_date is not defined in YAML
+        # (i.e., start_date is not being calibrated)
         reference_start_date = None
 
         result = compute_simulation_start_date(params, basemodel_timespan, reference_start_date)
