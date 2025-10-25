@@ -507,21 +507,33 @@ def make_simulate_wrapper(
         model = copy.deepcopy(wrapper_model)
 
         # 2. Calculate start date
-        start_date = compute_simulation_start_date(params, basemodel.timespan, sampled_start_timespan)
+        start_date = compute_simulation_start_date(
+            params=params,
+            basemodel_timespan=basemodel.timespan,
+            sampled_start_timespan=sampled_start_timespan,
+        )
         timespan = Timespan(start_date=start_date, end_date=params["end_date"], delta_t=basemodel.timespan.delta_t)
 
         # 3. Apply calibrated parameters
-        apply_calibrated_parameters(model, params, basemodel.parameters)
+        apply_calibrated_parameters(model=model, params=params, parameter_config=basemodel.parameters)
 
         # 4. Apply vaccination (reaggregating if start_date is sampled)
-        apply_vaccination_for_sampled_start(model, basemodel, timespan, earliest_vax, sampled_start_timespan)
+        apply_vaccination_for_sampled_start(
+            model=model,
+            basemodel=basemodel,
+            timespan=timespan,
+            earliest_vax=earliest_vax,
+            sampled_start_timespan=sampled_start_timespan,
+        )
 
         # 5. Apply seasonality (this must occur before parameter interventions to preserve parameter overrides)
-        apply_seasonality_with_sampled_min(model, basemodel, timespan, params)
+        apply_seasonality_with_sampled_min(model=model, basemodel=basemodel, timespan=timespan, params=params)
 
         # 6. Add parameter interventions
         if basemodel.interventions and "parameter" in intervention_types:
-            add_parameter_interventions_from_config(model, basemodel.interventions, timespan)
+            add_parameter_interventions_from_config(
+                model=model, interventions=basemodel.interventions, timespan=timespan
+            )
 
         # 7. Calculate compartment initial conditions
         compartment_init = calculate_compartment_initial_conditions(
@@ -563,10 +575,14 @@ def make_simulate_wrapper(
         # 11. Format output based on mode
         # Projection: return full results flattened
         if params["projection"]:
-            return flatten_simulation_results(results)
+            return flatten_simulation_results(results=results)
 
         # Calibration: align to observed dates
-        aligned_data = align_simulation_to_observed_dates(results, calibration.comparison[0].simulation, data_dates)
+        aligned_data = align_simulation_to_observed_dates(
+            results=results,
+            comparison_transitions=calibration.comparison[0].simulation,
+            data_dates=data_dates,
+        )
         return {"data": aligned_data}
 
     return simulate_wrapper
