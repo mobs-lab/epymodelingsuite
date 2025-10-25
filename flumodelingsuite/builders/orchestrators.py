@@ -282,17 +282,18 @@ def align_simulation_to_observed_dates(
 
     mask = np.array([date in data_dates for date in trajectory_dates])
 
-    # Sum specified transitions
-    total_hosp = sum(results.transitions[key] for key in comparison_transitions)
+    # Sum transitions specified in calibration config (e.g., Hospitalization = Hosp_vax + Hosp_unvax)
+    comparison_transition_arrays = [results.transitions[key] for key in comparison_transitions]
+    simulated_data = sum(comparison_transition_arrays)
 
-    total_hosp = total_hosp[mask]
+    simulated_data = simulated_data[mask]
 
     # Pad with zeros at beginning if sampled start_date is later than earliest observation date
-    if len(total_hosp) < len(data_dates):
-        pad_len = len(data_dates) - len(total_hosp)
-        total_hosp = np.pad(total_hosp, (pad_len, 0), constant_values=0)
+    if len(simulated_data) < len(data_dates):
+        pad_len = len(data_dates) - len(simulated_data)
+        simulated_data = np.pad(simulated_data, (pad_len, 0), constant_values=0)
 
-    return total_hosp
+    return simulated_data
 
 
 def apply_seasonality_with_sampled_min(
@@ -543,7 +544,8 @@ def make_simulate_wrapper(
 
         # Extract observed dates for calibration (before simulation to avoid duplication)
         if not params["projection"]:
-            data_dates = list(pd.to_datetime(data_state.target_end_date.values))
+            date_column = calibration.comparison[0].observed_date_column
+            data_dates = list(pd.to_datetime(data_state[date_column].values))
 
         # Run simulation
         try:
