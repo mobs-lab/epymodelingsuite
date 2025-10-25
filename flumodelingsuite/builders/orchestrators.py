@@ -539,7 +539,7 @@ def make_simulate_wrapper(
         compartment_init = calculate_compartment_initial_conditions(
             compartments=basemodel.compartments,
             population_array=model.population.Nk,
-            sampled_compartments=params,
+            params_dict=params,
         )
 
         # 8. Collect settings for simulation
