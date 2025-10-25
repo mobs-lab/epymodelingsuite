@@ -285,8 +285,16 @@ def make_simulate_wrapper(
         m = copy.deepcopy(wrapper_model)
 
         # Accommodate for sampled start_date
+        # For projections, use earliest possible start_date to ensure all trajectories have same length
+        # For calibration, use the sampled start_date
         if sampled_start_timespan:
-            start_date = sampled_start_timespan.start_date + dt.timedelta(days=params["start_date"])
+            if params["projection"]:
+                # Projections: use earliest start_date for consistent trajectory lengths
+                start_date = sampled_start_timespan.start_date
+            else:
+                # Calibration: use sampled start_date
+                sampled_start_offset = params["start_date"]  # Offset in days from earliest start
+                start_date = sampled_start_timespan.start_date + dt.timedelta(days=sampled_start_offset)
         else:
             start_date = basemodel.timespan.start_date
 
@@ -373,11 +381,11 @@ def make_simulate_wrapper(
             logger.info("Projection failed with parameters %s: %s", failed_params, e)
             return {}
         else:
-            # Return results from successful projection
-            return {
-                "dates": results.dates,
-                "transitions": results.transitions,
-                "compartments": results.compartments,
-            }
+            # Flatten results for stacking in get_projection_trajectories
+            # Return dates as array and flatten transitions/compartments dicts into top level
+            output = {"dates": results.dates}
+            output.update(results.transitions)
+            output.update(results.compartments)
+            return output
 
     return simulate_wrapper
