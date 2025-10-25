@@ -3,6 +3,7 @@
 import copy
 import datetime as dt
 import logging
+from collections.abc import Callable
 
 import numpy as np
 import pandas as pd
@@ -18,6 +19,7 @@ from .base import (
     add_model_compartments_from_config,
     add_model_parameters_from_config,
     add_model_transitions_from_config,
+    calculate_compartment_initial_conditions,
     calculate_parameters_from_config,
     set_population_from_config,
 )
@@ -233,7 +235,7 @@ def make_simulate_wrapper(
     intervention_types: list[str],
     sampled_start_timespan: Timespan | None = None,
     earliest_vax: dict | None = None,
-) -> callable:
+) -> Callable[[dict], dict]:
     """
     Create a simulate_wrapper function for ABCSampler calibration.
     simulate_wrapper takes param dictionary and runs a simulation/projection.
