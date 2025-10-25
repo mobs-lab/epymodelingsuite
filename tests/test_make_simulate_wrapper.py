@@ -225,19 +225,22 @@ class TestMakeSimulateWrapper:
         # Verify projection mode output structure
         assert isinstance(result, dict)
 
-        # If simulation succeeded, should have projection-specific keys
+        # If simulation succeeded, should have flattened structure with dates and all transitions/compartments
         if result:  # Simulation might fail, which returns empty dict
             assert "dates" in result  # noqa: S101
-            assert "transitions" in result  # noqa: S101
-            assert "compartments" in result  # noqa: S101
 
             # Should NOT have calibration-specific keys
             assert "data" not in result  # noqa: S101
 
-            # Verify types
+            # Verify dates type
             assert isinstance(result["dates"], list)  # noqa: S101
-            assert isinstance(result["transitions"], dict)  # noqa: S101
-            assert isinstance(result["compartments"], dict)  # noqa: S101
+
+            # Verify flattened structure has transition and compartment keys at top level
+            # (not nested under "transitions" or "compartments" keys)
+            # Should have transition keys like "S_to_I_total", "I_to_R_total", etc.
+            # Should have compartment keys like "S_0-4", "I_0-4", "R_0-4", etc.
+            assert any(key.startswith("S_to_I") for key in result)  # noqa: S101
+            assert any(key.startswith("S_") for key in result if "_to_" not in key)  # noqa: S101
 
     def test_wrapper_with_calibrated_parameters(self, base_model_config, mock_calibration, data_state):
         """

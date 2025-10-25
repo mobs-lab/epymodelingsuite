@@ -244,8 +244,10 @@ def flatten_simulation_results(results: Any) -> dict:
     Returns
     -------
     dict
-        Flattened results with "dates" key and all transitions/compartments.
+        Flattened results with "dates" key and all transition/compartment keys at top level.
     """
+    # Flatten results for stacking in get_projection_trajectories
+    # Return dates as array and flatten transitions/compartments dicts into top level
     output = {"dates": results.dates}
     output.update(results.transitions)
     output.update(results.compartments)
