@@ -322,8 +322,6 @@ def make_simulate_wrapper(
             add_parameter_interventions_from_config(m, basemodel.interventions, timespan)
 
         # Initial conditions
-        from .base import calculate_compartment_initial_conditions
-
         compartment_init = calculate_compartment_initial_conditions(
             compartments=basemodel.compartments,
             population_array=m.population.Nk,
