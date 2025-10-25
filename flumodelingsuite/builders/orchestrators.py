@@ -229,6 +229,29 @@ def setup_interventions(
     return models
 
 
+def flatten_simulation_results(results: Any) -> dict:
+    """
+    Flatten simulation results for projection mode.
+
+    Flattens results structure into a single dict with dates, transitions,
+    and compartments at the top level.
+
+    Parameters
+    ----------
+    results : SimulationResults
+        Output from epydemix.simulate().
+
+    Returns
+    -------
+    dict
+        Flattened results with "dates" key and all transitions/compartments.
+    """
+    output = {"dates": results.dates}
+    output.update(results.transitions)
+    output.update(results.compartments)
+    return output
+
+
 def align_simulation_to_observed_dates(
     results: Any,
     data_state: pd.DataFrame,
@@ -538,12 +561,7 @@ def make_simulate_wrapper(
 
         # Format output based on mode
         if params["projection"]:
-            # Projection: return full results
-            return {
-                "dates": results.dates,
-                "transitions": results.transitions,
-                "compartments": results.compartments,
-            }
+            return flatten_simulation_results(results)
 
         # Calibration: align to observed dates
         aligned_data = align_simulation_to_observed_dates(
