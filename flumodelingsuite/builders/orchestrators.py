@@ -254,7 +254,6 @@ def flatten_simulation_results(results: Any) -> dict:
 
 def align_simulation_to_observed_dates(
     results: Any,
-    data_state: pd.DataFrame,
     comparison_transitions: list[str],
     data_dates: list,
 ) -> np.ndarray:
@@ -265,8 +264,6 @@ def align_simulation_to_observed_dates(
     ----------
     results : SimulationResults
         Output from epydemix.simulate() with dates and transitions.
-    data_state : pd.DataFrame
-        Observed data (not used in current implementation but kept for interface).
     comparison_transitions : list[str]
         List of transition keys to sum (e.g., ["Hosp_vax", "Hosp_unvax"]).
     data_dates : list
@@ -566,9 +563,7 @@ def make_simulate_wrapper(
             return flatten_simulation_results(results)
 
         # Calibration: align to observed dates
-        aligned_data = align_simulation_to_observed_dates(
-            results, data_state, calibration.comparison[0].simulation, data_dates
-        )
+        aligned_data = align_simulation_to_observed_dates(results, calibration.comparison[0].simulation, data_dates)
         return {"data": aligned_data}
 
     return simulate_wrapper
