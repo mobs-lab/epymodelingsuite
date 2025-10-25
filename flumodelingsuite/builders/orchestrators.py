@@ -411,15 +411,15 @@ def apply_calibrated_parameters(
 def compute_simulation_start_date(
     params: dict,
     basemodel_timespan: Timespan,
-    sampled_start_timespan: Timespan | None,
+    reference_start_date: dt.date | None,
 ) -> dt.date:
     """
     Calculate simulation start date based on sampling configuration.
 
     Handles three cases:
     1. No sampling: use fixed start date from basemodel
-    2. Projection mode: use earliest start for consistent trajectory lengths
-    3. Calibration mode: use sampled offset from earliest start
+    2. Projection mode: use reference start for consistent trajectory lengths
+    3. Calibration mode: use sampled offset from reference start
 
     Parameters
     ----------
@@ -428,8 +428,9 @@ def compute_simulation_start_date(
         params["start_date"] should be an integer offset in days.
     basemodel_timespan : Timespan
         Default timespan from base model configuration.
-    sampled_start_timespan : Timespan | None
-        Earliest timespan for start_date sampling, or None if not sampled.
+    reference_start_date : date | None
+        Reference start date for start_date sampling, or None if not sampled.
+        This is the earliest possible start date when sampling is enabled.
 
     Returns
     -------
@@ -437,17 +438,17 @@ def compute_simulation_start_date(
         Calculated start date for simulation.
     """
     # Case 1: No sampling - use fixed start date
-    if sampled_start_timespan is None:
+    if reference_start_date is None:
         return basemodel_timespan.start_date
 
-    # Case 2: Projection mode - use earliest start for consistent trajectory lengths
+    # Case 2: Projection mode - use reference start for consistent trajectory lengths
     is_projection_mode = params.get("projection", False)
     if is_projection_mode:
-        return sampled_start_timespan.start_date
+        return reference_start_date
 
     # Case 3: Calibration mode - use sampled offset
     offset_days = params["start_date"]
-    return sampled_start_timespan.start_date + dt.timedelta(days=offset_days)
+    return reference_start_date + dt.timedelta(days=offset_days)
 
 
 def make_simulate_wrapper(
@@ -509,10 +510,11 @@ def make_simulate_wrapper(
         model = copy.deepcopy(wrapper_model)
 
         # 2. Calculate start date
+        reference_start_date = sampled_start_timespan.start_date if sampled_start_timespan else None
         start_date = compute_simulation_start_date(
             params=params,
             basemodel_timespan=basemodel.timespan,
-            sampled_start_timespan=sampled_start_timespan,
+            reference_start_date=reference_start_date,
         )
         timespan = Timespan(start_date=start_date, end_date=params["end_date"], delta_t=basemodel.timespan.delta_t)
 

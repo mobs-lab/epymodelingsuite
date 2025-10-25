@@ -525,9 +525,9 @@ class TestComputeSimulationStartDate:
         """Test that projection mode uses earliest start date for consistent trajectory lengths."""
         params = {"projection": True, "start_date": 10}
         basemodel_timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
-        sampled_start_timespan = Timespan(start_date=date(2024, 1, 5), end_date=date(2024, 12, 31), delta_t=1.0)
+        reference_start_date = date(2024, 1, 5)
 
-        result = compute_simulation_start_date(params, basemodel_timespan, sampled_start_timespan)
+        result = compute_simulation_start_date(params, basemodel_timespan, reference_start_date)
 
         # Should use earliest start, not the offset
         assert result == date(2024, 1, 5)
@@ -536,9 +536,9 @@ class TestComputeSimulationStartDate:
         """Test that calibration mode applies sampled offset to earliest start."""
         params = {"projection": False, "start_date": 10}
         basemodel_timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
-        sampled_start_timespan = Timespan(start_date=date(2024, 1, 5), end_date=date(2024, 12, 31), delta_t=1.0)
+        reference_start_date = date(2024, 1, 5)
 
-        result = compute_simulation_start_date(params, basemodel_timespan, sampled_start_timespan)
+        result = compute_simulation_start_date(params, basemodel_timespan, reference_start_date)
 
         # Should use earliest + offset (Jan 5 + 10 days = Jan 15)
         assert result == date(2024, 1, 15)
@@ -547,9 +547,9 @@ class TestComputeSimulationStartDate:
         """Test that negative offset works correctly."""
         params = {"projection": False, "start_date": -5}
         basemodel_timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
-        sampled_start_timespan = Timespan(start_date=date(2024, 1, 10), end_date=date(2024, 12, 31), delta_t=1.0)
+        reference_start_date = date(2024, 1, 10)
 
-        result = compute_simulation_start_date(params, basemodel_timespan, sampled_start_timespan)
+        result = compute_simulation_start_date(params, basemodel_timespan, reference_start_date)
 
         # Jan 10 - 5 days = Jan 5
         assert result == date(2024, 1, 5)
