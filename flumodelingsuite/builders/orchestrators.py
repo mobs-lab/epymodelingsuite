@@ -228,6 +228,42 @@ def setup_interventions(
     return models
 
 
+def apply_calibrated_parameters(
+    model: EpiModel,
+    params: dict,
+    parameter_config: dict[str, Parameter],
+) -> None:
+    """
+    Apply calibrated and calculated parameters to model.
+
+    Modifies model in-place by adding calibrated parameter values
+    and recalculating derived parameters.
+
+    Parameters
+    ----------
+    model : EpiModel
+        Model to modify.
+    params : dict
+        Dictionary containing calibrated parameter values from ABC sampler.
+    parameter_config : dict[str, Parameter]
+        Parameter configuration from basemodel.
+    """
+    # Extract calibrated parameters
+    calibrated_params = {
+        k: Parameter(type="scalar", value=v)
+        for k, v in params.items()
+        if k in parameter_config and parameter_config[k].type == "calibrated"
+    }
+
+    if calibrated_params:
+        add_model_parameters_from_config(model, calibrated_params)
+
+    # Recalculate derived parameters if any exist
+    has_calculated = any(param.type.value == "calculated" for param in parameter_config.values())
+    if has_calculated:
+        calculate_parameters_from_config(model, parameter_config)
+
+
 def compute_simulation_start_date(
     params: dict,
     basemodel_timespan: Timespan,
@@ -332,16 +368,8 @@ def make_simulate_wrapper(
         start_date = compute_simulation_start_date(params, basemodel.timespan, sampled_start_timespan)
         timespan = Timespan(start_date=start_date, end_date=params["end_date"], delta_t=basemodel.timespan.delta_t)
 
-        # Sampled/calculated parameters
-        new_params = {
-            k: Parameter(type="scalar", value=v)
-            for k, v in params.items()
-            if k in basemodel.parameters and basemodel.parameters[k].type == "calibrated"
-        }
-        if new_params:
-            add_model_parameters_from_config(m, new_params)
-        if "calculated" in [param_args.type.value for _, param_args in basemodel.parameters.items()]:
-            calculate_parameters_from_config(m, basemodel.parameters)
+        # Apply calibrated parameters
+        apply_calibrated_parameters(m, params, basemodel.parameters)
 
         # Vaccination (if start_date is sampled)
         if basemodel.vaccination and sampled_start_timespan:
