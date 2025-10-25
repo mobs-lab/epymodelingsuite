@@ -4,6 +4,7 @@ import copy
 import datetime as dt
 import logging
 from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -226,6 +227,49 @@ def setup_interventions(
             add_contact_matrix_interventions_from_config(model, basemodel.interventions)
 
     return models
+
+
+def align_simulation_to_observed_dates(
+    results: Any,
+    data_state: pd.DataFrame,
+    comparison_transitions: list[str],
+    data_dates: list,
+) -> np.ndarray:
+    """
+    Align simulation output to observation dates and aggregate specified transitions.
+
+    Parameters
+    ----------
+    results : SimulationResults
+        Output from epydemix.simulate() with dates and transitions.
+    data_state : pd.DataFrame
+        Observed data (not used in current implementation but kept for interface).
+    comparison_transitions : list[str]
+        List of transition keys to sum (e.g., ["Hosp_vax", "Hosp_unvax"]).
+    data_dates : list
+        List of observation dates to align to.
+
+    Returns
+    -------
+    np.ndarray
+        Aggregated simulation values aligned to observation dates.
+        Pads with zeros if simulation starts after observations.
+    """
+    trajectory_dates = results.dates
+
+    mask = [date in data_dates for date in trajectory_dates]
+
+    # Sum specified transitions
+    total_hosp = sum(results.transitions[key] for key in comparison_transitions)
+
+    total_hosp = total_hosp[mask]
+
+    # Pad with zeros at beginning if sampled start_date is later than earliest observation date
+    if len(total_hosp) < len(data_dates):
+        pad_len = len(data_dates) - len(total_hosp)
+        total_hosp = np.pad(total_hosp, (pad_len, 0), constant_values=0)
+
+    return total_hosp
 
 
 def apply_seasonality_with_sampled_min(
@@ -502,18 +546,9 @@ def make_simulate_wrapper(
             }
 
         # Calibration: align to observed dates
-        trajectory_dates = results.dates
-
-        mask = [date in data_dates for date in trajectory_dates]
-
-        total_hosp = sum(results.transitions[key] for key in calibration.comparison[0].simulation)
-
-        total_hosp = total_hosp[mask]
-
-        if len(total_hosp) < len(data_dates):
-            pad_len = len(data_dates) - len(total_hosp)
-            total_hosp = np.pad(total_hosp, (pad_len, 0), constant_values=0)
-
-        return {"data": total_hosp}
+        aligned_data = align_simulation_to_observed_dates(
+            results, data_state, calibration.comparison[0].simulation, data_dates
+        )
+        return {"data": aligned_data}
 
     return simulate_wrapper
