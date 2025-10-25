@@ -515,9 +515,9 @@ class TestComputeSimulationStartDate:
         """Test that without sampling, returns basemodel start date."""
         params = {"projection": False}
         basemodel_timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
-        sampled_start_timespan = None
+        reference_start_date = None
 
-        result = compute_simulation_start_date(params, basemodel_timespan, sampled_start_timespan)
+        result = compute_simulation_start_date(params, basemodel_timespan, reference_start_date)
 
         assert result == date(2024, 1, 1)
 
