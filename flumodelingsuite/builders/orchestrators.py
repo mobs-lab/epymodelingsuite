@@ -4,7 +4,7 @@ import copy
 import datetime as dt
 import logging
 from collections.abc import Callable
-from typing import Any
+from typing import Any, TypedDict
 
 import numpy as np
 import pandas as pd
@@ -451,6 +451,22 @@ def compute_simulation_start_date(
     return reference_start_date + dt.timedelta(days=offset_days)
 
 
+class SimulateWrapperParams(TypedDict, total=False):
+    """
+    Type definition for simulate_wrapper parameters.
+
+    Note: Uses total=False because params may contain additional calibrated
+    parameter values (e.g., "beta", "initial_infected") that are determined
+    dynamically based on the calibration configuration.
+    """
+
+    epimodel: EpiModel
+    end_date: dt.date
+    projection: bool
+    start_date: int  # Offset in days, present if start_date is calibrated
+    seasonality_min: float  # Present if seasonality minimum is calibrated
+
+
 def make_simulate_wrapper(
     basemodel: BaseEpiModel,
     calibration: CalibrationConfig,
@@ -487,7 +503,7 @@ def make_simulate_wrapper(
 
     """
 
-    def simulate_wrapper(params: dict) -> dict:
+    def simulate_wrapper(params: SimulateWrapperParams) -> dict[str, Any]:
         """
         Run a single simulation with the given parameters.
 
@@ -495,14 +511,20 @@ def make_simulate_wrapper(
 
         Parameters
         ----------
-        params : dict
-            Simulation parameters containing:
-            - "epimodel": The model to simulate (passed via fixed_parameters)
-            - "end_date": Simulation end date
-            - "projection": Boolean indicating calibration vs projection mode
-            - Calibrated parameter values (e.g., "beta", "initial_infected")
-            - Optional "start_date" (offset in days, if start_date is calibrated)
-            - Optional "seasonality_min" (if seasonality is calibrated)
+        params : SimulateWrapperParams (dict)
+            Simulation parameters dictionary containing:
+
+            - epimodel : EpiModel
+                The model to simulate (passed via fixed_parameters)
+            - end_date : date
+                Simulation end date
+            - projection : bool
+                Boolean indicating calibration vs projection mode
+            - start_date : int, optional
+                Offset in days from reference date (if start_date is calibrated)
+            - seasonality_min : float, optional
+                Minimum seasonality value (if seasonality is calibrated)
+            - Additional calibrated parameter values (e.g., "beta", "initial_infected")
 
         Returns
         -------
@@ -511,8 +533,11 @@ def make_simulate_wrapper(
                 {"data": np.ndarray} of simulated values at observation times,
                 aligned with observed data dates
             For projection (projection=True):
-                {"dates": list, "transitions": dict, "compartments": dict}
-                with full simulation results flattened to top level
+                Flattened simulation results with keys:
+                - "dates": list of simulation dates
+                - Individual transition keys (e.g., "S_to_I", "I_to_R")
+                - Individual compartment keys (e.g., "S", "I", "R")
+                All keys are at the top level (flattened, not nested)
         """
         # 1. Extract model from params
         wrapper_model = params["epimodel"]
