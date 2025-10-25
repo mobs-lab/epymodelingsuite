@@ -64,7 +64,8 @@ class TestMakeSimulateWrapper:
         """Create a mock calibration configuration with minimal required attributes."""
         calibration = Mock()
         calibration.comparison = [Mock()]
-        calibration.comparison[0].simulation = ["S_to_I"]
+        calibration.comparison[0].simulation = ["S_to_I_total"]  # Transition key format: source_to_target_total
+        calibration.comparison[0].observed_date_column = "target_end_date"
         return calibration
 
     @pytest.fixture
