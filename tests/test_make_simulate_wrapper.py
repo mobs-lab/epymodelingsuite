@@ -483,7 +483,6 @@ class TestMakeSimulateWrapper:
             seasonality_min_date=date(2024, 7, 15),
             max_value=1.0,
             min_value=0.5,
-            
         )
         original_min = base_model_config.seasonality.min_value
 
