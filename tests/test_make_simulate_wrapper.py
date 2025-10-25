@@ -65,6 +65,7 @@ class TestMakeSimulateWrapper:
         calibration = Mock()
         calibration.comparison = [Mock()]
         calibration.comparison[0].simulation = ["S_to_I"]
+        calibration.comparison[0].observed_date_column = "target_end_date"
         return calibration
 
     @pytest.fixture

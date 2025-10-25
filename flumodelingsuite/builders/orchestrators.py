@@ -351,7 +351,8 @@ def make_simulate_wrapper(
             try:
                 results = simulate(**sim_params)
                 trajectory_dates = results.dates
-                data_dates = list(pd.to_datetime(data_state.target_end_date.values))
+                date_column = calibration.comparison[0].observed_date_column
+                data_dates = list(pd.to_datetime(data_state[date_column].values))
 
                 mask = [date in data_dates for date in trajectory_dates]
 
@@ -370,7 +371,8 @@ def make_simulate_wrapper(
                 failed_params = params.copy()
                 failed_params.pop("epimodel", None)
                 logger.info("Simulation failed with parameters %s: %s", failed_params, e)
-                data_dates = list(pd.to_datetime(data_state["target_end_date"].values))
+                date_column = calibration.comparison[0].observed_date_column
+                data_dates = list(pd.to_datetime(data_state[date_column].values))
                 simulated_data = np.full(len(data_dates), 0)
 
             return {"data": simulated_data}
