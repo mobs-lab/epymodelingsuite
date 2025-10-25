@@ -852,3 +852,145 @@ class TestFlattenSimulationResults:
 
         # Should only have dates
         assert result == {"dates": [date(2024, 1, 1)]}
+
+
+class TestFormatProjectionTrajectories:
+    """Tests for format_projection_trajectories function."""
+
+    def test_no_padding_when_parameters_none(self):
+        """Test that no padding occurs when optional parameters are None."""
+        results = Mock()
+        results.dates = [date(2024, 1, 1), date(2024, 1, 2)]
+        results.transitions = {"Hosp": np.array([10, 20])}
+        results.compartments = {"S": np.array([1000, 990])}
+
+        result = format_projection_trajectories(
+            results=results,
+            reference_start_date=None,
+            actual_start_date=None,
+            target_end_date=None,
+        )
+
+        # Should just flatten without padding
+        assert result["dates"] == results.dates
+        np.testing.assert_array_equal(result["Hosp"], np.array([10, 20]))
+
+    def test_pads_to_target_length(self):
+        """Test that trajectories are padded to match target length."""
+        results = Mock()
+        # Simulate starting at week 2 (Jan 13), missing first week (Jan 6)
+        # Jan 6, 2024 is the first Saturday of the year
+        results.dates = [date(2024, 1, 13), date(2024, 1, 20)]
+        results.transitions = {"Hosp": np.array([10, 20])}
+        results.compartments = {"S": np.array([1000, 990])}
+
+        result = format_projection_trajectories(
+            results=results,
+            reference_start_date=date(2024, 1, 6),
+            actual_start_date=date(2024, 1, 13),
+            target_end_date=date(2024, 1, 20),
+            resample_frequency="W-SAT",
+        )
+
+        # Should pad to 3 weeks total (Jan 6, 13, 20)
+        assert len(result["dates"]) == 3
+        # First date should be padded (Jan 6)
+        assert result["dates"][0] == pd.Timestamp(date(2024, 1, 6))
+        # Hosp should have one zero padded at beginning
+        np.testing.assert_array_equal(result["Hosp"], np.array([0, 10, 20]))
+        np.testing.assert_array_equal(result["S"], np.array([0, 1000, 990]))
+
+    def test_handles_different_pad_lengths(self):
+        """Test that different trajectories pad to same final length."""
+        # Trajectory 1: starts early, needs little padding
+        results1 = Mock()
+        results1.dates = [date(2024, 1, 8), date(2024, 1, 15)]
+        results1.transitions = {"Hosp": np.array([10, 20])}
+        results1.compartments = {}
+
+        result1 = format_projection_trajectories(
+            results=results1,
+            reference_start_date=date(2024, 1, 1),
+            actual_start_date=date(2024, 1, 8),
+            target_end_date=date(2024, 1, 15),
+            resample_frequency="W-SAT",
+        )
+
+        # Trajectory 2: starts late, needs more padding
+        results2 = Mock()
+        results2.dates = [date(2024, 1, 15)]
+        results2.transitions = {"Hosp": np.array([30])}
+        results2.compartments = {}
+
+        result2 = format_projection_trajectories(
+            results=results2,
+            reference_start_date=date(2024, 1, 1),
+            actual_start_date=date(2024, 1, 15),
+            target_end_date=date(2024, 1, 15),
+            resample_frequency="W-SAT",
+        )
+
+        # Both should have same final length
+        assert len(result1["dates"]) == len(result2["dates"])
+        assert len(result1["Hosp"]) == len(result2["Hosp"])
+
+    def test_all_trajectories_same_shape_for_stacking(self):
+        """Test that multiple trajectories with different starts have identical shapes."""
+        # Simulate the real-world scenario: different sampled start dates
+        # but all should end at the same projection end date
+        trajectories = []
+
+        # Create 5 trajectories with different start dates
+        start_dates = [date(2024, 9, 21), date(2024, 9, 28), date(2024, 10, 5), date(2024, 10, 12), date(2024, 10, 19)]
+        trajectory_lengths = [37, 36, 35, 34, 33]  # Decreasing as start gets later
+
+        reference_start = date(2024, 9, 21)  # Earliest start
+        target_end = date(2025, 5, 31)  # Fixed projection end
+
+        for start_date, length in zip(start_dates, trajectory_lengths, strict=False):
+            results = Mock()
+            # Create dates for this trajectory
+            results.dates = pd.date_range(start=start_date, periods=length, freq="W-SAT").tolist()
+            results.transitions = {
+                "Hosp": np.random.rand(length),
+                "ICU": np.random.rand(length),
+            }
+            results.compartments = {
+                "S": np.random.rand(length),
+                "I": np.random.rand(length),
+            }
+
+            formatted = format_projection_trajectories(
+                results=results,
+                reference_start_date=reference_start,
+                actual_start_date=start_date,
+                target_end_date=target_end,
+                resample_frequency="W-SAT",
+            )
+            trajectories.append(formatted)
+
+        # Verify all trajectories have the same shape
+        expected_length = len(trajectories[0]["dates"])
+        for i, traj in enumerate(trajectories):
+            assert len(traj["dates"]) == expected_length, (
+                f"Trajectory {i} has length {len(traj['dates'])}, expected {expected_length}"
+            )
+            assert len(traj["Hosp"]) == expected_length, (
+                f"Trajectory {i} Hosp has length {len(traj['Hosp'])}, expected {expected_length}"
+            )
+            assert len(traj["ICU"]) == expected_length
+            assert len(traj["S"]) == expected_length
+            assert len(traj["I"]) == expected_length
+
+        # Verify all trajectories start from the same reference date
+        for traj in trajectories:
+            assert traj["dates"][0] == pd.Timestamp(reference_start)
+
+        # Verify all trajectories end on the same date
+        end_dates = [traj["dates"][-1] for traj in trajectories]
+        assert len(set(end_dates)) == 1, f"End dates differ: {end_dates}"
+
+        # Verify arrays can be stacked (this is what epydemix does)
+        hosp_arrays = [traj["Hosp"] for traj in trajectories]
+        stacked = np.stack(hosp_arrays)  # This should not raise ValueError
+        assert stacked.shape == (len(trajectories), expected_length)
