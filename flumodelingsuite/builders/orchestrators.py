@@ -339,45 +339,43 @@ def make_simulate_wrapper(
         }
 
         # Run simulation
-        if not params["projection"]:
-            try:
-                results = simulate(**sim_params)
-                trajectory_dates = results.dates
-                data_dates = list(pd.to_datetime(data_state.target_end_date.values))
-
-                mask = [date in data_dates for date in trajectory_dates]
-
-                total_hosp = sum(results.transitions[key] for key in calibration.comparison[0].simulation)
-
-                total_hosp = total_hosp[mask]
-
-                if len(total_hosp) < len(data_dates):
-                    pad_len = len(data_dates) - len(total_hosp)
-                    total_hosp = np.pad(total_hosp, (pad_len, 0), constant_values=0)
-
-            except Exception as e:  # noqa: BLE001
-                failed_params = params.copy()
-                failed_params.pop("epimodel", None)
-                logger.info("Simulation failed with parameters %s: %s", failed_params, e)
-                data_dates = list(pd.to_datetime(data_state["target_end_date"].values))
-                total_hosp = np.full(len(data_dates), 0)
-
-            return {"data": total_hosp}
-
-        # Run projection if params["projection"] is True
         try:
             results = simulate(**sim_params)
-        except Exception as e:  # noqa: BLE001
+        except (ValueError, RuntimeError, KeyError) as e:
             failed_params = params.copy()
             failed_params.pop("epimodel", None)
-            logger.info("Projection failed with parameters %s: %s", failed_params, e)
-            return {}
-        else:
-            # Return results from successful projection
+            logger.warning("Simulation failed with parameters %s: %s", failed_params, e)
+
+            if params["projection"]:
+                return {}
+
+            # Calibration mode: return zero-filled array
+            data_dates = list(pd.to_datetime(data_state.target_end_date.values))
+            return {"data": np.full(len(data_dates), 0)}
+
+        # Format output based on mode
+        if params["projection"]:
+            # Projection: return full results
             return {
                 "dates": results.dates,
                 "transitions": results.transitions,
                 "compartments": results.compartments,
             }
+
+        # Calibration: align to observed dates
+        trajectory_dates = results.dates
+        data_dates = list(pd.to_datetime(data_state.target_end_date.values))
+
+        mask = [date in data_dates for date in trajectory_dates]
+
+        total_hosp = sum(results.transitions[key] for key in calibration.comparison[0].simulation)
+
+        total_hosp = total_hosp[mask]
+
+        if len(total_hosp) < len(data_dates):
+            pad_len = len(data_dates) - len(total_hosp)
+            total_hosp = np.pad(total_hosp, (pad_len, 0), constant_values=0)
+
+        return {"data": total_hosp}
 
     return simulate_wrapper
