@@ -461,7 +461,6 @@ def make_simulate_wrapper(
 ) -> Callable[[dict], dict]:
     """
     Create a simulate_wrapper function for ABCSampler calibration.
-    simulate_wrapper takes param dictionary and runs a simulation/projection.
 
     Parameters
     ----------
@@ -483,28 +482,38 @@ def make_simulate_wrapper(
     Returns
     -------
     callable
-        A simulate_wrapper function, which takes params:dict and returns dict.
-        This wrapper is passed to ABCSampler and will be called during calibration.
-
-    Notes
-    -----
-    The wrapper function expects params dict to contain:
-    - "epimodel": The model to simulate (passed via fixed_parameters)
-    - "end_date": Simulation end date
-    - "projection": Boolean indicating calibration vs projection mode
-    - Calibrated parameter values (e.g., "beta", "initial_infected")
-    - Optional "start_date" (offset in days, if start_date is calibrated)
-    - Optional "seasonality_min" (if seasonality is calibrated)
-
-    The wrapper returns:
-    - For calibration (projection=False): {"data": np.ndarray} of simulated values
-      at observation times, aligned with observed data dates
-    - For projection (projection=True): {"dates": list, "transitions": dict,
-      "compartments": dict} with full simulation results
+        A simulate_wrapper function that takes params dict and returns results dict.
+        This wrapper is passed to ABCSampler and called during calibration/projection.
 
     """
 
     def simulate_wrapper(params: dict) -> dict:
+        """
+        Run a single simulation with the given parameters.
+
+        This function is called by ABCSampler during calibration and projection.
+
+        Parameters
+        ----------
+        params : dict
+            Simulation parameters containing:
+            - "epimodel": The model to simulate (passed via fixed_parameters)
+            - "end_date": Simulation end date
+            - "projection": Boolean indicating calibration vs projection mode
+            - Calibrated parameter values (e.g., "beta", "initial_infected")
+            - Optional "start_date" (offset in days, if start_date is calibrated)
+            - Optional "seasonality_min" (if seasonality is calibrated)
+
+        Returns
+        -------
+        dict
+            For calibration (projection=False):
+                {"data": np.ndarray} of simulated values at observation times,
+                aligned with observed data dates
+            For projection (projection=True):
+                {"dates": list, "transitions": dict, "compartments": dict}
+                with full simulation results flattened to top level
+        """
         # 1. Extract model from params
         wrapper_model = params["epimodel"]
         model = copy.deepcopy(wrapper_model)
