@@ -83,7 +83,7 @@ class TestMakeSimulateWrapper:
         simulate_wrapper = make_simulate_wrapper(
             basemodel=base_model_config,
             calibration=mock_calibration,
-            data_state=data_state,
+            observed_data=data_state,
             intervention_types=[],
         )
 
@@ -129,7 +129,7 @@ class TestMakeSimulateWrapper:
         wrapper = make_simulate_wrapper(
             basemodel=base_model_config,
             calibration=mock_calibration,
-            data_state=data_state,
+            observed_data=data_state,
             intervention_types=[],
         )
 
@@ -170,7 +170,7 @@ class TestMakeSimulateWrapper:
         wrapper = make_simulate_wrapper(
             basemodel=base_model_config,
             calibration=mock_calibration,
-            data_state=data_state,
+            observed_data=data_state,
             intervention_types=[],
         )
 
@@ -209,7 +209,7 @@ class TestMakeSimulateWrapper:
         wrapper = make_simulate_wrapper(
             basemodel=base_model_config,
             calibration=mock_calibration,
-            data_state=data_state,
+            observed_data=data_state,
             intervention_types=[],
         )
 
@@ -257,7 +257,7 @@ class TestMakeSimulateWrapper:
         wrapper = make_simulate_wrapper(
             basemodel=base_model_config,
             calibration=mock_calibration,
-            data_state=data_state,
+            observed_data=data_state,
             intervention_types=[],
         )
 
@@ -298,7 +298,7 @@ class TestMakeSimulateWrapper:
         wrapper = make_simulate_wrapper(
             basemodel=base_model_config,
             calibration=mock_calibration,
-            data_state=data_state,
+            observed_data=data_state,
             intervention_types=[],
         )
 
@@ -341,7 +341,7 @@ class TestMakeSimulateWrapper:
         wrapper = make_simulate_wrapper(
             basemodel=base_model_config,
             calibration=mock_calibration,
-            data_state=data_state,
+            observed_data=data_state,
             intervention_types=["parameter"],  # Enable parameter interventions
         )
 
@@ -378,7 +378,7 @@ class TestMakeSimulateWrapper:
         wrapper = make_simulate_wrapper(
             basemodel=base_model_config,
             calibration=mock_calibration,
-            data_state=data_state,
+            observed_data=data_state,
             intervention_types=[],
             sampled_start_timespan=sampled_start_timespan,
         )
@@ -411,7 +411,7 @@ class TestMakeSimulateWrapper:
         wrapper = make_simulate_wrapper(
             basemodel=base_model_config,
             calibration=mock_calibration,
-            data_state=data_state,
+            observed_data=data_state,
             intervention_types=[],
         )
 
@@ -450,7 +450,7 @@ class TestMakeSimulateWrapper:
         wrapper = make_simulate_wrapper(
             basemodel=base_model_config,
             calibration=mock_calibration,
-            data_state=data_state,
+            observed_data=data_state,
             intervention_types=[],
         )
 
@@ -493,14 +493,14 @@ class TestMakeSimulateWrapper:
         wrapper1 = make_simulate_wrapper(
             basemodel=base_model_config,
             calibration=mock_calibration,
-            data_state=data_state,
+            observed_data=data_state,
             intervention_types=[],
         )
 
         wrapper2 = make_simulate_wrapper(
             basemodel=base_model_config,
             calibration=mock_calibration,
-            data_state=data_state,
+            observed_data=data_state,
             intervention_types=[],
         )
 

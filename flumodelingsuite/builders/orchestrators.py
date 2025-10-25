@@ -470,7 +470,7 @@ class SimulateWrapperParams(TypedDict, total=False):
 def make_simulate_wrapper(
     basemodel: BaseEpiModel,
     calibration: CalibrationConfig,
-    data_state: pd.DataFrame,
+    observed_data: pd.DataFrame,
     intervention_types: list[str],
     sampled_start_timespan: Timespan | None = None,
     earliest_vax: dict | None = None,
@@ -484,8 +484,10 @@ def make_simulate_wrapper(
         Base model configuration with compartments, parameters, interventions, etc.
     calibration : CalibrationConfig
         Calibration settings including comparison targets, priors, and fitting window.
-    data_state : pd.DataFrame
-        Observed data for this specific location/model (already filtered to location).
+    observed_data : pd.DataFrame
+        Observed data for calibration. Should contain date column specified in
+        calibration.comparison[0].observed_date_column. Must be filtered to a single
+        location (no duplicate dates).
     intervention_types : list[str]
         List of intervention types to apply (e.g., ["parameter", "school_closure"]).
     sampled_start_timespan : Timespan | None, optional
@@ -502,6 +504,17 @@ def make_simulate_wrapper(
         This wrapper is passed to ABCSampler and called during calibration/projection.
 
     """
+    # Validate observed_data: check for duplicate dates (indicates mixed location data)
+    date_column = calibration.comparison[0].observed_date_column
+    observed_dates = pd.to_datetime(observed_data[date_column])
+    if observed_dates.duplicated().any():
+        duplicated_dates = observed_dates[observed_dates.duplicated()].unique()
+        msg = (
+            f"Duplicate dates found in observed_data: {duplicated_dates.tolist()}. "
+            "This likely indicates data from multiple locations is mixed. "
+            "observed_data must be filtered to a single location."
+        )
+        raise ValueError(msg)
 
     def simulate_wrapper(params: SimulateWrapperParams) -> dict[str, Any]:
         """
@@ -592,7 +605,7 @@ def make_simulate_wrapper(
         # 9. Extract observed dates for calibration (before simulation to avoid duplication)
         if not params["projection"]:
             date_column = calibration.comparison[0].observed_date_column
-            data_dates = list(pd.to_datetime(data_state[date_column].values))
+            data_dates = list(pd.to_datetime(observed_data[date_column].values))
 
         # 10. Run simulation
         try:
