@@ -49,18 +49,18 @@ def create_model_collection(
     Parameters
     ----------
     basemodel : BaseEpiModel
-        The base model configuration containing compartments, transitions,
-        parameters, and population settings.
+            The base model configuration containing compartments, transitions,
+            parameters, and population settings.
     population_names : list[str] | None
-        List of population names to create models for. Can contain "all" to
-        expand to all locations in the codebook. If None, uses the single
-        population from basemodel.
+            List of population names to create models for. Can contain "all" to
+            expand to all locations in the codebook. If None, uses the single
+            population from basemodel.
 
     Returns
     -------
     tuple[list[EpiModel], list[str]]
-        - List of configured EpiModel instances (one per population)
-        - List of resolved population names (expanded if "all" was specified)
+            - List of configured EpiModel instances (one per population)
+            - List of resolved population names (expanded if "all" was specified)
 
     Examples
     --------
@@ -124,21 +124,21 @@ def setup_vaccination_schedules(
     Parameters
     ----------
     basemodel : BaseEpiModel
-        The base model configuration containing vaccination settings.
+            The base model configuration containing vaccination settings.
     models : list[EpiModel]
-        List of EpiModel instances to add vaccination schedules to
-        (only used if start_date is not sampled).
+            List of EpiModel instances to add vaccination schedules to
+            (only used if start_date is not sampled).
     sampled_start_timespan : Timespan | None
-        The earliest timespan when start_date is sampled, or None if not sampled.
+            The earliest timespan when start_date is sampled, or None if not sampled.
     population_names : list[str]
-        List of population/location names (states) to create vaccination schedules for.
+            List of population/location names (states) to create vaccination schedules for.
 
     Returns
     -------
     tuple[list[EpiModel], dict | None]
-        - List of EpiModel instances (with vaccination applied if start_date not sampled)
-        - The earliest vaccination schedule (for later reaggregation) if start_date is sampled,
-          otherwise None.
+            - List of EpiModel instances (with vaccination applied if start_date not sampled)
+            - The earliest vaccination schedule (for later reaggregation) if start_date is sampled,
+              otherwise None.
 
     Notes
     -----
@@ -187,19 +187,19 @@ def setup_interventions(
     Parameters
     ----------
     models : list[EpiModel]
-        List of EpiModel instances to add interventions to.
+            List of EpiModel instances to add interventions to.
     basemodel : BaseEpiModel
-        The base model configuration containing intervention settings and timespan.
+            The base model configuration containing intervention settings and timespan.
     intervention_types : list[str]
-        List of intervention type strings extracted from basemodel.interventions.
+            List of intervention type strings extracted from basemodel.interventions.
     sampled_start_timespan : Timespan | None
-        The earliest timespan when start_date is sampled, or None if not sampled.
-        Used to determine the date range for school closures.
+            The earliest timespan when start_date is sampled, or None if not sampled.
+            Used to determine the date range for school closures.
 
     Returns
     -------
     list[EpiModel]
-        List of EpiModel instances with interventions applied.
+            List of EpiModel instances with interventions applied.
 
     Notes
     -----
@@ -328,14 +328,14 @@ def flatten_simulation_results(results: Any) -> dict:
     Parameters
     ----------
     results : SimulationResults
-        Output from epydemix.simulate().
+            Output from epydemix.simulate().
 
     Returns
     -------
     dict
-        Flattened results with "dates" key and all transition/compartment keys at top level.
+            Flattened results with "dates" key and all transition/compartment keys at top level.
     """
-        output = {"dates": results.dates}
+    output = {"dates": results.dates}
     output.update(results.transitions)
     output.update(results.compartments)
     return output
@@ -444,22 +444,22 @@ def format_calibration_data(
     Parameters
     ----------
     results : SimulationResults
-        Output from epydemix.simulate() with dates and transitions.
+            Output from epydemix.simulate() with dates and transitions.
     comparison_transitions : list[str]
-        List of transition keys to sum (e.g., ["Hosp_vax", "Hosp_unvax"]).
+            List of transition keys to sum (e.g., ["Hosp_vax", "Hosp_unvax"]).
     data_dates : list
-        List of observation dates from observed data.
+            List of observation dates from observed data.
 
     Returns
     -------
     np.ndarray
-        Aggregated simulation values aligned to observation dates.
-        Padded with zeros at the beginning if simulation starts after first observation.
+            Aggregated simulation values aligned to observation dates.
+            Padded with zeros at the beginning if simulation starts after first observation.
     """
     # Step 1: Aggregate specified transitions
     # Match simulation outputs to observed data granularity.
     # e.g. observed "hospitalizations" = sum(Home_sev_to_Hosp_total + Home_sev_vax_to_Hosp_vax_total)
-transition_arrays = [results.transitions[key] for key in comparison_transitions]
+    transition_arrays = [results.transitions[key] for key in comparison_transitions]
     aggregated_data = sum(transition_arrays)
 
     # Step 2: Filter to observed dates
@@ -492,13 +492,13 @@ def apply_seasonality_with_sampled_min(
     Parameters
     ----------
     model : EpiModel
-        Model to add seasonality to.
+            Model to add seasonality to.
     basemodel : BaseEpiModel
-        Base configuration with seasonality settings.
+            Base configuration with seasonality settings.
     timespan : Timespan
-        Simulation timespan.
+            Simulation timespan.
     params : dict
-        Simulation parameters, may contain "seasonality_min" if being calibrated.
+            Simulation parameters, may contain "seasonality_min" if being calibrated.
     """
     if not basemodel.seasonality:
         return
@@ -530,15 +530,15 @@ def apply_vaccination_for_sampled_start(
     Parameters
     ----------
     model : EpiModel
-        Model to add vaccination to.
+            Model to add vaccination to.
     basemodel : BaseEpiModel
-        Base configuration with vaccination settings.
+            Base configuration with vaccination settings.
     timespan : Timespan
-        Actual simulation timespan (may differ from basemodel if start_date sampled).
+            Actual simulation timespan (may differ from basemodel if start_date sampled).
     earliest_vax : dict | None
-        Pre-calculated earliest vaccination schedule for reaggregation.
+            Pre-calculated earliest vaccination schedule for reaggregation.
     sampled_start_timespan : Timespan | None
-        If not None, indicates start_date is sampled and vaccination needs reaggregation.
+            If not None, indicates start_date is sampled and vaccination needs reaggregation.
     """
     if not basemodel.vaccination:
         return
@@ -568,11 +568,11 @@ def apply_calibrated_parameters(
     Parameters
     ----------
     model : EpiModel
-        Model to modify.
+            Model to modify.
     params : dict
-        Dictionary containing calibrated parameter values from ABC sampler.
+            Dictionary containing calibrated parameter values from ABC sampler.
     parameter_config : dict[str, Parameter]
-        Parameter configuration from basemodel.
+            Parameter configuration from basemodel.
     """
     # Extract calibrated parameters
     calibrated_params = {
@@ -605,18 +605,18 @@ def compute_simulation_start_date(
     Parameters
     ----------
     params : dict
-        Simulation parameters. If start_date sampling is enabled,
-        params["start_date"] should be an integer offset in days.
+            Simulation parameters. If start_date sampling is enabled,
+            params["start_date"] should be an integer offset in days.
     basemodel_timespan : Timespan
-        Default timespan from base model configuration.
+            Default timespan from base model configuration.
     reference_start_date : date | None
-        Reference start date for start_date sampling, or None if not sampled.
-        This is the earliest possible start date when sampling is enabled.
+            Reference start date for start_date sampling, or None if not sampled.
+            This is the earliest possible start date when sampling is enabled.
 
     Returns
     -------
     dt.date
-        Calculated start date for simulation.
+            Calculated start date for simulation.
     """
     # Case 1: No sampling - use fixed start date
     if reference_start_date is None:
@@ -657,31 +657,31 @@ def make_simulate_wrapper(
     Parameters
     ----------
     basemodel : BaseEpiModel
-        Base model configuration with compartments, parameters, interventions, etc.
+            Base model configuration with compartments, parameters, interventions, etc.
     calibration : CalibrationConfig
-        Calibration settings including comparison targets, priors, and fitting window.
+            Calibration settings including comparison targets, priors, and fitting window.
     observed_data : pd.DataFrame
-        Observed data for calibration. Should contain date column specified in
-        calibration.comparison[0].observed_date_column. Must be filtered to a single
-        location (no duplicate dates).
+            Observed data for calibration. Should contain date column specified in
+            calibration.comparison[0].observed_date_column. Must be filtered to a single
+            location (no duplicate dates).
     intervention_types : list[str]
-        List of intervention types to apply (e.g., ["parameter", "school_closure"]).
+            List of intervention types to apply (e.g., ["parameter", "school_closure"]).
     sampled_start_timespan : Timespan | None, optional
-        Earliest timespan if start_date is being sampled/calibrated.
-        If provided, enables start_date sampling and vaccination reaggregation.
+            Earliest timespan if start_date is being sampled/calibrated.
+            If provided, enables start_date sampling and vaccination reaggregation.
     earliest_vax : pd.DataFrame | None, optional
-        Pre-calculated vaccination schedule from earliest start_date.
-        Required when sampled_start_timespan is provided and vaccinations are used.
-        DataFrame with columns: "dates", "location", and age group columns
-        (e.g., "0-4", "5-17", "18-49", "50-64", "65+").
-        Typically created by `setup_vaccination_schedules()` which calls
-        `scenario_to_epydemix()` with the earliest start date.
+            Pre-calculated vaccination schedule from earliest start_date.
+            Required when sampled_start_timespan is provided and vaccinations are used.
+            DataFrame with columns: "dates", "location", and age group columns
+            (e.g., "0-4", "5-17", "18-49", "50-64", "65+").
+            Typically created by `setup_vaccination_schedules()` which calls
+            `scenario_to_epydemix()` with the earliest start date.
 
     Returns
     -------
     callable
-        A simulate_wrapper function that takes params dict and returns results dict.
-        This wrapper is passed to ABCSampler and called during calibration/projection.
+            A simulate_wrapper function that takes params dict and returns results dict.
+            This wrapper is passed to ABCSampler and called during calibration/projection.
 
     """
     # Validate observed_data: check for duplicate dates (indicates mixed location data)
@@ -705,32 +705,32 @@ def make_simulate_wrapper(
         Parameters
         ----------
         params : SimulateWrapperParams (dict)
-            Simulation parameters dictionary containing:
+                Simulation parameters dictionary containing:
 
-            - epimodel : EpiModel
-                The model to simulate (passed via fixed_parameters)
-            - end_date : date
-                Simulation end date
-            - projection : bool
-                Boolean indicating calibration vs projection mode
-            - start_date : int, optional
-                Offset in days from reference date (if start_date is calibrated)
-            - seasonality_min : float, optional
-                Minimum seasonality value (if seasonality is calibrated)
-            - Additional calibrated parameter values (e.g., "beta", "initial_infected")
+                - epimodel : EpiModel
+                        The model to simulate (passed via fixed_parameters)
+                - end_date : date
+                        Simulation end date
+                - projection : bool
+                        Boolean indicating calibration vs projection mode
+                - start_date : int, optional
+                        Offset in days from reference date (if start_date is calibrated)
+                - seasonality_min : float, optional
+                        Minimum seasonality value (if seasonality is calibrated)
+                - Additional calibrated parameter values (e.g., "beta", "initial_infected")
 
         Returns
         -------
         dict
-            For calibration (projection=False):
-                {"data": np.ndarray} of simulated values at observation times,
-                aligned with observed data dates
-            For projection (projection=True):
-                Flattened simulation results with keys:
-                - "dates": list of simulation dates
-                - Individual transition keys (e.g., "S_to_I", "I_to_R")
-                - Individual compartment keys (e.g., "S", "I", "R")
-                All keys are at the top level (flattened, not nested)
+                For calibration (projection=False):
+                        {"data": np.ndarray} of simulated values at observation times,
+                        aligned with observed data dates
+                For projection (projection=True):
+                        Flattened simulation results with keys:
+                        - "dates": list of simulation dates
+                        - Individual transition keys (e.g., "S_to_I", "I_to_R")
+                        - Individual compartment keys (e.g., "S", "I", "R")
+                        All keys are at the top level (flattened, not nested)
         """
         # 1. Extract model from params
         wrapper_model = params["epimodel"]
