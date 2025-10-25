@@ -502,35 +502,35 @@ def make_simulate_wrapper(
     """
 
     def simulate_wrapper(params: dict) -> dict:
-        # Extract model from params
+        # 1. Extract model from params
         wrapper_model = params["epimodel"]
         model = copy.deepcopy(wrapper_model)
 
-        # Calculate start date
+        # 2. Calculate start date
         start_date = compute_simulation_start_date(params, basemodel.timespan, sampled_start_timespan)
         timespan = Timespan(start_date=start_date, end_date=params["end_date"], delta_t=basemodel.timespan.delta_t)
 
-        # Apply calibrated parameters
+        # 3. Apply calibrated parameters
         apply_calibrated_parameters(model, params, basemodel.parameters)
 
-        # Apply vaccination (reaggregating if start_date is sampled)
+        # 4. Apply vaccination (reaggregating if start_date is sampled)
         apply_vaccination_for_sampled_start(model, basemodel, timespan, earliest_vax, sampled_start_timespan)
 
-        # Apply seasonality (this must occur before parameter interventions to preserve parameter overrides)
+        # 5. Apply seasonality (this must occur before parameter interventions to preserve parameter overrides)
         apply_seasonality_with_sampled_min(model, basemodel, timespan, params)
 
-        # Parameter interventions
+        # 6. Add parameter interventions
         if basemodel.interventions and "parameter" in intervention_types:
             add_parameter_interventions_from_config(model, basemodel.interventions, timespan)
 
-        # Initial conditions
+        # 7. Calculate compartment initial conditions
         compartment_init = calculate_compartment_initial_conditions(
             compartments=basemodel.compartments,
             population_array=model.population.Nk,
             sampled_compartments=params,
         )
 
-        # Collect settings
+        # 8. Collect settings for simulation
         sim_params = {
             "epimodel": model,
             "initial_conditions_dict": compartment_init,
@@ -539,12 +539,12 @@ def make_simulate_wrapper(
             "resample_frequency": basemodel.simulation.resample_frequency,
         }
 
-        # Extract observed dates for calibration (before simulation to avoid duplication)
+        # 9. Extract observed dates for calibration (before simulation to avoid duplication)
         if not params["projection"]:
             date_column = calibration.comparison[0].observed_date_column
             data_dates = list(pd.to_datetime(data_state[date_column].values))
 
-        # Run simulation
+        # 10. Run simulation
         try:
             results = simulate(**sim_params)
         except (ValueError, RuntimeError, KeyError) as e:
@@ -560,7 +560,7 @@ def make_simulate_wrapper(
             # Calibration mode: return zero-filled array
             return {"data": np.full(len(data_dates), 0)}
 
-        # Format output based on mode
+        # 11. Format output based on mode
         # Projection: return full results flattened
         if params["projection"]:
             return flatten_simulation_results(results)
