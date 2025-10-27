@@ -3,7 +3,7 @@
 import logging
 
 from ..schema.dispatcher import CalibrationOutput, SimulationOutput
-from ..schema.output import OutputConfig
+from ..schema.output import OutputConfig, get_flusight_quantiles
 
 logger = logging.getLogger(__name__)
 
@@ -39,16 +39,6 @@ def make_rate_trends_flusightforecast(formatted_quantiles: pd.DataFrame) -> pd.D
     """"""
     # TODO
     return pd.DataFrame()
-
-
-def get_flusight_quantiles() -> list[float]:
-    """
-    Return an array containing the quantiles needed for FluSight submissions.
-    The set of quantiles is defined at https://github.com/cdcepi/FluSight-forecast-hub/tree/main/model-output#quantile-output
-    """
-    import numpy as np
-
-    return np.append(np.append([0.01, 0.025], np.arange(0.05, 0.95 + 0.05, 0.05)), [0.975, 0.99]).astype(float).tolist()
 
 
 # ===== Output Generator Registry and Functions =====
