@@ -3,6 +3,8 @@
 import copy
 import datetime as dt
 import logging
+from collections.abc import Callable
+from typing import Any, TypedDict
 
 import numpy as np
 import pandas as pd
@@ -18,6 +20,7 @@ from .base import (
     add_model_compartments_from_config,
     add_model_parameters_from_config,
     add_model_transitions_from_config,
+    calculate_compartment_initial_conditions,
     calculate_parameters_from_config,
     set_population_from_config,
 )
@@ -46,18 +49,18 @@ def create_model_collection(
     Parameters
     ----------
     basemodel : BaseEpiModel
-        The base model configuration containing compartments, transitions,
-        parameters, and population settings.
+            The base model configuration containing compartments, transitions,
+            parameters, and population settings.
     population_names : list[str] | None
-        List of population names to create models for. Can contain "all" to
-        expand to all locations in the codebook. If None, uses the single
-        population from basemodel.
+            List of population names to create models for. Can contain "all" to
+            expand to all locations in the codebook. If None, uses the single
+            population from basemodel.
 
     Returns
     -------
     tuple[list[EpiModel], list[str]]
-        - List of configured EpiModel instances (one per population)
-        - List of resolved population names (expanded if "all" was specified)
+            - List of configured EpiModel instances (one per population)
+            - List of resolved population names (expanded if "all" was specified)
 
     Examples
     --------
@@ -121,21 +124,21 @@ def setup_vaccination_schedules(
     Parameters
     ----------
     basemodel : BaseEpiModel
-        The base model configuration containing vaccination settings.
+            The base model configuration containing vaccination settings.
     models : list[EpiModel]
-        List of EpiModel instances to add vaccination schedules to
-        (only used if start_date is not sampled).
+            List of EpiModel instances to add vaccination schedules to
+            (only used if start_date is not sampled).
     sampled_start_timespan : Timespan | None
-        The earliest timespan when start_date is sampled, or None if not sampled.
+            The earliest timespan when start_date is sampled, or None if not sampled.
     population_names : list[str]
-        List of population/location names (states) to create vaccination schedules for.
+            List of population/location names (states) to create vaccination schedules for.
 
     Returns
     -------
     tuple[list[EpiModel], dict | None]
-        - List of EpiModel instances (with vaccination applied if start_date not sampled)
-        - The earliest vaccination schedule (for later reaggregation) if start_date is sampled,
-          otherwise None.
+            - List of EpiModel instances (with vaccination applied if start_date not sampled)
+            - The earliest vaccination schedule (for later reaggregation) if start_date is sampled,
+              otherwise None.
 
     Notes
     -----
@@ -184,19 +187,19 @@ def setup_interventions(
     Parameters
     ----------
     models : list[EpiModel]
-        List of EpiModel instances to add interventions to.
+            List of EpiModel instances to add interventions to.
     basemodel : BaseEpiModel
-        The base model configuration containing intervention settings and timespan.
+            The base model configuration containing intervention settings and timespan.
     intervention_types : list[str]
-        List of intervention type strings extracted from basemodel.interventions.
+            List of intervention type strings extracted from basemodel.interventions.
     sampled_start_timespan : Timespan | None
-        The earliest timespan when start_date is sampled, or None if not sampled.
-        Used to determine the date range for school closures.
+            The earliest timespan when start_date is sampled, or None if not sampled.
+            Used to determine the date range for school closures.
 
     Returns
     -------
     list[EpiModel]
-        List of EpiModel instances with interventions applied.
+            List of EpiModel instances with interventions applied.
 
     Notes
     -----
@@ -226,158 +229,598 @@ def setup_interventions(
     return models
 
 
+def pad_array_with_zeros(
+    array: np.ndarray,
+    pad_length: int,
+) -> np.ndarray:
+    """
+    Pad a numpy array with zeros at the beginning.
+
+    Parameters
+    ----------
+    array : np.ndarray
+            Array to pad.
+    pad_length : int
+            Number of zeros to add at the beginning.
+
+    Returns
+    -------
+    np.ndarray
+            Padded array.
+    """
+    if pad_length <= 0:
+        return array
+
+    return np.pad(array, (pad_length, 0), constant_values=0)
+
+
+def pad_trajectory_arrays(
+    arrays_dict: dict[str, np.ndarray],
+    pad_length: int,
+) -> dict[str, np.ndarray]:
+    """
+    Pad all arrays in a dictionary with zeros at the beginning.
+
+    Parameters
+    ----------
+    arrays_dict : dict[str, np.ndarray]
+            Dictionary of arrays to pad.
+    pad_length : int
+            Number of zeros to add at the beginning of each array.
+
+    Returns
+    -------
+    dict[str, np.ndarray]
+            Dictionary with all arrays padded.
+    """
+    if pad_length <= 0:
+        return arrays_dict
+
+    return {key: pad_array_with_zeros(value, pad_length) for key, value in arrays_dict.items()}
+
+
+def calculate_padding_for_date_alignment(
+    actual_dates: np.ndarray | list,
+    target_dates: np.ndarray | list,
+) -> int:
+    """
+    Calculate padding needed to align actual dates to target date grid.
+
+    Determines how many padding steps are needed at the beginning when
+    actual dates start later than target dates.
+
+    Parameters
+    ----------
+    actual_dates : np.ndarray | list
+            Dates from simulation results.
+    target_dates : np.ndarray | list
+            Target date grid to align to (e.g., from reference start or observed data).
+
+    Returns
+    -------
+    int
+            Number of padding steps needed (0 if no padding required).
+
+    Examples
+    --------
+    >>> actual = [date(2024, 1, 10), date(2024, 1, 11)]
+    >>> target = [date(2024, 1, 5), date(2024, 1, 6), ..., date(2024, 1, 11)]
+    >>> calculate_padding_for_date_alignment(actual, target)
+    5  # Need 5 zeros for dates Jan 5-9
+    """
+    # Find which target dates are covered by actual dates
+    mask = np.isin(target_dates, actual_dates)
+    covered_count = mask.sum()
+
+    # Padding needed = total target length - covered dates
+    pad_len = len(target_dates) - covered_count
+
+    return max(0, pad_len)  # Ensure non-negative
+
+
+def flatten_simulation_results(results: Any) -> dict:
+    """
+    Flatten simulation results structure for projection output.
+
+    Flattens nested results structure into a single dict with dates, transitions,
+    and compartments at the top level.
+
+    Parameters
+    ----------
+    results : SimulationResults
+            Output from epydemix.simulate().
+
+    Returns
+    -------
+    dict
+            Flattened results with "date" key and all transition/compartment keys at top level.
+    """
+    output = {"date": results.dates}
+    output.update(results.transitions)
+    output.update(results.compartments)
+    return output
+
+
+def format_projection_trajectories(
+    results: Any,
+    reference_start_date: dt.date | None = None,
+    actual_start_date: dt.date | None = None,
+    target_end_date: dt.date | None = None,
+    resample_frequency: str | None = None,
+) -> dict:
+    """
+    Format simulation results for projection mode (flatten + pad for stacking).
+
+    Flattens structure and pads trajectories to a consistent target length
+    when start_date is sampled. This ensures all trajectories have the same length
+    for np.stack() in epydemix's get_projection_trajectories().
+
+    Parameters
+    ----------
+    results : SimulationResults
+            Output from epydemix.simulate().
+    reference_start_date : date | None, optional
+            The earliest possible start date (used when start_date is sampled).
+            If provided, trajectories will be padded to align with this date.
+    actual_start_date : date | None, optional
+            The actual start date of this specific trajectory.
+            Required if reference_start_date is provided.
+    target_end_date : date | None, optional
+            The target end date for all trajectories (projection end date).
+            Used to calculate consistent target length for all trajectories.
+    resample_frequency : str | None, optional
+            Resampling frequency (e.g., "W-SAT", "D").
+            Required if padding is needed to compute the target length.
+
+    Returns
+    -------
+    dict
+            Dictionary with "date" and all transition/compartment arrays.
+            Arrays are padded with zeros at the beginning to match target length.
+    """
+    # Flatten results structure
+    output = flatten_simulation_results(results)
+
+    # If no padding needed, return as-is
+    if reference_start_date is None or actual_start_date is None or target_end_date is None:
+        return output
+
+    # Calculate target length from reference start to target end
+    target_date_range = pd.date_range(
+        start=reference_start_date,
+        end=target_end_date,
+        freq=resample_frequency if resample_frequency else "D",
+    )
+    target_length = len(target_date_range)
+
+    # Calculate padding needed to reach target length
+    current_length = len(results.dates)
+    pad_len = target_length - current_length
+
+    if pad_len < 0:
+        logger.warning(
+            "Trajectory length (%d) exceeds target length (%d). "
+            "This may indicate inconsistent resampling or end dates.",
+            current_length,
+            target_length,
+        )
+        return output
+
+    if pad_len > 0:
+        # Pad all arrays except 'date'
+        arrays_to_pad = {k: v for k, v in output.items() if k != "date" and isinstance(v, np.ndarray)}
+        padded_arrays = pad_trajectory_arrays(arrays_to_pad, pad_len)
+        output.update(padded_arrays)
+
+        # Generate exactly pad_len dates to prepend
+        # Use periods parameter to ensure we get exactly the right number
+        prepend_dates = pd.date_range(
+            start=reference_start_date,
+            periods=pad_len,
+            freq=resample_frequency if resample_frequency else "D",
+        )
+
+        # Convert to Timestamp and concatenate with existing dates
+        prepend_dates = [pd.Timestamp(d) for d in prepend_dates]
+        results_dates_list = list(results.dates)
+        output["date"] = prepend_dates + results_dates_list
+
+    return output
+
+
+def format_calibration_data(
+    results: Any,
+    comparison_transitions: list[str],
+    data_dates: list,
+) -> dict[str, Any]:
+    """
+    Format simulation results for calibration mode (aggregate + filter + pad).
+
+    Processes simulation results through three steps:
+    1. Aggregates specified transitions (e.g., sum Hosp_vax + Hosp_unvax)
+    2. Filters to observed dates only
+    3. Pads to align with full observation date grid
+
+    Parameters
+    ----------
+    results : SimulationResults
+            Output from epydemix.simulate() with dates and transitions.
+    comparison_transitions : list[str]
+            List of transition keys to sum (e.g., ["Hosp_vax", "Hosp_unvax"]).
+    data_dates : list
+            List of observation dates from observed data.
+
+    Returns
+    -------
+    dict[str, Any]
+            Dictionary containing:
+            - "data": np.ndarray of aggregated simulation values aligned to observation dates.
+                Padded with zeros at the beginning if simulation starts after first observation.
+            - "date": list of observation dates from observed data.
+    """
+    # Step 1: Aggregate specified transitions
+    # Match simulation outputs to observed data granularity.
+    # e.g. observed "hospitalizations" = sum(Home_sev_to_Hosp_total + Home_sev_vax_to_Hosp_vax_total)
+    transition_arrays = [results.transitions[key] for key in comparison_transitions]
+    aggregated_data = sum(transition_arrays)
+
+    # Step 2: Filter to observed dates
+    # Simulation may run at different frequency (daily) than observations (weekly).
+    # Extract only the dates that match the observed data for comparison.
+    mask = np.isin(results.dates, data_dates)
+    filtered_data = aggregated_data[mask]
+
+    # Step 3: Pad to align with full observation grid
+    # When start_date is sampled, simulation may start later than first observation.
+    # Pad with zeros at beginning to align arrays for distance calculation.
+    pad_len = calculate_padding_for_date_alignment(results.dates, data_dates)
+    aligned_data = pad_array_with_zeros(filtered_data, pad_len)
+
+    return {"data": aligned_data, "date": data_dates}
+
+
+def apply_seasonality_with_sampled_min(
+    model: EpiModel,
+    basemodel: BaseEpiModel,
+    timespan: Timespan,
+    params: dict,
+) -> None:
+    """
+    Apply seasonality configuration, using sampled min_value if provided.
+
+    Creates a deep copy of seasonality config to avoid mutating shared state,
+    optionally overrides min_value if it's being calibrated, then applies to model.
+
+    Parameters
+    ----------
+    model : EpiModel
+            Model to add seasonality to.
+    basemodel : BaseEpiModel
+            Base configuration with seasonality settings.
+    timespan : Timespan
+            Simulation timespan.
+    params : dict
+            Simulation parameters, may contain "seasonality_min" if being calibrated.
+    """
+    if not basemodel.seasonality:
+        return
+
+    # Use copy to avoid mutating shared basemodel
+    seasonality_config = copy.deepcopy(basemodel.seasonality)
+
+    # Override min_value if sampled/calibrated
+    if "seasonality_min" in params:
+        seasonality_config.min_value = params["seasonality_min"]
+
+    add_seasonality_from_config(model, seasonality_config, timespan)
+
+
+def apply_vaccination_for_sampled_start(
+    model: EpiModel,
+    basemodel: BaseEpiModel,
+    timespan: Timespan,
+    earliest_vax: dict | None,
+    sampled_start_timespan: Timespan | None,
+) -> None:
+    """
+    Apply vaccination schedules, reaggregating if start_date is sampled.
+
+    Only applies vaccination when start_date is sampled. When start_date is sampled,
+    the vaccination schedule must be reaggregated to match the actual simulation
+    start date.
+
+    Parameters
+    ----------
+    model : EpiModel
+            Model to add vaccination to.
+    basemodel : BaseEpiModel
+            Base configuration with vaccination settings.
+    timespan : Timespan
+            Actual simulation timespan (may differ from basemodel if start_date sampled).
+    earliest_vax : dict | None
+            Pre-calculated earliest vaccination schedule for reaggregation.
+    sampled_start_timespan : Timespan | None
+            If not None, indicates start_date is sampled and vaccination needs reaggregation.
+    """
+    if not basemodel.vaccination:
+        return
+
+    if sampled_start_timespan is None:
+        # No start_date sampling, vaccination already applied in setup
+        return
+
+    # Start_date is sampled, need to reaggregate
+    reaggregated_vax = reaggregate_vaccines(earliest_vax, timespan.start_date)
+    add_vaccination_schedules_from_config(
+        model, basemodel.transitions, basemodel.vaccination, timespan, use_schedule=reaggregated_vax
+    )
+
+
+def apply_calibrated_parameters(
+    model: EpiModel,
+    params: dict,
+    parameter_config: dict[str, Parameter],
+) -> None:
+    """
+    Apply calibrated and calculated parameters to model.
+
+    Modifies model in-place by adding calibrated parameter values
+    and recalculating derived parameters.
+
+    Parameters
+    ----------
+    model : EpiModel
+            Model to modify.
+    params : dict
+            Dictionary containing calibrated parameter values from ABC sampler.
+    parameter_config : dict[str, Parameter]
+            Parameter configuration from basemodel.
+    """
+    # Extract calibrated parameters
+    calibrated_params = {
+        k: Parameter(type="scalar", value=v)
+        for k, v in params.items()
+        if k in parameter_config and parameter_config[k].type == "calibrated"
+    }
+
+    if calibrated_params:
+        add_model_parameters_from_config(model, calibrated_params)
+
+    # Recalculate derived parameters if any exist
+    has_calculated = any(param.type.value == "calculated" for param in parameter_config.values())
+    if has_calculated:
+        calculate_parameters_from_config(model, parameter_config)
+
+
+def compute_simulation_start_date(
+    params: dict,
+    basemodel_timespan: Timespan,
+    reference_start_date: dt.date | None,
+) -> dt.date:
+    """
+    Calculate simulation start date based on sampling configuration.
+
+    Handles two cases:
+    1. No sampling: use fixed start date from basemodel
+    2. Sampling enabled: use sampled offset from reference start
+
+    Parameters
+    ----------
+    params : dict
+            Simulation parameters. If start_date sampling is enabled,
+            params["start_date"] should be an integer offset in days.
+    basemodel_timespan : Timespan
+            Default timespan from base model configuration.
+    reference_start_date : date | None
+            Reference start date for start_date sampling, or None if not sampled.
+            This is the earliest possible start date when sampling is enabled.
+
+    Returns
+    -------
+    dt.date
+            Calculated start date for simulation.
+    """
+    # Case 1: No sampling - use fixed start date
+    if reference_start_date is None:
+        return basemodel_timespan.start_date
+
+    # Case 2: Sampling enabled - use sampled offset from reference
+    offset_days = params["start_date"]
+    return reference_start_date + dt.timedelta(days=offset_days)
+
+
+class SimulateWrapperParams(TypedDict, total=False):
+    """
+    Type definition for simulate_wrapper parameters.
+
+    Note: Uses total=False because params may contain additional calibrated
+    parameter values (e.g., "beta", "initial_infected") that are determined
+    dynamically based on the calibration configuration.
+    """
+
+    epimodel: EpiModel
+    end_date: dt.date
+    projection: bool
+    start_date: int  # Offset in days, present if start_date is calibrated
+    seasonality_min: float  # Present if seasonality minimum is calibrated
+
+
 def make_simulate_wrapper(
     basemodel: BaseEpiModel,
     calibration: CalibrationConfig,
-    data_state: pd.DataFrame,
+    observed_data: pd.DataFrame,
     intervention_types: list[str],
     sampled_start_timespan: Timespan | None = None,
-    earliest_vax: dict | None = None,
-) -> callable:
+    earliest_vax: pd.DataFrame | None = None,
+) -> Callable[[dict], dict]:
     """
     Create a simulate_wrapper function for ABCSampler calibration.
-    simulate_wrapper takes param dictionary and runs a simulation/projection.
 
     Parameters
     ----------
     basemodel : BaseEpiModel
-        Base model configuration with compartments, parameters, interventions, etc.
+            Base model configuration with compartments, parameters, interventions, etc.
     calibration : CalibrationConfig
-        Calibration settings including comparison targets, priors, and fitting window.
-    data_state : pd.DataFrame
-        Observed data for this specific location/model (already filtered to location).
+            Calibration settings including comparison targets, priors, and fitting window.
+    observed_data : pd.DataFrame
+            Observed data for calibration. Should contain date column specified in
+            calibration.comparison[0].observed_date_column. Must be filtered to a single
+            location (no duplicate dates).
     intervention_types : list[str]
-        List of intervention types to apply (e.g., ["parameter", "school_closure"]).
+            List of intervention types to apply (e.g., ["parameter", "school_closure"]).
     sampled_start_timespan : Timespan | None, optional
-        Earliest timespan if start_date is being sampled/calibrated.
-        If provided, enables start_date sampling and vaccination reaggregation.
-    earliest_vax : dict | None, optional
-        Pre-calculated vaccination schedule from earliest start_date.
-        Required when sampled_start_timespan is provided and vaccinations are used.
+            Earliest timespan if start_date is being sampled/calibrated.
+            If provided, enables start_date sampling and vaccination reaggregation.
+    earliest_vax : pd.DataFrame | None, optional
+            Pre-calculated vaccination schedule from earliest start_date.
+            Required when sampled_start_timespan is provided and vaccinations are used.
+            DataFrame with columns: "dates", "location", and age group columns
+            (e.g., "0-4", "5-17", "18-49", "50-64", "65+").
+            Typically created by `setup_vaccination_schedules()` which calls
+            `scenario_to_epydemix()` with the earliest start date.
 
     Returns
     -------
     callable
-        A simulate_wrapper function, which takes params:dict and returns dict.
-        This wrapper is passed to ABCSampler and will be called during calibration.
-
-    Notes
-    -----
-    The wrapper function expects params dict to contain:
-    - "epimodel": The model to simulate (passed via fixed_parameters)
-    - "end_date": Simulation end date
-    - "projection": Boolean indicating calibration vs projection mode
-    - Calibrated parameter values (e.g., "beta", "initial_infected")
-    - Optional "start_date" (offset in days, if start_date is calibrated)
-    - Optional "seasonality_min" (if seasonality is calibrated)
-
-    The wrapper returns:
-    - For calibration (projection=False): {"data": np.ndarray} of simulated values
-      at observation times, aligned with observed data dates
-    - For projection (projection=True): {"dates": list, "transitions": dict,
-      "compartments": dict} with full simulation results
+            A simulate_wrapper function that takes params dict and returns results dict.
+            This wrapper is passed to ABCSampler and called during calibration/projection.
 
     """
+    # Validate observed_data: check for duplicate dates (indicates mixed location data)
+    date_column = calibration.comparison[0].observed_date_column
+    observed_dates = pd.to_datetime(observed_data[date_column])
+    if observed_dates.duplicated().any():
+        duplicated_dates = observed_dates[observed_dates.duplicated()].unique()
+        msg = (
+            f"Duplicate dates found in observed_data: {duplicated_dates.tolist()}. "
+            "This likely indicates data from multiple locations is mixed. "
+            "observed_data must be filtered to a single location."
+        )
+        raise ValueError(msg)
 
-    def simulate_wrapper(params: dict) -> dict:
-        # Extract model from params
+    def simulate_wrapper(params: SimulateWrapperParams) -> dict[str, Any]:
+        """
+        Run a single simulation with the given parameters.
+
+        This function is called by ABCSampler during calibration and projection.
+
+        Parameters
+        ----------
+        params : SimulateWrapperParams (dict)
+                Simulation parameters dictionary containing:
+
+                - epimodel : EpiModel
+                        The model to simulate (passed via fixed_parameters)
+                - end_date : date
+                        Simulation end date
+                - projection : bool
+                        Boolean indicating calibration vs projection mode
+                - start_date : int, optional
+                        Offset in days from reference date (if start_date is calibrated)
+                - seasonality_min : float, optional
+                        Minimum seasonality value (if seasonality is calibrated)
+                - Additional calibrated parameter values (e.g., "beta", "initial_infected")
+
+        Returns
+        -------
+        dict
+                For calibration (projection=False):
+                        {"data": np.ndarray} of simulated values at observation times,
+                        aligned with observed data dates
+                For projection (projection=True):
+                        Flattened simulation results with keys:
+                        - "date": list of simulation dates
+                        - Individual transition keys (e.g., "S_to_I", "I_to_R")
+                        - Individual compartment keys (e.g., "S", "I", "R")
+                        All keys are at the top level (flattened, not nested)
+        """
+        # 1. Extract model from params
         wrapper_model = params["epimodel"]
-        m = copy.deepcopy(wrapper_model)
+        model = copy.deepcopy(wrapper_model)
 
-        # Accommodate for sampled start_date
-        if sampled_start_timespan:
-            start_date = sampled_start_timespan.start_date + dt.timedelta(days=params["start_date"])
-        else:
-            start_date = basemodel.timespan.start_date
-
+        # 2. Calculate start date
+        reference_start_date = sampled_start_timespan.start_date if sampled_start_timespan else None
+        start_date = compute_simulation_start_date(
+            params=params,
+            basemodel_timespan=basemodel.timespan,
+            reference_start_date=reference_start_date,
+        )
         timespan = Timespan(start_date=start_date, end_date=params["end_date"], delta_t=basemodel.timespan.delta_t)
 
-        # Sampled/calculated parameters
-        new_params = {
-            k: Parameter(type="scalar", value=v)
-            for k, v in params.items()
-            if k in basemodel.parameters and basemodel.parameters[k].type == "calibrated"
-        }
-        if new_params:
-            add_model_parameters_from_config(m, new_params)
-        if "calculated" in [param_args.type.value for _, param_args in basemodel.parameters.items()]:
-            calculate_parameters_from_config(m, basemodel.parameters)
+        # 3. Apply calibrated parameters
+        apply_calibrated_parameters(model=model, params=params, parameter_config=basemodel.parameters)
 
-        # Vaccination (if start_date is sampled)
-        if basemodel.vaccination and sampled_start_timespan:
-            reaggregated_vax = reaggregate_vaccines(earliest_vax, timespan.start_date)
-            add_vaccination_schedules_from_config(
-                m, basemodel.transitions, basemodel.vaccination, timespan, use_schedule=reaggregated_vax
-            )
-
-        # Seasonality (this must occur before parameter interventions to preserve parameter overrides)
-        if basemodel.seasonality:
-            if "seasonality_min" in params:
-                basemodel.seasonality.min_value = params["seasonality_min"]
-            add_seasonality_from_config(m, basemodel.seasonality, timespan)
-
-        # Parameter interventions
-        if basemodel.interventions and "parameter" in intervention_types:
-            add_parameter_interventions_from_config(m, basemodel.interventions, timespan)
-
-        # Initial conditions
-        from .base import calculate_compartment_initial_conditions
-
-        compartment_init = calculate_compartment_initial_conditions(
-            compartments=basemodel.compartments,
-            population_array=m.population.Nk,
-            sampled_compartments=params,
+        # 4. Apply vaccination (reaggregating if start_date is sampled)
+        apply_vaccination_for_sampled_start(
+            model=model,
+            basemodel=basemodel,
+            timespan=timespan,
+            earliest_vax=earliest_vax,
+            sampled_start_timespan=sampled_start_timespan,
         )
 
-        # Collect settings
+        # 5. Apply seasonality (this must occur before parameter interventions to preserve parameter overrides)
+        apply_seasonality_with_sampled_min(model=model, basemodel=basemodel, timespan=timespan, params=params)
+
+        # 6. Add parameter interventions
+        if basemodel.interventions and "parameter" in intervention_types:
+            add_parameter_interventions_from_config(
+                model=model, interventions=basemodel.interventions, timespan=timespan
+            )
+
+        # 7. Calculate compartment initial conditions
+        compartment_init = calculate_compartment_initial_conditions(
+            compartments=basemodel.compartments,
+            population_array=model.population.Nk,
+            params_dict=params,
+        )
+
+        # 8. Collect settings for simulation
         sim_params = {
-            "epimodel": m,
+            "epimodel": model,
             "initial_conditions_dict": compartment_init,
             "start_date": timespan.start_date,
             "end_date": params["end_date"],
             "resample_frequency": basemodel.simulation.resample_frequency,
         }
 
-        # Run simulation
+        # 9. Extract observed dates for calibration (before simulation to avoid duplication)
         if not params["projection"]:
-            try:
-                results = simulate(**sim_params)
-                trajectory_dates = results.dates
-                data_dates = list(pd.to_datetime(data_state.target_end_date.values))
+            date_column = calibration.comparison[0].observed_date_column
+            data_dates = list(pd.to_datetime(observed_data[date_column].values))
 
-                mask = [date in data_dates for date in trajectory_dates]
-
-                total_hosp = sum(results.transitions[key] for key in calibration.comparison[0].simulation)
-
-                total_hosp = total_hosp[mask]
-
-                if len(total_hosp) < len(data_dates):
-                    pad_len = len(data_dates) - len(total_hosp)
-                    total_hosp = np.pad(total_hosp, (pad_len, 0), constant_values=0)
-
-            except Exception as e:  # noqa: BLE001
-                failed_params = params.copy()
-                failed_params.pop("epimodel", None)
-                logger.info("Simulation failed with parameters %s: %s", failed_params, e)
-                data_dates = list(pd.to_datetime(data_state["target_end_date"].values))
-                total_hosp = np.full(len(data_dates), 0)
-
-            return {"data": total_hosp}
-
-        # Run projection if params["projection"] is True
+        # 10. Run simulation
         try:
             results = simulate(**sim_params)
-        except Exception as e:  # noqa: BLE001
+        except (ValueError, RuntimeError, KeyError) as e:
             failed_params = params.copy()
             failed_params.pop("epimodel", None)
-            logger.info("Projection failed with parameters %s: %s", failed_params, e)
-            return {}
-        else:
-            # Return results from successful projection
-            return {
-                "dates": results.dates,
-                "transitions": results.transitions,
-                "compartments": results.compartments,
-            }
+            logger.warning("Simulation failed with parameters %s: %s", failed_params, e)
+
+            # Handle simulation failure
+            # Projection: return empty dict
+            if params["projection"]:
+                return {}
+
+            # Calibration: return zero-filled array
+            return {"data": np.full(len(data_dates), 0)}
+
+        # 11. Format output based on mode
+        # Projection: return full trajectories (flattened + padded)
+        if params["projection"]:
+            return format_projection_trajectories(
+                results=results,
+                reference_start_date=reference_start_date,
+                actual_start_date=start_date,
+                target_end_date=params["end_date"],
+                resample_frequency=basemodel.simulation.resample_frequency,
+            )
+
+        # Calibration: return aggregated data (aligned to observed dates)
+        return format_calibration_data(
+            results=results,
+            comparison_transitions=calibration.comparison[0].simulation,
+            data_dates=data_dates,
+        )
 
     return simulate_wrapper

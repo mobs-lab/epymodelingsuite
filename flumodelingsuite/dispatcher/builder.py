@@ -335,17 +335,19 @@ def build_calibration(
 
     logger.info("BUILDER: setting up ABCSamplers...")
 
-    observed = pd.read_csv(calibration.observed_data_path)
-    data_in_window = get_data_in_window(observed, calibration)
+    observed_raw = pd.read_csv(calibration.observed_data_path)
+    observed_in_window = get_data_in_window(observed_raw, calibration)
     calibrators = []
     for model in models:
-        data_state = get_data_in_location(data_in_window, model, "geo_value")
+        # TODO: Make location column name configurable instead of hardcoded "geo_value"
+        # Should be added to ComparisonSpec schema (e.g., observed_location_column)
+        observed_data = get_data_in_location(observed_in_window, model, "geo_value")
         vax_state = get_data_in_location(earliest_vax, model, "location")
         # Create simulate_wrapper
         simulate_wrapper = make_simulate_wrapper(
             basemodel=basemodel,
             calibration=calibration,
-            data_state=data_state,
+            observed_data=observed_data,
             intervention_types=intervention_types,
             sampled_start_timespan=sampled_start_timespan,
             earliest_vax=vax_state,
@@ -368,7 +370,7 @@ def build_calibration(
             simulation_function=simulate_wrapper,
             priors=priors,
             parameters=fixed_parameters,
-            observed_data=data_state[calibration.comparison[0].observed_value_column].values,
+            observed_data=observed_data[calibration.comparison[0].observed_value_column].values,
             distance_function=dist_func_dict[calibration.distance_function],
         )
 

@@ -231,7 +231,7 @@ def calculate_parameters_from_config(model: EpiModel, parameters: dict[str, Para
 def calculate_compartment_initial_conditions(
     compartments: list,
     population_array: np.ndarray,
-    sampled_compartments: dict | None = None,
+    params_dict: dict | None = None,
 ) -> dict | None:
     """
     Calculate initial conditions for compartments based on their initialization values.
@@ -250,8 +250,9 @@ def calculate_compartment_initial_conditions(
         List of Compartment objects from the configuration.
     population_array : np.ndarray
         Array of population counts by age group.
-    sampled_compartments : dict | None, optional
-        Dictionary of compartment names to sampled values (overrides config values).
+    params_dict : dict | None, optional
+        Dictionary containing sampled/calibrated values. Only compartment names are extracted;
+        other keys are ignored (overrides config values for matching compartment names).
 
     Returns
     -------
@@ -294,9 +295,7 @@ def calculate_compartment_initial_conditions(
             continue
 
         # Get initialization value (from samples if provided, otherwise from config)
-        initial_value = (
-            sampled_compartments.get(compartment.id, compartment.init) if sampled_compartments else compartment.init
-        )
+        initial_value = params_dict.get(compartment.id, compartment.init) if params_dict else compartment.init
 
         # Skip compartments with no initial value
         if initial_value is None:

@@ -64,7 +64,8 @@ class TestMakeSimulateWrapper:
         """Create a mock calibration configuration with minimal required attributes."""
         calibration = Mock()
         calibration.comparison = [Mock()]
-        calibration.comparison[0].simulation = ["S_to_I"]
+        calibration.comparison[0].simulation = ["S_to_I_total"]  # Transition key format: source_to_target_total
+        calibration.comparison[0].observed_date_column = "target_end_date"
         return calibration
 
     @pytest.fixture
@@ -82,7 +83,7 @@ class TestMakeSimulateWrapper:
         simulate_wrapper = make_simulate_wrapper(
             basemodel=base_model_config,
             calibration=mock_calibration,
-            data_state=data_state,
+            observed_data=data_state,
             intervention_types=[],
         )
 
@@ -128,7 +129,7 @@ class TestMakeSimulateWrapper:
         wrapper = make_simulate_wrapper(
             basemodel=base_model_config,
             calibration=mock_calibration,
-            data_state=data_state,
+            observed_data=data_state,
             intervention_types=[],
         )
 
@@ -169,7 +170,7 @@ class TestMakeSimulateWrapper:
         wrapper = make_simulate_wrapper(
             basemodel=base_model_config,
             calibration=mock_calibration,
-            data_state=data_state,
+            observed_data=data_state,
             intervention_types=[],
         )
 
@@ -208,7 +209,7 @@ class TestMakeSimulateWrapper:
         wrapper = make_simulate_wrapper(
             basemodel=base_model_config,
             calibration=mock_calibration,
-            data_state=data_state,
+            observed_data=data_state,
             intervention_types=[],
         )
 
@@ -224,19 +225,22 @@ class TestMakeSimulateWrapper:
         # Verify projection mode output structure
         assert isinstance(result, dict)
 
-        # If simulation succeeded, should have projection-specific keys
+        # If simulation succeeded, should have flattened structure with dates and all transitions/compartments
         if result:  # Simulation might fail, which returns empty dict
             assert "dates" in result  # noqa: S101
-            assert "transitions" in result  # noqa: S101
-            assert "compartments" in result  # noqa: S101
 
             # Should NOT have calibration-specific keys
             assert "data" not in result  # noqa: S101
 
-            # Verify types
+            # Verify dates type
             assert isinstance(result["dates"], list)  # noqa: S101
-            assert isinstance(result["transitions"], dict)  # noqa: S101
-            assert isinstance(result["compartments"], dict)  # noqa: S101
+
+            # Verify flattened structure has transition and compartment keys at top level
+            # (not nested under "transitions" or "compartments" keys)
+            # Should have transition keys like "S_to_I_total", "I_to_R_total", etc.
+            # Should have compartment keys like "S_0-4", "I_0-4", "R_0-4", etc.
+            assert any(key.startswith("S_to_I") for key in result)  # noqa: S101
+            assert any(key.startswith("S_") for key in result if "_to_" not in key)  # noqa: S101
 
     def test_wrapper_with_calibrated_parameters(self, base_model_config, mock_calibration, data_state):
         """
@@ -253,7 +257,7 @@ class TestMakeSimulateWrapper:
         wrapper = make_simulate_wrapper(
             basemodel=base_model_config,
             calibration=mock_calibration,
-            data_state=data_state,
+            observed_data=data_state,
             intervention_types=[],
         )
 
@@ -294,7 +298,7 @@ class TestMakeSimulateWrapper:
         wrapper = make_simulate_wrapper(
             basemodel=base_model_config,
             calibration=mock_calibration,
-            data_state=data_state,
+            observed_data=data_state,
             intervention_types=[],
         )
 
@@ -337,7 +341,7 @@ class TestMakeSimulateWrapper:
         wrapper = make_simulate_wrapper(
             basemodel=base_model_config,
             calibration=mock_calibration,
-            data_state=data_state,
+            observed_data=data_state,
             intervention_types=["parameter"],  # Enable parameter interventions
         )
 
@@ -374,7 +378,7 @@ class TestMakeSimulateWrapper:
         wrapper = make_simulate_wrapper(
             basemodel=base_model_config,
             calibration=mock_calibration,
-            data_state=data_state,
+            observed_data=data_state,
             intervention_types=[],
             sampled_start_timespan=sampled_start_timespan,
         )
@@ -407,7 +411,7 @@ class TestMakeSimulateWrapper:
         wrapper = make_simulate_wrapper(
             basemodel=base_model_config,
             calibration=mock_calibration,
-            data_state=data_state,
+            observed_data=data_state,
             intervention_types=[],
         )
 
@@ -446,7 +450,7 @@ class TestMakeSimulateWrapper:
         wrapper = make_simulate_wrapper(
             basemodel=base_model_config,
             calibration=mock_calibration,
-            data_state=data_state,
+            observed_data=data_state,
             intervention_types=[],
         )
 
@@ -463,3 +467,85 @@ class TestMakeSimulateWrapper:
         assert isinstance(result, dict)
         assert "data" in result
         assert isinstance(result["data"], np.ndarray)
+
+    def test_no_shared_state_mutation_across_wrappers(self, base_model_config, mock_calibration, data_state):
+        """
+        Test that wrappers don't mutate shared basemodel config (P0 Critical Issue).
+
+        This verifies the fix for the seasonality.min_value mutation bug described in the review.
+        Multiple wrappers sharing the same basemodel config should not interfere with each other.
+        """
+        # Add seasonality to base model
+        base_model_config.seasonality = Seasonality(
+            target_parameter="beta",
+            method="balcan",
+            seasonality_max_date=date(2024, 1, 15),
+            seasonality_min_date=date(2024, 7, 15),
+            max_value=1.0,
+            min_value=0.5,
+        )
+        original_min = base_model_config.seasonality.min_value
+
+        # Create two wrappers sharing the same basemodel config
+        models, _ = create_model_collection(base_model_config, None)
+        model = models[0]
+
+        wrapper1 = make_simulate_wrapper(
+            basemodel=base_model_config,
+            calibration=mock_calibration,
+            observed_data=data_state,
+            intervention_types=[],
+        )
+
+        wrapper2 = make_simulate_wrapper(
+            basemodel=base_model_config,
+            calibration=mock_calibration,
+            observed_data=data_state,
+            intervention_types=[],
+        )
+
+        # First wrapper uses custom seasonality_min
+        params1 = {
+            "epimodel": model,
+            "end_date": date(2024, 3, 31),
+            "projection": False,
+            "beta": 0.5,
+            "gamma": 0.1,
+            "seasonality_min": 0.25,  # Different from original
+        }
+        wrapper1(params1)
+
+        # Verify basemodel config wasn't mutated
+        assert base_model_config.seasonality.min_value == original_min
+
+        # Second wrapper should still see original value (not 0.25 from wrapper1)
+        params2 = {
+            "epimodel": model,
+            "end_date": date(2024, 3, 31),
+            "projection": False,
+            "beta": 0.5,
+            "gamma": 0.1,
+            # No seasonality_min specified - should use original 0.5
+        }
+        wrapper2(params2)
+
+        # Verify basemodel config still wasn't mutated
+        assert base_model_config.seasonality.min_value == original_min
+
+    def test_duplicate_dates_raises_error(self, base_model_config, mock_calibration):
+        """Test that duplicate dates in observed_data raise a clear error."""
+        # Create observed_data with duplicate dates (simulating mixed location data)
+        dates = [date(2024, 1, 1), date(2024, 1, 2), date(2024, 1, 1)]  # Date 1 appears twice
+        observed_data_with_duplicates = pd.DataFrame({
+            "target_end_date": dates,
+            "observed": [10.0, 20.0, 30.0],
+        })
+
+        # Attempt to create wrapper should raise ValueError
+        with pytest.raises(ValueError, match="Duplicate dates found in observed_data"):
+            make_simulate_wrapper(
+                basemodel=base_model_config,
+                calibration=mock_calibration,
+                observed_data=observed_data_with_duplicates,
+                intervention_types=[],
+            )
