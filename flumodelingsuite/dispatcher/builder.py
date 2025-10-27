@@ -3,7 +3,6 @@
 import copy
 import logging
 
-import numpy as np
 import pandas as pd
 from epydemix.calibration import ABCSampler, ae, mae, mape, rmse, wmape
 from epydemix.model import EpiModel
@@ -30,14 +29,13 @@ from ..builders.orchestrators import (
 from ..builders.seasonality import add_seasonality_from_config
 from ..builders.utils import get_data_in_location, get_data_in_window
 from ..builders.vaccination import add_vaccination_schedules_from_config
-from ..schema.basemodel import BaseEpiModel, BasemodelConfig, Parameter, Timespan
+from ..schema.basemodel import BasemodelConfig, Parameter, Timespan
 from ..schema.calibration import CalibrationConfig
 from ..schema.dispatcher import BuilderOutput, ProjectionArguments, SimulationArguments
 from ..schema.general import validate_modelset_consistency
 from ..schema.sampling import SamplingConfig
 from ..school_closures import make_school_closure_dict
-from ..utils import convert_location_name_format, get_location_codebook, make_dummy_population
-from ..vaccinations import reaggregate_vaccines, scenario_to_epydemix
+from ..vaccinations import reaggregate_vaccines
 
 logger = logging.getLogger(__name__)
 
