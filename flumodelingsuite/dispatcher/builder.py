@@ -254,7 +254,7 @@ def build_sampling(
             compartment_init = calculate_compartment_initial_conditions(
                 compartments=basemodel.compartments,
                 population_array=m.population.Nk,
-                sampled_compartments=varset.get("compartments"),
+                params_dict=varset.get("compartments"),
             )
 
             sim_args = SimulationArguments(
