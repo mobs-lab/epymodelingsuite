@@ -43,8 +43,8 @@ class FlusightForecastOutput(BaseModel):
     )
 
 
-class SimulationQuantilesOutput(BaseModel):
-    """Specifications for simulation quantile outputs in default format."""
+class DefaultQuantilesOutput(BaseModel):
+    """Specifications for quantile outputs in default format."""
 
     compartments: list[str] | bool = Field(
         False,
@@ -56,15 +56,6 @@ class SimulationQuantilesOutput(BaseModel):
     )
 
 
-class CalibrationQuantilesOutput(BaseModel):
-    """Specifications for calibration/projection quantile outputs in default format."""
-
-    # We need to add a section in schema.calibration to specify transitions and compartments to record in the simulate_wrapper.
-    # With that done, this section will contain `compartments` and `transitions` selections like for simulation.
-    # I will also include an option to choose the source as calibration (with option for choosing generation) or projection.
-    # The data used in calibration (e.g. total_hosp) will always be included in default format outputs.
-
-
 class QuantilesOutput(BaseModel):
     """Specifications for quantile outputs."""
 
@@ -72,11 +63,8 @@ class QuantilesOutput(BaseModel):
         default_factory=get_flusight_quantiles,
         description="Desired quantiles expressed as floats.",
     )
-    simulation_default: SimulationQuantilesOutput | None = Field(
-        None, description="Specifications for simulation quantile outputs in default format."
-    )
-    calibration_default: CalibrationQuantilesOutput | None = Field(
-        None, description="Specifications for calibration quantile outputs in default format."
+    default_format: DefaultQuantilesOutput | None = Field(
+        None, description="Specifications for quantile outputs in default format."
     )
     flusight_format: FlusightForecastOutput | None = Field(
         None, description="Specifications for quantile outputs in FluSight Forecast Hub format."
@@ -93,12 +81,12 @@ class QuantilesOutput(BaseModel):
         """Ensure output format selections are compatible."""
         hub_formats = [self.flusight_format, self.covid19_format, self.flusmh_format]
 
-        if self.simulation_default and self.calibration_default:
-            raise ValueError("Received specifications for both simulation and calibration quantile outputs.")
+        #if self.simulation_default and self.calibration_default:
+        #    raise ValueError("Received specifications for both simulation and calibration quantile outputs.")
         if len([1 for _ in hub_formats if bool(_)]) > 1:
             raise ValueError("Received specifications for more than one hub format.")
-        if self.simulation_default and (self.flusight_format or self.covid19_format):
-            raise ValueError("Simulation results are incompatible with forecast hub formats.")
+        #if self.simulation_default and (self.flusight_format or self.covid19_format):
+        #    raise ValueError("Simulation results are incompatible with forecast hub formats.")
 
         return self
 
