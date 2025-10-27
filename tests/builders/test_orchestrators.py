@@ -120,24 +120,31 @@ class TestCreateModelCollection:
 
     def test_expands_all_keyword_to_all_locations(self, base_model_config):
         """Test that 'all' in population_names expands to all locations in codebook."""
-        from flumodelingsuite.utils import get_location_codebook
+        # Mock codebook with 3 locations (major + minor states) for faster testing
+        mock_codebook = pd.DataFrame(
+            {
+                "location_name_epydemix": [
+                    "United_States_California",
+                    "United_States_Vermont",
+                    "United_States_Washington",
+                ]
+            }
+        )
 
-        population_names = ["all"]
-        models, resolved_names = create_model_collection(base_model_config, population_names)
+        with patch("flumodelingsuite.builders.orchestrators.get_location_codebook", return_value=mock_codebook):
+            population_names = ["all"]
+            models, resolved_names = create_model_collection(base_model_config, population_names)
 
-        # Should create models for all locations in codebook
-        codebook = get_location_codebook()
-        expected_locations = codebook["location_name_epydemix"]
+            # Should create models for all locations in mocked codebook
+            expected_locations = mock_codebook["location_name_epydemix"]
 
-        assert len(models) == len(expected_locations)
-        # resolved_names is a pandas Series when "all" is used
-        # Convert to list for comparison
-        import pandas as pd
-
-        if isinstance(resolved_names, pd.Series):
-            assert list(resolved_names) == list(expected_locations)
-        else:
-            assert resolved_names == list(expected_locations)
+            assert len(models) == len(expected_locations)
+            # resolved_names is a pandas Series when "all" is used
+            # Convert to list for comparison
+            if isinstance(resolved_names, pd.Series):
+                assert list(resolved_names) == list(expected_locations)
+            else:
+                assert resolved_names == list(expected_locations)
 
     def test_all_models_share_compartments(self, base_model_config):
         """Test that all models have the same compartments."""
