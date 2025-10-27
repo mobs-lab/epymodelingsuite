@@ -100,8 +100,16 @@ def run_calibration_with_projection(configs: BuilderOutput) -> CalibrationOutput
         If calibration or projection fails.
     """
     logger.info("RUNNER: running calibration and projection.")
+
+    # Calibration
     try:
-        configs.calibrator.calibrate(strategy=configs.calibration.name, **configs.calibration.options)
+        calibration_results = configs.calibrator.calibrate(strategy=configs.calibration.name, **configs.calibration.options)
+        logger.info("RUNNER: completed calibration.")
+    except Exception as e:
+        raise RuntimeError(f"Error during calibration: {e}")
+
+    # Projection
+    try:
         projection_results = configs.calibrator.run_projections(
             parameters={
                 "projection": True,
@@ -119,8 +127,18 @@ def run_calibration_with_projection(configs: BuilderOutput) -> CalibrationOutput
             population=configs.model.population.name,
             results=projection_results,
         )
+    # If projection fails, return calibration results
     except Exception as e:
-        raise RuntimeError(f"Error during calibration/projection: {e}")
+        logger.warning(
+            f"RUNNER: projection failed for model with primary_id={configs.primary_id}, returning calibration results.\nError message: {e}"
+        )
+        return CalibrationOutput(
+            primary_id=configs.primary_id,
+            seed=configs.seed,
+            delta_t=configs.delta_t,
+            population=configs.model.population.name,
+            results=calibration_results,
+        )
 
 
 def dispatch_runner(configs: BuilderOutput) -> SimulationOutput | CalibrationOutput:
