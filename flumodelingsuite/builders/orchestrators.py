@@ -333,9 +333,9 @@ def flatten_simulation_results(results: Any) -> dict:
     Returns
     -------
     dict
-            Flattened results with "dates" key and all transition/compartment keys at top level.
+            Flattened results with "date" key and all transition/compartment keys at top level.
     """
-    output = {"dates": results.dates}
+    output = {"date": results.dates}
     output.update(results.transitions)
     output.update(results.compartments)
     return output
@@ -375,7 +375,7 @@ def format_projection_trajectories(
     Returns
     -------
     dict
-            Dictionary with "dates" and all transition/compartment arrays.
+            Dictionary with "date" and all transition/compartment arrays.
             Arrays are padded with zeros at the beginning to match target length.
     """
     # Flatten results structure
@@ -407,8 +407,8 @@ def format_projection_trajectories(
         return output
 
     if pad_len > 0:
-        # Pad all arrays except 'dates'
-        arrays_to_pad = {k: v for k, v in output.items() if k != "dates" and isinstance(v, np.ndarray)}
+        # Pad all arrays except 'date'
+        arrays_to_pad = {k: v for k, v in output.items() if k != "date" and isinstance(v, np.ndarray)}
         padded_arrays = pad_trajectory_arrays(arrays_to_pad, pad_len)
         output.update(padded_arrays)
 
@@ -423,7 +423,7 @@ def format_projection_trajectories(
         # Convert to Timestamp and concatenate with existing dates
         prepend_dates = [pd.Timestamp(d) for d in prepend_dates]
         results_dates_list = list(results.dates)
-        output["dates"] = prepend_dates + results_dates_list
+        output["date"] = prepend_dates + results_dates_list
 
     return output
 
@@ -474,7 +474,7 @@ def format_calibration_data(
     pad_len = calculate_padding_for_date_alignment(results.dates, data_dates)
     aligned_data = pad_array_with_zeros(filtered_data, pad_len)
 
-    return aligned_data
+    return {"data": aligned_data, "date": data_dates}
 
 
 def apply_seasonality_with_sampled_min(
@@ -727,7 +727,7 @@ def make_simulate_wrapper(
                         aligned with observed data dates
                 For projection (projection=True):
                         Flattened simulation results with keys:
-                        - "dates": list of simulation dates
+                        - "date": list of simulation dates
                         - Individual transition keys (e.g., "S_to_I", "I_to_R")
                         - Individual compartment keys (e.g., "S", "I", "R")
                         All keys are at the top level (flattened, not nested)
@@ -815,11 +815,10 @@ def make_simulate_wrapper(
             )
 
         # Calibration: return aggregated data (aligned to observed dates)
-        aligned_data = format_calibration_data(
+        return format_calibration_data(
             results=results,
             comparison_transitions=calibration.comparison[0].simulation,
             data_dates=data_dates,
         )
-        return {"data": aligned_data}
 
     return simulate_wrapper
