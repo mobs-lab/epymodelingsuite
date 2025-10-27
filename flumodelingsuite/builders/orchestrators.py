@@ -432,7 +432,7 @@ def format_calibration_data(
     results: Any,
     comparison_transitions: list[str],
     data_dates: list,
-) -> np.ndarray:
+) -> dict[str, Any]:
     """
     Format simulation results for calibration mode (aggregate + filter + pad).
 
@@ -452,9 +452,11 @@ def format_calibration_data(
 
     Returns
     -------
-    np.ndarray
-            Aggregated simulation values aligned to observation dates.
-            Padded with zeros at the beginning if simulation starts after first observation.
+    dict[str, Any]
+            Dictionary containing:
+            - "data": np.ndarray of aggregated simulation values aligned to observation dates.
+                Padded with zeros at the beginning if simulation starts after first observation.
+            - "date": list of observation dates from observed data.
     """
     # Step 1: Aggregate specified transitions
     # Match simulation outputs to observed data granularity.
