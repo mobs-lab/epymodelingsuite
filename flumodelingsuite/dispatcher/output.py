@@ -2,6 +2,8 @@
 
 import logging
 
+import pandas as pd
+
 from ..schema.dispatcher import CalibrationOutput, SimulationOutput
 from ..schema.output import OutputConfig, get_flusight_quantiles
 

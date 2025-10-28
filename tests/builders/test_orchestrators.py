@@ -18,6 +18,7 @@ from flumodelingsuite.builders.orchestrators import (
     flatten_simulation_results,
     format_calibration_data,
     format_projection_trajectories,
+    get_aggregated_comparison_transition,
     setup_vaccination_schedules,
 )
 from flumodelingsuite.schema.basemodel import (
@@ -31,6 +32,7 @@ from flumodelingsuite.schema.basemodel import (
     Transition,
     Vaccination,
 )
+from flumodelingsuite.schema.calibration import ComparisonSpec
 
 
 class TestCreateModelCollection:
@@ -993,3 +995,142 @@ class TestFormatProjectionTrajectories:
         hosp_arrays = [traj["Hosp"] for traj in trajectories]
         stacked = np.stack(hosp_arrays)  # This should not raise ValueError
         assert stacked.shape == (len(trajectories), expected_length)
+
+    def test_aggregates_comparison_transitions(self):
+        """Test that comparison_specs are aggregated and included in output."""
+        results = Mock()
+        results.dates = [date(2024, 1, 1), date(2024, 1, 2)]
+        results.transitions = {
+            "Hosp_vax": np.array([10, 20]),
+            "Hosp_unvax": np.array([5, 10]),
+            "Death": np.array([1, 2]),
+        }
+        results.compartments = {"S": np.array([1000, 990])}
+
+        # Define comparison specs
+        comparison_specs = [
+            ComparisonSpec(
+                observed_value_column="total_hosp",
+                observed_date_column="date",
+                simulation=["Hosp_vax", "Hosp_unvax"],
+            ),
+        ]
+
+        result = format_projection_trajectories(
+            results=results,
+            comparison_specs=comparison_specs,
+        )
+
+        # Should include aggregated transition
+        assert "total_hosp" in result
+        np.testing.assert_array_equal(result["total_hosp"], np.array([15, 30]))
+        # Should also include original transitions
+        np.testing.assert_array_equal(result["Hosp_vax"], np.array([10, 20]))
+        np.testing.assert_array_equal(result["Hosp_unvax"], np.array([5, 10]))
+
+    def test_aggregates_multiple_comparison_specs(self):
+        """Test that multiple comparison specs are all aggregated."""
+        results = Mock()
+        results.dates = [date(2024, 1, 1), date(2024, 1, 2)]
+        results.transitions = {
+            "Hosp_vax": np.array([10, 20]),
+            "Hosp_unvax": np.array([5, 10]),
+            "Death_vax": np.array([1, 2]),
+            "Death_unvax": np.array([0.5, 1]),
+        }
+        results.compartments = {}
+
+        # Define multiple comparison specs
+        comparison_specs = [
+            ComparisonSpec(
+                observed_value_column="total_hosp",
+                observed_date_column="date",
+                simulation=["Hosp_vax", "Hosp_unvax"],
+            ),
+            ComparisonSpec(
+                observed_value_column="total_deaths",
+                observed_date_column="date",
+                simulation=["Death_vax", "Death_unvax"],
+            ),
+        ]
+
+        result = format_projection_trajectories(
+            results=results,
+            comparison_specs=comparison_specs,
+        )
+
+        # Should include both aggregated transitions
+        assert "total_hosp" in result
+        assert "total_deaths" in result
+        np.testing.assert_array_equal(result["total_hosp"], np.array([15, 30]))
+        np.testing.assert_array_equal(result["total_deaths"], np.array([1.5, 3]))
+
+    def test_aggregated_data_is_padded(self):
+        """Test that aggregated comparison transitions are padded along with other arrays."""
+        results = Mock()
+        results.dates = [date(2024, 1, 13), date(2024, 1, 20)]
+        results.transitions = {
+            "Hosp_vax": np.array([10, 20]),
+            "Hosp_unvax": np.array([5, 10]),
+        }
+        results.compartments = {}
+
+        comparison_specs = [
+            ComparisonSpec(
+                observed_value_column="total_hosp",
+                observed_date_column="date",
+                simulation=["Hosp_vax", "Hosp_unvax"],
+            ),
+        ]
+
+        result = format_projection_trajectories(
+            results=results,
+            reference_start_date=date(2024, 1, 6),
+            actual_start_date=date(2024, 1, 13),
+            target_end_date=date(2024, 1, 20),
+            resample_frequency="W-SAT",
+            comparison_specs=comparison_specs,
+        )
+
+        # Should pad aggregated transition to 3 weeks total
+        assert len(result["total_hosp"]) == 3
+        # First value should be zero (padding)
+        np.testing.assert_array_equal(result["total_hosp"], np.array([0, 15, 30]))
+
+
+class TestGetAggregatedComparisonTransition:
+    """Tests for get_aggregated_comparison_transition function."""
+
+    def test_aggregates_single_transition(self):
+        """Test aggregation of a single transition."""
+        results = Mock()
+        results.transitions = {"Hosp": np.array([10, 20, 30])}
+
+        aggregated = get_aggregated_comparison_transition(results, ["Hosp"])
+
+        np.testing.assert_array_equal(aggregated, np.array([10, 20, 30]))
+
+    def test_aggregates_multiple_transitions(self):
+        """Test aggregation of multiple transitions."""
+        results = Mock()
+        results.transitions = {
+            "Hosp_vax": np.array([10, 20, 30]),
+            "Hosp_unvax": np.array([5, 10, 15]),
+        }
+
+        aggregated = get_aggregated_comparison_transition(results, ["Hosp_vax", "Hosp_unvax"])
+
+        np.testing.assert_array_equal(aggregated, np.array([15, 30, 45]))
+
+    def test_aggregates_three_transitions(self):
+        """Test aggregation of three transitions."""
+        results = Mock()
+        results.transitions = {
+            "A": np.array([1, 2, 3]),
+            "B": np.array([10, 20, 30]),
+            "C": np.array([100, 200, 300]),
+        }
+
+        aggregated = get_aggregated_comparison_transition(results, ["A", "B", "C"])
+
+        np.testing.assert_array_equal(aggregated, np.array([111, 222, 333]))
