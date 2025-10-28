@@ -81,11 +81,11 @@ class QuantilesOutput(BaseModel):
         """Ensure output format selections are compatible."""
         hub_formats = [self.flusight_format, self.covid19_format, self.flusmh_format]
 
-        #if self.simulation_default and self.calibration_default:
+        # if self.simulation_default and self.calibration_default:
         #    raise ValueError("Received specifications for both simulation and calibration quantile outputs.")
         if len([1 for _ in hub_formats if bool(_)]) > 1:
             raise ValueError("Received specifications for more than one hub format.")
-        #if self.simulation_default and (self.flusight_format or self.covid19_format):
+        # if self.simulation_default and (self.flusight_format or self.covid19_format):
         #    raise ValueError("Simulation results are incompatible with forecast hub formats.")
 
         return self
@@ -115,7 +115,7 @@ class TrajectoriesOutput(BaseModel):
 class PosteriorsOutput(BaseModel):
     """Specifications for posterior outputs."""
 
-    generation: int | None = Field(None, description="Generation of SMC to get posteriors for")
+    generations: list[int] | None = Field(None, description="Generations of SMC to get posteriors for")
 
 
 class ModelMetaOutput(BaseModel):
