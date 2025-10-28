@@ -120,24 +120,31 @@ class TestCreateModelCollection:
 
     def test_expands_all_keyword_to_all_locations(self, base_model_config):
         """Test that 'all' in population_names expands to all locations in codebook."""
-        from flumodelingsuite.utils import get_location_codebook
+        # Mock codebook with 3 locations (major + minor states) for faster testing
+        mock_codebook = pd.DataFrame(
+            {
+                "location_name_epydemix": [
+                    "United_States_California",
+                    "United_States_Vermont",
+                    "United_States_Washington",
+                ]
+            }
+        )
 
-        population_names = ["all"]
-        models, resolved_names = create_model_collection(base_model_config, population_names)
+        with patch("flumodelingsuite.builders.orchestrators.get_location_codebook", return_value=mock_codebook):
+            population_names = ["all"]
+            models, resolved_names = create_model_collection(base_model_config, population_names)
 
-        # Should create models for all locations in codebook
-        codebook = get_location_codebook()
-        expected_locations = codebook["location_name_epydemix"]
+            # Should create models for all locations in mocked codebook
+            expected_locations = mock_codebook["location_name_epydemix"]
 
-        assert len(models) == len(expected_locations)
-        # resolved_names is a pandas Series when "all" is used
-        # Convert to list for comparison
-        import pandas as pd
-
-        if isinstance(resolved_names, pd.Series):
-            assert list(resolved_names) == list(expected_locations)
-        else:
-            assert resolved_names == list(expected_locations)
+            assert len(models) == len(expected_locations)
+            # resolved_names is a pandas Series when "all" is used
+            # Convert to list for comparison
+            if isinstance(resolved_names, pd.Series):
+                assert list(resolved_names) == list(expected_locations)
+            else:
+                assert resolved_names == list(expected_locations)
 
     def test_all_models_share_compartments(self, base_model_config):
         """Test that all models have the same compartments."""
@@ -769,9 +776,15 @@ class TestFormatCalibrationData:
 
         result = format_calibration_data(results, comparison_transitions, data_dates)
 
+        # Should return dict with "data" and "date" keys
+        assert isinstance(result, dict)
+        assert "data" in result
+        assert "date" in result
+
         # Should sum transitions and extract only dates matching data_dates
-        expected = np.array([30, 60])  # [20+10, 40+20] for dates Jan 2 and Jan 4
-        np.testing.assert_array_equal(result, expected)
+        expected_data = np.array([30, 60])  # [20+10, 40+20] for dates Jan 2 and Jan 4
+        np.testing.assert_array_equal(result["data"], expected_data)
+        assert result["date"] == data_dates
 
     def test_pads_with_zeros_when_simulation_shorter(self):
         """Test that zeros are padded when simulation is shorter than observations."""
@@ -786,9 +799,15 @@ class TestFormatCalibrationData:
 
         result = format_calibration_data(results, comparison_transitions, data_dates)
 
+        # Should return dict with "data" and "date" keys
+        assert isinstance(result, dict)
+        assert "data" in result
+        assert "date" in result
+
         # Should pad with 2 zeros at beginning
-        expected = np.array([0, 0, 30, 40, 50])
-        np.testing.assert_array_equal(result, expected)
+        expected_data = np.array([0, 0, 30, 40, 50])
+        np.testing.assert_array_equal(result["data"], expected_data)
+        assert result["date"] == data_dates
 
     def test_handles_multiple_transitions(self):
         """Test that multiple transitions are summed correctly."""
@@ -806,9 +825,15 @@ class TestFormatCalibrationData:
 
         result = format_calibration_data(results, comparison_transitions, data_dates)
 
+        # Should return dict with "data" and "date" keys
+        assert isinstance(result, dict)
+        assert "data" in result
+        assert "date" in result
+
         # Should sum all transitions: [1+3+5+7, 2+4+6+8]
-        expected = np.array([16, 20])
-        np.testing.assert_array_equal(result, expected)
+        expected_data = np.array([16, 20])
+        np.testing.assert_array_equal(result["data"], expected_data)
+        assert result["date"] == data_dates
 
 
 class TestFlattenSimulationResults:
@@ -830,9 +855,9 @@ class TestFlattenSimulationResults:
 
         result = flatten_simulation_results(results)
 
-        # Should have dates at top level plus all transitions and compartments
-        assert "dates" in result
-        assert result["dates"] == results.dates
+        # Should have date at top level plus all transitions and compartments
+        assert "date" in result
+        assert result["date"] == results.dates
         assert "Hosp_vax" in result
         assert "Hosp_unvax" in result
         assert "S" in result
@@ -850,8 +875,8 @@ class TestFlattenSimulationResults:
 
         result = flatten_simulation_results(results)
 
-        # Should only have dates
-        assert result == {"dates": [date(2024, 1, 1)]}
+        # Should only have date
+        assert result == {"date": [date(2024, 1, 1)]}
 
 
 class TestFormatProjectionTrajectories:
@@ -872,7 +897,7 @@ class TestFormatProjectionTrajectories:
         )
 
         # Should just flatten without padding
-        assert result["dates"] == results.dates
+        assert result["date"] == results.dates
         np.testing.assert_array_equal(result["Hosp"], np.array([10, 20]))
 
     def test_pads_to_target_length(self):
@@ -893,9 +918,9 @@ class TestFormatProjectionTrajectories:
         )
 
         # Should pad to 3 weeks total (Jan 6, 13, 20)
-        assert len(result["dates"]) == 3
+        assert len(result["date"]) == 3
         # First date should be padded (Jan 6)
-        assert result["dates"][0] == pd.Timestamp(date(2024, 1, 6))
+        assert result["date"][0] == pd.Timestamp(date(2024, 1, 6))
         # Hosp should have one zero padded at beginning
         np.testing.assert_array_equal(result["Hosp"], np.array([0, 10, 20]))
         np.testing.assert_array_equal(result["S"], np.array([0, 1000, 990]))
@@ -931,7 +956,7 @@ class TestFormatProjectionTrajectories:
         )
 
         # Both should have same final length
-        assert len(result1["dates"]) == len(result2["dates"])
+        assert len(result1["date"]) == len(result2["date"])
         assert len(result1["Hosp"]) == len(result2["Hosp"])
 
     def test_all_trajectories_same_shape_for_stacking(self):
@@ -970,10 +995,10 @@ class TestFormatProjectionTrajectories:
             trajectories.append(formatted)
 
         # Verify all trajectories have the same shape
-        expected_length = len(trajectories[0]["dates"])
+        expected_length = len(trajectories[0]["date"])
         for i, traj in enumerate(trajectories):
-            assert len(traj["dates"]) == expected_length, (
-                f"Trajectory {i} has length {len(traj['dates'])}, expected {expected_length}"
+            assert len(traj["date"]) == expected_length, (
+                f"Trajectory {i} has length {len(traj['date'])}, expected {expected_length}"
             )
             assert len(traj["Hosp"]) == expected_length, (
                 f"Trajectory {i} Hosp has length {len(traj['Hosp'])}, expected {expected_length}"
@@ -984,10 +1009,10 @@ class TestFormatProjectionTrajectories:
 
         # Verify all trajectories start from the same reference date
         for traj in trajectories:
-            assert traj["dates"][0] == pd.Timestamp(reference_start)
+            assert traj["date"][0] == pd.Timestamp(reference_start)
 
         # Verify all trajectories end on the same date
-        end_dates = [traj["dates"][-1] for traj in trajectories]
+        end_dates = [traj["date"][-1] for traj in trajectories]
         assert len(set(end_dates)) == 1, f"End dates differ: {end_dates}"
 
         # Verify arrays can be stacked (this is what epydemix does)

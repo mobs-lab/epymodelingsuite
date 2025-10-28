@@ -188,20 +188,23 @@ class TestMakeSimulateWrapper:
         assert "data" in result
         assert isinstance(result["data"], np.ndarray)
 
-        # Should NOT have projection-specific keys
-        assert "dates" not in result
+        # Should have "date" key (from format_calibration_data)
+        assert "date" in result
+
+        # Should NOT have nested projection-specific keys
         assert "transitions" not in result
         assert "compartments" not in result
 
         # Output length should match data_state
         assert len(result["data"]) == len(data_state)
+        assert len(result["date"]) == len(data_state)
 
     def test_projection_mode_returns_full_results(self, base_model_config, mock_calibration, data_state):
         """
         Test that projection mode (projection=True) returns correctly formatted output.
 
-        Projection mode should return a dict with "dates", "transitions", and "compartments"
-        keys containing the full simulation results.
+        Projection mode should return a flattened dict with "date" key and all
+        transition/compartment keys at the top level.
         """
         models, _ = create_model_collection(base_model_config, None)
         model = models[0]
@@ -225,15 +228,15 @@ class TestMakeSimulateWrapper:
         # Verify projection mode output structure
         assert isinstance(result, dict)
 
-        # If simulation succeeded, should have flattened structure with dates and all transitions/compartments
+        # If simulation succeeded, should have flattened structure with date and all transitions/compartments
         if result:  # Simulation might fail, which returns empty dict
-            assert "dates" in result  # noqa: S101
+            assert "date" in result  # noqa: S101
 
             # Should NOT have calibration-specific keys
             assert "data" not in result  # noqa: S101
 
-            # Verify dates type
-            assert isinstance(result["dates"], list)  # noqa: S101
+            # Verify date type
+            assert isinstance(result["date"], list)  # noqa: S101
 
             # Verify flattened structure has transition and compartment keys at top level
             # (not nested under "transitions" or "compartments" keys)
@@ -433,7 +436,7 @@ class TestMakeSimulateWrapper:
             assert result == {}
         else:
             # If it succeeded despite invalid params, should have projection keys
-            assert "dates" in result  # noqa: S101
+            assert "date" in result  # noqa: S101
 
     def test_wrapper_with_calculated_parameters(self, base_model_config, mock_calibration, data_state):
         """
@@ -536,10 +539,12 @@ class TestMakeSimulateWrapper:
         """Test that duplicate dates in observed_data raise a clear error."""
         # Create observed_data with duplicate dates (simulating mixed location data)
         dates = [date(2024, 1, 1), date(2024, 1, 2), date(2024, 1, 1)]  # Date 1 appears twice
-        observed_data_with_duplicates = pd.DataFrame({
-            "target_end_date": dates,
-            "observed": [10.0, 20.0, 30.0],
-        })
+        observed_data_with_duplicates = pd.DataFrame(
+            {
+                "target_end_date": dates,
+                "observed": [10.0, 20.0, 30.0],
+            }
+        )
 
         # Attempt to create wrapper should raise ValueError
         with pytest.raises(ValueError, match="Duplicate dates found in observed_data"):
