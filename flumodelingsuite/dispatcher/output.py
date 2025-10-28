@@ -246,7 +246,18 @@ def generate_simulation_outputs(*, simulation: list[SimulationOutput], outputs: 
 
 @register_output_generator({"calibration", "outputs"})
 def generate_calibration_outputs(*, calibration: list[CalibrationOutput], outputs: OutputConfig, **_) -> dict:
-    """"""
+    """
+    Create a dictionary of outputs specified in an OutputConfig for a calibration workflow.
+
+    Parameters
+    ----------
+        calibration: a list of CalibrationOutputs containing CalibrationResults.
+        outputs: an OutputConfig instance with output specifications.
+
+    Returns
+    -------
+        A dictionary where keys are intended filenames for writing data, and values are gzip-compressed CSV strings.
+    """
     logger.info("OUTPUT GENERATOR: dispatched for calibration")
     warnings = set()
 
