@@ -35,7 +35,13 @@ def run_simulation(configs: BuilderOutput) -> SimulationOutput:
     try:
         results = configs.model.run_simulations(**dict(configs.simulation))
         logger.info("RUNNER: completed simulation.")
-        return SimulationOutput(primary_id=configs.primary_id, seed=configs.seed, results=results)
+        return SimulationOutput(
+            primary_id=configs.primary_id,
+            seed=configs.seed,
+            delta_t=configs.delta_t,
+            population=configs.model.population.name,
+            results=results,
+        )
     except Exception as e:
         raise RuntimeError(f"Error during simulation: {e}")
 
@@ -63,7 +69,13 @@ def run_calibration(configs: BuilderOutput) -> CalibrationOutput:
     try:
         results = configs.calibrator.calibrate(strategy=configs.calibration.name, **configs.calibration.options)
         logger.info("RUNNER: completed calibration.")
-        return CalibrationOutput(primary_id=configs.primary_id, seed=configs.seed, results=results)
+        return CalibrationOutput(
+            primary_id=configs.primary_id,
+            seed=configs.seed,
+            delta_t=configs.delta_t,
+            population=configs.model.population.name,
+            results=results,
+        )
     except Exception as e:
         raise RuntimeError(f"Error during calibration: {e}")
 
@@ -88,8 +100,18 @@ def run_calibration_with_projection(configs: BuilderOutput) -> CalibrationOutput
         If calibration or projection fails.
     """
     logger.info("RUNNER: running calibration and projection.")
+
+    # Calibration
     try:
-        configs.calibrator.calibrate(strategy=configs.calibration.name, **configs.calibration.options)
+        calibration_results = configs.calibrator.calibrate(
+            strategy=configs.calibration.name, **configs.calibration.options
+        )
+        logger.info("RUNNER: completed calibration.")
+    except Exception as e:
+        raise RuntimeError(f"Error during calibration: {e}")
+
+    # Projection
+    try:
         projection_results = configs.calibrator.run_projections(
             parameters={
                 "projection": True,
@@ -100,9 +122,25 @@ def run_calibration_with_projection(configs: BuilderOutput) -> CalibrationOutput
             iterations=configs.projection.n_trajectories,
         )
         logger.info("RUNNER: completed calibration and projection.")
-        return CalibrationOutput(primary_id=configs.primary_id, seed=configs.seed, results=projection_results)
+        return CalibrationOutput(
+            primary_id=configs.primary_id,
+            seed=configs.seed,
+            delta_t=configs.delta_t,
+            population=configs.model.population.name,
+            results=projection_results,
+        )
+    # If projection fails, return calibration results
     except Exception as e:
-        raise RuntimeError(f"Error during calibration/projection: {e}")
+        logger.warning(
+            f"RUNNER: projection failed for model with primary_id={configs.primary_id}, returning calibration results.\nError message: {e}"
+        )
+        return CalibrationOutput(
+            primary_id=configs.primary_id,
+            seed=configs.seed,
+            delta_t=configs.delta_t,
+            population=configs.model.population.name,
+            results=calibration_results,
+        )
 
 
 def dispatch_runner(configs: BuilderOutput) -> SimulationOutput | CalibrationOutput:

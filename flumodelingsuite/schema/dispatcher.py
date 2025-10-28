@@ -49,6 +49,7 @@ class BuilderOutput(BaseModel):
         description="Primary identifier of an EpiModel or ABCSampler object paired with instructions for simulation/calibration/projection."
     )
     seed: int | None = Field(None, description="Random seed.")
+    delta_t: float | None = Field(None, description="Timestep.")
     model: EpiModel | None = Field(None, description="EpiModel object for simulation.")
     calibrator: ABCSampler | None = Field(None, description="ABCSampler object for calibration (contains an EpiModel).")
     simulation: SimulationArguments | None = Field(
@@ -57,7 +58,9 @@ class BuilderOutput(BaseModel):
     calibration: CalibrationStrategy | None = Field(
         None, description="Arguments for a single call to ABCSampler.calibrate"
     )
-    projection: ProjectionArguments | None = Field(None, description="Arguments for a")
+    projection: ProjectionArguments | None = Field(
+        None, description="Arguments for a single call to ABCSampler.run_projections"
+    )
 
     @model_validator(mode="after")
     def check_fields(self: "BuilderOutput") -> "BuilderOutput":
@@ -87,6 +90,8 @@ class SimulationOutput(BaseModel):
         description="Primary identifier of an EpiModel object paired with instructions for simulation."
     )
     seed: int | None = Field(None, description="Random seed.")
+    delta_t: float | None = Field(None, description="Timestep.")
+    population: str = Field(description="Population name (epydemix).")
     results: SimulationResults = Field(description="Results of a call to EpiModel.run_simulations()")
 
 
@@ -99,6 +104,8 @@ class CalibrationOutput(BaseModel):
         description="Primary identifier of an ABCSampler object paired with instructions for calibration/projection."
     )
     seed: int | None = Field(None, description="Random seed.")
+    delta_t: float | None = Field(None, description="Timestep.")
+    population: str = Field(description="Population name (epydemix).")
     results: CalibrationResults = Field(
         description="Results of a call to ABCSampler.calibrate() or ABCSampler.run_projections()"
     )

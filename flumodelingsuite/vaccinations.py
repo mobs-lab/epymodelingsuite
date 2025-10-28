@@ -837,7 +837,6 @@ def add_vaccination_schedule(
     ------
         ValueError: If any age groups required by the model are missing from the DataFrame.
     """
-
     from .utils import convert_location_name_format
 
     # Location handling
@@ -880,7 +879,6 @@ def remove_vaccination_transitions(model: EpiModel, source_comp: str, target_com
     Manually remove vaccination transitions from model.
     This prevents `add_vaccination_schedule` from creating duplicate transitions if it is called multiple times.
     """
-
     # Remove from transitions_list
     model.transitions_list = [
         t

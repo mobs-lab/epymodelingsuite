@@ -1,33 +1,14 @@
 output:
   meta:
-    description: "Example output config."
+    description: "Example output config for projection."
     author: "epymodelingsuite"
     version: "0.0.1"
     date: "2038-01-19"
 
   quantiles:
-    path: ""
-    selections:
-      - 0.025
-      - 0.05
-      - 0.25
-      - 0.75
-      - 0.95
-      - 0.975
     data_format: flusightforecast
     rate_trends: True
 
   trajectories:
-    path: ""
 
-  posteriors:
-    path: ""
-
-  run_meta:
-    path: ""
-
-  logs:
-    path: ""
-
-  raw_results:
-    path: ""
+  model_meta:

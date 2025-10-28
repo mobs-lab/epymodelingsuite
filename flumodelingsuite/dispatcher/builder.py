@@ -151,7 +151,13 @@ def build_basemodel(*, basemodel_config: BasemodelConfig, **_) -> BuilderOutput:
 
     logger.info("BUILDER: completed for single model.")
 
-    return BuilderOutput(primary_id=0, seed=basemodel.random_seed, model=model, simulation=simulation_args)
+    return BuilderOutput(
+        primary_id=0,
+        seed=basemodel.random_seed,
+        delta_t=basemodel.timespan.delta_t,
+        model=model,
+        simulation=simulation_args,
+    )
 
 
 @register_builder({"basemodel_config", "sampling_config"})
@@ -274,7 +280,9 @@ def build_sampling(
 
     logger.info("BUILDER: completed for sampling.")
     return [
-        BuilderOutput(primary_id=i, seed=basemodel.random_seed, model=t[0], simulation=t[1])
+        BuilderOutput(
+            primary_id=i, seed=basemodel.random_seed, delta_t=basemodel.timespan.delta_t, model=t[0], simulation=t[1]
+        )
         for i, t in enumerate(zip(final_models, simulation_args, strict=True))
     ]
 
@@ -396,6 +404,7 @@ def build_calibration(
         BuilderOutput(
             primary_id=i,
             seed=basemodel.random_seed,
+            delta_t=basemodel.timespan.delta_t,
             model=t[0],
             calibrator=t[1],
             calibration=calibration.strategy,
