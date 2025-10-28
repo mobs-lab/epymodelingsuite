@@ -441,13 +441,13 @@ def generate_calibration_outputs(*, calibration: list[CalibrationOutput], output
                 post_df.insert(0, "primary_id", model.primary_id)
                 post_df.insert(2, "seed", model.seed)
                 post_df.insert(3, "population", model.population)
-                posteriors = pd.concat([posteriors, post_df])
+                posteriors = post_df
             else:
                 post_df = model.results.get_posterior_distribution()
                 post_df.insert(0, "primary_id", model.primary_id)
                 post_df.insert(1, "seed", model.seed)
                 post_df.insert(2, "population", model.population)
-                posteriors = pd.concat([posteriors, post_df])
+                posteriors = post_df
 
     # Model Metadata
     if outputs.model_meta:
