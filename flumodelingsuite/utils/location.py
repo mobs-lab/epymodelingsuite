@@ -14,6 +14,26 @@ def get_location_codebook() -> pd.DataFrame:
     return location_codebook
 
 
+def get_flusight_locations() -> pd.DataFrame:
+    """Retrieve the FluSight location data as a Pandas DataFrame."""
+    import os
+    import sys
+
+    filename = os.path.join(os.path.dirname(sys.modules[__name__].__file__), "../data/flusight_locations.csv")
+    flusight_locations = pd.read_csv(filename)
+
+    return flusight_locations
+
+
+def get_flusight_population(location: str) -> int:
+    """Retrieve the population of the specified location."""
+    flusight_locations = get_flusight_locations()
+
+    return flusight_locations[flusight_locations.location == convert_location_name_format(location, "FIPS")][
+        "population"
+    ].iloc[0]
+
+
 def convert_location_name_format(value: str, output_format: str) -> str:
     """
     Convert location name from any valid format to the specified format.
