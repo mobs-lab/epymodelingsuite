@@ -17,7 +17,12 @@ def get_flusight_quantiles() -> list[float]:
     """
     import numpy as np
 
-    return np.append(np.append([0.01, 0.025], np.arange(0.05, 0.95 + 0.05, 0.05)), [0.975, 0.99]).astype(float).tolist()
+    # This has floating point errors
+    quantiles = np.append(
+        np.append([0.01, 0.025], np.arange(0.05, 0.95 + 0.05, 0.05)), [0.975, 0.99]
+    )  # .astype(float).tolist()
+    return [round(_, 2) for _ in quantiles]
+    # return 0.01, 0.025, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 0.975, and 0.99
 
 
 class FluScenariosOutput(BaseModel):
@@ -34,9 +39,9 @@ class FlusightForecastOutput(BaseModel):
     reference_date: date = Field(
         description="'YYYY-MM-DD' date to treat as reference date when creating horizons and target dates for submission file."
     )
-    target_transitions: list[str] = Field(
-        description="Identifiers of transitions to count for target data, as encoded by epydemix e.g. ['Home_sev_to_Hosp_total', 'Home_sev_vax_to_Hosp_vax_total']"
-    )
+    # target_transitions: list[str] = Field(
+    #    description="Identifiers of transitions to count for target data, as encoded by epydemix e.g. ['Home_sev_to_Hosp_total', 'Home_sev_vax_to_Hosp_vax_total']"
+    # )
     rate_trends: bool = Field(
         False,
         description="Add rate-trend forecasts to submission file.",

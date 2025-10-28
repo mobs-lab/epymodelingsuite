@@ -1,11 +1,15 @@
 """Output generation functions for formatting and saving results."""
 
+import copy
 import logging
+from datetime import date
 
+import numpy as np
 import pandas as pd
 
 from ..schema.dispatcher import CalibrationOutput, SimulationOutput
 from ..schema.output import OutputConfig, get_flusight_quantiles
+from ..utils.location import get_flusight_population
 
 logger = logging.getLogger(__name__)
 
@@ -13,12 +17,30 @@ logger = logging.getLogger(__name__)
 # ===== Output Generator Helper Functions =====
 
 
-def format_quantiles_flusightforecast(quantiles_df: pd.DataFrame) -> pd.DataFrame:
-    """"""
-
+def format_quantiles_flusightforecast(quantiles_df: pd.DataFrame, reference_date: date) -> pd.DataFrame:
+    """Create FluSight forecast formatted quantile outputs. Rate-trends are handled separately."""
     formatted = copy.deepcopy(quantiles_df)
-    # TODO
-    return pd.DataFrame()
+
+    # Horizons required for quantile outputs
+    flusight_horizons = range(-1, 4)
+
+    # Create horizon column and filter for appropriate horizons
+    formatted.insert(
+        0,
+        "horizon",
+        (formatted.date - pd.to_datetime(reference_date)).apply(lambda x: x / np.timedelta64(1, "W")).astype(int),
+    )
+    formatted = formatted[formatted.horizon.isin(flusight_horizons)]
+
+    # Name and format remaining fields
+    formatted.hospitalizations = formatted.hospitalizations.round().astype(int)
+    formatted.rename(
+        columns={"date": "target_end_date", "hospitalizations": "value", "quantile": "output_type_id"}, inplace=True
+    )
+    formatted.insert(2, "output_type", "quantile")
+    formatted.insert(2, "target", "wk inc flu hosp")
+
+    return formatted
 
 
 def format_quantiles_flusmh(quantiles_df: pd.DataFrame) -> pd.DataFrame:
@@ -38,8 +60,30 @@ def format_quantiles_covid19forecast(quantiles_df: pd.DataFrame) -> pd.DataFrame
 
 
 def make_rate_trends_flusightforecast(formatted_quantiles: pd.DataFrame) -> pd.DataFrame:
-    """"""
-    # TODO
+    """Create FluSight rate-trend forecasts."""
+    # Horizons required for rate-trend outputs
+    flusight_horizons = range(4)
+
+    # Population needed for converting to /100k rates
+    loc_pop = get_flusight_population("25")
+
+    # Set up DataFrame
+    rate_trends = quantiles.copy()
+    rate_trends.output_type = "pmf"
+    rate_trends.target = "wk flu hosp rate change"
+    rate_trends = rate_trends[rate_trends.horizon.isin(flusight_horizons)]
+
+    # Get forecasted rates
+    rate_trends.forecasted_rate = rate_trends.value * 100000 / loc_pop
+
+    # TODO: get the previous week's observed rate
+    last_observed_rate = None
+
+    # Calculate the rate change
+    rate_trends.rate_change = np.abs(rate_trends.forecasted_rate - last_observed_rate)
+
+    # TODO: obtain probabilities for rate-change categories
+
     return pd.DataFrame()
 
 
@@ -354,14 +398,17 @@ def generate_calibration_outputs(*, calibration: list[CalibrationOutput], output
 
             if outputs.quantiles.flusight_format:
                 try:
-                    quanf_df = model.results.get_projection_quantiles(get_flusight_quantiles())
+                    quanf_df = model.results.get_projection_quantiles(
+                        quantiles=get_flusight_quantiles(), variables=["date", "quantile", "hospitalizations"]
+                    )
                 except ValueError:
                     warnings.add(
                         f"OUTPUT GENERATOR: failed to obtain projection quantiles for model with primary_id={model.primary_id}, continuing to next model."
                     )
                     continue
-                quanf_df.insert(0, "population", model.population)
-                quanf_df = format_quantiles_flusightforecast(quanf_df)
+                quanf_df = format_quantiles_flusightforecast(quanf_df, outputs.flusight_format.reference_date)
+                quanf_df.insert(0, "reference_date", outputs.flusight_format.reference_date)
+                quanf_df.insert(0, "location", convert_location_name_format(model.population, "FIPS"))
                 quantiles_formatted = pd.concat([quantiles_formatted, quanf_df])
 
                 if outputs.quantiles.rate_trends:
