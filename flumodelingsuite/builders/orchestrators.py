@@ -12,7 +12,7 @@ from epydemix import simulate
 from epydemix.model import EpiModel
 
 from ..schema.basemodel import BaseEpiModel, Parameter, Timespan
-from ..schema.calibration import CalibrationConfig
+from ..schema.calibration import CalibrationConfig, ComparisonSpec
 from ..school_closures import make_school_closure_dict
 from ..utils import get_location_codebook, make_dummy_population
 from ..vaccinations import reaggregate_vaccines, scenario_to_epydemix
@@ -341,12 +341,36 @@ def flatten_simulation_results(results: Any) -> dict:
     return output
 
 
+def get_aggregated_comparison_transition(
+    results: Any,
+    comparison_transitions: list[str],
+) -> np.ndarray:
+    """
+    Aggregate specified transitions for comparison with observed data.
+
+    Parameters
+    ----------
+    results : SimulationResults
+        Output from epydemix.simulate().
+    comparison_transitions : list[str]
+        List of transition names to sum (e.g., ["Hosp_vax", "Hosp_unvax"]).
+
+    Returns
+    -------
+    np.ndarray
+        Aggregated transition array (sum of specified transitions).
+    """
+    transition_arrays = [results.transitions[key] for key in comparison_transitions]
+    return sum(transition_arrays)
+
+
 def format_projection_trajectories(
     results: Any,
     reference_start_date: dt.date | None = None,
     actual_start_date: dt.date | None = None,
     target_end_date: dt.date | None = None,
     resample_frequency: str | None = None,
+    comparison_specs: list[ComparisonSpec] | None = None,
 ) -> dict:
     """
     Format simulation results for projection mode (flatten + pad for stacking).
@@ -371,15 +395,27 @@ def format_projection_trajectories(
     resample_frequency : str | None, optional
             Resampling frequency (e.g., "W-SAT", "D").
             Required if padding is needed to compute the target length.
+    comparison_specs : list[ComparisonSpec] | None, optional
+            List of comparison specifications for aggregating transitions.
+            Each spec defines which transitions to sum and the output column name.
 
     Returns
     -------
     dict
             Dictionary with "date" and all transition/compartment arrays.
             Arrays are padded with zeros at the beginning to match target length.
+            If comparison_specs provided, also includes aggregated transition arrays
+            with keys based on observed_value_column (e.g., "total_hosp").
     """
     # Flatten results structure
     output = flatten_simulation_results(results)
+
+    # Add aggregated comparison transitions
+    # The key would be based on observed_value_column
+    if comparison_specs is not None:
+        for spec in comparison_specs:
+            aggregated = get_aggregated_comparison_transition(results, spec.simulation)
+            output[spec.observed_value_column] = aggregated
 
     # If no padding needed, return as-is
     if reference_start_date is None or actual_start_date is None or target_end_date is None:
@@ -461,8 +497,7 @@ def format_calibration_data(
     # Step 1: Aggregate specified transitions
     # Match simulation outputs to observed data granularity.
     # e.g. observed "hospitalizations" = sum(Home_sev_to_Hosp_total + Home_sev_vax_to_Hosp_vax_total)
-    transition_arrays = [results.transitions[key] for key in comparison_transitions]
-    aggregated_data = sum(transition_arrays)
+    aggregated_data = get_aggregated_comparison_transition(results, comparison_transitions)
 
     # Step 2: Filter to observed dates
     # Simulation may run at different frequency (daily) than observations (weekly).
@@ -814,6 +849,7 @@ def make_simulate_wrapper(
                 actual_start_date=start_date,
                 target_end_date=params["end_date"],
                 resample_frequency=basemodel.simulation.resample_frequency,
+                comparison_specs=calibration.comparison,
             )
 
         # Calibration: return aggregated data (aligned to observed dates)
