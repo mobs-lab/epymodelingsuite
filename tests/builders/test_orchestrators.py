@@ -39,7 +39,6 @@ class TestCreateModelCollection:
     @pytest.fixture
     def base_model_config(self):
         """Create a minimal BaseEpiModel configuration for testing."""
-
         compartments = [
             Compartment(id="S", label="Susceptible", init="default"),
             Compartment(id="I", label="Infected", init=10),
@@ -277,15 +276,6 @@ class TestSetupVaccinationSchedules:
     @pytest.fixture
     def base_model_config(self):
         """Create a minimal BaseEpiModel configuration for testing."""
-        from flumodelingsuite.schema.basemodel import (
-<<<<<<< HEAD
-            Transition,
-=======
-            Parameter,
-            Timespan,
->>>>>>> origin/refactor-make-simulate-wrapper
-        )
-
         compartments = [
             Compartment(id="S", label="Susceptible", init="default"),
             Compartment(id="I", label="Infected", init=10),

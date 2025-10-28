@@ -103,7 +103,9 @@ def run_calibration_with_projection(configs: BuilderOutput) -> CalibrationOutput
 
     # Calibration
     try:
-        calibration_results = configs.calibrator.calibrate(strategy=configs.calibration.name, **configs.calibration.options)
+        calibration_results = configs.calibrator.calibrate(
+            strategy=configs.calibration.name, **configs.calibration.options
+        )
         logger.info("RUNNER: completed calibration.")
     except Exception as e:
         raise RuntimeError(f"Error during calibration: {e}")
