@@ -266,9 +266,9 @@ def generate_simulation_outputs(*, simulations: list[SimulationOutput], outputs:
     return out_dict
 
 
-@register_output_generator({"calibration", "outputs"})
-def generate_calibration_outputs(*, calibration: list[CalibrationOutput], outputs: OutputConfig, **_) -> dict:
-    """"""
+@register_output_generator({"calibrations", "outputs"})
+def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outputs: OutputConfig, **_) -> dict:
+    """Generate calibration outputs from CalibrationOutput objects."""
     logger.info("OUTPUT GENERATOR: dispatched for calibration")
     warnings = set()
 
@@ -282,16 +282,16 @@ def generate_calibration_outputs(*, calibration: list[CalibrationOutput], output
 
     # Quantiles
     if outputs.quantiles:
-        for model in calibration:
+        for calibration in calibrations:
             # Default format
             if outputs.quantiles.default_format:
                 # Compartments
                 if outputs.quantiles.default_format.compartments:
                     try:
-                        quan_df = model.results.get_projection_quantiles(outputs.quantiles.selections)
+                        quan_df = calibration.results.get_projection_quantiles(quantiles=outputs.quantiles.selections)
                     except ValueError:
                         warnings.add(
-                            f"OUTPUT GENERATOR: failed to obtail projection quantiles for model with primary_id={model.primary_id}, continuing to next model."
+                            f"OUTPUT GENERATOR: failed to obtail projection quantiles for model with primary_id={calibration.primary_id}, continuing to next model."
                         )
                         continue
                     if hasattr(outputs.quantiles.default_format.compartments, "__len__"):
@@ -317,18 +317,18 @@ def generate_calibration_outputs(*, calibration: list[CalibrationOutput], output
                             if "_to_" in c
                         ]
                         quan_df.drop(columns=transition_columns, inplace=True)
-                    quan_df.insert(0, "primary_id", model.primary_id)
-                    quan_df.insert(1, "seed", model.seed)
-                    quan_df.insert(2, "population", model.population)
+                    quan_df.insert(0, "primary_id", calibration.primary_id)
+                    quan_df.insert(1, "seed", calibration.seed)
+                    quan_df.insert(2, "population", calibration.population)
                     quantiles_compartments = pd.concat([quantiles_compartments, quan_df])
 
                 # Transitions
                 if outputs.quantiles.default_format.transitions:
                     try:
-                        quan_df = model.results.get_projection_quantiles(outputs.quantiles.selections)
+                        quan_df = calibration.results.get_projection_quantiles(quantiles=outputs.quantiles.selections)
                     except ValueError:
                         warnings.add(
-                            f"OUTPUT GENERATOR: failed to obtain projection quantiles for model with primary_id={model.primary_id}, continuing to next model."
+                            f"OUTPUT GENERATOR: failed to obtain projection quantiles for model with primary_id={calibration.primary_id}, continuing to next model."
                         )
                         continue
                     if hasattr(outputs.quantiles.default_format.transitions, "__len__"):
@@ -356,20 +356,20 @@ def generate_calibration_outputs(*, calibration: list[CalibrationOutput], output
                         ]
                         # TODO: add target prediction data column name below
                         quan_df = quan_df[["date", "quantile"] + transition_columns]
-                    quan_df.insert(0, "primary_id", model.primary_id)
-                    quan_df.insert(1, "seed", model.seed)
-                    quan_df.insert(2, "population", model.population)
+                    quan_df.insert(0, "primary_id", calibration.primary_id)
+                    quan_df.insert(1, "seed", calibration.seed)
+                    quan_df.insert(2, "population", calibration.population)
                     quantiles_transitions = pd.concat([quantiles_transitions, quan_df])
 
             if outputs.quantiles.flusight_format:
                 try:
-                    quanf_df = model.results.get_projection_quantiles(get_flusight_quantiles())
+                    quanf_df = calibration.results.get_projection_quantiles(quantiles=get_flusight_quantiles())
                 except ValueError:
                     warnings.add(
-                        f"OUTPUT GENERATOR: failed to obtain projection quantiles for model with primary_id={model.primary_id}, continuing to next model."
+                        f"OUTPUT GENERATOR: failed to obtain projection quantiles for model with primary_id={calibration.primary_id}, continuing to next model."
                     )
                     continue
-                quanf_df.insert(0, "population", model.population)
+                quanf_df.insert(0, "population", calibration.population)
                 quanf_df = format_quantiles_flusightforecast(quanf_df)
                 quantiles_formatted = pd.concat([quantiles_formatted, quanf_df])
 
@@ -383,13 +383,13 @@ def generate_calibration_outputs(*, calibration: list[CalibrationOutput], output
 
     # Trajectories
     if outputs.trajectories:
-        for model in calibration:
+        for calibration in calibrations:
             # Collect all trajectories
             try:
-                traj = model.results.get_projection_trajectories()
+                traj = calibration.results.get_projection_trajectories()
             except Exception:
                 warnings.add(
-                    f"OUTPUT GENERATOR: failed to obtain projection trajectories for model with primary_id={model.primary_id}, continuing to next model."
+                    f"OUTPUT GENERATOR: failed to obtain projection trajectories for model with primary_id={calibration.primary_id}, continuing to next model."
                 )
                 continue
 
@@ -420,9 +420,9 @@ def generate_calibration_outputs(*, calibration: list[CalibrationOutput], output
                     # Use all compartments, filter out transitions
                     transition_columns = [c for c in traj_c.columns if "_to_" in c]
                     traj_c.drop(columns=transition_columns, inplace=True)
-                traj_c.insert(0, "primary_id", model.primary_id)
-                traj_c.insert(2, "seed", model.seed)
-                traj_c.insert(3, "population", model.population)
+                traj_c.insert(0, "primary_id", calibration.primary_id)
+                traj_c.insert(2, "seed", calibration.seed)
+                traj_c.insert(3, "population", calibration.population)
                 trajectories_compartments = pd.concat([trajectories_compartments, traj_c])
 
             # Transitions
@@ -443,32 +443,32 @@ def generate_calibration_outputs(*, calibration: list[CalibrationOutput], output
                     # Use all transitions, filter out compartments
                     transition_columns = [c for c in traj_t.columns if "_to_" in c]
                     traj_t = traj_t[["sim_id", "date"] + transition_columns]
-                traj_t.insert(0, "primary_id", model.primary_id)
-                traj_t.insert(2, "seed", model.seed)
-                traj_t.insert(3, "population", model.population)
+                traj_t.insert(0, "primary_id", calibration.primary_id)
+                traj_t.insert(2, "seed", calibration.seed)
+                traj_t.insert(3, "population", calibration.population)
                 trajectories_transitions = pd.concat([trajectories_transitions, traj_t])
 
     # Posteriors
     if outputs.posteriors:
-        for model in models:
+        for calibration in calibrations:
             if outputs.posteriors.generations:
                 post_df = pd.DataFrame()
                 for g in outputs.posteriors.generations:
                     try:
-                        post = model.results.get_posterior_distribution(generation=g)
+                        post = calibration.results.get_posterior_distribution(generation=g)
                         post.insert(0, "generation", g)
                         post_df = pd.concat([post_df, post])
                     except Exception:
                         warnings.add(f"OUTPUT GENERATOR: failed to obtain posterior for generation {g}, continuing.")
-                post_df.insert(0, "primary_id", model.primary_id)
-                post_df.insert(2, "seed", model.seed)
-                post_df.insert(3, "population", model.population)
+                post_df.insert(0, "primary_id", calibration.primary_id)
+                post_df.insert(2, "seed", calibration.seed)
+                post_df.insert(3, "population", calibration.population)
                 posteriors = post_df
             else:
-                post_df = model.results.get_posterior_distribution()
-                post_df.insert(0, "primary_id", model.primary_id)
-                post_df.insert(1, "seed", model.seed)
-                post_df.insert(2, "population", model.population)
+                post_df = calibration.results.get_posterior_distribution()
+                post_df.insert(0, "primary_id", calibration.primary_id)
+                post_df.insert(1, "seed", calibration.seed)
+                post_df.insert(2, "population", calibration.population)
                 posteriors = post_df
 
     # Model Metadata
