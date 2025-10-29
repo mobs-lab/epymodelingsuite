@@ -238,30 +238,28 @@ def generate_simulation_outputs(*, simulations: list[SimulationOutput], outputs:
 
     out_dict = {}
     if not quantiles_compartments.empty:
-        out_dict["quantiles_compartments.csv.gz"] = quantiles_compartments.to_csv(
-            path_or_buf=None, header=True, index=False, compression="gzip"
+        out_dict["quantiles_compartments.csv.gz"] = dataframe_to_gzipped_csv(
+            quantiles_compartments, header=True, index=False
         )
     if not quantiles_transitions.empty:
-        out_dict["quantiles_transitions.csv.gz"] = quantiles_transitions.to_csv(
-            path_or_buf=None, header=True, index=False, compression="gzip"
+        out_dict["quantiles_transitions.csv.gz"] = dataframe_to_gzipped_csv(
+            quantiles_transitions, header=True, index=False
         )
     if not quantiles_formatted.empty:
         # will want to build filename to be something better, like to fit hub standards
-        out_dict["quantiles_hub_formatted.csv.gz"] = quantiles_formatted.to_csv(
-            path_or_buf=None, header=True, index=False, compression="gzip"
+        out_dict["quantiles_hub_formatted.csv.gz"] = dataframe_to_gzipped_csv(
+            quantiles_formatted, header=True, index=False
         )
     if not trajectories_compartments.empty:
-        out_dict["trajectories_compartments.csv.gz"] = trajectories_compartments.to_csv(
-            path_or_buf=None, header=True, index=False, compression="gzip"
+        out_dict["trajectories_compartments.csv.gz"] = dataframe_to_gzipped_csv(
+            trajectories_compartments, header=True, index=False
         )
     if not trajectories_transitions.empty:
-        out_dict["trajectories_transitions.csv.gz"] = trajectories_transitions.to_csv(
-            path_or_buf=None, header=True, index=False, compression="gzip"
+        out_dict["trajectories_transitions.csv.gz"] = dataframe_to_gzipped_csv(
+            trajectories_transitions, header=True, index=False
         )
     if not model_meta.empty:
-        out_dict["model_metadata.csv.gz"] = model_meta.to_csv(
-            path_or_buf=None, header=True, index=False, compression="gzip"
-        )
+        out_dict["model_metadata.csv.gz"] = dataframe_to_gzipped_csv(model_meta, header=True, index=False)
 
     logger.info("OUTPUT GENERATOR: completed for simulation")
 
