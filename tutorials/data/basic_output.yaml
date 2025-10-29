@@ -5,10 +5,17 @@ output:
     version: "0.0.1"
     date: "2038-01-19"
 
+  # Default format outputs quantiles of compartments and transitions
   quantiles:
-    data_format: flusightforecast
-    rate_trends: True
+    default_format:
+      compartments: true  # Output all compartments
+      transitions: true   # Output all transitions
 
+  # Optional: specify which trajectories to output
   trajectories:
+    compartments: false
+    transitions: false
 
+  # Model metadata
   model_meta:
+    projection_parameters: false
