@@ -304,17 +304,13 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
                             )
                             # Use all compartments, filter out transitions
                             transition_columns = [
-                                c
-                                for c in runner_output_calibration.results.get_projection_quantiles().columns
-                                if "_to_" in c
+                                c for c in calibration.results.get_projection_quantiles().columns if "_to_" in c
                             ]
                             quan_df.drop(columns=transition_columns, inplace=True)
                     else:
                         # Use all compartments, filter out transitions
                         transition_columns = [
-                            c
-                            for c in runner_output_calibration.results.get_projection_quantiles().columns
-                            if "_to_" in c
+                            c for c in calibration.results.get_projection_quantiles().columns if "_to_" in c
                         ]
                         quan_df.drop(columns=transition_columns, inplace=True)
                     quan_df.insert(0, "primary_id", calibration.primary_id)
@@ -341,18 +337,14 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
                             )
                             # Use all transitions, filter out compartments
                             transition_columns = [
-                                c
-                                for c in runner_output_calibration.results.get_projection_quantiles().columns
-                                if "_to_" in c
+                                c for c in calibration.results.get_projection_quantiles().columns if "_to_" in c
                             ]
                             # TODO: add target prediction data column name below
                             quan_df = quan_df[["date", "quantile"] + transition_columns]
                     else:
                         # Use all transitions, filter out compartments
                         transition_columns = [
-                            c
-                            for c in runner_output_calibration.results.get_projection_quantiles().columns
-                            if "_to_" in c
+                            c for c in calibration.results.get_projection_quantiles().columns if "_to_" in c
                         ]
                         # TODO: add target prediction data column name below
                         quan_df = quan_df[["date", "quantile"] + transition_columns]
