@@ -81,14 +81,14 @@ def register_output_generator(kind_set):
     return deco
 
 
-@register_output_generator({"simulation", "outputs"})
-def generate_simulation_outputs(*, simulation: list[SimulationOutput], outputs: OutputConfig, **_) -> dict:
+@register_output_generator({"simulations", "outputs"})
+def generate_simulation_outputs(*, simulations: list[SimulationOutput], outputs: OutputConfig, **_) -> dict:
     """
     Create a dictionary of outputs specified in an OutputConfig for a simulation workflow.
 
     Parameters
     ----------
-        simulation: a list of SimulationOutputs containing SimulationResults.
+        simulations: a list of SimulationOutputs containing SimulationResults.
         outputs: an OutputConfig instance with output specifications.
 
     Returns
@@ -111,12 +111,12 @@ def generate_simulation_outputs(*, simulation: list[SimulationOutput], outputs: 
         if outputs.quantiles.flusight_format or outputs.quantiles.covid19_format:
             warnings.add("OUTPUT_GENERATOR: Requested forecast hub quantile format for simulation data, ignoring.")
 
-        for model in simulation:
+        for simulation in simulations:
             # Default format
             if outputs.quantiles.default_format:
                 # Compartments
                 if outputs.quantiles.default_format.compartments:
-                    quan_df = model.results.get_quantiles_compartments(quantiles=outputs.quantiles.selections)
+                    quan_df = simulation.results.get_quantiles_compartments(quantiles=outputs.quantiles.selections)
                     if hasattr(outputs.quantiles.default_format.compartments, "__len__"):
                         try:
                             quan_df = quan_df[["date", "quantile"] + outputs.quantiles.default_format.compartments]
@@ -124,14 +124,14 @@ def generate_simulation_outputs(*, simulation: list[SimulationOutput], outputs: 
                             warnings.add(
                                 f"OUTPUT GENERATOR: Exception occured selecting compartment quantiles, returning all compartments: {e}"
                             )
-                    quan_df.insert(0, "primary_id", model.primary_id)
-                    quan_df.insert(1, "seed", model.seed)
-                    quan_df.insert(2, "population", model.population)
+                    quan_df.insert(0, "primary_id", simulation.primary_id)
+                    quan_df.insert(1, "seed", simulation.seed)
+                    quan_df.insert(2, "population", simulation.population)
                     quantiles_compartments = pd.concat([quantiles_compartments, quan_df])
 
                 # Transitions
                 if outputs.quantiles.default_format.transitions:
-                    quan_df = model.results.get_quantiles_transitions(quantiles=outputs.quantiles.selections)
+                    quan_df = simulation.results.get_quantiles_transitions(quantiles=outputs.quantiles.selections)
                     if hasattr(outputs.quantiles.default_format.transitions, "__len__"):
                         try:
                             quan_df = quan_df[["date", "quantile"] + outputs.quantiles.default_format.transitions]
@@ -139,9 +139,9 @@ def generate_simulation_outputs(*, simulation: list[SimulationOutput], outputs: 
                             warnings.add(
                                 f"OUTPUT GENERATOR: Exception occured selecting transition quantiles, returning all transitions: {e}"
                             )
-                    quan_df.insert(0, "primary_id", model.primary_id)
-                    quan_df.insert(1, "seed", model.seed)
-                    quan_df.insert(2, "population", model.population)
+                    quan_df.insert(0, "primary_id", simulation.primary_id)
+                    quan_df.insert(1, "seed", simulation.seed)
+                    quan_df.insert(2, "population", simulation.population)
                     quantiles_transitions = pd.concat([quantiles_transitions, quan_df])
 
             # Hub format
@@ -156,8 +156,8 @@ def generate_simulation_outputs(*, simulation: list[SimulationOutput], outputs: 
 
     # Trajectories
     if outputs.trajectories:
-        for model in simulation:
-            for i, traj in enumerate(model.results.trajectories):
+        for simulation in simulations:
+            for i, traj in enumerate(simulation.results.trajectories):
                 # Compartments
                 if outputs.trajectories.compartments:
                     traj_df = pd.DataFrame(traj.compartments)
@@ -168,10 +168,10 @@ def generate_simulation_outputs(*, simulation: list[SimulationOutput], outputs: 
                             warnings.add(
                                 f"OUTPUT GENERATOR: Exception occured selecting compartment trajectories, returning all compartments: {e}"
                             )
-                    traj_df.insert(0, "primary_id", model.primary_id)
+                    traj_df.insert(0, "primary_id", simulation.primary_id)
                     traj_df.insert(1, "sim_id", i)
-                    traj_df.insert(2, "seed", model.seed)
-                    traj_df.insert(3, "population", model.population)
+                    traj_df.insert(2, "seed", simulation.seed)
+                    traj_df.insert(3, "population", simulation.population)
                     trajectories_compartments = pd.concat([trajectories_compartments, traj_df])
 
                 # Transitions
@@ -184,10 +184,10 @@ def generate_simulation_outputs(*, simulation: list[SimulationOutput], outputs: 
                             warnings.add(
                                 f"OUTPUT GENERATOR: Exception occured selecting transition trajectories, returning all transitions: {e}"
                             )
-                    traj_df.insert(0, "primary_id", model.primary_id)
+                    traj_df.insert(0, "primary_id", simulation.primary_id)
                     traj_df.insert(1, "sim_id", i)
-                    traj_df.insert(2, "seed", model.seed)
-                    traj_df.insert(3, "population", model.population)
+                    traj_df.insert(2, "seed", simulation.seed)
+                    traj_df.insert(3, "population", simulation.population)
                     trajectories_transitions = pd.concat([trajectories_transitions, traj_df])
 
     # Model Metadata
@@ -196,35 +196,35 @@ def generate_simulation_outputs(*, simulation: list[SimulationOutput], outputs: 
             warnings.add("OUTPUT_GENERATOR: Requested projection parameter metadata in simulation workflow, ignoring.")
 
         meta_dict = {}
-        for model in simulation:
+        for simulation in simulations:
             meta_dict.set_default("primary_id", [])
-            meta_dict["primary_id"].append(model.primary_id)
+            meta_dict["primary_id"].append(simulation.primary_id)
 
             meta_dict.set_default("seed", [])
-            meta_dict["seed"].append(model.seed)
+            meta_dict["seed"].append(simulation.seed)
 
             meta_dict.set_default("delta_t", [])
-            meta_dict["delta_t"].append(model.delta_t)
+            meta_dict["delta_t"].append(simulation.delta_t)
 
             meta_dict.set_default("population", [])
-            meta_dict["population"].append(model.population)
+            meta_dict["population"].append(simulation.population)
 
             meta_dict.set_default("n_sims", [])
-            meta_dict["n_sims"].append(model.results.Nsim)
+            meta_dict["n_sims"].append(simulation.results.Nsim)
 
             meta_dict.set_default("start_date", [])
-            meta_dict["start_date"].append(str(sorted(model.results.dates)[0]))
+            meta_dict["start_date"].append(str(sorted(simulation.results.dates)[0]))
 
             meta_dict.set_default("end_date", [])
-            meta_dict["end_date"].append(str(sorted(model.results.dates)[-1]))
+            meta_dict["end_date"].append(str(sorted(simulation.results.dates)[-1]))
 
             # Parameters
-            for p, v in model.results.parameters.items():
+            for p, v in simulation.results.parameters.items():
                 meta_dict.set_default(p, [])
                 meta_dict[p].append(str(v))
 
             # Initial conditions
-            inits = {k: [int(v[0]) for v in vs] for k, vs in model.results.get_stacked_compartments().items()}
+            inits = {k: [int(v[0]) for v in vs] for k, vs in simulation.results.get_stacked_compartments().items()}
             for c, i in inits:
                 colname = f"init_{c}"
                 meta_dict.set_default(colname, [])
