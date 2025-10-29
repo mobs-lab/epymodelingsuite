@@ -273,7 +273,7 @@ def generate_calibration_outputs(*, calibration: list[CalibrationOutput], output
     warnings = set()
 
     quantiles_compartments = pd.DataFrame()
-    quantiles_trajectories = pd.DataFrame()
+    quantiles_transitions = pd.DataFrame()
     quantiles_formatted = pd.DataFrame()
     trajectories_compartments = pd.DataFrame()
     trajectories_transitions = pd.DataFrame()
