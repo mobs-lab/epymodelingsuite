@@ -1,6 +1,6 @@
 model:
   meta:
-    description: "2024 vaccination scenarios"
+    description: "2024 vaccination scenarios - Calibration workflow"
     author: "epymodelingsuite"
     version: "0.0.1"
     date: "2038-01-19"
