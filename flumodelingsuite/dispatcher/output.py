@@ -1,5 +1,6 @@
 """Output generation functions for formatting and saving results."""
 
+import io
 import logging
 
 import pandas as pd
@@ -11,6 +12,27 @@ logger = logging.getLogger(__name__)
 
 
 # ===== Output Generator Helper Functions =====
+
+
+def dataframe_to_gzipped_csv(df: pd.DataFrame, **csv_kwargs) -> bytes:
+    """
+    Convert a DataFrame to gzip-compressed CSV bytes.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The DataFrame to convert
+    **csv_kwargs
+        Additional keyword arguments to pass to DataFrame.to_csv()
+
+    Returns
+    -------
+    bytes
+        Gzip-compressed CSV data as bytes
+    """
+    buffer = io.BytesIO()
+    df.to_csv(buffer, compression="gzip", **csv_kwargs)
+    return buffer.getvalue()
 
 
 def format_quantiles_flusightforecast(quantiles_df: pd.DataFrame) -> pd.DataFrame:
@@ -462,34 +484,30 @@ def generate_calibration_outputs(*, calibration: list[CalibrationOutput], output
 
     out_dict = {}
     if not quantiles_compartments.empty:
-        out_dict["quantiles_compartments.csv.gz"] = quantiles_compartments.to_csv(
-            path_or_buf=None, header=True, index=False, compression="gzip"
+        out_dict["quantiles_compartments.csv.gz"] = dataframe_to_gzipped_csv(
+            quantiles_compartments, header=True, index=False
         )
     if not quantiles_transitions.empty:
-        out_dict["quantiles_transitions.csv.gz"] = quantiles_transitions.to_csv(
-            path_or_buf=None, header=True, index=False, compression="gzip"
+        out_dict["quantiles_transitions.csv.gz"] = dataframe_to_gzipped_csv(
+            quantiles_transitions, header=True, index=False
         )
     if not quantiles_formatted.empty:
         # will want to build filename to be something better, like to fit hub standards
-        out_dict["quantiles_hub_formatted.csv.gz"] = quantiles_formatted.to_csv(
-            path_or_buf=None, header=True, index=False, compression="gzip"
+        out_dict["quantiles_hub_formatted.csv.gz"] = dataframe_to_gzipped_csv(
+            quantiles_formatted, header=True, index=False
         )
     if not trajectories_compartments.empty:
-        out_dict["trajectories_compartments.csv.gz"] = trajectories_compartments.to_csv(
-            path_or_buf=None, header=True, index=False, compression="gzip"
+        out_dict["trajectories_compartments.csv.gz"] = dataframe_to_gzipped_csv(
+            trajectories_compartments, header=True, index=False
         )
     if not trajectories_transitions.empty:
-        out_dict["trajectories_transitions.csv.gz"] = trajectories_transitions.to_csv(
-            path_or_buf=None, header=True, index=False, compression="gzip"
+        out_dict["trajectories_transitions.csv.gz"] = dataframe_to_gzipped_csv(
+            trajectories_transitions, header=True, index=False
         )
     if not posteriors.empty:
-        out_dict["posteriors.csv.gz"] = posteriors.to_csv(
-            path_or_buf=None, header=True, index=False, compression="gzip"
-        )
+        out_dict["posteriors.csv.gz"] = dataframe_to_gzipped_csv(posteriors, header=True, index=False)
     if not model_meta.empty:
-        out_dict["model_metadata.csv.gz"] = model_meta.to_csv(
-            path_or_buf=None, header=True, index=False, compression="gzip"
-        )
+        out_dict["model_metadata.csv.gz"] = dataframe_to_gzipped_csv(model_meta, header=True, index=False)
 
     return out_dict
 
