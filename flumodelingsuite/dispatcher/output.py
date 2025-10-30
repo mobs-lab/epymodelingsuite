@@ -40,7 +40,13 @@ def dataframe_to_gzipped_csv(df: pd.DataFrame, **csv_kwargs) -> bytes:
 
 
 def format_quantiles_flusightforecast(quantiles_df: pd.DataFrame, reference_date: date) -> pd.DataFrame:
-    """Create FluSight forecast formatted quantile outputs for a single model. Rate-trends are handled separately."""
+    """
+    Create FluSight forecast formatted quantile outputs for a single model. Rate-trends are handled separately.
+
+    Parameters
+    ----------
+    quantiles_df: pd.DataFrame
+    """
     formatted = copy.deepcopy(quantiles_df)
 
     # Horizons required for quantile outputs
@@ -55,6 +61,7 @@ def format_quantiles_flusightforecast(quantiles_df: pd.DataFrame, reference_date
     formatted = formatted[formatted.horizon.isin(flusight_horizons)]
 
     # Name and format remaining fields
+    # FRAGILE: the name 'hospitalizations' is user-supplied in the modelset as the column to look for in the surveillance data.
     formatted.hospitalizations = formatted.hospitalizations.round().astype(int)
     formatted.rename(
         columns={"date": "target_end_date", "hospitalizations": "value", "quantile": "output_type_id"}, inplace=True
@@ -81,10 +88,73 @@ def format_quantiles_covid19forecast(quantiles_df: pd.DataFrame) -> pd.DataFrame
     return pd.DataFrame()
 
 
-def categorize_rate_change_flusightforecast(rate_change: float, horizon: int) -> str:
-    """"""
+def compare_thresholds_flusightforecast(
+    stable_thres: float, change_thres: float, rate_change: float, count_change: float
+) -> str:
+    """
+    Compare the simulated rate-change and count-change against the provided thresholds.
+    Comparisons against thresholds are defined in FluSight documentation.
+    https://github.com/cdcepi/FluSight-forecast-hub/tree/main/model-output#rate-trend-forecast-specifications
 
-    return "foo"
+    Parameters
+    ----------
+    stable_thres: A simulated rate-change with magnitude less than this threshold is stable (unless count_change < 10).
+    change_thres: This threshold defines whether non-stable rate-changes are a large increase/decrease or not.
+    rate_change: The difference between the last observed rate (/100k population) and the simulated rate (diff = simulated - observed).
+    count_change: The difference between the last observed count and the simulated count (diff = simulated - observed).
+
+    Returns
+    -------
+    A string representing the category of the rate-change.
+    """
+    if abs(rate_change) < stable_thres or abs(count_change) < 10:
+        return "stable"
+    if 0 < rate_change < change_thres:
+        return "increase"
+    if change_thres <= rate_change:
+        return "large_increase"
+    if -change_thres < rate_change < 0:
+        return "decrease"
+    if rate_change <= -change_thres:
+        return "large_decrease"
+
+
+def categorize_rate_change_flusightforecast(rate_change: float, count_change: float, horizon: int) -> str:
+    """
+    Categorize the simulated rate-change using the appropriate thresholds for the horizon.
+    Thresholds for different horizons are defined in FluSight documentation.
+    https://github.com/cdcepi/FluSight-forecast-hub/tree/main/model-output#rate-trend-forecast-specifications
+
+    Parameters
+    ----------
+    rate_change: The difference between the last observed rate (/100k population) and the simulated rate (diff = simulated - observed).
+    count_change: The difference between the last observed count and the simulated count (diff = simulated - observed).
+    horizon: The horizon on which the simulated changes are calculated.
+    """
+    assert -1 <= rate_change <= 1, "Received invalid rate-change."
+
+    if horizon == 0:
+        stable_thres = 0.3 / 100000
+        change_thres = 1.7 / 100000
+        return compare_thresholds_flusightforecast(stable_thres, change_thres, rate_change, count_change)
+
+    if horizon == 1:
+        stable_thres = 0.5 / 100000
+        change_thres = 3 / 100000
+        return compare_thresholds_flusightforecast(stable_thres, change_thres, rate_change, count_change)
+
+    if horizon == 2:
+        stable_thres = 0.7 / 100000
+        change_thres = 4 / 100000
+        return compare_thresholds_flusightforecast(stable_thres, change_thres, rate_change, count_change)
+
+    if horizon == 3:
+        stable_thres = 1 / 100000
+        change_thres = 5 / 100000
+        return compare_thresholds_flusightforecast(stable_thres, change_thres, rate_change, count_change)
+
+    msg = f"Received invalid horizon {horizon}."
+    raise AssertionError(msg)
 
 
 def make_rate_trends_flusightforecast(formatted_quantiles: pd.DataFrame) -> pd.DataFrame:
@@ -490,6 +560,7 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
         # Quantile forecasts
         for calibration in calibrations:
             try:
+                # FRAGILE: the name 'hospitalizations' is user-supplied in the modelset as the column to look for in the surveillance data.
                 quanf_df = calibration.results.get_projection_quantiles(
                     quantiles=get_flusight_quantiles(), variables=["date", "quantile", "hospitalizations"]
                 )
