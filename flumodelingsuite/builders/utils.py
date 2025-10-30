@@ -9,7 +9,7 @@ from ..utils import convert_location_name_format
 
 def get_data_in_window(data: pd.DataFrame, calibration: CalibrationConfig) -> pd.DataFrame:
     """
-    Get data within a specified time window.
+    Get data within a specified time window. 
 
     Parameters
     ----------
@@ -29,7 +29,7 @@ def get_data_in_window(data: pd.DataFrame, calibration: CalibrationConfig) -> pd
     date_col_name = calibration.comparison[0].observed_date_column
     date_col = pd.to_datetime(data[date_col_name]).dt.date
 
-    mask = (date_col >= window_start) & (date_col <= window_end)
+    mask = (date_col >= window_start) & (date_col <= window_end + pd.Timedelta(days=6)) # +6 is to make sure Saturday is included if end date is in middle of week 
     return data.loc[mask]
 
 
