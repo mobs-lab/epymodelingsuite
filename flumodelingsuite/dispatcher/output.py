@@ -82,6 +82,11 @@ def format_quantiles_covid19forecast(quantiles_df: pd.DataFrame) -> pd.DataFrame
     return pd.DataFrame()
 
 
+def categorize_rate_change_flusightforecast(rate_change: float, horizon: int): -> str:
+    """"""
+
+    return "foo"
+
 def make_rate_trends_flusightforecast(formatted_quantiles: pd.DataFrame) -> pd.DataFrame:
     """Create FluSight rate-trend forecasts."""
     # Horizons required for rate-trend outputs
