@@ -11,7 +11,7 @@ def identify_config_type(file_path: str) -> str | None:
     - Has 'modelset.calibration' -> 'calibration'
     - Has 'modelset.sampling' -> 'sampling'
     - Has 'model' (without 'modelset') -> 'basemodel'
-    - Has 'outputs' -> 'output'
+    - Has 'output' -> 'output'
     - Otherwise -> None
 
     Parameters
@@ -63,8 +63,8 @@ def identify_config_type(file_path: str) -> str | None:
     if "model" in data:
         return "basemodel"
 
-    # Output: has 'outputs' key
-    if "outputs" in data:
+    # Output: has 'output' key
+    if "output" in data:
         return "output"
 
     return None

@@ -56,9 +56,9 @@ modelset:
         assert identify_config_type(str(yaml_file)) == "sampling"
 
     def test_identify_output_config(self, temp_yaml_file):
-        """Test identifying output config with 'outputs' key."""
+        """Test identifying output config with 'output' key."""
         yaml_file = temp_yaml_file("""
-outputs:
+output:
   quantiles:
     - 0.025
     - 0.5
@@ -69,9 +69,9 @@ outputs:
         assert identify_config_type(str(yaml_file)) == "output"
 
     def test_identify_output_config_minimal(self, temp_yaml_file):
-        """Test identifying output config with minimal 'outputs' key."""
+        """Test identifying output config with minimal 'output' key."""
         yaml_file = temp_yaml_file("""
-outputs:
+output:
   quantiles:
     - 0.5
 """)
