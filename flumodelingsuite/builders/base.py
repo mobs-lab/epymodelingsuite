@@ -294,11 +294,19 @@ def calculate_compartment_initial_conditions(
         if compartment.init == "default":
             continue
 
-        # Get initialization value (from samples if provided, otherwise from config)
+        # Get initialization value: use params_dict value if available, otherwise use config value
         initial_value = params_dict.get(compartment.id, compartment.init) if params_dict else compartment.init
 
         # Skip compartments with no initial value
         if initial_value is None:
+            continue
+
+        # Skip sampled/calibrated compartments that don't have values in params_dict yet
+        # (if initial_value is still the enum, it means no numeric value was provided)
+        if isinstance(initial_value, Compartment.InitCompartmentEnum) and initial_value in (
+            Compartment.InitCompartmentEnum.sampled,
+            Compartment.InitCompartmentEnum.calibrated,
+        ):
             continue
 
         # Case 1: Age-varying initialization (list)

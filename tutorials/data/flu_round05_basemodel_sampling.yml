@@ -1,12 +1,12 @@
 model:
   meta:
-    description: "2024 vaccination scenarios"
+    description: "2024 vaccination scenarios - Sampling workflow"
     author: "epymodelingsuite"
     version: "0.0.1"
     date: "2038-01-19"
 
   timespan:
-    start_date: calibrated #"2024-09-15"
+    start_date: sampled #"2024-09-15"
     end_date: "2025-05-31"
     delta_t: 1.0
 
@@ -33,11 +33,12 @@ model:
       label: "Susceptible (vaccinated)"
     - id: L
       label: "Latent"
-      init: calibrated
+      init: sampled
     - id: L_vax
       label: "Latent (vaccinated)"
     - id: I_symp
       label: "Infectious symptomatic"
+      init: sampled
     - id: I_symp_vax
       label: "Infectious symptomatic (vaccinated)"
     - id: I_asymp
@@ -74,7 +75,6 @@ model:
       label: "Removed asymptomatic (vaccinated)"
     - id: Initial_immune
       label: "Initially immune"
-      init: calibrated
 
   transitions:
     ### Main Compartments Branch
@@ -212,9 +212,10 @@ model:
       type: calculated
       value: Rt*mu/(eigenvalue*(1-p_asymp+p_asymp*r_beta_asymp)) # eigenvalue of contact matrix sensitive to location
     seasonality_min:
-      type: calibrated
+      type: scalar
+      value: 0.5
     Rt:
-      type: calibrated
+      type: sampled
     r_beta_asymp:
       type: scalar
       value: 0.5
