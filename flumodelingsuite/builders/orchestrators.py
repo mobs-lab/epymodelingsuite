@@ -387,6 +387,8 @@ def format_projection_trajectories(
         return output
 
     # Calculate target length from reference start to target end
+    if 'W' in resample_frequency:
+        target_end_date = target_end_date + dt.timedelta(days=6)
     target_date_range = pd.date_range(
         start=reference_start_date,
         end=target_end_date,
