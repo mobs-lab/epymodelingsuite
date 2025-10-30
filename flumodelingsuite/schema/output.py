@@ -18,11 +18,9 @@ def get_flusight_quantiles() -> list[float]:
     import numpy as np
 
     # This has floating point errors
-    quantiles = np.append(
-        np.append([0.01, 0.025], np.arange(0.05, 0.95 + 0.05, 0.05)), [0.975, 0.99]
-    )  # .astype(float).tolist()
+    quantiles = np.append(np.append([0.01, 0.025], np.arange(0.05, 0.95 + 0.05, 0.05)), [0.975, 0.99])
     return [round(_, 2) for _ in quantiles]
-    # return 0.01, 0.025, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 0.975, and 0.99
+    # 0.01, 0.025, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 0.975, and 0.99
 
 
 class FluScenariosOutput(BaseModel):
@@ -39,25 +37,9 @@ class FlusightForecastOutput(BaseModel):
     reference_date: date = Field(
         description="'YYYY-MM-DD' date to treat as reference date when creating horizons and target dates for submission file."
     )
-    # target_transitions: list[str] = Field(
-    #    description="Identifiers of transitions to count for target data, as encoded by epydemix e.g. ['Home_sev_to_Hosp_total', 'Home_sev_vax_to_Hosp_vax_total']"
-    # )
     rate_trends: bool = Field(
         False,
         description="Add rate-trend forecasts to submission file.",
-    )
-
-
-class DefaultQuantilesOutput(BaseModel):
-    """Specifications for quantile outputs in default format."""
-
-    compartments: list[str] | bool = Field(
-        False,
-        description="Return quantiles for compartments. Set `True` to get all compartments, or provide a list of identifiers (e.g. 'I_total') to select compartments.",
-    )
-    transitions: list[str] | bool = Field(
-        False,
-        description="Return quantiles for transitions. Set `True` to get all transitions, or provide a list of identifiers (e.g. 'I_to_R_total') to select transitions.",
     )
 
 
@@ -67,33 +49,16 @@ class QuantilesOutput(BaseModel):
     selections: list[float] | None = Field(
         default_factory=get_flusight_quantiles,
         description="Desired quantiles expressed as floats.",
+        validate_default=True,
     )
-    default_format: DefaultQuantilesOutput | None = Field(
-        None, description="Specifications for quantile outputs in default format."
+    compartments: list[str] | bool = Field(
+        False,
+        description="Return quantiles for compartments. Set `True` to get all compartments, or provide a list of identifiers (e.g. 'I_total') to select compartments.",
     )
-    flusight_format: FlusightForecastOutput | None = Field(
-        None, description="Specifications for quantile outputs in FluSight Forecast Hub format."
+    transitions: list[str] | bool = Field(
+        False,
+        description="Return quantiles for transitions. Set `True` to get all transitions, or provide a list of identifiers (e.g. 'I_to_R_total') to select transitions.",
     )
-    covid19_format: Covid19ForecastOutput | None = Field(
-        None, description="Specifications for quantile outputs in Covid 19 Forecast Hub format."
-    )
-    flusmh_format: FluScenariosOutput | None = Field(
-        None, description="Specifications for quantile outputs in Flu Scenario Modeling Hub format."
-    )
-
-    @model_validator(mode="after")
-    def check_formats(self):
-        """Ensure output format selections are compatible."""
-        hub_formats = [self.flusight_format, self.covid19_format, self.flusmh_format]
-
-        # if self.simulation_default and self.calibration_default:
-        #    raise ValueError("Received specifications for both simulation and calibration quantile outputs.")
-        if len([1 for _ in hub_formats if bool(_)]) > 1:
-            raise ValueError("Received specifications for more than one hub format.")
-        # if self.simulation_default and (self.flusight_format or self.covid19_format):
-        #    raise ValueError("Simulation results are incompatible with forecast hub formats.")
-
-        return self
 
     @field_validator("selections")
     @classmethod
@@ -136,12 +101,35 @@ class OutputConfiguration(BaseModel):
     """Output configuration."""
 
     meta: Meta | None = Field(None, description="General metadata.")
-    quantiles: QuantilesOutput | None = Field(None, description="Specifications for quantile outputs.")
-    trajectories: TrajectoriesOutput | None = Field(None, description="Specifications for trajectory outputs.")
+    quantiles: QuantilesOutput | None = Field(None, description="Specifications for default format quantile outputs.")
+    trajectories: TrajectoriesOutput | None = Field(
+        None, description="Specifications for default format trajectory outputs."
+    )
     posteriors: PosteriorsOutput | None = Field(None, description="Specifications for posterior outputs.")
+
+    flusight_format: FlusightForecastOutput | None = Field(
+        None, description="Specifications for outputs in FluSight Forecast Hub format."
+    )
+    covid19_format: Covid19ForecastOutput | None = Field(
+        None, description="Specifications for outputs in Covid 19 Forecast Hub format."
+    )
+    flusmh_format: FluScenariosOutput | None = Field(
+        None, description="Specifications for outputs in Flu Scenario Modeling Hub format."
+    )
+
     model_meta: ModelMetaOutput = Field(
         default_factory=ModelMetaOutput, description="Specifications for parameter tracking / model metadata outputs."
     )
+
+    @model_validator(mode="after")
+    def check_formats(self):
+        """Ensure output format selections are compatible."""
+        hub_formats = [self.flusight_format, self.covid19_format, self.flusmh_format]
+
+        if len([1 for _ in hub_formats if bool(_)]) > 1:
+            raise ValueError("Received specifications for more than one hub format.")
+
+        return self
 
 
 class OutputConfig(BaseModel):

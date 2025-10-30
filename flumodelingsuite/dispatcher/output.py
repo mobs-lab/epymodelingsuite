@@ -39,9 +39,8 @@ def dataframe_to_gzipped_csv(df: pd.DataFrame, **csv_kwargs) -> bytes:
     return buffer.getvalue()
 
 
-def format_quantiles_flusightforecast(quantiles_df: pd.DataFrame, reference_date: date) -> pd.DataFrame: 
-    """Create FluSight forecast formatted quantile outputs. Rate-trends are handled separately."""
-
+def format_quantiles_flusightforecast(quantiles_df: pd.DataFrame, reference_date: date) -> pd.DataFrame:
+    """Create FluSight forecast formatted quantile outputs for a single model. Rate-trends are handled separately."""
     formatted = copy.deepcopy(quantiles_df)
 
     # Horizons required for quantile outputs
@@ -82,10 +81,11 @@ def format_quantiles_covid19forecast(quantiles_df: pd.DataFrame) -> pd.DataFrame
     return pd.DataFrame()
 
 
-def categorize_rate_change_flusightforecast(rate_change: float, horizon: int): -> str:
+def categorize_rate_change_flusightforecast(rate_change: float, horizon: int) -> str:
     """"""
 
     return "foo"
+
 
 def make_rate_trends_flusightforecast(formatted_quantiles: pd.DataFrame) -> pd.DataFrame:
     """Create FluSight rate-trend forecasts."""
@@ -151,61 +151,45 @@ def generate_simulation_outputs(*, simulations: list[SimulationOutput], output_c
 
     quantiles_compartments = pd.DataFrame()
     quantiles_transitions = pd.DataFrame()
-    quantiles_formatted = pd.DataFrame()
     trajectories_compartments = pd.DataFrame()
     trajectories_transitions = pd.DataFrame()
+    hub_format_output = pd.DataFrame()
     model_meta = pd.DataFrame()
 
-    # Quantiles
+    ### Quantiles
     if output.quantiles:
-        # Unsupported formats
-        if output.quantiles.flusight_format or output.quantiles.covid19_format:
-            warnings.add("OUTPUT_GENERATOR: Requested forecast hub quantile format for simulation data, ignoring.")
-
         for simulation in simulations:
-            # Default format
-            if output.quantiles.default_format:
-                # Compartments
-                if output.quantiles.default_format.compartments:
-                    quan_df = simulation.results.get_quantiles_compartments(quantiles=output.quantiles.selections)
-                    if hasattr(output.quantiles.default_format.compartments, "__len__"):
-                        try:
-                            quan_df = quan_df[["date", "quantile"] + output.quantiles.default_format.compartments]
-                        except Exception as e:
-                            warnings.add(
-                                f"OUTPUT GENERATOR: Exception occured selecting compartment quantiles, returning all compartments: {e}"
-                            )
-                    quan_df.insert(0, "primary_id", simulation.primary_id)
-                    quan_df.insert(1, "seed", simulation.seed)
-                    quan_df.insert(2, "population", simulation.population)
-                    quantiles_compartments = pd.concat([quantiles_compartments, quan_df])
+            # Compartments
+            if output.quantiles.compartments:
+                quan_df = simulation.results.get_quantiles_compartments(quantiles=output.quantiles.selections)
+                if hasattr(output.quantiles.default_format.compartments, "__len__"):
+                    try:
+                        quan_df = quan_df[["date", "quantile"] + output.quantiles.default_format.compartments]
+                    except Exception as e:
+                        warnings.add(
+                            f"OUTPUT GENERATOR: Exception occured selecting compartment quantiles, returning all compartments: {e}"
+                        )
+                quan_df.insert(0, "primary_id", simulation.primary_id)
+                quan_df.insert(1, "seed", simulation.seed)
+                quan_df.insert(2, "population", simulation.population)
+                quantiles_compartments = pd.concat([quantiles_compartments, quan_df])
 
-                # Transitions
-                if output.quantiles.default_format.transitions:
-                    quan_df = simulation.results.get_quantiles_transitions(quantiles=output.quantiles.selections)
-                    if hasattr(output.quantiles.default_format.transitions, "__len__"):
-                        try:
-                            quan_df = quan_df[["date", "quantile"] + output.quantiles.default_format.transitions]
-                        except Exception as e:
-                            warnings.add(
-                                f"OUTPUT GENERATOR: Exception occured selecting transition quantiles, returning all transitions: {e}"
-                            )
-                    quan_df.insert(0, "primary_id", simulation.primary_id)
-                    quan_df.insert(1, "seed", simulation.seed)
-                    quan_df.insert(2, "population", simulation.population)
-                    quantiles_transitions = pd.concat([quantiles_transitions, quan_df])
+            # Transitions
+            if output.quantiles.transitions:
+                quan_df = simulation.results.get_quantiles_transitions(quantiles=output.quantiles.selections)
+                if hasattr(output.quantiles.default_format.transitions, "__len__"):
+                    try:
+                        quan_df = quan_df[["date", "quantile"] + output.quantiles.default_format.transitions]
+                    except Exception as e:
+                        warnings.add(
+                            f"OUTPUT GENERATOR: Exception occured selecting transition quantiles, returning all transitions: {e}"
+                        )
+                quan_df.insert(0, "primary_id", simulation.primary_id)
+                quan_df.insert(1, "seed", simulation.seed)
+                quan_df.insert(2, "population", simulation.population)
+                quantiles_transitions = pd.concat([quantiles_transitions, quan_df])
 
-            # Hub format
-            if output.quantiles.flusmh_format:
-                quan_df = pd.DataFrame()
-                quanf_df = format_quantiles_flusmh(quan_df)
-                quantiles_formatted = pd.concat([quantiles_formatted, quanf_df])
-
-            # Unsupported formats
-            if output.quantiles.flusight_format or output.quantiles.covid19_format:
-                warnings.add("OUTPUT_GENERATOR: Requested forecast hub format for simulation data, ignoring.")
-
-    # Trajectories
+    ### Trajectories
     if output.trajectories:
         for simulation in simulations:
             for i, traj in enumerate(simulation.results.trajectories):
@@ -241,7 +225,17 @@ def generate_simulation_outputs(*, simulations: list[SimulationOutput], output_c
                     traj_df.insert(3, "population", simulation.population)
                     trajectories_transitions = pd.concat([trajectories_transitions, traj_df])
 
-    # Model Metadata
+    ### Hub Formats
+
+    # Unsupported formats
+    if output.flusight_format or output.covid19_format:
+        warnings.add("OUTPUT_GENERATOR: Requested forecast hub quantile format for simulation data, ignoring.")
+
+    # Flu SMH
+    if output.flusmh_format:
+        pass
+
+    ### Model Metadata
     if output.model_meta:
         if output.model_meta.projection_parameters:
             warnings.add("OUTPUT_GENERATOR: Requested projection parameter metadata in simulation workflow, ignoring.")
@@ -283,7 +277,7 @@ def generate_simulation_outputs(*, simulations: list[SimulationOutput], output_c
 
         model_meta = pd.DataFrame(meta_dict)
 
-    # Cleanup and return
+    ### Cleanup and return
     for warning in warnings:
         logger.warning(warning)
 
@@ -296,11 +290,6 @@ def generate_simulation_outputs(*, simulations: list[SimulationOutput], output_c
         out_dict["quantiles_transitions.csv.gz"] = dataframe_to_gzipped_csv(
             quantiles_transitions, header=True, index=False
         )
-    if not quantiles_formatted.empty:
-        # will want to build filename to be something better, like to fit hub standards
-        out_dict["quantiles_hub_formatted.csv.gz"] = dataframe_to_gzipped_csv(
-            quantiles_formatted, header=True, index=False
-        )
     if not trajectories_compartments.empty:
         out_dict["trajectories_compartments.csv.gz"] = dataframe_to_gzipped_csv(
             trajectories_compartments, header=True, index=False
@@ -309,6 +298,9 @@ def generate_simulation_outputs(*, simulations: list[SimulationOutput], output_c
         out_dict["trajectories_transitions.csv.gz"] = dataframe_to_gzipped_csv(
             trajectories_transitions, header=True, index=False
         )
+    if not hub_format_output.empty:
+        # will want to build filename to be something better, like to fit hub standards
+        out_dict["output_hub_formatted.csv.gz"] = dataframe_to_gzipped_csv(hub_format_output, header=True, index=False)
     if not model_meta.empty:
         out_dict["model_metadata.csv.gz"] = dataframe_to_gzipped_csv(model_meta, header=True, index=False)
 
@@ -331,116 +323,77 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
     -------
         A dictionary where keys are intended filenames for writing data, and values are gzip-compressed CSV strings.
     """
-
     logger.info("OUTPUT GENERATOR: dispatched for calibration")
     output = output_config.output
     warnings = set()
 
     quantiles_compartments = pd.DataFrame()
     quantiles_transitions = pd.DataFrame()
-    quantiles_formatted = pd.DataFrame()
     trajectories_compartments = pd.DataFrame()
     trajectories_transitions = pd.DataFrame()
     posteriors = pd.DataFrame()
+    hub_format_output = pd.DataFrame()
     model_meta = pd.DataFrame()
 
-    # Quantiles
+    ### Quantiles
     if output.quantiles:
         for calibration in calibrations:
-            # Default format
-            if output.quantiles.default_format:
-                # Compartments
-                if output.quantiles.default_format.compartments:
+            # Obtain quantiles
+            try:
+                quan_df = calibration.results.get_projection_quantiles(quantiles=output.quantiles.selections)
+            except ValueError:
+                warnings.add(
+                    f"OUTPUT GENERATOR: failed to obtain projection quantiles for model with primary_id={calibration.primary_id}, continuing to next model."
+                )
+                continue
+
+            transition_columns = [c for c in quan_df.columns if "_to_" in c]
+
+            # Compartments
+            if output.quantiles.compartments:
+                if hasattr(output.quantiles.compartments, "__len__"):
+                    # Filter for explicitly requested compartments
                     try:
-                        quan_df = calibration.results.get_projection_quantiles(quantiles=output.quantiles.selections)
-                    except ValueError:
+                        quanc_df = copy.deepcopy(quan_df[["date", "quantile"] + output.quantiles.compartments])
+                    except Exception as e:
                         warnings.add(
-                            f"OUTPUT GENERATOR: failed to obtail projection quantiles for model with primary_id={calibration.primary_id}, continuing to next model."
+                            f"OUTPUT GENERATOR: Exception occured selecting compartment quantiles, returning all compartments: {e}"
                         )
-                        continue
-                    if hasattr(output.quantiles.default_format.compartments, "__len__"):
-                        # Filter for explicitly requested compartments
-                        try:
-                            quan_df = quan_df[["date", "quantile"] + output.quantiles.default_format.compartments]
-                        except Exception as e:
-                            warnings.add(
-                                f"OUTPUT GENERATOR: Exception occured selecting compartment quantiles, returning all compartments: {e}"
-                            )
-                            # Use all compartments, filter out transitions
-                            transition_columns = [
-                                c for c in calibration.results.get_projection_quantiles().columns if "_to_" in c
-                            ]
-                            quan_df.drop(columns=transition_columns, inplace=True)
-                    else:
                         # Use all compartments, filter out transitions
-                        transition_columns = [
-                            c for c in calibration.results.get_projection_quantiles().columns if "_to_" in c
-                        ]
-                        quan_df.drop(columns=transition_columns, inplace=True)
-                    quan_df.insert(0, "primary_id", calibration.primary_id)
-                    quan_df.insert(1, "seed", calibration.seed)
-                    quan_df.insert(2, "population", calibration.population)
-                    quantiles_compartments = pd.concat([quantiles_compartments, quan_df])
+                        quanc_df.drop(columns=transition_columns, inplace=True)
+                else:
+                    # Use all compartments, filter out transitions
+                    quanc_df.drop(columns=transition_columns, inplace=True)
+                quanc_df.insert(0, "primary_id", calibration.primary_id)
+                quanc_df.insert(1, "seed", calibration.seed)
+                quanc_df.insert(2, "population", calibration.population)
+                quantiles_compartments = pd.concat([quantiles_compartments, quanc_df])
 
-                # Transitions
-                if output.quantiles.default_format.transitions:
+            # Transitions
+            if output.quantiles.transitions:
+                if hasattr(output.quantiles.transitions, "__len__"):
+                    # Filter for explicitly requested transitions
                     try:
-                        quan_df = calibration.results.get_projection_quantiles(quantiles=output.quantiles.selections)
-                    except ValueError:
-                        warnings.add(
-                            f"OUTPUT GENERATOR: failed to obtain projection quantiles for model with primary_id={calibration.primary_id}, continuing to next model."
+                        quant_df = copy.deepcopy(
+                            quan_df[["date", "quantile"] + output.quantiles.default_format.transitions]
                         )
-                        continue
-                    if hasattr(output.quantiles.default_format.transitions, "__len__"):
-                        # Filter for explicitly requested transitions
-                        try:
-                            quan_df = quan_df[["date", "quantile"] + output.quantiles.default_format.transitions]
-                        except Exception as e:
-                            warnings.add(
-                                f"OUTPUT GENERATOR: Exception occured selecting compartment quantiles, returning all transitions: {e}"
-                            )
-                            # Use all transitions, filter out compartments
-                            transition_columns = [
-                                c for c in calibration.results.get_projection_quantiles().columns if "_to_" in c
-                            ]
-                            # TODO: add target prediction data column name below
-                            quan_df = quan_df[["date", "quantile"] + transition_columns]
-                    else:
+                    except Exception as e:
+                        warnings.add(
+                            f"OUTPUT GENERATOR: Exception occured selecting compartment quantiles, returning all transitions: {e}"
+                        )
                         # Use all transitions, filter out compartments
-                        transition_columns = [
-                            c for c in calibration.results.get_projection_quantiles().columns if "_to_" in c
-                        ]
                         # TODO: add target prediction data column name below
-                        quan_df = quan_df[["date", "quantile"] + transition_columns]
-                    quan_df.insert(0, "primary_id", calibration.primary_id)
-                    quan_df.insert(1, "seed", calibration.seed)
-                    quan_df.insert(2, "population", calibration.population)
-                    quantiles_transitions = pd.concat([quantiles_transitions, quan_df])
+                        quant_df = quant_df[["date", "quantile"] + transition_columns]
+                else:
+                    # Use all transitions, filter out compartments
+                    # TODO: add target prediction data column name below
+                    quant_df = quant_df[["date", "quantile"] + transition_columns]
+                quant_df.insert(0, "primary_id", calibration.primary_id)
+                quant_df.insert(1, "seed", calibration.seed)
+                quant_df.insert(2, "population", calibration.population)
+                quantiles_transitions = pd.concat([quantiles_transitions, quant_df])
 
-            if output.quantiles.flusight_format:
-                try:
-                    quanf_df = calibration.results.get_projection_quantiles(
-                        quantiles=get_flusight_quantiles(), variables=["date", "quantile", "hospitalizations"]
-                    )
-                except ValueError:
-                    warnings.add(
-                        f"OUTPUT GENERATOR: failed to obtain projection quantiles for model with primary_id={calibration.primary_id}, continuing to next model."
-                    )
-                    continue
-                quanf_df = format_quantiles_flusightforecast(quanf_df, outputs.quantiles.flusight_format.reference_date)
-                quanf_df.insert(0, "reference_date", outputs.quantiles.flusight_format.reference_date)
-                quanf_df.insert(0, "location", convert_location_name_format(calibration.population, "FIPS"))
-                quantiles_formatted = pd.concat([quantiles_formatted, quanf_df])
-
-                if output.quantiles.rate_trends:
-                    trends_df = make_rate_trends_flusightforecast(quanf_df)
-                    quantiles_formatted = pd.concat([quantiles_formatted, trends_df])
-
-            elif output.quantiles.covid19_format:
-                quanf_df = format_quantiles_covid19forecast(quan_df)
-                quantiles_formatted = pd.concat([quantiles_formatted, quanf_df])
-
-    # Trajectories
+    ### Trajectories
     if output.trajectories:
         for calibration in calibrations:
             # Collect all trajectories
@@ -461,9 +414,11 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
                 traj_df.insert(0, "sim_id", i)
                 trajectories = pd.concat([trajectories, traj_df])
 
+            transition_columns = [c for c in trajectories.columns if "_to_" in c]
+
             # Compartments
             if output.trajectories.compartments:
-                traj_c = trajectories.copy()
+                traj_c = copy.deepcopy(trajectories)
                 if hasattr(output.trajectories.compartments, "__len__"):
                     # Filter for explicitly requested compartments
                     try:
@@ -473,11 +428,9 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
                             "OUTPUT GENERATOR: failed to filter trajectories for selected compartments, returning all compartments."
                         )
                         # Use all compartments, filter out transitions
-                        transition_columns = [c for c in traj_c.columns if "_to_" in c]
                         traj_c.drop(columns=transition_columns, inplace=True)
                 else:
                     # Use all compartments, filter out transitions
-                    transition_columns = [c for c in traj_c.columns if "_to_" in c]
                     traj_c.drop(columns=transition_columns, inplace=True)
                 traj_c.insert(0, "primary_id", calibration.primary_id)
                 traj_c.insert(2, "seed", calibration.seed)
@@ -486,7 +439,7 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
 
             # Transitions
             if output.trajectories.transitions:
-                traj_t = trajectories.copy()
+                traj_t = copy.deepcopy(trajectories)
                 if hasattr(output.trajectories.transitions, "__len__"):
                     # filter for explicitly requested transitions
                     try:
@@ -496,18 +449,16 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
                             "OUTPUT GENERATOR: failed to filter trajectories for selected transitions, returning all transitions."
                         )
                         # Use all transitions, filter out compartments
-                        transition_columns = [c for c in traj_t.columns if "_to_" in c]
                         traj_t = traj_t[["sim_id", "date"] + transition_columns]
                 else:
                     # Use all transitions, filter out compartments
-                    transition_columns = [c for c in traj_t.columns if "_to_" in c]
                     traj_t = traj_t[["sim_id", "date"] + transition_columns]
                 traj_t.insert(0, "primary_id", calibration.primary_id)
                 traj_t.insert(2, "seed", calibration.seed)
                 traj_t.insert(3, "population", calibration.population)
                 trajectories_transitions = pd.concat([trajectories_transitions, traj_t])
 
-    # Posteriors
+    ### Posteriors
     if output.posteriors:
         for calibration in calibrations:
             if output.posteriors.generations:
@@ -518,24 +469,55 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
                         post.insert(0, "generation", g)
                         post_df = pd.concat([post_df, post])
                     except Exception:
-                        warnings.add(f"OUTPUT GENERATOR: failed to obtain posterior for generation {g}, continuing.")
+                        warnings.add(
+                            f"OUTPUT GENERATOR: failed to obtain posterior for generation {g} from model with primary_id={calibration.primary_id}, continuing."
+                        )
                 post_df.insert(0, "primary_id", calibration.primary_id)
                 post_df.insert(2, "seed", calibration.seed)
                 post_df.insert(3, "population", calibration.population)
-                posteriors = post_df
+                posteriors = pd.concat([posteriors, post_df])
             else:
                 post_df = calibration.results.get_posterior_distribution()
                 post_df.insert(0, "primary_id", calibration.primary_id)
                 post_df.insert(1, "seed", calibration.seed)
                 post_df.insert(2, "population", calibration.population)
-                posteriors = post_df
+                posteriors = pd.concat([posteriors, post_df])
 
-    # Model Metadata
+    ### Hub Formats
+
+    # FluSight Forecast Hub
+    if output.flusight_format:
+        # Quantile forecasts
+        for calibration in calibrations:
+            try:
+                quanf_df = calibration.results.get_projection_quantiles(
+                    quantiles=get_flusight_quantiles(), variables=["date", "quantile", "hospitalizations"]
+                )
+            except ValueError:
+                warnings.add(
+                    f"OUTPUT GENERATOR: failed to obtain projection quantiles for model with primary_id={calibration.primary_id}, continuing to next model."
+                )
+                continue
+            quanf_df = format_quantiles_flusightforecast(quanf_df, outputs.quantiles.flusight_format.reference_date)
+            quanf_df.insert(0, "reference_date", outputs.quantiles.flusight_format.reference_date)
+            quanf_df.insert(0, "location", convert_location_name_format(calibration.population, "FIPS"))
+            hub_format_output = pd.concat([hub_format_output, quanf_df])
+
+        # Rate-trend forecasts
+        if output.flusight_format.rate_trends:
+            trends_df = make_rate_trends_flusightforecast(hub_format_output)
+            hub_format_output = pd.concat([hub_format_output, trends_df])
+
+    # Covid19 Forecast Hub
+    elif output.quantiles.covid19_format:
+        pass
+
+    ### Model Metadata
     if output.model_meta:
         # TODO
         pass
 
-    # Cleanup and return
+    ### Cleanup and return
     for warning in warnings:
         logger.warning(warning)
 
@@ -548,11 +530,6 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
         out_dict["quantiles_transitions.csv.gz"] = dataframe_to_gzipped_csv(
             quantiles_transitions, header=True, index=False
         )
-    if not quantiles_formatted.empty:
-        # will want to build filename to be something better, like to fit hub standards
-        out_dict["quantiles_hub_formatted.csv.gz"] = dataframe_to_gzipped_csv(
-            quantiles_formatted, header=True, index=False
-        )
     if not trajectories_compartments.empty:
         out_dict["trajectories_compartments.csv.gz"] = dataframe_to_gzipped_csv(
             trajectories_compartments, header=True, index=False
@@ -563,6 +540,9 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
         )
     if not posteriors.empty:
         out_dict["posteriors.csv.gz"] = dataframe_to_gzipped_csv(posteriors, header=True, index=False)
+    if not hub_format_output.empty:
+        # will want to build filename to be something better, like to fit hub standards
+        out_dict["output_hub_formatted.csv.gz"] = dataframe_to_gzipped_csv(hub_format_output, header=True, index=False)
     if not model_meta.empty:
         out_dict["model_metadata.csv.gz"] = dataframe_to_gzipped_csv(model_meta, header=True, index=False)
 
