@@ -327,6 +327,8 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
     # Quantiles
     if output.quantiles:
         for calibration in calibrations:
+            # Filter out failed projections
+            calibration.results = filter_failed_projections(calibration.results)
             # Default format
             if output.quantiles.default_format:
                 # Compartments
@@ -420,6 +422,8 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
     # Trajectories
     if output.trajectories:
         for calibration in calibrations:
+            # Filter out failed projections
+            calibration.results = filter_failed_projections(calibration.results)
             # Collect all trajectories
             try:
                 traj = calibration.results.get_projection_trajectories()
