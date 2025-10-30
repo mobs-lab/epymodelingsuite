@@ -8,6 +8,7 @@ from typing import Any, TypedDict
 
 import numpy as np
 import pandas as pd
+import random
 from epydemix import simulate
 from epydemix.model import EpiModel
 
@@ -432,6 +433,7 @@ def format_calibration_data(
     results: Any,
     comparison_transitions: list[str],
     data_dates: list,
+    random_state: Any,
 ) -> dict[str, Any]:
     """
     Format simulation results for calibration mode (aggregate + filter + pad).
@@ -476,7 +478,7 @@ def format_calibration_data(
     pad_len = calculate_padding_for_date_alignment(results.dates, data_dates)
     aligned_data = pad_array_with_zeros(filtered_data, pad_len)
 
-    return {"data": aligned_data, "date": data_dates}
+    return {"data": aligned_data, "date": data_dates, "random_state": random_state}
 
 
 def apply_seasonality_with_sampled_min(
@@ -790,6 +792,9 @@ def make_simulate_wrapper(
             data_dates = list(pd.to_datetime(observed_data[date_column].values))
 
         # 10. Run simulation
+        random_state = np.random.get_state()
+        if "random_state" in params.keys():
+            np.random.set_state(params["random_state"])
         try:
             results = simulate(**sim_params)
         except (ValueError, RuntimeError, KeyError) as e:
@@ -821,6 +826,7 @@ def make_simulate_wrapper(
             results=results,
             comparison_transitions=calibration.comparison[0].simulation,
             data_dates=data_dates,
+            random_state=random_state,
         )
 
     return simulate_wrapper
