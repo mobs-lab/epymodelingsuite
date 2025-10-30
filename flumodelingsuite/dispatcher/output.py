@@ -4,6 +4,7 @@ import io
 import logging
 
 import pandas as pd
+from epydemix.calibration import CalibrationResults
 
 from ..schema.dispatcher import CalibrationOutput, SimulationOutput
 from ..schema.output import OutputConfig, get_flusight_quantiles
@@ -12,6 +13,47 @@ logger = logging.getLogger(__name__)
 
 
 # ===== Output Generator Helper Functions =====
+
+
+def filter_failed_projections(calibration_results: CalibrationResults) -> CalibrationResults:
+    """
+    Filter out failed projections (empty dicts) from projection results.
+
+    When projections fail, the simulation wrapper returns {}. This function
+    removes empty dicts before quantile/trajectory calculations to prevent KeyError when
+    epydemix tries to access keys like "date" in get_projection_quantiles() or
+    get_projection_trajectories().
+
+    Modifies the calibration_results object in-place by filtering the projections lists.
+
+    Parameters
+    ----------
+    calibration_results : CalibrationResults
+        Calibration results with projections attribute (dict mapping scenario_id to list of
+        projection dicts). Failed projections are empty dicts {}.
+
+    Returns
+    -------
+    CalibrationResults
+        The same object (modified in-place) with empty dicts filtered out. Logs warnings
+        when filtering occurs.
+    """
+    if hasattr(calibration_results, "projections") and calibration_results.projections:
+        # There can be multiple scenarios. The default is "baseline".
+        for scenario_id in calibration_results.projections:
+            projections = calibration_results.projections[scenario_id]
+            if projections:
+                valid_projections = [proj for proj in projections if proj]
+                calibration_results.projections[scenario_id] = valid_projections
+                if len(valid_projections) < len(projections):
+                    logger.warning(
+                        "Filtered out %d failed projection(s) for scenario '%s' (kept %d/%d)",
+                        len(projections) - len(valid_projections),
+                        scenario_id,
+                        len(valid_projections),
+                        len(projections),
+                    )
+    return calibration_results
 
 
 def dataframe_to_gzipped_csv(df: pd.DataFrame, **csv_kwargs) -> bytes:
