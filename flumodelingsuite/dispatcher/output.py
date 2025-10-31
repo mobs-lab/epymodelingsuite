@@ -3,7 +3,7 @@
 import copy
 import io
 import logging
-from datetime import date
+from datetime import date, timedelta
 
 import numpy as np
 import pandas as pd
@@ -35,7 +35,7 @@ def dataframe_to_gzipped_csv(df: pd.DataFrame, **csv_kwargs) -> bytes:
         Gzip-compressed CSV data as bytes
     """
     buffer = io.BytesIO()
-    df.to_csv(buffer, compression="gzip", **csv_kwargs)
+    df.to_csv(buffer, date_format="%Y-%m-%d", compression="gzip", **csv_kwargs)
     return buffer.getvalue()
 
 
@@ -70,22 +70,6 @@ def format_quantiles_flusightforecast(quantiles_df: pd.DataFrame, reference_date
     formatted.insert(2, "target", "wk inc flu hosp")
 
     return formatted
-
-
-def format_quantiles_flusmh(quantiles_df: pd.DataFrame) -> pd.DataFrame:
-    """"""
-
-    formatted = copy.deepcopy(quantiles_df)
-    # TODO
-    return pd.DataFrame()
-
-
-def format_quantiles_covid19forecast(quantiles_df: pd.DataFrame) -> pd.DataFrame:
-    """"""
-
-    formatted = copy.deepcopy(quantiles_df)
-    # TODO
-    return pd.DataFrame()
 
 
 def compare_thresholds_flusightforecast(
@@ -157,31 +141,88 @@ def categorize_rate_change_flusightforecast(rate_change: float, count_change: fl
     raise AssertionError(msg)
 
 
-def make_rate_trends_flusightforecast(formatted_quantiles: pd.DataFrame) -> pd.DataFrame:
+def make_rate_trends_flusightforecast(
+    reference_date: date,
+    proj_dates: np.ndarray,
+    proj_values: np.ndarray,
+    observed: pd.DataFrame,
+    population: float,
+) -> pd.DataFrame:
     """Create FluSight rate-trend forecasts."""
-    # Horizons required for rate-trend outputs
+    from collections import Counter
+
+    # Horizons required for rate-trend outputs, denominator for rates (i.e. /100k pop)
     flusight_horizons = range(4)
+    denom = 100000
 
-    # Population needed for converting to /100k rates
-    loc_pop = get_flusight_population("25")
+    # Helper function
+    def get_proj_value(dates: np.ndarray, values: np.ndarray, target_date: date) -> np.float64:
+        """Retrieve projected value at date."""
+        assert len(dates) == len(values), "Projection dates must match projection values."
 
-    # Set up DataFrame
-    rate_trends = quantiles.copy()
-    rate_trends.output_type = "pmf"
-    rate_trends.target = "wk flu hosp rate change"
-    rate_trends = rate_trends[rate_trends.horizon.isin(flusight_horizons)]
+        (loc,) = np.where(dates == target_date)
 
-    # Get forecasted rates
-    rate_trends.forecasted_rate = rate_trends.value * 100000 / loc_pop
+        assert len(loc) == 1, "Received projections with duplicate dates."
 
-    # TODO: get the previous week's observed rate
-    last_observed_rate = None
+        return values[loc[0]]
 
-    # Calculate the rate change
-    rate_trends.rate_change = np.abs(rate_trends.forecasted_rate - last_observed_rate)
+    # Date of observation for comparison (equivalent to horizon -1)
+    obs_date = reference_date - timedelta(weeks=1)
 
-    # TODO: obtain probabilities for rate-change categories
+    # Observed value and rate
+    obs_val = observed[observed.date == obs_date].value.iloc[0]
+    obs_rate = denom * obs_val / population
 
+    # Build list of rows
+    rows = []
+    for horizon in flusight_horizons:
+        # Target date for forecast
+        target_date = reference_date + timedelta(weeks=horizon)
+
+        # Projected values and rates (one for each projection trajectory)
+        proj_vals = [
+            get_proj_value(dates, values, target_date) for dates, values in zip(proj_dates, proj_values, strict=True)
+        ]
+        proj_rates = denom * proj_vals / population
+
+        # Calculate rate-changes and count-changes
+        rate_changes = proj_rates - obs_rate
+        count_changes = proj_vals - obs_val
+
+        # Counter containing the categorization for each projection trajectory
+        trajectory_categories = Counter(
+            [
+                categorize_rate_change_flusightforecast(rate_change, count_change, horizon)
+                for rate_change, count_change in zip(rate_changes, count_changes, strict=True)
+            ]
+        )
+
+        # Dict containing the probability of each category
+        num_traj = trajectory_categories.total()
+        cat_probs = {category: count / num_traj for category, count in trajectory_categories.items()}
+
+        # Add rows to the list
+        for category, value in cat_probs.items():
+            rows.append(
+                {"horizon": horizon, "target_end_date": target_date, "output_type_id": category, "value": value}
+            )
+
+    return pd.DataFrame.from_records(rows)
+
+
+def format_quantiles_flusmh(quantiles_df: pd.DataFrame) -> pd.DataFrame:
+    """"""
+
+    formatted = copy.deepcopy(quantiles_df)
+    # TODO
+    return pd.DataFrame()
+
+
+def format_quantiles_covid19forecast(quantiles_df: pd.DataFrame) -> pd.DataFrame:
+    """"""
+
+    formatted = copy.deepcopy(quantiles_df)
+    # TODO
     return pd.DataFrame()
 
 
@@ -569,15 +610,52 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
                     f"OUTPUT GENERATOR: failed to obtain projection quantiles for model with primary_id={calibration.primary_id}, continuing to next model."
                 )
                 continue
-            quanf_df = format_quantiles_flusightforecast(quanf_df, outputs.quantiles.flusight_format.reference_date)
-            quanf_df.insert(0, "reference_date", outputs.quantiles.flusight_format.reference_date)
+            quanf_df = format_quantiles_flusightforecast(quanf_df, output.flusight_format.reference_date)
+            quanf_df.insert(0, "reference_date", output.flusight_format.reference_date)
             quanf_df.insert(0, "location", convert_location_name_format(calibration.population, "FIPS"))
             hub_format_output = pd.concat([hub_format_output, quanf_df])
 
         # Rate-trend forecasts
         if output.flusight_format.rate_trends:
-            trends_df = make_rate_trends_flusightforecast(hub_format_output)
-            hub_format_output = pd.concat([hub_format_output, trends_df])
+            # Read surveillance data
+            surveillance = pd.read_csv(output.flusight_format.rate_trends.observed_data_path)
+
+            for calibration in calibrations:
+                # Get trajectories
+                try:
+                    traj = calibration.results.get_projection_trajectories()
+                except Exception:
+                    warnings.add(
+                        f"OUTPUT GENERATOR: failed to obtain projection trajectories for model with primary_id={calibration.primary_id}, continuing to next model."
+                    )
+                    continue
+
+                # Filter surveillance for location
+                surv = surveillance[
+                    surveillance[output.flusight_format.rate_trends.observed_location_column]
+                    == convert_location_name_format(calibration.population, "ISO")
+                ]
+                surv = surv.drop(columns=output.flusight_format.rate_trends.observed_location_column).rename(
+                    columns={
+                        output.flusight_format.rate_trends.observed_date_column: "date",
+                        output.flusight_format.rate_trends.observed_value_column: "value",
+                    }
+                )
+
+                # Calculate rate-trend forecasts and add to output
+                # FRAGILE: use of name 'hospitalizations'
+                trends_df = make_rate_trends_flusightforecast(
+                    reference_date=output.flusight_format.reference_date,
+                    proj_dates=traj["date"],
+                    proj_values=traj["hospitalizations"],
+                    observed=surv,
+                    population=get_flusight_population(calibration.population),
+                )
+                trends_df.insert(0, "target", "wk flu hosp rate change")
+                trends_df.insert(0, "output_type", "pmf")
+                trends_df.insert(0, "reference_date", output.flusight_format.reference_date)
+                trends_df.insert(0, "location", convert_location_name_format(calibration.population, "FIPS"))
+                hub_format_output = pd.concat([hub_format_output, trends_df])
 
     # Covid19 Forecast Hub
     elif output.quantiles.covid19_format:

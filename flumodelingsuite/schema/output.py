@@ -31,14 +31,23 @@ class Covid19ForecastOutput(BaseModel):
     """Specifications for quantile outputs in Covid 19 Forecast Hub format."""
 
 
+class FlusightRateTrends(BaseModel):
+    """Specifications for FluSight rate-trends."""
+
+    observed_data_path: str = Field(description="Path to observed data CSV file")
+    observed_value_column: str = Field(description="Name of column containing observed values in observed data CSV")
+    observed_date_column: str = Field(description="Name of column containing target dates in observed data CSV")
+    observed_location_column: str = Field(description="Name of column containing location in observed data CSV")
+
+
 class FlusightForecastOutput(BaseModel):
-    """Specifications for quantile outputs in flusight forecast hub format."""
+    """Specifications for outputs in flusight forecast hub format."""
 
     reference_date: date = Field(
         description="'YYYY-MM-DD' date to treat as reference date when creating horizons and target dates for submission file."
     )
-    rate_trends: bool = Field(
-        False,
+    rate_trends: FlusightRateTrends | None = Field(
+        None,
         description="Add rate-trend forecasts to submission file.",
     )
 
