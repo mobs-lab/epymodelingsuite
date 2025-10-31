@@ -7,14 +7,25 @@ output:
 
   # Default format outputs quantiles of compartments and transitions
   quantiles:
-    default_format:
-      compartments: true  # Output all compartments
-      transitions: true   # Output all transitions
+    compartments: true  # Output all compartments
+    transitions: false   # Output all transitions
 
   # Optional: specify which trajectories to output
   trajectories:
     compartments: false
-    transitions: false
+    transitions: true
+
+  # Set true for default behavior or use subfield 'generations'
+  posteriors: true
+
+  # Hub format
+  flusight_format:
+    reference_date: "2025-04-05"
+    rate_trends:
+        observed_data_path: data/flu_hosp_24.csv
+        observed_value_column: hospitalizations
+        observed_date_column: target_end_date
+        observed_location_column: geo_value
 
   # Model metadata
   model_meta:
