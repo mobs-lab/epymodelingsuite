@@ -501,10 +501,10 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
                 continue
 
             transition_columns = [c for c in quan_df.columns if "_to_" in c]
-            
+
             # Filter out failed projections
             calibration.results = filter_failed_projections(calibration.results)
-            
+
             # Compartments
             if output.quantiles.compartments:
                 if hasattr(output.quantiles.compartments, "__len__"):
