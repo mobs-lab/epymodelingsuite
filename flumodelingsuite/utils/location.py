@@ -72,8 +72,15 @@ def convert_location_name_format(value: str, output_format: str) -> str:
         "FIPS": "location_code",
     }
 
-    # Return location name in requested format
-    return location[format_dict[output_format]].values[0]
+    # Location name in requested format
+    result = location[format_dict[output_format]].values[0]
+
+    # Zero-pad FIPS codes to 2 characters.
+    # FluSight location codes use zero-padded FIPS codes.
+    if output_format == "FIPS" and len(str(result)) == 1:
+        result = str(result).zfill(2)
+
+    return result
 
 
 def validate_iso3166(value: str) -> str:
