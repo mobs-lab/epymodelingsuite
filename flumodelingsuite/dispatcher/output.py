@@ -152,14 +152,23 @@ def compare_thresholds_flusightforecast(
 def categorize_rate_change_flusightforecast(rate_change: float, count_change: float, horizon: int) -> str:
     """
     Categorize the simulated rate-change using the appropriate thresholds for the horizon.
+
     Thresholds for different horizons are defined in FluSight documentation.
     https://github.com/cdcepi/FluSight-forecast-hub/tree/main/model-output#rate-trend-forecast-specifications
 
     Parameters
     ----------
-    rate_change: The difference between the last observed rate (/100k population) and the simulated rate (diff = simulated - observed).
-    count_change: The difference between the last observed count and the simulated count (diff = simulated - observed).
-    horizon: The horizon on which the simulated changes are calculated.
+    rate_change: float
+        The difference between the last observed rate (/100k population) and the simulated rate (diff = simulated - observed).
+    count_change: float
+        The difference between the last observed count and the simulated count (diff = simulated - observed).
+    horizon: int
+        The horizon on which the simulated changes are calculated.
+
+    Returns
+    -------
+    str
+        A string representing the category of the rate-change. ("stable", "increase", "large_increase", "decrease", "large_decrease")
     """
     assert -1 <= rate_change <= 1, "Received invalid rate-change."
 
