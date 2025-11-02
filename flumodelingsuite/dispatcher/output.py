@@ -119,6 +119,7 @@ def compare_thresholds_flusightforecast(
 ) -> str:
     """
     Compare the simulated rate-change and count-change against the provided thresholds.
+
     Comparisons against thresholds are defined in FluSight documentation.
     https://github.com/cdcepi/FluSight-forecast-hub/tree/main/model-output#rate-trend-forecast-specifications
 
@@ -143,6 +144,9 @@ def compare_thresholds_flusightforecast(
         return "decrease"
     if rate_change <= -change_thres:
         return "large_decrease"
+
+    msg = f"Unexpected rate_change value: {rate_change} (thresholds: stable={stable_thres}, change={change_thres})"
+    raise ValueError(msg)
 
 
 def categorize_rate_change_flusightforecast(rate_change: float, count_change: float, horizon: int) -> str:
