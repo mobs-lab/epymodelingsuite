@@ -808,9 +808,9 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
                 trends_df.insert(0, "location", convert_location_name_format(calibration.population, "FIPS"))
                 hub_format_output_list.append(trends_df)
 
-    hub_format_output = (
-        pd.concat(hub_format_output_list, ignore_index=True) if hub_format_output_list else pd.DataFrame()
-    )
+        hub_format_output = (
+            pd.concat(hub_format_output_list, ignore_index=True) if hub_format_output_list else pd.DataFrame()
+        )
 
     # Covid19 Forecast Hub
     elif output.quantiles.covid19_format:
