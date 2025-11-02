@@ -515,14 +515,16 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
                     # Filter for explicitly requested compartments
                     try:
                         quanc_df = copy.deepcopy(quan_df[["date", "quantile"] + output.quantiles.compartments])
-                    except Exception as e:
+                    except KeyError as e:
                         warnings.add(
                             f"OUTPUT GENERATOR: Exception occured selecting compartment quantiles, returning all compartments: {e}"
                         )
                         # Use all compartments, filter out transitions
+                        quanc_df = copy.deepcopy(quan_df)
                         quanc_df.drop(columns=transition_columns, inplace=True)
                 else:
                     # Use all compartments, filter out transitions
+                    quanc_df = copy.deepcopy(quan_df)
                     quanc_df.drop(columns=transition_columns, inplace=True)
                 quanc_df.insert(0, "primary_id", calibration.primary_id)
                 quanc_df.insert(1, "seed", calibration.seed)
