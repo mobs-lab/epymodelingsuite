@@ -319,9 +319,9 @@ def generate_simulation_outputs(*, simulations: list[SimulationOutput], output_c
             # Compartments
             if output.quantiles.compartments:
                 quan_df = simulation.results.get_quantiles_compartments(quantiles=output.quantiles.selections)
-                if hasattr(output.quantiles.default_format.compartments, "__len__"):
+                if hasattr(output.quantiles.compartments, "__len__"):
                     try:
-                        quan_df = quan_df[["date", "quantile"] + output.quantiles.default_format.compartments]
+                        quan_df = quan_df[["date", "quantile"] + output.quantiles.compartments]
                     except Exception as e:
                         warnings.add(
                             f"OUTPUT GENERATOR: Exception occured selecting compartment quantiles, returning all compartments: {e}"
@@ -334,9 +334,9 @@ def generate_simulation_outputs(*, simulations: list[SimulationOutput], output_c
             # Transitions
             if output.quantiles.transitions:
                 quan_df = simulation.results.get_quantiles_transitions(quantiles=output.quantiles.selections)
-                if hasattr(output.quantiles.default_format.transitions, "__len__"):
+                if hasattr(output.quantiles.transitions, "__len__"):
                     try:
-                        quan_df = quan_df[["date", "quantile"] + output.quantiles.default_format.transitions]
+                        quan_df = quan_df[["date", "quantile"] + output.quantiles.transitions]
                     except Exception as e:
                         warnings.add(
                             f"OUTPUT GENERATOR: Exception occured selecting transition quantiles, returning all transitions: {e}"
@@ -534,9 +534,7 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
                 if hasattr(output.quantiles.transitions, "__len__"):
                     # Filter for explicitly requested transitions
                     try:
-                        quant_df = copy.deepcopy(
-                            quan_df[["date", "quantile"] + output.quantiles.default_format.transitions]
-                        )
+                        quant_df = copy.deepcopy(quan_df[["date", "quantile"] + output.quantiles.transitions])
                     except Exception as e:
                         warnings.add(
                             f"OUTPUT GENERATOR: Exception occured selecting compartment quantiles, returning all transitions: {e}"
