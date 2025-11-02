@@ -209,6 +209,39 @@ def categorize_rate_change_flusightforecast(rate_change: float, count_change: fl
     raise AssertionError(msg)
 
 
+def get_projected_value(dates: np.ndarray, values: np.ndarray, target_date: date) -> np.float64:
+    """
+    Retrieve projected value at a specific target date.
+
+    Parameters
+    ----------
+    dates : np.ndarray
+        Array of dates corresponding to projection time points
+    values : np.ndarray
+        Array of projected values corresponding to dates
+    target_date : date
+        The specific date for which to retrieve the projected value
+
+    Returns
+    -------
+    np.float64
+        The projected value at the target date
+
+    Raises
+    ------
+    AssertionError
+        If dates and values arrays have different lengths, or if target_date appears
+        multiple times in the dates array
+    """
+    assert len(dates) == len(values), "Projection dates must match projection values."
+
+    (loc,) = np.where(dates == target_date)
+
+    assert len(loc) == 1, "Received projections with duplicate dates."
+
+    return values[loc[0]]
+
+
 def make_rate_trends_flusightforecast(
     reference_date: date,
     proj_dates: np.ndarray,
@@ -243,17 +276,6 @@ def make_rate_trends_flusightforecast(
     flusight_horizons = range(4)
     denom = 100000
 
-    # Helper function
-    def get_proj_value(dates: np.ndarray, values: np.ndarray, target_date: date) -> np.float64:
-        """Retrieve projected value at date."""
-        assert len(dates) == len(values), "Projection dates must match projection values."
-
-        (loc,) = np.where(dates == target_date)
-
-        assert len(loc) == 1, "Received projections with duplicate dates."
-
-        return values[loc[0]]
-
     # Date of observation for comparison (equivalent to horizon -1)
     obs_date = reference_date - timedelta(weeks=1)
 
@@ -269,7 +291,8 @@ def make_rate_trends_flusightforecast(
 
         # Projected values and rates (one for each projection trajectory)
         proj_vals = [
-            get_proj_value(dates, values, target_date) for dates, values in zip(proj_dates, proj_values, strict=True)
+            get_projected_value(dates, values, target_date)
+            for dates, values in zip(proj_dates, proj_values, strict=True)
         ]
         proj_rates = denom * proj_vals / population
 
