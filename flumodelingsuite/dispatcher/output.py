@@ -330,7 +330,9 @@ def generate_simulation_outputs(*, simulations: list[SimulationOutput], output_c
                 quan_df = simulation.results.get_quantiles_compartments(quantiles=output.quantiles.selections)
                 if hasattr(output.quantiles.compartments, "__len__"):
                     try:
-                        quan_df = quan_df[["date", "quantile"] + output.quantiles.compartments]
+                        columns_to_select = ["date", "quantile"]
+                        columns_to_select.extend(output.quantiles.compartments)
+                        quan_df = quan_df[columns_to_select].copy()
                     except Exception as e:
                         warnings.add(
                             f"OUTPUT GENERATOR: Exception occured selecting compartment quantiles, returning all compartments: {e}"
@@ -345,7 +347,9 @@ def generate_simulation_outputs(*, simulations: list[SimulationOutput], output_c
                 quan_df = simulation.results.get_quantiles_transitions(quantiles=output.quantiles.selections)
                 if hasattr(output.quantiles.transitions, "__len__"):
                     try:
-                        quan_df = quan_df[["date", "quantile"] + output.quantiles.transitions]
+                        columns_to_select = ["date", "quantile"]
+                        columns_to_select.extend(output.quantiles.transitions)
+                        quan_df = quan_df[columns_to_select].copy()
                     except Exception as e:
                         warnings.add(
                             f"OUTPUT GENERATOR: Exception occured selecting transition quantiles, returning all transitions: {e}"
@@ -523,17 +527,19 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
                 if hasattr(output.quantiles.compartments, "__len__"):
                     # Filter for explicitly requested compartments
                     try:
-                        quanc_df = copy.deepcopy(quan_df[["date", "quantile"] + output.quantiles.compartments])
+                        columns_to_select = ["date", "quantile"]
+                        columns_to_select.extend(output.quantiles.compartments)
+                        quanc_df = quan_df[columns_to_select].copy()
                     except KeyError as e:
                         warnings.add(
                             f"OUTPUT GENERATOR: Exception occured selecting compartment quantiles, returning all compartments: {e}"
                         )
                         # Use all compartments, filter out transitions
-                        quanc_df = copy.deepcopy(quan_df)
+                        quanc_df = quan_df.copy()
                         quanc_df.drop(columns=transition_columns, inplace=True)
                 else:
                     # Use all compartments, filter out transitions
-                    quanc_df = copy.deepcopy(quan_df)
+                    quanc_df = quan_df.copy()
                     quanc_df.drop(columns=transition_columns, inplace=True)
                 quanc_df.insert(0, "primary_id", calibration.primary_id)
                 quanc_df.insert(1, "seed", calibration.seed)
@@ -545,18 +551,24 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
                 if hasattr(output.quantiles.transitions, "__len__"):
                     # Filter for explicitly requested transitions
                     try:
-                        quant_df = copy.deepcopy(quan_df[["date", "quantile"] + output.quantiles.transitions])
+                        columns_to_select = ["date", "quantile"]
+                        columns_to_select.extend(output.quantiles.transitions)
+                        quant_df = quan_df[columns_to_select].copy()
                     except Exception as e:
                         warnings.add(
                             f"OUTPUT GENERATOR: Exception occured selecting compartment quantiles, returning all transitions: {e}"
                         )
                         # Use all transitions, filter out compartments
                         # TODO: add target prediction data column name below
-                        quant_df = quant_df[["date", "quantile"] + transition_columns]
+                        columns_to_select = ["date", "quantile"]
+                        columns_to_select.extend(transition_columns)
+                        quant_df = quant_df[columns_to_select].copy()
                 else:
                     # Use all transitions, filter out compartments
                     # TODO: add target prediction data column name below
-                    quant_df = quant_df[["date", "quantile"] + transition_columns]
+                    columns_to_select = ["date", "quantile"]
+                    columns_to_select.extend(transition_columns)
+                    quant_df = quant_df[columns_to_select].copy()
                 quant_df.insert(0, "primary_id", calibration.primary_id)
                 quant_df.insert(1, "seed", calibration.seed)
                 quant_df.insert(2, "population", calibration.population)
@@ -589,11 +601,13 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
 
             # Compartments
             if output.trajectories.compartments:
-                traj_c = copy.deepcopy(trajectories)
+                traj_c = trajectories.copy()
                 if hasattr(output.trajectories.compartments, "__len__"):
                     # Filter for explicitly requested compartments
                     try:
-                        traj_c = traj_c[["sim_id", "date"] + output.trajectories.compartments]
+                        columns_to_select = ["sim_id", "date"]
+                        columns_to_select.extend(output.trajectories.compartments)
+                        traj_c = traj_c[columns_to_select].copy()
                     except Exception:
                         warnings.add(
                             "OUTPUT GENERATOR: failed to filter trajectories for selected compartments, returning all compartments."
@@ -610,20 +624,26 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
 
             # Transitions
             if output.trajectories.transitions:
-                traj_t = copy.deepcopy(trajectories)
+                traj_t = trajectories.copy()
                 if hasattr(output.trajectories.transitions, "__len__"):
                     # filter for explicitly requested transitions
                     try:
-                        traj_t = traj_t[["sim_id", "date"] + output.trajectories.transitions]
+                        columns_to_select = ["sim_id", "date"]
+                        columns_to_select.extend(output.trajectories.transitions)
+                        traj_t = traj_t[columns_to_select].copy()
                     except Exception:
                         warnings.add(
                             "OUTPUT GENERATOR: failed to filter trajectories for selected transitions, returning all transitions."
                         )
                         # Use all transitions, filter out compartments
-                        traj_t = traj_t[["sim_id", "date"] + transition_columns]
+                        columns_to_select = ["sim_id", "date"]
+                        columns_to_select.extend(transition_columns)
+                        traj_t = traj_t[columns_to_select].copy()
                 else:
                     # Use all transitions, filter out compartments
-                    traj_t = traj_t[["sim_id", "date"] + transition_columns]
+                    columns_to_select = ["sim_id", "date"]
+                    columns_to_select.extend(transition_columns)
+                    traj_t = traj_t[columns_to_select].copy()
                 traj_t.insert(0, "primary_id", calibration.primary_id)
                 traj_t.insert(2, "seed", calibration.seed)
                 traj_t.insert(3, "population", calibration.population)
