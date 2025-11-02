@@ -11,7 +11,7 @@ from epydemix.calibration import CalibrationResults
 
 from ..schema.dispatcher import CalibrationOutput, SimulationOutput
 from ..schema.output import OutputConfig, get_flusight_quantiles
-from ..utils.location import get_flusight_population
+from ..utils.location import convert_location_name_format, get_flusight_population
 
 logger = logging.getLogger(__name__)
 
