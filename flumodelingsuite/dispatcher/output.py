@@ -315,10 +315,11 @@ def generate_simulation_outputs(*, simulations: list[SimulationOutput], output_c
     output = output_config.output
     warnings = set()
 
-    quantiles_compartments = pd.DataFrame()
-    quantiles_transitions = pd.DataFrame()
-    trajectories_compartments = pd.DataFrame()
-    trajectories_transitions = pd.DataFrame()
+    # Initialize lists for efficient DataFrame concatenation (converted to DataFrames after loops)
+    quantiles_compartments_list = []
+    quantiles_transitions_list = []
+    trajectories_compartments_list = []
+    trajectories_transitions_list = []
     hub_format_output = pd.DataFrame()
     model_meta = pd.DataFrame()
 
@@ -340,7 +341,7 @@ def generate_simulation_outputs(*, simulations: list[SimulationOutput], output_c
                 quan_df.insert(0, "primary_id", simulation.primary_id)
                 quan_df.insert(1, "seed", simulation.seed)
                 quan_df.insert(2, "population", simulation.population)
-                quantiles_compartments = pd.concat([quantiles_compartments, quan_df])
+                quantiles_compartments_list.append(quan_df)
 
             # Transitions
             if output.quantiles.transitions:
@@ -357,7 +358,14 @@ def generate_simulation_outputs(*, simulations: list[SimulationOutput], output_c
                 quan_df.insert(0, "primary_id", simulation.primary_id)
                 quan_df.insert(1, "seed", simulation.seed)
                 quan_df.insert(2, "population", simulation.population)
-                quantiles_transitions = pd.concat([quantiles_transitions, quan_df])
+                quantiles_transitions_list.append(quan_df)
+
+    quantiles_compartments = (
+        pd.concat(quantiles_compartments_list, ignore_index=True) if quantiles_compartments_list else pd.DataFrame()
+    )
+    quantiles_transitions = (
+        pd.concat(quantiles_transitions_list, ignore_index=True) if quantiles_transitions_list else pd.DataFrame()
+    )
 
     ### Trajectories
     if output.trajectories:
@@ -377,7 +385,7 @@ def generate_simulation_outputs(*, simulations: list[SimulationOutput], output_c
                     traj_df.insert(1, "sim_id", i)
                     traj_df.insert(2, "seed", simulation.seed)
                     traj_df.insert(3, "population", simulation.population)
-                    trajectories_compartments = pd.concat([trajectories_compartments, traj_df])
+                    trajectories_compartments_list.append(traj_df)
 
                 # Transitions
                 if output.trajectories.transitions:
@@ -393,7 +401,14 @@ def generate_simulation_outputs(*, simulations: list[SimulationOutput], output_c
                     traj_df.insert(1, "sim_id", i)
                     traj_df.insert(2, "seed", simulation.seed)
                     traj_df.insert(3, "population", simulation.population)
-                    trajectories_transitions = pd.concat([trajectories_transitions, traj_df])
+                    trajectories_transitions_list.append(traj_df)
+
+    trajectories_compartments = (
+        pd.concat(trajectories_compartments_list, ignore_index=True) if trajectories_compartments_list else pd.DataFrame()
+    )
+    trajectories_transitions = (
+        pd.concat(trajectories_transitions_list, ignore_index=True) if trajectories_transitions_list else pd.DataFrame()
+    )
 
     ### Hub Formats
 
@@ -497,12 +512,13 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
     output = output_config.output
     warnings = set()
 
-    quantiles_compartments = pd.DataFrame()
-    quantiles_transitions = pd.DataFrame()
-    trajectories_compartments = pd.DataFrame()
-    trajectories_transitions = pd.DataFrame()
-    posteriors = pd.DataFrame()
-    hub_format_output = pd.DataFrame()
+    # Initialize lists for efficient DataFrame concatenation (converted to DataFrames after loops)
+    quantiles_compartments_list = []
+    quantiles_transitions_list = []
+    trajectories_compartments_list = []
+    trajectories_transitions_list = []
+    posteriors_list = []
+    hub_format_output_list = []
     model_meta = pd.DataFrame()
 
     ### Quantiles
@@ -544,7 +560,7 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
                 quanc_df.insert(0, "primary_id", calibration.primary_id)
                 quanc_df.insert(1, "seed", calibration.seed)
                 quanc_df.insert(2, "population", calibration.population)
-                quantiles_compartments = pd.concat([quantiles_compartments, quanc_df])
+                quantiles_compartments_list.append(quanc_df)
 
             # Transitions
             if output.quantiles.transitions:
@@ -572,7 +588,14 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
                 quant_df.insert(0, "primary_id", calibration.primary_id)
                 quant_df.insert(1, "seed", calibration.seed)
                 quant_df.insert(2, "population", calibration.population)
-                quantiles_transitions = pd.concat([quantiles_transitions, quant_df])
+                quantiles_transitions_list.append(quant_df)
+
+    quantiles_compartments = (
+        pd.concat(quantiles_compartments_list, ignore_index=True) if quantiles_compartments_list else pd.DataFrame()
+    )
+    quantiles_transitions = (
+        pd.concat(quantiles_transitions_list, ignore_index=True) if quantiles_transitions_list else pd.DataFrame()
+    )
 
     ### Trajectories
     if output.trajectories:
@@ -588,15 +611,16 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
                 )
                 continue
 
-            trajectories = pd.DataFrame()
+            trajectories_list = []
             for i in range(len(traj["date"])):
                 columns = []
                 for name, values in traj.items():
                     columns.append(pd.Series(values[i], name=name))
                 traj_df = pd.concat(columns, axis=1)
                 traj_df.insert(0, "sim_id", i)
-                trajectories = pd.concat([trajectories, traj_df])
+                trajectories_list.append(traj_df)
 
+            trajectories = pd.concat(trajectories_list, ignore_index=True) if trajectories_list else pd.DataFrame()
             transition_columns = [c for c in trajectories.columns if "_to_" in c]
 
             # Compartments
@@ -620,7 +644,7 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
                 traj_c.insert(0, "primary_id", calibration.primary_id)
                 traj_c.insert(2, "seed", calibration.seed)
                 traj_c.insert(3, "population", calibration.population)
-                trajectories_compartments = pd.concat([trajectories_compartments, traj_c])
+                trajectories_compartments_list.append(traj_c)
 
             # Transitions
             if output.trajectories.transitions:
@@ -647,32 +671,42 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
                 traj_t.insert(0, "primary_id", calibration.primary_id)
                 traj_t.insert(2, "seed", calibration.seed)
                 traj_t.insert(3, "population", calibration.population)
-                trajectories_transitions = pd.concat([trajectories_transitions, traj_t])
+                trajectories_transitions_list.append(traj_t)
+
+    trajectories_compartments = (
+        pd.concat(trajectories_compartments_list, ignore_index=True) if trajectories_compartments_list else pd.DataFrame()
+    )
+    trajectories_transitions = (
+        pd.concat(trajectories_transitions_list, ignore_index=True) if trajectories_transitions_list else pd.DataFrame()
+    )
 
     ### Posteriors
     if output.posteriors:
         for calibration in calibrations:
             if output.posteriors.generations:
-                post_df = pd.DataFrame()
+                post_df_list = []
                 for g in output.posteriors.generations:
                     try:
                         post = calibration.results.get_posterior_distribution(generation=g)
                         post.insert(0, "generation", g)
-                        post_df = pd.concat([post_df, post])
+                        post_df_list.append(post)
                     except Exception:
                         warnings.add(
                             f"OUTPUT GENERATOR: failed to obtain posterior for generation {g} from model with primary_id={calibration.primary_id}, continuing."
                         )
+                post_df = pd.concat(post_df_list, ignore_index=True) if post_df_list else pd.DataFrame()
                 post_df.insert(0, "primary_id", calibration.primary_id)
                 post_df.insert(2, "seed", calibration.seed)
                 post_df.insert(3, "population", calibration.population)
-                posteriors = pd.concat([posteriors, post_df])
+                posteriors_list.append(post_df)
             else:
                 post_df = calibration.results.get_posterior_distribution()
                 post_df.insert(0, "primary_id", calibration.primary_id)
                 post_df.insert(1, "seed", calibration.seed)
                 post_df.insert(2, "population", calibration.population)
-                posteriors = pd.concat([posteriors, post_df])
+                posteriors_list.append(post_df)
+
+    posteriors = pd.concat(posteriors_list, ignore_index=True) if posteriors_list else pd.DataFrame()
 
     ### Hub Formats
 
@@ -693,7 +727,7 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
             quanf_df = format_quantiles_flusightforecast(quanf_df, output.flusight_format.reference_date)
             quanf_df.insert(0, "reference_date", output.flusight_format.reference_date)
             quanf_df.insert(0, "location", convert_location_name_format(calibration.population, "FIPS"))
-            hub_format_output = pd.concat([hub_format_output, quanf_df])
+            hub_format_output_list.append(quanf_df)
 
         # Rate-trend forecasts
         if output.flusight_format.rate_trends:
@@ -735,7 +769,9 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
                 trends_df.insert(0, "output_type", "pmf")
                 trends_df.insert(0, "reference_date", output.flusight_format.reference_date)
                 trends_df.insert(0, "location", convert_location_name_format(calibration.population, "FIPS"))
-                hub_format_output = pd.concat([hub_format_output, trends_df])
+                hub_format_output_list.append(trends_df)
+
+    hub_format_output = pd.concat(hub_format_output_list, ignore_index=True) if hub_format_output_list else pd.DataFrame()
 
     # Covid19 Forecast Hub
     elif output.quantiles.covid19_format:
