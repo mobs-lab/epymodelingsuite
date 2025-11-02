@@ -87,7 +87,15 @@ def format_quantiles_flusightforecast(quantiles_df: pd.DataFrame, reference_date
 
     Parameters
     ----------
-    quantiles_df: pd.DataFrame
+    quantiles_df : pd.DataFrame
+        Quantile forecast data with columns: date, quantile, hospitalizations
+    reference_date : date
+        Reference date for calculating forecast horizons
+
+    Returns
+    -------
+    pd.DataFrame
+        Formatted quantile forecasts with FluSight columns (horizon, target, output_type, output_type_id, target_end_date, value)
     """
     formatted = copy.deepcopy(quantiles_df)
 
@@ -125,14 +133,19 @@ def compare_thresholds_flusightforecast(
 
     Parameters
     ----------
-    stable_thres: A simulated rate-change with magnitude less than this threshold is stable (unless count_change < 10).
-    change_thres: This threshold defines whether non-stable rate-changes are a large increase/decrease or not.
-    rate_change: The difference between the last observed rate (/100k population) and the simulated rate (diff = simulated - observed).
-    count_change: The difference between the last observed count and the simulated count (diff = simulated - observed).
+    stable_thres : float
+        A simulated rate-change with magnitude less than this threshold is stable (unless count_change < 10).
+    change_thres : float
+        This threshold defines whether non-stable rate-changes are a large increase/decrease or not.
+    rate_change : float
+        The difference between the last observed rate (/100k population) and the simulated rate (diff = simulated - observed).
+    count_change : float
+        The difference between the last observed count and the simulated count (diff = simulated - observed).
 
     Returns
     -------
-    A string representing the category of the rate-change.
+    str
+        A string representing the category of the rate-change ("stable", "increase", "large_increase", "decrease", "large_decrease").
     """
     if abs(rate_change) < stable_thres or abs(count_change) < 10:
         return "stable"
@@ -158,17 +171,17 @@ def categorize_rate_change_flusightforecast(rate_change: float, count_change: fl
 
     Parameters
     ----------
-    rate_change: float
+    rate_change : float
         The difference between the last observed rate (/100k population) and the simulated rate (diff = simulated - observed).
-    count_change: float
+    count_change : float
         The difference between the last observed count and the simulated count (diff = simulated - observed).
-    horizon: int
+    horizon : int
         The horizon on which the simulated changes are calculated.
 
     Returns
     -------
     str
-        A string representing the category of the rate-change. ("stable", "increase", "large_increase", "decrease", "large_decrease")
+        A string representing the category of the rate-change ("stable", "increase", "large_increase", "decrease", "large_decrease").
     """
     assert -1 <= rate_change <= 1, "Received invalid rate-change."
 
@@ -203,7 +216,27 @@ def make_rate_trends_flusightforecast(
     observed: pd.DataFrame,
     population: float,
 ) -> pd.DataFrame:
-    """Create FluSight rate-trend forecasts."""
+    """
+    Create FluSight rate-trend forecasts from projection trajectories.
+
+    Parameters
+    ----------
+    reference_date : date
+        Reference date for the forecast
+    proj_dates : np.ndarray
+        Array of projection date arrays (one per trajectory)
+    proj_values : np.ndarray
+        Array of projection value arrays (one per trajectory)
+    observed : pd.DataFrame
+        Observed surveillance data with columns: date, value
+    population : float
+        Population size for calculating rates per 100k
+
+    Returns
+    -------
+    pd.DataFrame
+        Rate-trend forecasts with columns: horizon, target_end_date, output_type_id, value
+    """
     from collections import Counter
 
     # Horizons required for rate-trend outputs, denominator for rates (i.e. /100k pop)
@@ -404,7 +437,9 @@ def generate_simulation_outputs(*, simulations: list[SimulationOutput], output_c
                     trajectories_transitions_list.append(traj_df)
 
     trajectories_compartments = (
-        pd.concat(trajectories_compartments_list, ignore_index=True) if trajectories_compartments_list else pd.DataFrame()
+        pd.concat(trajectories_compartments_list, ignore_index=True)
+        if trajectories_compartments_list
+        else pd.DataFrame()
     )
     trajectories_transitions = (
         pd.concat(trajectories_transitions_list, ignore_index=True) if trajectories_transitions_list else pd.DataFrame()
@@ -674,7 +709,9 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
                 trajectories_transitions_list.append(traj_t)
 
     trajectories_compartments = (
-        pd.concat(trajectories_compartments_list, ignore_index=True) if trajectories_compartments_list else pd.DataFrame()
+        pd.concat(trajectories_compartments_list, ignore_index=True)
+        if trajectories_compartments_list
+        else pd.DataFrame()
     )
     trajectories_transitions = (
         pd.concat(trajectories_transitions_list, ignore_index=True) if trajectories_transitions_list else pd.DataFrame()
@@ -771,7 +808,9 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
                 trends_df.insert(0, "location", convert_location_name_format(calibration.population, "FIPS"))
                 hub_format_output_list.append(trends_df)
 
-    hub_format_output = pd.concat(hub_format_output_list, ignore_index=True) if hub_format_output_list else pd.DataFrame()
+    hub_format_output = (
+        pd.concat(hub_format_output_list, ignore_index=True) if hub_format_output_list else pd.DataFrame()
+    )
 
     # Covid19 Forecast Hub
     elif output.quantiles.covid19_format:
