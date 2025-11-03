@@ -207,7 +207,7 @@ def categorize_rate_change_flusightforecast(rate_change: float, count_change: fl
         return compare_thresholds_flusightforecast(stable_thres, change_thres, rate_change, count_change)
 
     msg = f"Received invalid horizon {horizon}."
-    raise AssertionError(msg)
+    raise ValueError(msg)
 
 
 def get_projected_value(dates: np.ndarray, values: np.ndarray, target_date: date) -> np.float64:
@@ -236,7 +236,7 @@ def get_projected_value(dates: np.ndarray, values: np.ndarray, target_date: date
     """
     assert len(dates) == len(values), "Projection dates must match projection values."
 
-    (loc,) = np.where(dates == target_date)
+    (loc,) = np.where(dates == pd.Timestamp(target_date))
 
     assert len(loc) == 1, "Received projections with duplicate dates."
 
@@ -281,7 +281,7 @@ def make_rate_trends_flusightforecast(
     obs_date = reference_date - timedelta(weeks=1)
 
     # Observed value and rate
-    obs_val = observed[observed.date == obs_date].value.iloc[0]
+    obs_val = observed[observed.date == pd.Timestamp(obs_date)].value.iloc[0]
     obs_rate = rate_population_scale * obs_val / population
 
     # Build list of rows
@@ -295,7 +295,7 @@ def make_rate_trends_flusightforecast(
             get_projected_value(dates, values, target_date)
             for dates, values in zip(proj_dates, proj_values, strict=True)
         ]
-        proj_rates = rate_population_scale * proj_vals / population
+        proj_rates = (rate_population_scale / population) * np.array(proj_vals)
 
         # Calculate rate-changes and count-changes
         rate_changes = proj_rates - obs_rate
@@ -385,37 +385,37 @@ def generate_simulation_outputs(*, simulations: list[SimulationOutput], output_c
         for simulation in simulations:
             # Compartments
             if output.quantiles.compartments:
-                quan_df = simulation.results.get_quantiles_compartments(quantiles=output.quantiles.selections)
+                quanc_df = simulation.results.get_quantiles_compartments(quantiles=output.quantiles.selections)
                 if hasattr(output.quantiles.compartments, "__len__"):
                     try:
                         columns_to_select = ["date", "quantile"]
                         columns_to_select.extend(output.quantiles.compartments)
-                        quan_df = quan_df[columns_to_select].copy()
+                        quanc_df = quanc_df[columns_to_select].copy()
                     except Exception as e:
                         warnings.add(
                             f"OUTPUT GENERATOR: Exception occured selecting compartment quantiles, returning all compartments: {e}"
                         )
-                quan_df.insert(0, "primary_id", simulation.primary_id)
-                quan_df.insert(1, "seed", simulation.seed)
-                quan_df.insert(2, "population", simulation.population)
-                quantiles_compartments_list.append(quan_df)
+                quanc_df.insert(0, "primary_id", simulation.primary_id)
+                quanc_df.insert(1, "seed", simulation.seed)
+                quanc_df.insert(2, "population", simulation.population)
+                quantiles_compartments_list.append(quanc_df)
 
             # Transitions
             if output.quantiles.transitions:
-                quan_df = simulation.results.get_quantiles_transitions(quantiles=output.quantiles.selections)
+                quant_df = simulation.results.get_quantiles_transitions(quantiles=output.quantiles.selections)
                 if hasattr(output.quantiles.transitions, "__len__"):
                     try:
                         columns_to_select = ["date", "quantile"]
                         columns_to_select.extend(output.quantiles.transitions)
-                        quan_df = quan_df[columns_to_select].copy()
+                        quant_df = quant_df[columns_to_select].copy()
                     except Exception as e:
                         warnings.add(
                             f"OUTPUT GENERATOR: Exception occured selecting transition quantiles, returning all transitions: {e}"
                         )
-                quan_df.insert(0, "primary_id", simulation.primary_id)
-                quan_df.insert(1, "seed", simulation.seed)
-                quan_df.insert(2, "population", simulation.population)
-                quantiles_transitions_list.append(quan_df)
+                quant_df.insert(0, "primary_id", simulation.primary_id)
+                quant_df.insert(1, "seed", simulation.seed)
+                quant_df.insert(2, "population", simulation.population)
+                quantiles_transitions_list.append(quant_df)
 
     quantiles_compartments = (
         pd.concat(quantiles_compartments_list, ignore_index=True) if quantiles_compartments_list else pd.DataFrame()
@@ -430,35 +430,35 @@ def generate_simulation_outputs(*, simulations: list[SimulationOutput], output_c
             for i, traj in enumerate(simulation.results.trajectories):
                 # Compartments
                 if output.trajectories.compartments:
-                    traj_df = pd.DataFrame(traj.compartments)
+                    trajc_df = pd.DataFrame(traj.compartments)
                     if hasattr(output.trajectories.compartments, "__len__"):
                         try:
-                            traj_df = traj_df[output.trajectories.compartments]
+                            trajc_df = trajc_df[output.trajectories.compartments]
                         except Exception as e:
                             warnings.add(
                                 f"OUTPUT GENERATOR: Exception occured selecting compartment trajectories, returning all compartments: {e}"
                             )
-                    traj_df.insert(0, "primary_id", simulation.primary_id)
-                    traj_df.insert(1, "sim_id", i)
-                    traj_df.insert(2, "seed", simulation.seed)
-                    traj_df.insert(3, "population", simulation.population)
-                    trajectories_compartments_list.append(traj_df)
+                    trajc_df.insert(0, "primary_id", simulation.primary_id)
+                    trajc_df.insert(1, "sim_id", i)
+                    trajc_df.insert(2, "seed", simulation.seed)
+                    trajc_df.insert(3, "population", simulation.population)
+                    trajectories_compartments_list.append(trajc_df)
 
                 # Transitions
                 if output.trajectories.transitions:
-                    traj_df = pd.DataFrame(traj.transitions)
+                    trajt_df = pd.DataFrame(traj.transitions)
                     if hasattr(output.trajectories.transitions, "__len__"):
                         try:
-                            traj_df = traj_df[output.trajectories.transitions]
+                            trajt_df = trajt_df[output.trajectories.transitions]
                         except Exception as e:
                             warnings.add(
                                 f"OUTPUT GENERATOR: Exception occured selecting transition trajectories, returning all transitions: {e}"
                             )
-                    traj_df.insert(0, "primary_id", simulation.primary_id)
-                    traj_df.insert(1, "sim_id", i)
-                    traj_df.insert(2, "seed", simulation.seed)
-                    traj_df.insert(3, "population", simulation.population)
-                    trajectories_transitions_list.append(traj_df)
+                    trajt_df.insert(0, "primary_id", simulation.primary_id)
+                    trajt_df.insert(1, "sim_id", i)
+                    trajt_df.insert(2, "seed", simulation.seed)
+                    trajt_df.insert(3, "population", simulation.population)
+                    trajectories_transitions_list.append(trajt_df)
 
     trajectories_compartments = (
         pd.concat(trajectories_compartments_list, ignore_index=True)
@@ -744,7 +744,12 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
     ### Posteriors
     if output.posteriors:
         for calibration in calibrations:
-            if output.posteriors.generations:
+            # Output last generation (default)
+            if output.posteriors == True:
+                post_df = calibration.results.get_posterior_distribution()
+                posteriors_list.append(post_df)
+            # Output selected generations
+            elif output.posteriors.generations:
                 post_df_list = []
                 for g in output.posteriors.generations:
                     try:
@@ -756,16 +761,11 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
                             f"OUTPUT GENERATOR: failed to obtain posterior for generation {g} from model with primary_id={calibration.primary_id}, continuing."
                         )
                 post_df = pd.concat(post_df_list, ignore_index=True) if post_df_list else pd.DataFrame()
-                post_df.insert(0, "primary_id", calibration.primary_id)
-                post_df.insert(2, "seed", calibration.seed)
-                post_df.insert(3, "population", calibration.population)
                 posteriors_list.append(post_df)
+            # Undefined behavior
             else:
-                post_df = calibration.results.get_posterior_distribution()
-                post_df.insert(0, "primary_id", calibration.primary_id)
-                post_df.insert(1, "seed", calibration.seed)
-                post_df.insert(2, "population", calibration.population)
-                posteriors_list.append(post_df)
+                msg = f"Received unexpected value for posteriors output config (should be bool or list of int): {output.posteriors}"
+                raise ValueError(msg)
 
     posteriors = pd.concat(posteriors_list, ignore_index=True) if posteriors_list else pd.DataFrame()
 
@@ -793,7 +793,11 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
         # Rate-trend forecasts
         if output.flusight_format.rate_trends:
             # Read surveillance data
-            surveillance = pd.read_csv(output.flusight_format.rate_trends.observed_data_path)
+            surveillance = pd.read_csv(
+                output.flusight_format.rate_trends.observed_data_path,
+                parse_dates=["target_end_date"],
+                date_format="%Y-%m-%d",
+            )
 
             for calibration in calibrations:
                 # Get trajectories
