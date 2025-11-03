@@ -118,6 +118,7 @@ def format_quantiles_flusightforecast(quantiles_df: pd.DataFrame, reference_date
     )
     formatted.insert(2, "output_type", "quantile")
     formatted.insert(2, "target", "wk inc flu hosp")
+    formatted.target_end_date = formatted.target_end_date.apply(lambda x: x.date())
 
     return formatted
 
