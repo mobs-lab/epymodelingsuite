@@ -312,6 +312,11 @@ def make_rate_trends_flusightforecast(
         # Dict containing the probability of each category
         num_traj = trajectory_categories.total()
         cat_probs = {category: count / num_traj for category, count in trajectory_categories.items()}
+        cat_probs.setdefault("stable", 0)
+        cat_probs.setdefault("increase", 0)
+        cat_probs.setdefault("decrease", 0)
+        cat_probs.setdefault("large_increase", 0)
+        cat_probs.setdefault("large_decrease", 0)
 
         # Add rows to the list
         for category, value in cat_probs.items():
