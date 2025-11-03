@@ -183,26 +183,27 @@ def categorize_rate_change_flusightforecast(rate_change: float, count_change: fl
     str
         A string representing the category of the rate-change ("stable", "increase", "large_increase", "decrease", "large_decrease").
     """
-    assert -1 <= rate_change <= 1, "Received invalid rate-change."
+    rate_population_scale = 100000
+    assert -rate_population_scale <= rate_change <= rate_population_scale, "Received invalid rate-change."
 
     if horizon == 0:
-        stable_thres = 0.3 / 100000
-        change_thres = 1.7 / 100000
+        stable_thres = 0.3 / rate_population_scale
+        change_thres = 1.7 / rate_population_scale
         return compare_thresholds_flusightforecast(stable_thres, change_thres, rate_change, count_change)
 
     if horizon == 1:
-        stable_thres = 0.5 / 100000
-        change_thres = 3 / 100000
+        stable_thres = 0.5 / rate_population_scale
+        change_thres = 3 / rate_population_scale
         return compare_thresholds_flusightforecast(stable_thres, change_thres, rate_change, count_change)
 
     if horizon == 2:
-        stable_thres = 0.7 / 100000
-        change_thres = 4 / 100000
+        stable_thres = 0.7 / rate_population_scale
+        change_thres = 4 / rate_population_scale
         return compare_thresholds_flusightforecast(stable_thres, change_thres, rate_change, count_change)
 
     if horizon == 3:
-        stable_thres = 1 / 100000
-        change_thres = 5 / 100000
+        stable_thres = 1 / rate_population_scale
+        change_thres = 5 / rate_population_scale
         return compare_thresholds_flusightforecast(stable_thres, change_thres, rate_change, count_change)
 
     msg = f"Received invalid horizon {horizon}."
@@ -274,14 +275,14 @@ def make_rate_trends_flusightforecast(
 
     # Horizons required for rate-trend outputs, denominator for rates (i.e. /100k pop)
     flusight_horizons = range(4)
-    denom = 100000
+    rate_population_scale = 100000
 
     # Date of observation for comparison (equivalent to horizon -1)
     obs_date = reference_date - timedelta(weeks=1)
 
     # Observed value and rate
     obs_val = observed[observed.date == obs_date].value.iloc[0]
-    obs_rate = denom * obs_val / population
+    obs_rate = rate_population_scale * obs_val / population
 
     # Build list of rows
     rows = []
@@ -294,7 +295,7 @@ def make_rate_trends_flusightforecast(
             get_projected_value(dates, values, target_date)
             for dates, values in zip(proj_dates, proj_values, strict=True)
         ]
-        proj_rates = denom * proj_vals / population
+        proj_rates = rate_population_scale * proj_vals / population
 
         # Calculate rate-changes and count-changes
         rate_changes = proj_rates - obs_rate
