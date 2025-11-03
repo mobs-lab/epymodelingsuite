@@ -114,7 +114,7 @@ class OutputConfiguration(BaseModel):
     trajectories: TrajectoriesOutput | None = Field(
         None, description="Specifications for default format trajectory outputs."
     )
-    posteriors: PosteriorsOutput | None = Field(None, description="Specifications for posterior outputs.")
+    posteriors: PosteriorsOutput | bool = Field(False, description="Specifications for posterior outputs.")
 
     flusight_format: FlusightForecastOutput | None = Field(
         None, description="Specifications for outputs in FluSight Forecast Hub format."
