@@ -3,14 +3,14 @@ from datetime import date, timedelta
 from enum import Enum
 from typing import Any
 
+from epydemix.calibration import ABCSampler, CalibrationResults
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from ..utils import parse_timedelta, validate_iso3166
 from .common import DateParameter, Distribution, Meta
 
-from epydemix.calibration import ABCSampler, CalibrationResults
-
 logger = logging.getLogger(__name__)
+
 
 def reproduce_trajectory(
     calibrator: ABCSampler,
@@ -51,7 +51,7 @@ def reproduce_trajectory(
     if particle_index < 0 or particle_index >= num_particles:
         errMsg = f"Invalid particle_index {particle_index}. Must be between 0 and {num_particles - 1}."
         raise ValueError(errMsg)
-    
+
     params = params_df.iloc[particle_index].to_dict()
 
     # Get fixed parameters from the calibrator
@@ -140,6 +140,7 @@ def reproduce_all_trajectories(
         )
 
     return results
+
 
 # ----------------------------------------
 # Schema models

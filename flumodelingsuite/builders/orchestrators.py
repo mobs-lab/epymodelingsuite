@@ -7,10 +7,10 @@ from collections.abc import Callable
 from typing import Any, TypedDict
 
 import numpy as np
-from numpy.random import Generator
 import pandas as pd
 from epydemix import simulate
 from epydemix.model import EpiModel
+from numpy.random import Generator
 
 from ..schema.basemodel import BaseEpiModel, Parameter, Timespan
 from ..schema.calibration import CalibrationConfig, ComparisonSpec

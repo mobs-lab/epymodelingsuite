@@ -5,8 +5,6 @@ import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock
 
-import pytest
-
 from flumodelingsuite.schema.calibration import CalibrationStrategy
 from flumodelingsuite.schema.dispatcher import CalibrationOutput, SimulationOutput
 from flumodelingsuite.telemetry import (
