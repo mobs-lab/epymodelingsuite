@@ -106,6 +106,6 @@ class CalibrationOutput(BaseModel):
     seed: int | None = Field(None, description="Random seed.")
     delta_t: float | None = Field(None, description="Timestep.")
     population: str = Field(description="Population name (epydemix).")
-    results: CalibrationResults = Field(
+    results: CalibrationResults | None = Field(
         description="Results of a call to ABCSampler.calibrate() or ABCSampler.run_projections()"
     )
