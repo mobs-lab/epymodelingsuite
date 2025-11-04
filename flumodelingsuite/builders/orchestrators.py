@@ -7,10 +7,10 @@ from collections.abc import Callable
 from typing import Any, TypedDict
 
 import numpy as np
-from numpy.random import Generator
 import pandas as pd
 from epydemix import simulate
 from epydemix.model import EpiModel
+from numpy.random import Generator
 
 from ..schema.basemodel import BaseEpiModel, Parameter, Timespan
 from ..schema.calibration import CalibrationConfig, ComparisonSpec
@@ -716,6 +716,9 @@ def make_simulate_wrapper(
             (e.g., "0-4", "5-17", "18-49", "50-64", "65+").
             Typically created by `setup_vaccination_schedules()` which calls
             `scenario_to_epydemix()` with the earliest start date.
+    rng : np.random.Generator | None, optional
+            Random number generator for reproducible simulations.
+            If None, a default generator will be created.
 
     Returns
     -------
