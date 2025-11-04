@@ -43,8 +43,8 @@ def make_mock_calibration_output(
     else:
         mock_results.accepted = None
 
-    # No simulations for pure calibration
-    mock_results.simulations = []
+    # No projections for pure calibration
+    mock_results.projections = {}
 
     # Use model_construct to bypass Pydantic validation for testing
     return CalibrationOutput.model_construct(
@@ -61,6 +61,7 @@ def make_mock_projection_output(
     population: str,
     particles_accepted: int | None = None,
     successful_trajectories: int = 987,
+    failed_trajectories: int = 0,
 ):
     """Create a mock CalibrationOutput with projection results for testing."""
     mock_results = MagicMock()
@@ -70,8 +71,15 @@ def make_mock_projection_output(
     else:
         mock_results.accepted = None
 
-    # Add simulations for projection
-    mock_results.simulations = [MagicMock() for _ in range(successful_trajectories)]
+    # Add projections (dict mapping scenario_id to list of projection dicts)
+    # Non-empty dict = successful projection, empty dict {} = failed projection
+    projections_list = []
+    for _ in range(successful_trajectories):
+        projections_list.append({"date": "2024-01-01", "data": 100})  # Non-empty = successful
+    for _ in range(failed_trajectories):
+        projections_list.append({})  # Empty dict = failed
+
+    mock_results.projections = {"baseline": projections_list}
 
     # Use model_construct to bypass Pydantic validation for testing
     return CalibrationOutput.model_construct(

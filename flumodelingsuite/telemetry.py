@@ -305,8 +305,14 @@ class ExecutionTelemetry:
             "requested_trajectories": n_trajectories,
         }
 
-        if results and hasattr(results, "simulations"):
-            successful = len(results.simulations)
+        if results and hasattr(results, "projections") and results.projections:
+            # projections is a dict mapping scenario_id to list of projection dicts
+            # Count non-empty projection dicts across all scenarios
+            successful = 0
+            for scenario_id, projections_list in results.projections.items():
+                # Count non-empty dicts (empty dict {} means failed projection)
+                successful += sum(1 for proj in projections_list if proj)
+
             projection_info["successful_trajectories"] = successful
             projection_info["failed_trajectories"] = n_trajectories - successful
         else:
