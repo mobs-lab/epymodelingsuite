@@ -758,17 +758,22 @@ def make_vaccination_rate_function(origin_compartment: str, eligible_compartment
     eligible compartments used in the denominator when allocating doses.
 
     Returns a RATE function (vaccinations per person per unit time), not a probability.
-    In epydemix ≥ v1.0.2, Callable that computs rates is passed to EpiModel.register_transition_kind(), instead of Callable that computes probabilities. Internally, it will convert the rate to a probability using p = 1 - exp(-rate * dt).
+    In epydemix >= v1.0.2, callables that compute rates are passed to
+    EpiModel.register_transition_kind(), instead of callables that compute probabilities.
+    epydemix converts rates to probabilities internally using p = 1 - exp(-rate * dt).
 
-    Args:
-            origin_compartment (str): The compartment receiving the vaccination (e.g., 'S').
-            eligible_compartments (list of str): Compartments included in dose allocation denominator
-                                                                                     (e.g., ['S', 'R']).
+    Parameters
+    ----------
+    origin_compartment : str
+        The compartment receiving the vaccination (e.g., 'S').
+    eligible_compartments : list of str
+        Compartments included in dose allocation denominator (e.g., ['S', 'R']).
 
     Returns
     -------
-            function: A function (params, data) -> np.ndarray suitable for use with
-                              model.register_transition_kind.
+    callable
+        A function (params, data) -> np.ndarray suitable for use with
+        model.register_transition_kind.
     """
     import numpy as np
     from epydemix.model.epimodel import validate_transition_function
@@ -779,21 +784,26 @@ def make_vaccination_rate_function(origin_compartment: str, eligible_compartment
         to individuals in the origin compartment, based on the distribution of the population
         across eligible compartments.
 
-        Note: Returns a RATE (vaccinations per person per unit time), not a probability.
-        epydemix will convert this to a probability using p = 1 - exp(-rate * dt).
+        Returns a RATE (vaccinations per person per unit time), not a probability.
+        epydemix converts this to a probability using p = 1 - exp(-rate * dt).
 
-        Args:
-                params (list): A list containing one element: a 1D array of daily total doses
-                                        (aligned with simulation time steps).
-                data (dict): A dictionary with the following keys:
-                        - 't': Current time index (int)
-                        - 'dt': Duration of the current time step (used by EpiModel, not here)
-                        - 'pop': Array of compartment population counts
-                        - 'comp_indices': Dict mapping compartment names ('S', 'R', etc.) to their indices in 'pop'
+        Parameters
+        ----------
+        params : list
+            A list containing one element: a 1D array of daily total doses
+            (aligned with simulation time steps).
+        data : dict
+            A dictionary with the following keys:
+            - 't': Current time index (int)
+            - 'dt': Duration of the current time step (used by epydemix, not here)
+            - 'pop': Array of compartment population counts
+            - 'comp_indices': Dict mapping compartment names ('S', 'R', etc.) to their indices in 'pop'
 
         Returns
         -------
-                np.ndarray: Array of vaccination rates (per unit time) for the origin compartment.  Can exceed 1.0 (e.g., if daily doses > origin population).
+        np.ndarray
+            Array of vaccination rates (per unit time) for the origin compartment.
+            Can exceed 1.0 (e.g., if daily doses > origin population).
         """
         total_doses = params[0][data["t"]]
         origin_pop = data["pop"][data["comp_indices"][origin_compartment]]
