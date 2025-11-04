@@ -850,8 +850,34 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
 
     ### Model Metadata
     if output.model_meta:
-        # TODO
-        pass
+        meta_dict = defaultdict(list)
+        for calibration in calibrations:
+            meta_dict["primary_id"].append(calibration.primary_id)
+            meta_dict["seed"].append(calibration.seed)
+            meta_dict["delta_t"].append(calibration.delta_t)
+            meta_dict["population"].append(calibration.population)
+            if calibration.results.projections:
+                meta_dict["n_projections"].append(len(calibration.results.projections["baseline"]))
+            #meta_dict["fitting_start"].append()
+            #meta_dict["fitting_end"].append()
+            #meta_dict["start_date"].append(str(sorted(simulation.results.dates)[0]))
+            #meta_dict["end_date"].append(str(sorted(simulation.results.dates)[-1]))
+
+            # Parameters
+            for p, v in calibration.results.calibration_params:
+                meta_dict[p].append(str(v))
+            if output.model_meta.projection_parameters:
+                #calibration.results.projection_parameters["baseline"] is a dataframe
+                pass
+
+            # Initial conditions
+            inits = {k: [int(v[0]) for v in vs] for k, vs in simulation.results.get_stacked_compartments().items()}
+            for c, i in inits:
+                colname = f"init_{c}"
+                meta_dict[colname].append(str(i))
+
+        model_meta = pd.DataFrame(meta_dict)
+        
 
     ### Cleanup and return
     for warning in warnings:
