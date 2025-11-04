@@ -9,7 +9,6 @@ from typing import Any, TypedDict
 import numpy as np
 from numpy.random import Generator
 import pandas as pd
-import random
 from epydemix import simulate
 from epydemix.model import EpiModel
 
