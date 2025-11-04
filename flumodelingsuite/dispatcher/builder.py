@@ -309,6 +309,9 @@ def build_calibration(
     modelset = calibration_config.modelset
     calibration = modelset.calibration
 
+    # Create random number generator
+    rng = np.random.default_rng(basemodel.random_seed)
+
     # Build a collection of EpiModels
     models, population_names = create_model_collection(basemodel, modelset.population_names)
 
@@ -351,6 +354,7 @@ def build_calibration(
             intervention_types=intervention_types,
             sampled_start_timespan=sampled_start_timespan,
             earliest_vax=vax_state,
+            rng=rng,
         )
 
         # Parse priors into scipy functions
