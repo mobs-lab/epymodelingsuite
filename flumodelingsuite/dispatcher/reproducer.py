@@ -2,6 +2,7 @@
 
 from epydemix.calibration import ABCSampler, CalibrationResults
 
+
 def reproduce_trajectory(
     calibrator: ABCSampler,
     calibration_results: CalibrationResults,
@@ -10,7 +11,7 @@ def reproduce_trajectory(
 ) -> dict:
     """
     Reproduce a specific trajectory using the stored simulate_wrapper.
-    
+
     Parameters
     ----------
     calibrator : ABCSampler
@@ -21,7 +22,7 @@ def reproduce_trajectory(
         Generation number to reproduce from.
     particle_index : int
         Index of the particle/trajectory to reproduce.
-        
+
     Returns
     -------
     dict
@@ -31,25 +32,26 @@ def reproduce_trajectory(
     # Extract the parameters for this particle
     params_df = calibration_results.posterior_distributions[generation]
     params = params_df.iloc[particle_index].to_dict()
-    
+
     # Get fixed parameters from the calibrator
     fixed_params = calibrator.parameters.copy()
-    
+
     # Merge sampled parameters with fixed parameters
     all_params = {**fixed_params, **params}
-    
+
     # Extract the random state from the original trajectory
     original_trajectory = calibration_results.selected_trajectories[generation][particle_index]
-    random_state = original_trajectory['random_state']
-    
-    # Add random state to params (if you modified simulate_wrapper to accept it)
-    all_params['random_state'] = random_state
-    all_params['projection'] = True
-    
+    random_state = original_trajectory["random_state"]
+
+    # Add random state to params
+    all_params["random_state"] = random_state
+    all_params["projection"] = True
+
     # Call the stored simulate_wrapper
     result = calibrator.simulation_function(all_params)
-    
+
     return result
+
 
 def reproduce_trajectories_in_generation(
     calibrator: ABCSampler,

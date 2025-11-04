@@ -9,7 +9,7 @@ from ..utils import convert_location_name_format
 
 def get_data_in_window(data: pd.DataFrame, calibration: CalibrationConfig) -> pd.DataFrame:
     """
-    Get data within a specified time window. 
+    Get data within a specified time window.
 
     Parameters
     ----------
