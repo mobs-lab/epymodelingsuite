@@ -7,7 +7,7 @@ from epydemix.model import EpiModel
 from pandas import DataFrame
 
 from ..schema.basemodel import Timespan, Transition, Vaccination
-from ..vaccinations import add_vaccination_schedule, make_vaccination_probability_function, scenario_to_epydemix
+from ..vaccinations import add_vaccination_schedule, make_vaccination_rate_function, scenario_to_epydemix
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +37,8 @@ def add_vaccination_schedules_from_config(
     # Extract compartment transitions due to vaccination
     vaccination_transitions = [transition for transition in transitions if transition.type == "vaccination"]
 
-    # Define vaccine probability function
-    vaccine_probability_function = make_vaccination_probability_function(
+    # Define vaccine rate function
+    vaccine_rate_function = make_vaccination_rate_function(
         vaccination.origin_compartment, vaccination.eligible_compartments
     )
 
@@ -69,7 +69,7 @@ def add_vaccination_schedules_from_config(
         try:
             model = add_vaccination_schedule(
                 model=model,
-                vaccine_probability_function=vaccine_probability_function,
+                vaccine_rate_function=vaccine_rate_function,
                 source_comp=transition.source,
                 target_comp=transition.target,
                 vaccination_schedule=vaccination_schedule,
