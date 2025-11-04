@@ -3,7 +3,6 @@
 import copy
 import logging
 
-import numpy as np
 import pandas as pd
 from epydemix.calibration import ABCSampler, ae, mae, mape, rmse, wmape
 from epydemix.model import EpiModel
@@ -30,14 +29,13 @@ from ..builders.orchestrators import (
 from ..builders.seasonality import add_seasonality_from_config
 from ..builders.utils import get_data_in_location, get_data_in_window
 from ..builders.vaccination import add_vaccination_schedules_from_config
-from ..schema.basemodel import BaseEpiModel, BasemodelConfig, Parameter, Timespan
+from ..schema.basemodel import BasemodelConfig, Parameter, Timespan
 from ..schema.calibration import CalibrationConfig
 from ..schema.dispatcher import BuilderOutput, ProjectionArguments, SimulationArguments
 from ..schema.general import validate_modelset_consistency
 from ..schema.sampling import SamplingConfig
 from ..school_closures import make_school_closure_dict
-from ..utils import convert_location_name_format, get_location_codebook, make_dummy_population
-from ..vaccinations import reaggregate_vaccines, scenario_to_epydemix
+from ..vaccinations import reaggregate_vaccines
 
 logger = logging.getLogger(__name__)
 
@@ -153,7 +151,13 @@ def build_basemodel(*, basemodel_config: BasemodelConfig, **_) -> BuilderOutput:
 
     logger.info("BUILDER: completed for single model.")
 
-    return BuilderOutput(primary_id=0, seed=basemodel.random_seed, model=model, simulation=simulation_args)
+    return BuilderOutput(
+        primary_id=0,
+        seed=basemodel.random_seed,
+        delta_t=basemodel.timespan.delta_t,
+        model=model,
+        simulation=simulation_args,
+    )
 
 
 @register_builder({"basemodel_config", "sampling_config"})
@@ -254,7 +258,7 @@ def build_sampling(
             compartment_init = calculate_compartment_initial_conditions(
                 compartments=basemodel.compartments,
                 population_array=m.population.Nk,
-                sampled_compartments=varset.get("compartments"),
+                params_dict=varset.get("compartments"),
             )
 
             sim_args = SimulationArguments(
@@ -276,7 +280,9 @@ def build_sampling(
 
     logger.info("BUILDER: completed for sampling.")
     return [
-        BuilderOutput(primary_id=i, seed=basemodel.random_seed, model=t[0], simulation=t[1])
+        BuilderOutput(
+            primary_id=i, seed=basemodel.random_seed, delta_t=basemodel.timespan.delta_t, model=t[0], simulation=t[1]
+        )
         for i, t in enumerate(zip(final_models, simulation_args, strict=True))
     ]
 
@@ -402,6 +408,7 @@ def build_calibration(
         BuilderOutput(
             primary_id=i,
             seed=basemodel.random_seed,
+            delta_t=basemodel.timespan.delta_t,
             model=t[0],
             calibrator=t[1],
             calibration=calibration.strategy,

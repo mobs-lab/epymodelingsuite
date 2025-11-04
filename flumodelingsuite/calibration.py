@@ -1,5 +1,4 @@
 import pandas as pd
-from epydemix.model import EpiModel
 
 
 def calc_beta(model_pop, Rt, mu, p_asymptomatic, r_beta_asymp):

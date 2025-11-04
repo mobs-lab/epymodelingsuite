@@ -1,9 +1,9 @@
 modelset:
-
   meta:
-    description: "Vaccination scenarios for 2024"
-    author: "Flu Modeling Suite"
-    version: 1.0.0
+    description: "2024 vaccination scenarios"
+    author: "epymodelingsuite"
+    version: "0.0.1"
+    date: "2038-01-19"
 
   population_names:
     - US-MA
@@ -34,7 +34,7 @@ modelset:
       end_date: "2025-05-17"
     
     projection:
-      n_trajectories: 20
+      n_trajectories: 1000
     
     compartments:
       L:
