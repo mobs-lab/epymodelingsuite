@@ -1018,6 +1018,15 @@ def _aggregate_runner_telemetries(runner_telemetries: list[ExecutionTelemetry]) 
     if peak_memories:
         aggregated.runner["peak_memory_mb"] = max(peak_memories)
 
+    # Sum CPU times across all parallel runner tasks
+    cpu_time_user = sum(t.resources.get("cpu_time_user_seconds", 0.0) for t in runner_telemetries)
+    cpu_time_system = sum(t.resources.get("cpu_time_system_seconds", 0.0) for t in runner_telemetries)
+
+    if cpu_time_user > 0:
+        aggregated.resources["cpu_time_user_seconds"] = cpu_time_user
+    if cpu_time_system > 0:
+        aggregated.resources["cpu_time_system_seconds"] = cpu_time_system
+
     return aggregated
 
 
@@ -1067,7 +1076,7 @@ def _merge_stage_telemetries(
             end_time = datetime.fromisoformat(output_telemetry.output["end_time"])
             workflow.metadata["total_duration_seconds"] = (end_time - start_time).total_seconds()
 
-    # Track overall peak memory
+    # Track overall peak memory (max across all stages)
     peak_memories = []
     if builder_telemetry and "peak_memory_mb" in builder_telemetry.builder:
         peak_memories.append(builder_telemetry.builder["peak_memory_mb"])
@@ -1079,13 +1088,19 @@ def _merge_stage_telemetries(
     if peak_memories:
         workflow.resources["peak_memory_mb"] = max(peak_memories)
 
-    # Get CPU time from last available stage
-    if output_telemetry and output_telemetry.resources:
-        workflow.resources.update(output_telemetry.resources)
-    elif runner_telemetry and runner_telemetry.resources:
-        workflow.resources.update(runner_telemetry.resources)
-    elif builder_telemetry and builder_telemetry.resources:
-        workflow.resources.update(builder_telemetry.resources)
+    # Sum CPU time across all stages (each stage is a separate process)
+    cpu_time_user = 0.0
+    cpu_time_system = 0.0
+
+    for telemetry in [builder_telemetry, runner_telemetry, output_telemetry]:
+        if telemetry and telemetry.resources:
+            cpu_time_user += telemetry.resources.get("cpu_time_user_seconds", 0.0)
+            cpu_time_system += telemetry.resources.get("cpu_time_system_seconds", 0.0)
+
+    if cpu_time_user > 0:
+        workflow.resources["cpu_time_user_seconds"] = cpu_time_user
+    if cpu_time_system > 0:
+        workflow.resources["cpu_time_system_seconds"] = cpu_time_system
 
     # Set status
     workflow.status = "completed"
