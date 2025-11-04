@@ -4,6 +4,7 @@ import copy
 import logging
 
 import pandas as pd
+import numpy as np
 from epydemix.calibration import ABCSampler, ae, mae, mape, rmse, wmape
 from epydemix.model import EpiModel
 
