@@ -3,6 +3,7 @@
 import copy
 import io
 import logging
+from collections import defaultdict
 from datetime import date, timedelta
 
 import numpy as np
@@ -502,39 +503,24 @@ def generate_simulation_outputs(*, simulations: list[SimulationOutput], output_c
         if output.model_meta.projection_parameters:
             warnings.add("OUTPUT_GENERATOR: Requested projection parameter metadata in simulation workflow, ignoring.")
 
-        meta_dict = {}
+        meta_dict = defaultdict(list)
         for simulation in simulations:
-            meta_dict.set_default("primary_id", [])
             meta_dict["primary_id"].append(simulation.primary_id)
-
-            meta_dict.set_default("seed", [])
             meta_dict["seed"].append(simulation.seed)
-
-            meta_dict.set_default("delta_t", [])
             meta_dict["delta_t"].append(simulation.delta_t)
-
-            meta_dict.set_default("population", [])
             meta_dict["population"].append(simulation.population)
-
-            meta_dict.set_default("n_sims", [])
             meta_dict["n_sims"].append(simulation.results.Nsim)
-
-            meta_dict.set_default("start_date", [])
             meta_dict["start_date"].append(str(sorted(simulation.results.dates)[0]))
-
-            meta_dict.set_default("end_date", [])
             meta_dict["end_date"].append(str(sorted(simulation.results.dates)[-1]))
 
             # Parameters
             for p, v in simulation.results.parameters.items():
-                meta_dict.set_default(p, [])
                 meta_dict[p].append(str(v))
 
             # Initial conditions
             inits = {k: [int(v[0]) for v in vs] for k, vs in simulation.results.get_stacked_compartments().items()}
             for c, i in inits:
                 colname = f"init_{c}"
-                meta_dict.set_default(colname, [])
                 meta_dict[colname].append(str(i))
 
         model_meta = pd.DataFrame(meta_dict)
