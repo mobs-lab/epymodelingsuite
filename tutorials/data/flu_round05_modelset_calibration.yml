@@ -14,8 +14,8 @@ modelset:
     strategy:
       name: smc
       options: # strategy specific arguments in calibrate() function
-        num_particles: 20
-        num_generations: 5
+        num_particles: 10
+        num_generations: 2
 
     # Sampler options, passed directly when initializing ABCSampler
     distance_function: rmse # Default, but we could provide custom distance function
@@ -31,10 +31,10 @@ modelset:
     
     fitting_window:
       start_date: "2024-09-15"
-      end_date: "2025-05-17"
+      end_date: "2025-04-19"
     
     projection:
-      n_trajectories: 1000
+      n_trajectories: 10
     
     compartments:
       L:
