@@ -16,7 +16,7 @@ def reproduce_trajectory(
     ----------
     calibrator : ABCSampler
         The ABCSampler instance that contains the simulation function.
-    cal_results : CalibrationResults
+    calibration_results : CalibrationResults
         Calibration results containing trajectories and parameters.
     generation : int
         Generation number to reproduce from.
