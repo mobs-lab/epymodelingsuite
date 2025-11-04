@@ -160,7 +160,6 @@ def dispatch_runner(configs: BuilderOutput) -> SimulationOutput | CalibrationOut
         RuntimeError if simulation/calibration/projection fails.
         AssertionError if configs are invalid.
     """
-    np.random.seed(configs.seed)
 
     # Handle simulation
     if configs.simulation:

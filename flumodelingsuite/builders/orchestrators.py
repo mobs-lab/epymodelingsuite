@@ -7,6 +7,7 @@ from collections.abc import Callable
 from typing import Any, TypedDict
 
 import numpy as np
+from numpy.random import Generator
 import pandas as pd
 from epydemix import simulate
 from epydemix.model import EpiModel
@@ -468,6 +469,7 @@ def format_calibration_data(
     results: Any,
     comparison_transitions: list[str],
     data_dates: list,
+    random_state: dict[str, Any],
 ) -> dict[str, Any]:
     """
     Format simulation results for calibration mode (aggregate + filter + pad).
@@ -511,7 +513,7 @@ def format_calibration_data(
     pad_len = calculate_padding_for_date_alignment(results.dates, data_dates)
     aligned_data = pad_array_with_zeros(filtered_data, pad_len)
 
-    return {"data": aligned_data, "date": data_dates}
+    return {"data": aligned_data, "date": data_dates, "random_state": random_state}
 
 
 def apply_seasonality_with_sampled_min(
@@ -687,6 +689,7 @@ def make_simulate_wrapper(
     intervention_types: list[str],
     sampled_start_timespan: Timespan | None = None,
     earliest_vax: pd.DataFrame | None = None,
+    rng: Generator | None = None,
 ) -> Callable[[dict], dict]:
     """
     Create a simulate_wrapper function for ABCSampler calibration.
@@ -810,21 +813,27 @@ def make_simulate_wrapper(
             params_dict=params,
         )
 
-        # 8. Collect settings for simulation
+        # 8 Handle random state
+        if "random_state" in params.keys():
+            rng.bit_generator.state = params["random_state"]
+        random_state = rng.bit_generator.state
+
+        # 9. Collect settings for simulation
         sim_params = {
             "epimodel": model,
             "initial_conditions_dict": compartment_init,
             "start_date": timespan.start_date,
             "end_date": params["end_date"],
             "resample_frequency": basemodel.simulation.resample_frequency,
+            "rng": rng,
         }
 
-        # 9. Extract observed dates for calibration (before simulation to avoid duplication)
+        # 10. Extract observed dates for calibration (before simulation to avoid duplication)
         if not params["projection"]:
             date_column = calibration.comparison[0].observed_date_column
             data_dates = list(pd.to_datetime(observed_data[date_column].values))
 
-        # 10. Run simulation
+        # 11. Run simulation
         try:
             results = simulate(**sim_params)
         except (ValueError, RuntimeError, KeyError) as e:
@@ -840,7 +849,7 @@ def make_simulate_wrapper(
             # Calibration: return zero-filled array
             return {"data": np.full(len(data_dates), 0)}
 
-        # 11. Format output based on mode
+        # 12. Format output based on mode
         # Projection: return full trajectories (flattened + padded)
         if params["projection"]:
             return format_projection_trajectories(
@@ -857,6 +866,7 @@ def make_simulate_wrapper(
             results=results,
             comparison_transitions=calibration.comparison[0].simulation,
             data_dates=data_dates,
+            random_state=random_state,
         )
 
     return simulate_wrapper
