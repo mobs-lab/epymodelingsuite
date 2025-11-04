@@ -724,6 +724,10 @@ def make_simulate_wrapper(
             This wrapper is passed to ABCSampler and called during calibration/projection.
 
     """
+    # Create default RNG if not provided
+    if rng is None:
+        rng = np.random.default_rng()
+
     # Validate observed_data: check for duplicate dates (indicates mixed location data)
     date_column = calibration.comparison[0].observed_date_column
     observed_dates = pd.to_datetime(observed_data[date_column])
