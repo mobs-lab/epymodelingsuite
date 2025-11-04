@@ -1,53 +1,53 @@
-location_name_epydemix,location_name,location_abbreviation,location_code,ISO
-United_States,United States,US,US,US
-United_States_Alabama,Alabama,AL,1,US-AL
-United_States_Alaska,Alaska,AK,2,US-AK
-United_States_Arizona,Arizona,AZ,4,US-AZ
-United_States_Arkansas,Arkansas,AR,5,US-AR
-United_States_California,California,CA,6,US-CA
-United_States_Colorado,Colorado,CO,8,US-CO
-United_States_Connecticut,Connecticut,CT,9,US-CT
-United_States_Delaware,Delaware,DE,10,US-DE
-United_States_District_of_Columbia,District of Columbia,DC,11,US-DC
-United_States_Florida,Florida,FL,12,US-FL
-United_States_Georgia,Georgia,GA,13,US-GA
-United_States_Hawaii,Hawaii,HI,15,US-HI
-United_States_Idaho,Idaho,ID,16,US-ID
-United_States_Illinois,Illinois,IL,17,US-IL
-United_States_Indiana,Indiana,IN,18,US-IN
-United_States_Iowa,Iowa,IA,19,US-IA
-United_States_Kansas,Kansas,KS,20,US-KS
-United_States_Kentucky,Kentucky,KY,21,US-KY
-United_States_Louisiana,Louisiana,LA,22,US-LA
-United_States_Maine,Maine,ME,23,US-ME
-United_States_Maryland,Maryland,MD,24,US-MD
-United_States_Massachusetts,Massachusetts,MA,25,US-MA
-United_States_Michigan,Michigan,MI,26,US-MI
-United_States_Minnesota,Minnesota,MN,27,US-MN
-United_States_Mississippi,Mississippi,MS,28,US-MS
-United_States_Missouri,Missouri,MO,29,US-MO
-United_States_Montana,Montana,MT,30,US-MT
-United_States_Nebraska,Nebraska,NE,31,US-NE
-United_States_Nevada,Nevada,NV,32,US-NV
-United_States_New_Hampshire,New Hampshire,NH,33,US-NH
-United_States_New_Jersey,New Jersey,NJ,34,US-NJ
-United_States_New_Mexico,New Mexico,NM,35,US-NM
-United_States_New_York,New York,NY,36,US-NY
-United_States_North_Carolina,North Carolina,NC,37,US-NC
-United_States_North_Dakota,North Dakota,ND,38,US-ND
-United_States_Ohio,Ohio,OH,39,US-OH
-United_States_Oklahoma,Oklahoma,OK,40,US-OK
-United_States_Oregon,Oregon,OR,41,US-OR
-United_States_Pennsylvania,Pennsylvania,PA,42,US-PA
-United_States_Rhode_Island,Rhode Island,RI,44,US-RI
-United_States_South_Carolina,South Carolina,SC,45,US-SC
-United_States_South_Dakota,South Dakota,SD,46,US-SD
-United_States_Tennessee,Tennessee,TN,47,US-TN
-United_States_Texas,Texas,TX,48,US-TX
-United_States_Utah,Utah,UT,49,US-UT
-United_States_Vermont,Vermont,VT,50,US-VT
-United_States_Virginia,Virginia,VA,51,US-VA
-United_States_Washington,Washington,WA,53,US-WA
-United_States_West_Virginia,West Virginia,WV,54,US-WV
-United_States_Wisconsin,Wisconsin,WI,55,US-WI
-United_States_Wyoming,Wyoming,WY,56,US-WY
+"location_name_epydemix","location_name","location_abbreviation","location_code","ISO"
+"United_States","United States","US","US","US"
+"United_States_Alabama","Alabama","AL","01","US-AL"
+"United_States_Alaska","Alaska","AK","02","US-AK"
+"United_States_Arizona","Arizona","AZ","04","US-AZ"
+"United_States_Arkansas","Arkansas","AR","05","US-AR"
+"United_States_California","California","CA","06","US-CA"
+"United_States_Colorado","Colorado","CO","08","US-CO"
+"United_States_Connecticut","Connecticut","CT","09","US-CT"
+"United_States_Delaware","Delaware","DE","10","US-DE"
+"United_States_District_of_Columbia","District of Columbia","DC","11","US-DC"
+"United_States_Florida","Florida","FL","12","US-FL"
+"United_States_Georgia","Georgia","GA","13","US-GA"
+"United_States_Hawaii","Hawaii","HI","15","US-HI"
+"United_States_Idaho","Idaho","ID","16","US-ID"
+"United_States_Illinois","Illinois","IL","17","US-IL"
+"United_States_Indiana","Indiana","IN","18","US-IN"
+"United_States_Iowa","Iowa","IA","19","US-IA"
+"United_States_Kansas","Kansas","KS","20","US-KS"
+"United_States_Kentucky","Kentucky","KY","21","US-KY"
+"United_States_Louisiana","Louisiana","LA","22","US-LA"
+"United_States_Maine","Maine","ME","23","US-ME"
+"United_States_Maryland","Maryland","MD","24","US-MD"
+"United_States_Massachusetts","Massachusetts","MA","25","US-MA"
+"United_States_Michigan","Michigan","MI","26","US-MI"
+"United_States_Minnesota","Minnesota","MN","27","US-MN"
+"United_States_Mississippi","Mississippi","MS","28","US-MS"
+"United_States_Missouri","Missouri","MO","29","US-MO"
+"United_States_Montana","Montana","MT","30","US-MT"
+"United_States_Nebraska","Nebraska","NE","31","US-NE"
+"United_States_Nevada","Nevada","NV","32","US-NV"
+"United_States_New_Hampshire","New Hampshire","NH","33","US-NH"
+"United_States_New_Jersey","New Jersey","NJ","34","US-NJ"
+"United_States_New_Mexico","New Mexico","NM","35","US-NM"
+"United_States_New_York","New York","NY","36","US-NY"
+"United_States_North_Carolina","North Carolina","NC","37","US-NC"
+"United_States_North_Dakota","North Dakota","ND","38","US-ND"
+"United_States_Ohio","Ohio","OH","39","US-OH"
+"United_States_Oklahoma","Oklahoma","OK","40","US-OK"
+"United_States_Oregon","Oregon","OR","41","US-OR"
+"United_States_Pennsylvania","Pennsylvania","PA","42","US-PA"
+"United_States_Rhode_Island","Rhode Island","RI","44","US-RI"
+"United_States_South_Carolina","South Carolina","SC","45","US-SC"
+"United_States_South_Dakota","South Dakota","SD","46","US-SD"
+"United_States_Tennessee","Tennessee","TN","47","US-TN"
+"United_States_Texas","Texas","TX","48","US-TX"
+"United_States_Utah","Utah","UT","49","US-UT"
+"United_States_Vermont","Vermont","VT","50","US-VT"
+"United_States_Virginia","Virginia","VA","51","US-VA"
+"United_States_Washington","Washington","WA","53","US-WA"
+"United_States_West_Virginia","West Virginia","WV","54","US-WV"
+"United_States_Wisconsin","Wisconsin","WI","55","US-WI"
+"United_States_Wyoming","Wyoming","WY","56","US-WY"

@@ -34,7 +34,7 @@ modelset:
       end_date: "2025-05-17"
     
     projection:
-      n_trajectories: 20
+      n_trajectories: 1000
     
     compartments:
       L:

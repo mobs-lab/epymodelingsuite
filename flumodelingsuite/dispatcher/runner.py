@@ -263,7 +263,6 @@ def dispatch_runner(configs: BuilderOutput) -> SimulationOutput | CalibrationOut
     AssertionError
         If configs are invalid.
     """
-    np.random.seed(configs.seed)
 
     # Get telemetry from context
     telemetry = ExecutionTelemetry.get_current()
