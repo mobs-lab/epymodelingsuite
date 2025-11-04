@@ -1,6 +1,7 @@
 """Configuration file utilities."""
 
 from pathlib import Path
+from typing import Any
 
 
 def identify_config_type(file_path: str) -> str | None:
@@ -68,3 +69,28 @@ def identify_config_type(file_path: str) -> str | None:
         return "output"
 
     return None
+
+
+def get_workflow_type_from_configs(configs: dict[str, Any]) -> str:
+    """Determine workflow type from configuration objects.
+
+    This determines the workflow type which is used both for the builder registry
+    key and for summary tracking.
+
+    Parameters
+    ----------
+    configs : dict
+        Configuration dictionary with keys like 'calibration_config', 'sampling_config', etc.
+
+    Returns
+    -------
+    str
+        Workflow type: "simulation", "sampling", "calibration", or "calibration_projection"
+    """
+    if configs.get("calibration_config") is not None:
+        # Check if projection is enabled in calibration config
+        has_projection = configs["calibration_config"].modelset.calibration.projection is not None
+        return "calibration_projection" if has_projection else "calibration"
+    if configs.get("sampling_config") is not None:
+        return "sampling"
+    return "simulation"

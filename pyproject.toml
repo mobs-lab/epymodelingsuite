@@ -19,7 +19,8 @@ dependencies = [
     "holidays",
     "matplotlib",
     "pydantic",
-    "pyyaml"
+    "pyyaml",
+    "psutil"
 ]
 
 readme = "README.md"

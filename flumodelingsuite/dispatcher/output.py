@@ -11,6 +11,7 @@ from epydemix.calibration import CalibrationResults
 
 from ..schema.dispatcher import CalibrationOutput, SimulationOutput
 from ..schema.output import OutputConfig, get_flusight_quantiles
+from ..telemetry import ExecutionTelemetry
 from ..utils.location import convert_location_name_format, get_flusight_population
 
 logger = logging.getLogger(__name__)
@@ -29,6 +30,7 @@ def filter_failed_projections(calibration_results: CalibrationResults) -> Calibr
     get_projection_trajectories().
 
     Modifies the calibration_results object in-place by filtering the projections lists.
+    Also stores the filtered count on the results object as `_filtered_count` for later reference.
 
     Parameters
     ----------
@@ -39,24 +41,34 @@ def filter_failed_projections(calibration_results: CalibrationResults) -> Calibr
     Returns
     -------
     CalibrationResults
-        The same object (modified in-place) with empty dicts filtered out. Logs warnings
-        when filtering occurs.
+        The same object (modified in-place) with empty dicts filtered out.
+        The `_filtered_count` attribute is set to the total number of filtered projections.
     """
+    total_filtered = 0
     if hasattr(calibration_results, "projections") and calibration_results.projections:
         # There can be multiple scenarios. The default is "baseline".
         for scenario_id in calibration_results.projections:
             projections = calibration_results.projections[scenario_id]
             if projections:
+                # Extract valid projections (non-empty dicts)
                 valid_projections = [proj for proj in projections if proj]
                 calibration_results.projections[scenario_id] = valid_projections
-                if len(valid_projections) < len(projections):
+
+                # Count and log filtered projections
+                filtered_count = len(projections) - len(valid_projections)
+                total_filtered += filtered_count
+                if filtered_count > 0:
                     logger.warning(
                         "Filtered out %d failed projection(s) for scenario '%s' (kept %d/%d)",
-                        len(projections) - len(valid_projections),
+                        filtered_count,
                         scenario_id,
                         len(valid_projections),
                         len(projections),
                     )
+
+    # Store filtered count on results object
+    calibration_results._filtered_count = total_filtered
+
     return calibration_results
 
 
@@ -887,7 +899,46 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
     return out_dict
 
 
-def dispatch_output_generator(**configs) -> dict:
-    """Dispatch output generator functions. Returns dictionary of filenames and gzip-compressed CSV strings."""
-    kinds = frozenset(k for k, v in configs.items() if v is not None)
-    return OUTPUT_GENERATOR_REGISTRY[kinds](**configs)
+def dispatch_output_generator(**configs) -> dict[str, bytes]:
+    """
+    Dispatch output generator functions.
+
+    Parameters
+    ----------
+    **configs
+        Configuration objects (simulations/calibrations, output_config)
+
+    Returns
+    -------
+    dict[str, bytes]
+        Output data dict of filenames → gzip-compressed CSV bytes
+    """
+    # Get telemetry from context
+    telemetry = ExecutionTelemetry.get_current()
+
+    # Set as current context (for nested calls)
+    ExecutionTelemetry.set_current(telemetry)
+
+    try:
+        # Enter output stage
+        if telemetry:
+            telemetry.enter_output()
+
+        # Generate outputs
+        kinds = frozenset(k for k, v in configs.items() if v is not None)
+        output_data = OUTPUT_GENERATOR_REGISTRY[kinds](**configs)
+
+        # Track output files in telemetry
+        if telemetry:
+            for filename, data in output_data.items():
+                file_size = len(data)
+                telemetry.capture_file(filename, file_size)
+
+        # Exit output stage
+        if telemetry:
+            telemetry.exit_output()
+
+        return output_data
+    finally:
+        # Clear context when done
+        ExecutionTelemetry.set_current(None)
