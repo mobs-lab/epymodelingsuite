@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 from .utils.formatting import format_data_size, format_duration
 
 if TYPE_CHECKING:
+    from .schema.calibration import CalibrationStrategy
     from .schema.dispatcher import BuilderOutput, CalibrationOutput, SimulationOutput
 
 try:
@@ -361,6 +362,7 @@ class ExecutionTelemetry:
         output: "CalibrationOutput",
         duration: float,
         error: str | None = None,
+        calibration_strategy: "CalibrationStrategy | None" = None,
     ) -> None:
         """Capture metrics from a calibration.
 
@@ -372,6 +374,8 @@ class ExecutionTelemetry:
             Calibration execution time in seconds
         error : str | None, optional
             Error message if calibration failed
+        calibration_strategy : CalibrationStrategy | None, optional
+            Calibration strategy configuration containing name and options
         """
         model_data: dict[str, Any] = {
             "primary_id": output.primary_id,
@@ -384,6 +388,17 @@ class ExecutionTelemetry:
             "duration_seconds": duration,
             **calibration_info,
         }
+
+        # Add strategy info if provided
+        if calibration_strategy:
+            model_data["calibration"]["strategy"] = str(calibration_strategy.name)
+            # Extract key metrics from options
+            if "num_particles" in calibration_strategy.options:
+                model_data["calibration"]["num_particles"] = calibration_strategy.options["num_particles"]
+            if "num_generations" in calibration_strategy.options:
+                model_data["calibration"]["num_generations"] = calibration_strategy.options["num_generations"]
+            if "distance_function" in calibration_strategy.options:
+                model_data["calibration"]["distance_function"] = calibration_strategy.options["distance_function"]
 
         if error:
             model_data["error"] = error
@@ -405,6 +420,7 @@ class ExecutionTelemetry:
         proj_duration: float,
         n_trajectories: int,
         error: str | None = None,
+        calibration_strategy: "CalibrationStrategy | None" = None,
     ) -> None:
         """Capture metrics from a calibration with projection.
 
@@ -420,6 +436,8 @@ class ExecutionTelemetry:
             Number of requested projection trajectories
         error : str | None, optional
             Error message if calibration or projection failed
+        calibration_strategy : CalibrationStrategy | None, optional
+            Calibration strategy configuration containing name and options
         """
         model_data: dict[str, Any] = {
             "primary_id": output.primary_id,
@@ -432,6 +450,17 @@ class ExecutionTelemetry:
             "duration_seconds": calib_duration,
             **calibration_info,
         }
+
+        # Add strategy info if provided
+        if calibration_strategy:
+            model_data["calibration"]["strategy"] = str(calibration_strategy.name)
+            # Extract key metrics from options
+            if "num_particles" in calibration_strategy.options:
+                model_data["calibration"]["num_particles"] = calibration_strategy.options["num_particles"]
+            if "num_generations" in calibration_strategy.options:
+                model_data["calibration"]["num_generations"] = calibration_strategy.options["num_generations"]
+            if "distance_function" in calibration_strategy.options:
+                model_data["calibration"]["distance_function"] = calibration_strategy.options["distance_function"]
 
         # Record projection info
         projection_info = self._extract_projection_info(output.results, n_trajectories)

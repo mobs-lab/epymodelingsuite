@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from flumodelingsuite.schema.calibration import CalibrationStrategy
 from flumodelingsuite.schema.dispatcher import CalibrationOutput, SimulationOutput
 from flumodelingsuite.telemetry import (
     ExecutionTelemetry,
@@ -578,3 +579,64 @@ class TestPartialWorkflows:
         # Should calculate from builder start to builder end
         assert "total_duration_seconds" in telemetry.metadata
         assert telemetry.metadata["total_duration_seconds"] > 0
+
+
+class TestStrategyInfoCapture:
+    """Test capturing ABC strategy information in telemetry."""
+
+    def test_capture_calibration_with_strategy(self):
+        """Test that ABC strategy info is captured for calibration."""
+        telemetry = ExecutionTelemetry()
+        telemetry.enter_runner()
+
+        calib_output = make_mock_calibration_output(0, "US-CA", particles_accepted=50)
+        strategy = CalibrationStrategy(
+            name="SMC", options={"num_particles": 100, "num_generations": 5, "max_time": "30m"}
+        )
+
+        telemetry.capture_calibration(calib_output, duration=120.0, calibration_strategy=strategy)
+
+        assert len(telemetry.runner["models"]) == 1
+        model = telemetry.runner["models"][0]
+        assert model["calibration"]["strategy"] == "SMC"
+        assert model["calibration"]["num_particles"] == 100
+        assert model["calibration"]["num_generations"] == 5
+        # max_time should not be included (only particles, generations, distance_function)
+        assert "max_time" not in model["calibration"]
+
+    def test_capture_projection_with_strategy(self):
+        """Test that ABC strategy info is captured for projection."""
+        telemetry = ExecutionTelemetry()
+        telemetry.enter_runner()
+
+        proj_output = make_mock_projection_output(0, "US-CA", particles_accepted=50, successful_trajectories=95)
+        strategy = CalibrationStrategy(name="SMC", options={"num_particles": 100, "num_generations": 5})
+
+        telemetry.capture_projection(
+            proj_output,
+            calib_duration=120.0,
+            proj_duration=30.0,
+            n_trajectories=100,
+            calibration_strategy=strategy,
+        )
+
+        assert len(telemetry.runner["models"]) == 1
+        model = telemetry.runner["models"][0]
+        assert model["calibration"]["strategy"] == "SMC"
+        assert model["calibration"]["num_particles"] == 100
+        assert model["calibration"]["num_generations"] == 5
+
+    def test_capture_without_strategy_info(self):
+        """Test that capture works without strategy info (backward compatibility)."""
+        telemetry = ExecutionTelemetry()
+        telemetry.enter_runner()
+
+        calib_output = make_mock_calibration_output(0, "US-CA", particles_accepted=50)
+        telemetry.capture_calibration(calib_output, duration=120.0)
+
+        assert len(telemetry.runner["models"]) == 1
+        model = telemetry.runner["models"][0]
+        # Should not have strategy info
+        assert "strategy" not in model["calibration"]
+        assert "num_particles" not in model["calibration"]
+        assert "num_generations" not in model["calibration"]
