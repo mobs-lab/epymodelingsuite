@@ -780,9 +780,9 @@ def make_simulate_wrapper(
         )
 
         # 8 Handle random state
-        random_state = rng.bit_generator.state
         if "random_state" in params.keys():
             rng.bit_generator.state = params["random_state"]
+        random_state = rng.bit_generator.state
 
         # 9. Collect settings for simulation
         sim_params = {
