@@ -529,6 +529,11 @@ class ExecutionTelemetry:
         start_time = datetime.fromisoformat(self.output["start_time"])
         self.output["duration_seconds"] = (end_time - start_time).total_seconds()
 
+        # Calculate total file size
+        if "files" in self.output and self.output["files"]:
+            total_size = sum(f["size_bytes"] for f in self.output["files"])
+            self.output["total_size_bytes"] = total_size
+
         self._update_peak_memory()
         if self._peak_memory_mb > self.runner.get("peak_memory_mb", 0):
             self.output["peak_memory_mb"] = self._peak_memory_mb
@@ -745,6 +750,10 @@ class ExecutionTelemetry:
                     name = file_info["name"]
                     size = format_data_size(file_info["size_bytes"])
                     lines.append(f"  - {name} ({size})")
+                # Show total size if available
+                if "total_size_bytes" in self.output:
+                    total_size = format_data_size(self.output["total_size_bytes"])
+                    lines.append(f"Total size: {total_size}")
             if self.output.get("filtered_projections", 0) > 0:
                 lines.append(f"Filtered projections: {self.output['filtered_projections']}")
             if "peak_memory_mb" in self.output:

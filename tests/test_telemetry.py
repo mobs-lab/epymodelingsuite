@@ -180,6 +180,8 @@ class TestExecutionTelemetry:
         telemetry.exit_output()
 
         assert "duration_seconds" in telemetry.output
+        assert "total_size_bytes" in telemetry.output
+        assert telemetry.output["total_size_bytes"] == 1024000 + 5120000  # Sum of file sizes
         assert telemetry.status == "completed"
 
     def test_error_tracking(self):
