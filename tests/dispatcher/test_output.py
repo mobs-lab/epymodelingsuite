@@ -116,6 +116,7 @@ class TestFilterFailedProjections:
         results = MagicMock(spec=[])  # No projections attribute
         filtered = filter_failed_projections(results)
         assert filtered is results
+        assert filtered._filtered_count == 0
 
     def test_none_projections_returns_unchanged(self):
         """Test that objects with None projections are returned unchanged."""
@@ -123,6 +124,7 @@ class TestFilterFailedProjections:
         results.projections = None
         filtered = filter_failed_projections(results)
         assert filtered is results
+        assert filtered._filtered_count == 0
 
     def test_empty_projections_dict_returns_unchanged(self):
         """Test that empty projections dictionary is handled correctly."""
@@ -131,6 +133,7 @@ class TestFilterFailedProjections:
         filtered = filter_failed_projections(results)
         assert filtered is results
         assert filtered.projections == {}
+        assert filtered._filtered_count == 0
 
     def test_all_valid_simulations_unchanged(self, mock_calibration_results):
         """Test that valid simulations are not modified."""
@@ -140,6 +143,7 @@ class TestFilterFailedProjections:
         assert filtered is mock_calibration_results
         assert len(filtered.projections["baseline"]) == original_count
         assert all(sim for sim in filtered.projections["baseline"])  # All non-empty
+        assert filtered._filtered_count == 0
 
     def test_filters_out_empty_dicts(self, mock_calibration_results_with_failures):
         """Test that empty dictionaries are filtered out."""
@@ -148,6 +152,7 @@ class TestFilterFailedProjections:
         assert len(filtered.projections["baseline"]) == 3
         assert all(sim for sim in filtered.projections["baseline"])  # All non-empty
         assert all("date" in sim for sim in filtered.projections["baseline"])
+        assert filtered._filtered_count == 2
 
     def test_filters_multiple_scenarios(self, mock_calibration_results_multiple_scenarios):
         """Test that filtering works across multiple scenarios."""
@@ -160,6 +165,7 @@ class TestFilterFailedProjections:
         # Intervention should have 2 valid simulations
         assert len(filtered.projections["intervention"]) == 2
         assert all(sim for sim in filtered.projections["intervention"])
+        assert filtered._filtered_count == 3  # 1 from baseline + 2 from intervention
 
     def test_all_failed_simulations_returns_empty_list(self):
         """Test that scenario with all failed projections becomes empty list."""
@@ -172,6 +178,7 @@ class TestFilterFailedProjections:
 
         assert len(filtered.projections["baseline"]) == 0
         assert filtered.projections["baseline"] == []
+        assert filtered._filtered_count == 3
 
     @patch("flumodelingsuite.dispatcher.output.logger")
     def test_logs_warning_when_filtering(self, mock_logger, mock_calibration_results_with_failures):
@@ -218,6 +225,7 @@ class TestFilterFailedProjections:
         assert len(filtered_sims) == len(original_valid_sims)
         for original, filtered_sim in zip(original_valid_sims, filtered_sims, strict=False):
             assert original == filtered_sim
+        assert filtered._filtered_count == 2
 
     def test_empty_scenario_list_handled(self):
         """Test that empty list for a scenario is handled correctly."""
@@ -227,6 +235,7 @@ class TestFilterFailedProjections:
         filtered = filter_failed_projections(results)
 
         assert filtered.projections["baseline"] == []
+        assert filtered._filtered_count == 0
 
     def test_none_scenario_value_handled(self):
         """Test that None value for a scenario is handled correctly."""
@@ -237,3 +246,28 @@ class TestFilterFailedProjections:
 
         # Should skip None scenario and not crash
         assert filtered is results
+        assert filtered._filtered_count == 0
+
+    def test_stores_filtered_count_on_results(self, mock_calibration_results_with_failures):
+        """Test that _filtered_count is stored on the results object."""
+        filtered = filter_failed_projections(mock_calibration_results_with_failures)
+
+        # Should store the count on the results object
+        assert hasattr(filtered, "_filtered_count")
+        assert filtered._filtered_count == 2
+
+    def test_stores_filtered_count_zero_when_no_failures(self, mock_calibration_results):
+        """Test that _filtered_count is 0 when there are no failures."""
+        filtered = filter_failed_projections(mock_calibration_results)
+
+        # Should store 0 when no failures
+        assert hasattr(filtered, "_filtered_count")
+        assert filtered._filtered_count == 0
+
+    def test_stores_filtered_count_multiple_scenarios(self, mock_calibration_results_multiple_scenarios):
+        """Test that _filtered_count aggregates across all scenarios."""
+        filtered = filter_failed_projections(mock_calibration_results_multiple_scenarios)
+
+        # Should aggregate count across scenarios (1 + 2 = 3)
+        assert hasattr(filtered, "_filtered_count")
+        assert filtered._filtered_count == 3

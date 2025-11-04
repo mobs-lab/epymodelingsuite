@@ -25,6 +25,7 @@ def filter_failed_projections(calibration_results: CalibrationResults) -> Calibr
     get_projection_trajectories().
 
     Modifies the calibration_results object in-place by filtering the projections lists.
+    Also stores the filtered count on the results object as `_filtered_count` for later reference.
 
     Parameters
     ----------
@@ -35,24 +36,34 @@ def filter_failed_projections(calibration_results: CalibrationResults) -> Calibr
     Returns
     -------
     CalibrationResults
-        The same object (modified in-place) with empty dicts filtered out. Logs warnings
-        when filtering occurs.
+        The same object (modified in-place) with empty dicts filtered out.
+        The `_filtered_count` attribute is set to the total number of filtered projections.
     """
+    total_filtered = 0
     if hasattr(calibration_results, "projections") and calibration_results.projections:
         # There can be multiple scenarios. The default is "baseline".
         for scenario_id in calibration_results.projections:
             projections = calibration_results.projections[scenario_id]
             if projections:
+                # Extract valid projections (non-empty dicts)
                 valid_projections = [proj for proj in projections if proj]
                 calibration_results.projections[scenario_id] = valid_projections
-                if len(valid_projections) < len(projections):
+
+                # Count and log filtered projections
+                filtered_count = len(projections) - len(valid_projections)
+                total_filtered += filtered_count
+                if filtered_count > 0:
                     logger.warning(
                         "Filtered out %d failed projection(s) for scenario '%s' (kept %d/%d)",
-                        len(projections) - len(valid_projections),
+                        filtered_count,
                         scenario_id,
                         len(valid_projections),
                         len(projections),
                     )
+
+    # Store filtered count on results object
+    calibration_results._filtered_count = total_filtered
+
     return calibration_results
 
 
