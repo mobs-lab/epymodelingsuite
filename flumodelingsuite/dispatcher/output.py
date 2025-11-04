@@ -8,6 +8,7 @@ from epydemix.calibration import CalibrationResults
 
 from ..schema.dispatcher import CalibrationOutput, SimulationOutput
 from ..schema.output import OutputConfig, get_flusight_quantiles
+from ..telemetry import ExecutionTelemetry
 
 logger = logging.getLogger(__name__)
 
@@ -561,7 +562,46 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
     return out_dict
 
 
-def dispatch_output_generator(**configs) -> dict:
-    """Dispatch output generator functions. Returns dictionary of filenames and gzip-compressed CSV strings."""
-    kinds = frozenset(k for k, v in configs.items() if v is not None)
-    return OUTPUT_GENERATOR_REGISTRY[kinds](**configs)
+def dispatch_output_generator(**configs) -> dict[str, bytes]:
+    """
+    Dispatch output generator functions.
+
+    Parameters
+    ----------
+    **configs
+        Configuration objects (simulations/calibrations, output_config)
+
+    Returns
+    -------
+    dict[str, bytes]
+        Output data dict of filenames → gzip-compressed CSV bytes
+    """
+    # Get telemetry from context
+    telemetry = ExecutionTelemetry.get_current()
+
+    # Set as current context (for nested calls)
+    ExecutionTelemetry.set_current(telemetry)
+
+    try:
+        # Enter output stage
+        if telemetry:
+            telemetry.enter_output()
+
+        # Generate outputs
+        kinds = frozenset(k for k, v in configs.items() if v is not None)
+        output_data = OUTPUT_GENERATOR_REGISTRY[kinds](**configs)
+
+        # Track output files in telemetry
+        if telemetry:
+            for filename, data in output_data.items():
+                file_size = len(data)
+                telemetry.capture_file(filename, file_size)
+
+        # Exit output stage
+        if telemetry:
+            telemetry.exit_output()
+
+        return output_data
+    finally:
+        # Clear context when done
+        ExecutionTelemetry.set_current(None)

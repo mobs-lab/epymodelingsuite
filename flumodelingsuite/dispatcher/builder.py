@@ -2,6 +2,7 @@
 
 import copy
 import logging
+from pathlib import Path
 
 import pandas as pd
 from epydemix.calibration import ABCSampler, ae, mae, mape, rmse, wmape
@@ -35,6 +36,8 @@ from ..schema.dispatcher import BuilderOutput, ProjectionArguments, SimulationAr
 from ..schema.general import validate_modelset_consistency
 from ..schema.sampling import SamplingConfig
 from ..school_closures import make_school_closure_dict
+from ..telemetry import ExecutionTelemetry, extract_builder_metadata
+from ..utils.config import get_workflow_type_from_configs
 from ..vaccinations import reaggregate_vaccines
 
 logger = logging.getLogger(__name__)
@@ -421,6 +424,41 @@ def dispatch_builder(**configs) -> BuilderOutput | list[BuilderOutput]:
     Dispatch to build_basemodel if supplied configs: BasemodelConfig
     Dispatch to build_sampling if supplied configs: BasemodelConfig, SamplingConfig
     Dispatch to build_calibration if supplied configs: BasemodelConfig, CalibrationConfig
+
+    Parameters
+    ----------
+    **configs
+        Configuration objects (basemodel_config, sampling_config, calibration_config)
+
+    Returns
+    -------
+    BuilderOutput | list[BuilderOutput]
+        Builder outputs
     """
-    kinds = frozenset(k for k, v in configs.items() if v is not None)
-    return BUILDER_REGISTRY[kinds](**configs)
+    # Determine workflow type (used for registry key and summary tracking)
+    workflow_type = get_workflow_type_from_configs(configs)
+
+    # Get telemetry from context
+    telemetry = ExecutionTelemetry.get_current()
+
+    # Set as current context (for nested calls)
+    ExecutionTelemetry.set_current(telemetry)
+
+    try:
+        if telemetry:
+            telemetry.enter_builder(workflow_type)
+
+        # Dispatch to appropriate builder
+        kinds = frozenset(k for k, v in configs.items() if v is not None)
+        builder_outputs = BUILDER_REGISTRY[kinds](**configs)
+
+        # Extract metadata and exit builder stage
+        if telemetry:
+            metadata = extract_builder_metadata(builder_outputs, configs)
+            if metadata:
+                telemetry.exit_builder(**metadata)
+
+        return builder_outputs
+    finally:
+        # Clear context when done
+        ExecutionTelemetry.set_current(None)
