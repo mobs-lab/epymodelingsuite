@@ -749,8 +749,14 @@ class TestFormatCalibrationData:
 
         comparison_transitions = ["Hosp_vax", "Hosp_unvax"]
         data_dates = [date(2024, 1, 2), date(2024, 1, 4)]
+        random_state = {
+            "bit_generator": "PCG64",
+            "state": {"state": 12345, "inc": 67890},
+            "has_uint32": 0,
+            "uinteger": 0,
+        }
 
-        result = format_calibration_data(results, comparison_transitions, data_dates)
+        result = format_calibration_data(results, comparison_transitions, data_dates, random_state)
 
         # Should return dict with "data" and "date" keys
         assert isinstance(result, dict)
@@ -772,8 +778,14 @@ class TestFormatCalibrationData:
 
         comparison_transitions = ["Hosp"]
         data_dates = [date(2024, 1, 1), date(2024, 1, 2), date(2024, 1, 3), date(2024, 1, 4), date(2024, 1, 5)]
+        random_state = {
+            "bit_generator": "PCG64",
+            "state": {"state": 12345, "inc": 67890},
+            "has_uint32": 0,
+            "uinteger": 0,
+        }
 
-        result = format_calibration_data(results, comparison_transitions, data_dates)
+        result = format_calibration_data(results, comparison_transitions, data_dates, random_state)
 
         # Should return dict with "data" and "date" keys
         assert isinstance(result, dict)
@@ -798,8 +810,14 @@ class TestFormatCalibrationData:
 
         comparison_transitions = ["Hosp_vax_0_4", "Hosp_vax_5_17", "Hosp_unvax_0_4", "Hosp_unvax_5_17"]
         data_dates = [date(2024, 1, 1), date(2024, 1, 2)]
+        random_state = {
+            "bit_generator": "PCG64",
+            "state": {"state": 12345, "inc": 67890},
+            "has_uint32": 0,
+            "uinteger": 0,
+        }
 
-        result = format_calibration_data(results, comparison_transitions, data_dates)
+        result = format_calibration_data(results, comparison_transitions, data_dates, random_state)
 
         # Should return dict with "data" and "date" keys
         assert isinstance(result, dict)
