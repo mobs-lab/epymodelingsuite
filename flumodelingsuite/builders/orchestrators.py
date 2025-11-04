@@ -842,7 +842,9 @@ def make_simulate_wrapper(
             results = simulate(**sim_params)
         except (ValueError, RuntimeError, KeyError) as e:
             failed_params = params.copy()
+            # Remove non-serializable objects from params for logging
             failed_params.pop("epimodel", None)
+            failed_params.pop("rng", None)
             logger.warning("Simulation failed with parameters %s: %s", failed_params, e)
 
             # Handle simulation failure
