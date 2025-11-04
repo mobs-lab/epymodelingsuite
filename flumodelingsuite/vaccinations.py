@@ -752,10 +752,13 @@ def reaggregate_vaccines(schedule: pd.DataFrame, actual_start_date: dt.date | pd
     return reaggregated_schedule
 
 
-def make_vaccination_probability_function(origin_compartment: str, eligible_compartments: list[str]) -> callable:
+def make_vaccination_rate_function(origin_compartment: str, eligible_compartments: list[str]) -> callable:
     """
-    Return a vaccination probability function for a given origin compartment and a set of
+    Return a vaccination rate function for a given origin compartment and a set of
     eligible compartments used in the denominator when allocating doses.
+
+    Returns a RATE function (vaccinations per person per unit time), not a probability.
+    In epydemix ≥ v1.0.2, Callable that computs rates is passed to EpiModel.register_transition_kind(), instead of Callable that computes probabilities. Internally, it will convert the rate to a probability using p = 1 - exp(-rate * dt).
 
     Args:
             origin_compartment (str): The compartment receiving the vaccination (e.g., 'S').
@@ -770,25 +773,27 @@ def make_vaccination_probability_function(origin_compartment: str, eligible_comp
     import numpy as np
     from epydemix.model.epimodel import validate_transition_function
 
-    def compute_vaccination_probability(params: list, data: dict) -> np.ndarray:
+    def compute_vaccination_rate(params: list, data: dict) -> np.ndarray:
         """
-        Compute the probability of the spontaneous transition required to move a certain
-        number of individuals out of the origin compartment at the current time step, based
-        on the total available doses and the distribution of the population across compartments.
+        Compute the vaccination rate (per unit time) required to allocate available doses
+        to individuals in the origin compartment, based on the distribution of the population
+        across eligible compartments.
+
+        Note: Returns a RATE (vaccinations per person per unit time), not a probability.
+        epydemix will convert this to a probability using p = 1 - exp(-rate * dt).
 
         Args:
                 params (list): A list containing one element: a 1D array of daily total doses
                                         (aligned with simulation time steps).
                 data (dict): A dictionary with the following keys:
                         - 't': Current time index (int)
-                        - 'dt': Duration of the current time step
+                        - 'dt': Duration of the current time step (used by EpiModel, not here)
                         - 'pop': Array of compartment population counts
                         - 'comp_indices': Dict mapping compartment names ('S', 'R', etc.) to their indices in 'pop'
 
         Returns
         -------
-                np.ndarray: Array of vaccination probabilities for the susceptible population,
-                                        clipped between 0 and 0.999.
+                np.ndarray: Array of vaccination rates (per unit time) for the origin compartment.  Can exceed 1.0 (e.g., if daily doses > origin population).
         """
         total_doses = params[0][data["t"]]
         origin_pop = data["pop"][data["comp_indices"][origin_compartment]]
@@ -798,20 +803,24 @@ def make_vaccination_probability_function(origin_compartment: str, eligible_comp
         with np.errstate(divide="ignore", invalid="ignore"):
             fraction_origin = np.where(denom > 0, origin_pop / denom, 0)
 
-        effective_doses = total_doses * data["dt"] * fraction_origin
+        # Calculate effective doses for origin compartment
+        effective_doses = total_doses * fraction_origin
 
+        # Calculate vaccination rate: doses per unit time / population
         with np.errstate(divide="ignore", invalid="ignore"):
-            p_vax = np.where(origin_pop > 0, effective_doses / origin_pop, 0)
+            vaccination_rate = np.where(origin_pop > 0, effective_doses / origin_pop, 0)
 
-        return np.clip(p_vax, 0, 0.999)
+        # Return rate (can be > 1, no upper cap needed)
+        # Only ensure non-negative
+        return np.maximum(vaccination_rate, 0)
 
-    validate_transition_function(compute_vaccination_probability)
-    return compute_vaccination_probability
+    validate_transition_function(compute_vaccination_rate)
+    return compute_vaccination_rate
 
 
 def add_vaccination_schedule(
     model: EpiModel,
-    vaccine_probability_function: Callable,
+    vaccine_rate_function: Callable,
     source_comp: str,
     target_comp: str,
     vaccination_schedule: pd.DataFrame,
@@ -823,7 +832,7 @@ def add_vaccination_schedule(
     ----------
         model (EpiModel): The model object to which the vaccination schedule will be added. Must have a population
                           age groups same as the columns in `vaccination_schedule`.
-        vaccine_probability_function (Callable): A function defining time-dependent vaccination probabilities.
+        vaccine_rate_function (Callable): A function defining time-dependent vaccination rates.
         vaccination_schedule (pd.DataFrame): Vaccination schedule with age groups as columns and time as rows.
                                              Must include all age groups used in the model.
         source_comp (str): The name of the source compartment (e.g., "S").
@@ -852,7 +861,9 @@ def add_vaccination_schedule(
         raise ValueError(f"Location {iso_location} not found in vaccination schedule data.")
 
     vaccination_schedule = vaccination_schedule.query("location == @iso_location").copy()
-    model.register_transition_kind("vaccination", vaccine_probability_function)
+
+    # From epydemix v1.0.2, register_transition_kind accepts Callable for rate not probability
+    model.register_transition_kind("vaccination", vaccine_rate_function)
 
     age_groups_model = model.population.Nk_names
     age_groups_data = vaccination_schedule.columns.tolist()
