@@ -434,7 +434,7 @@ def format_calibration_data(
     results: Any,
     comparison_transitions: list[str],
     data_dates: list,
-    random_state: Any,
+    random_state: dict[str, Any],
 ) -> dict[str, Any]:
     """
     Format simulation results for calibration mode (aggregate + filter + pad).
