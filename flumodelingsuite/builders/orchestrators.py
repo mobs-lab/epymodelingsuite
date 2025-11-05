@@ -16,7 +16,7 @@ from ..schema.basemodel import BaseEpiModel, Parameter, Timespan
 from ..schema.calibration import CalibrationConfig, ComparisonSpec
 from ..school_closures import make_school_closure_dict
 from ..utils import get_location_codebook, make_dummy_population
-from ..vaccinations import reaggregate_vaccines, scenario_to_epydemix
+from ..vaccinations import reaggregate_vaccines, scenario_to_epydemix, resample_dataframe
 from .base import (
     add_model_compartments_from_config,
     add_model_parameters_from_config,
@@ -588,8 +588,9 @@ def apply_vaccination_for_sampled_start(
 
     # Start_date is sampled, need to reaggregate
     reaggregated_vax = reaggregate_vaccines(earliest_vax, timespan.start_date)
+    reaggregated_resampled_vax = resample_dataframe(reaggregated_vax, timespan.delta_t)
     add_vaccination_schedules_from_config(
-        model, basemodel.transitions, basemodel.vaccination, timespan, use_schedule=reaggregated_vax
+        model, basemodel.transitions, basemodel.vaccination, timespan, use_schedule=reaggregated_resampled_vax
     )
 
 
@@ -784,7 +785,6 @@ def make_simulate_wrapper(
             reference_start_date=reference_start_date,
         )
         timespan = Timespan(start_date=start_date, end_date=params["end_date"], delta_t=basemodel.timespan.delta_t)
-
         # 3. Apply calibrated parameters
         apply_calibrated_parameters(model=model, params=params, parameter_config=basemodel.parameters)
 
@@ -824,6 +824,7 @@ def make_simulate_wrapper(
             "initial_conditions_dict": compartment_init,
             "start_date": timespan.start_date,
             "end_date": params["end_date"],
+            "dt": basemodel.timespan.delta_t,
             "resample_frequency": basemodel.simulation.resample_frequency,
             "rng": rng,
         }
