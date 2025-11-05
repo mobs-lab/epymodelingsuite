@@ -7,16 +7,16 @@ from collections.abc import Callable
 from typing import Any, TypedDict
 
 import numpy as np
-from numpy.random import Generator
 import pandas as pd
 from epydemix import simulate
 from epydemix.model import EpiModel
+from numpy.random import Generator
 
 from ..schema.basemodel import BaseEpiModel, Parameter, Timespan
 from ..schema.calibration import CalibrationConfig, ComparisonSpec
 from ..school_closures import make_school_closure_dict
 from ..utils import get_location_codebook, make_dummy_population
-from ..vaccinations import reaggregate_vaccines, scenario_to_epydemix, resample_dataframe
+from ..vaccinations import reaggregate_vaccines, resample_dataframe, scenario_to_epydemix
 from .base import (
     add_model_compartments_from_config,
     add_model_parameters_from_config,
@@ -586,7 +586,7 @@ def apply_vaccination_for_sampled_start(
         # No start_date sampling, vaccination already applied in setup
         return
 
-    # Start_date is sampled, need to reaggregate
+    # Start_date is sampled, need to reaggregate and resample
     reaggregated_vax = reaggregate_vaccines(earliest_vax, timespan.start_date)
     reaggregated_resampled_vax = resample_dataframe(reaggregated_vax, timespan.delta_t)
     add_vaccination_schedules_from_config(
