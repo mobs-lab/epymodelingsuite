@@ -128,12 +128,14 @@ def get_age_groups_from_data(data: pd.DataFrame) -> dict[str, str]:
 
 def resample_dataframe(df: pd.DataFrame, delta_t: float) -> pd.DataFrame:
     """
-    Resample a vaccination coverage DataFrame to a finer time resolution
-    by repeating values (step interpolation) and scaling by delta_t.
+    Resample a vaccination coverage DataFrame to match epydemix simulation time steps
+    by repeating values (step interpolation).
 
     This function preserves the step-wise nature of vaccination schedules,
     where values should remain constant within each day/period rather than
     being smoothly interpolated between periods.
+
+    Uses epydemix's compute_simulation_dates() to ensure exact alignment with simulation steps.
 
     Parameters
     ----------
@@ -150,18 +152,19 @@ def resample_dataframe(df: pd.DataFrame, delta_t: float) -> pd.DataFrame:
     -------
     pd.DataFrame
         Resampled DataFrame with:
-        - 'dates' as the new index column at the finer resolution
+        - 'dates' as the new index column matching simulation time steps
         - 'location' carried forward
-        - numeric columns repeated (not interpolated) and scaled by `delta_t`
+        - numeric columns repeated (not interpolated)
     """
     import numpy as np
+    from epydemix.utils import compute_simulation_dates
 
-    frequency = f"{24 * delta_t}h"
-
-    # Create new time index
-    new_index = pd.date_range(start=df.dates.iloc[0], end=df.dates.iloc[-1] + pd.Timedelta(days=1), freq=frequency)[
-        :-1
-    ]  # Remove the last point to avoid going beyond end date
+    # Use epydemix's date calculation for exact alignment
+    # Use min/max to handle unsorted DataFrames
+    start_date = df.dates.min()
+    end_date = df.dates.max()
+    simulation_dates = compute_simulation_dates(start_date, end_date, dt=delta_t)
+    new_index = pd.DatetimeIndex(simulation_dates)
 
     df = df.set_index("dates")
     numeric_cols = df.select_dtypes(include=[np.number]).columns
@@ -352,6 +355,7 @@ def scenario_to_epydemix(
     - Location names are converted to ISO codes for compatibility with Epydemix.
     """
     import numpy as np
+    from epydemix.utils import compute_simulation_dates
 
     from .utils import convert_location_name_format, get_population_codebook
 
@@ -359,6 +363,12 @@ def scenario_to_epydemix(
     population_codebook = get_population_codebook()
     if states:
         states = [convert_location_name_format(s, "name") for s in states]
+
+    # ========== COMPUTE SIMULATION DATES ==========
+    # Use epydemix's date calculation to ensure alignment with simulation time steps
+    simulation_dates_array = compute_simulation_dates(start_date, end_date, dt=delta_t)
+    simulation_dates_index = pd.DatetimeIndex(simulation_dates_array)
+
     # ========== LOAD AND FILTER DATA ==========
     vaccines = pd.read_csv(input_filepath)
     # Date and time handling
@@ -526,8 +536,19 @@ def scenario_to_epydemix(
             new_coverages[target_group] = daily_vaccines_wide_subset.mul(weights, axis=1).sum(axis=1)
 
         daily_vaccines_transformed = pd.DataFrame(new_coverages, index=daily_vaccines_wide_subset.index)
-        daily_vaccines_transformed.insert(0, "dates", this_location_wide["dates"])
-        daily_vaccines_transformed.insert(1, "location", this_location_wide["location"])
+
+        # Reindex to match simulation dates exactly
+        # Set dates as index temporarily for reindexing
+        daily_vaccines_transformed["dates"] = this_location_wide["dates"]
+        daily_vaccines_transformed = daily_vaccines_transformed.set_index("dates")
+
+        # Reindex to simulation_dates_index, filling missing dates with 0
+        daily_vaccines_transformed = daily_vaccines_transformed.reindex(simulation_dates_index, fill_value=0)
+
+        # Reset index and add metadata columns
+        daily_vaccines_transformed = daily_vaccines_transformed.reset_index()
+        daily_vaccines_transformed.rename(columns={"index": "dates"}, inplace=True)
+        daily_vaccines_transformed.insert(1, "location", this_location_wide["location"].iloc[0])
 
         all_locations_df = pd.concat([all_locations_df, daily_vaccines_transformed], ignore_index=True)
         # all_locations_data.extend(daily_vaccines_list)
