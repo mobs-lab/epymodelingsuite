@@ -166,13 +166,10 @@ def resample_dataframe(df: pd.DataFrame, delta_t: float) -> pd.DataFrame:
     df = df.set_index("dates")
     numeric_cols = df.select_dtypes(include=[np.number]).columns
 
-    # Use forward fill (step interpolation) instead of linear interpolation
+    # Use forward fill (step interpolation) to fill in new time points
     combined_index = df.index.union(new_index)
     vaccines_step = df[numeric_cols].reindex(combined_index).ffill()
     vaccines_fine = vaccines_step.reindex(new_index)
-
-    # Scale by delta_t to maintain total doses per day
-    vaccines_fine = vaccines_fine * delta_t
 
     vaccines_fine = vaccines_fine.reset_index().rename(columns={"index": "dates"})
     vaccines_fine.insert(1, "location", df["location"].values[0])
@@ -532,12 +529,7 @@ def scenario_to_epydemix(
         daily_vaccines_transformed.insert(0, "dates", this_location_wide["dates"])
         daily_vaccines_transformed.insert(1, "location", this_location_wide["location"])
 
-        if delta_t != 1.0:
-            vaccines_fine = resample_dataframe(daily_vaccines_transformed, delta_t)
-        else:
-            vaccines_fine = daily_vaccines_transformed.copy()
-
-        all_locations_df = pd.concat([all_locations_df, vaccines_fine], ignore_index=True)
+        all_locations_df = pd.concat([all_locations_df, daily_vaccines_transformed], ignore_index=True)
         # all_locations_data.extend(daily_vaccines_list)
 
     # ========== WRITE OUTPUT CSV ==========
