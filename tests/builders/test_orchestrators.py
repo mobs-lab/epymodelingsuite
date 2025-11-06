@@ -634,14 +634,17 @@ class TestApplyVaccinationForSampledStart:
 
         with (
             patch("flumodelingsuite.builders.orchestrators.reaggregate_vaccines") as mock_reagg,
+            patch("flumodelingsuite.builders.orchestrators.resample_dataframe") as mock_resample,
             patch("flumodelingsuite.builders.orchestrators.add_vaccination_schedules_from_config") as mock_add,
         ):
             mock_reagg.return_value = {"reaggregated": "data"}
+            mock_resample.return_value = {"resampled": "data"}
 
             apply_vaccination_for_sampled_start(model, basemodel, timespan, earliest_vax, sampled_start_timespan)
 
-            # Should reaggregate and add
+            # Should reaggregate, resample, and add
             mock_reagg.assert_called_once_with(earliest_vax, date(2024, 1, 15))
+            mock_resample.assert_called_once_with({"reaggregated": "data"}, 1.0)
             mock_add.assert_called_once()
 
 
