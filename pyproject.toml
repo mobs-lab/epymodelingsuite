@@ -10,7 +10,7 @@ authors = [
   { name="Nima Moghaddas", email="moghaddas.n@northeastern.edu" },
   { name="Minami Ueda", email="ueda.m@northeastern.edu" }
 ]
-description = "Models for influenza forecasting and scenario modeling. A codebase for working with epydemix."
+description = "Models and calibrators for forecasting and scenario modeling. A codebase for large workloads with epydemix and expanded functionality."
 dependencies = [
     "epydemix",
     "pandas",

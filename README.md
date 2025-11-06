@@ -1,6 +1,6 @@
 # epymodelingsuite
 
-Models for influenza forecasting and scenario modeling
+Models and calibrators for forecasting and scenario modeling. A codebase for large workloads with epydemix and expanded functionality.
 
 ## Installation
 
