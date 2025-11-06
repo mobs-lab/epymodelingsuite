@@ -7,16 +7,16 @@ from collections.abc import Callable
 from typing import Any, TypedDict
 
 import numpy as np
-from numpy.random import Generator
 import pandas as pd
 from epydemix import simulate
 from epydemix.model import EpiModel
+from numpy.random import Generator
 
 from ..schema.basemodel import BaseEpiModel, Parameter, Timespan
 from ..schema.calibration import CalibrationConfig, ComparisonSpec
 from ..school_closures import make_school_closure_dict
 from ..utils import get_location_codebook, make_dummy_population
-from ..vaccinations import reaggregate_vaccines, scenario_to_epydemix
+from ..vaccinations import reaggregate_vaccines, resample_dataframe, scenario_to_epydemix
 from .base import (
     add_model_compartments_from_config,
     add_model_parameters_from_config,
@@ -586,10 +586,11 @@ def apply_vaccination_for_sampled_start(
         # No start_date sampling, vaccination already applied in setup
         return
 
-    # Start_date is sampled, need to reaggregate
+    # Start_date is sampled, need to reaggregate and resample
     reaggregated_vax = reaggregate_vaccines(earliest_vax, timespan.start_date)
+    reaggregated_resampled_vax = resample_dataframe(reaggregated_vax, timespan.delta_t)
     add_vaccination_schedules_from_config(
-        model, basemodel.transitions, basemodel.vaccination, timespan, use_schedule=reaggregated_vax
+        model, basemodel.transitions, basemodel.vaccination, timespan, use_schedule=reaggregated_resampled_vax
     )
 
 
@@ -716,6 +717,9 @@ def make_simulate_wrapper(
             (e.g., "0-4", "5-17", "18-49", "50-64", "65+").
             Typically created by `setup_vaccination_schedules()` which calls
             `scenario_to_epydemix()` with the earliest start date.
+    rng : np.random.Generator | None, optional
+            Random number generator for reproducible simulations.
+            If None, a default generator will be created.
 
     Returns
     -------
@@ -724,6 +728,10 @@ def make_simulate_wrapper(
             This wrapper is passed to ABCSampler and called during calibration/projection.
 
     """
+    # Create default RNG if not provided
+    if rng is None:
+        rng = np.random.default_rng()
+
     # Validate observed_data: check for duplicate dates (indicates mixed location data)
     date_column = calibration.comparison[0].observed_date_column
     observed_dates = pd.to_datetime(observed_data[date_column])
@@ -784,7 +792,6 @@ def make_simulate_wrapper(
             reference_start_date=reference_start_date,
         )
         timespan = Timespan(start_date=start_date, end_date=params["end_date"], delta_t=basemodel.timespan.delta_t)
-
         # 3. Apply calibrated parameters
         apply_calibrated_parameters(model=model, params=params, parameter_config=basemodel.parameters)
 
@@ -824,6 +831,7 @@ def make_simulate_wrapper(
             "initial_conditions_dict": compartment_init,
             "start_date": timespan.start_date,
             "end_date": params["end_date"],
+            "dt": basemodel.timespan.delta_t,
             "resample_frequency": basemodel.simulation.resample_frequency,
             "rng": rng,
         }
@@ -838,7 +846,9 @@ def make_simulate_wrapper(
             results = simulate(**sim_params)
         except (ValueError, RuntimeError, KeyError) as e:
             failed_params = params.copy()
+            # Remove non-serializable objects from params for logging
             failed_params.pop("epimodel", None)
+            failed_params.pop("rng", None)
             logger.warning("Simulation failed with parameters %s: %s", failed_params, e)
 
             # Handle simulation failure
