@@ -198,7 +198,8 @@ def categorize_rate_change_flusightforecast(rate_change: float, count_change: fl
         A string representing the category of the rate-change ("stable", "increase", "large_increase", "decrease", "large_decrease").
     """
     rate_population_scale = 100000
-    assert -rate_population_scale <= rate_change <= rate_population_scale, "Received invalid rate-change."
+    msg = f"Received invalid rate-change {rate_change} for rate per {rate_population_scale} population."
+    assert -rate_population_scale <= rate_change <= rate_population_scale, msg
 
     if horizon == 0:
         stable_thres = 0.3 / rate_population_scale
@@ -858,26 +859,34 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
             meta_dict["population"].append(calibration.population)
             if calibration.results.projections:
                 meta_dict["n_projections"].append(len(calibration.results.projections["baseline"]))
-            #meta_dict["fitting_start"].append()
-            #meta_dict["fitting_end"].append()
-            #meta_dict["start_date"].append(str(sorted(simulation.results.dates)[0]))
-            #meta_dict["end_date"].append(str(sorted(simulation.results.dates)[-1]))
+
+            # Fitting window
+            trajc = calibration.results.get_calibration_trajectories()
+            meta_dict["fitting_start"].append(str(sorted(trajc["date"][0])[0].date()))
+            meta_dict["fitting_end"].append(str(sorted(trajc["date"][0])[-1].date()))
+
+            # Projection window
+            trajp = calibration.results.get_projection_trajectories()
+            meta_dict["start_date"].append(str(sorted(trajp["date"][0])[0].date()))
+            meta_dict["end_date"].append(str(sorted(trajp["date"][0])[-1].date()))
 
             # Parameters
             for p, v in calibration.results.calibration_params:
+                colname = f"cal_{p}"
                 meta_dict[p].append(str(v))
             if output.model_meta.projection_parameters:
-                #calibration.results.projection_parameters["baseline"] is a dataframe
-                pass
+                proj_params = calibration.results.projection_parameters["baseline"]
+                for p in proj_params:
+                    colname = f"proj_{p}"
+                    meta_dict[colname].append(str(proj_params[p]))
 
             # Initial conditions
-            inits = {k: [int(v[0]) for v in vs] for k, vs in simulation.results.get_stacked_compartments().items()}
-            for c, i in inits:
-                colname = f"init_{c}"
-                meta_dict[colname].append(str(i))
+            # inits = {k: [int(v[0]) for v in vs] for k, vs in simulation.results.get_stacked_compartments().items()}
+            # for c, i in inits:
+            #    colname = f"init_{c}"
+            #    meta_dict[colname].append(str(i))
 
         model_meta = pd.DataFrame(meta_dict)
-        
 
     ### Cleanup and return
     for warning in warnings:
