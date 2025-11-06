@@ -1,0 +1,404 @@
+NCES_district_id,state,name,event_name,start,end
+0102370,AL,Mobile County,First Day of School,1 Sep 2020,
+0102370,AL,Mobile County,Thanksgiving Break	,23 Nov 2020,27 Nov 2020
+0102370,AL,Mobile County,Christmas Break	,21 Dec 2020,1 Jan 2021
+0102370,AL,Mobile County,Mid Winter Break	,15 Feb 2021,17 Feb 2021
+0102370,AL,Mobile County,Spring Break	,5 Apr 2021,9 Apr 2021
+0102370,AL,Mobile County,Last Day of School	,3 Jun 2021,
+0200180,AK,Anchorage School District,First Day of School,18 Jul 2020,
+0200180,AK,Anchorage School District,Thanksgiving Break	,26 Nov 2020,27 Nov 2020
+0200180,AK,Anchorage School District,Christmas Break	,18 Dec 2020,1 Jan 2021
+0200180,AK,Anchorage School District,Mid Winter Break	,12 Feb 2021,15 Feb 2021
+0200180,AK,Anchorage School District,Spring Break	,5 Mar 2021,12 Mar 2021
+0200180,AK,Anchorage School District,Last Day of School	,20 May 2021,
+0200180,AK,Anchorage School District,First Day of School,17 Aug 2021,
+0200180,AK,Anchorage School District,Thanksgiving Break	,25 Nov 2021,26 Nov 2021
+0200180,AK,Anchorage School District,Christmas Break	,20 Dec 2021,31 Dec 2021
+0200180,AK,Anchorage School District,Mid Winter Break	,18 Feb 2022,21 Feb 2022
+0200180,AK,Anchorage School District,Spring Break	,7 Mar 2022,11 Mar 2022
+0200180,AK,Anchorage School District,Last Day of School	,19 May 2022,
+0408800,AZ,Tucson Unified District,First Day of School,8 Aug 2020,
+0408800,AZ,Tucson Unified District,Fall Break,12 Oct 2020,16 Oct 2020
+0408800,AZ,Tucson Unified District,Thanksgiving Break	,26 Nov 2020,27 Nov 2020
+0408800,AZ,Tucson Unified District,Christmas Break	,21 Dec 2020,1 Jan 2021
+0408800,AZ,Tucson Unified District,Mid Winter Break	,25 Feb 2021,26 Feb 2021
+0408800,AZ,Tucson Unified District,Spring Break	,15 Mar 2021,19 Mar 2021
+0408800,AZ,Tucson Unified District,Last Day of School	,27 May 2021,
+0408800,AZ,Tucson Unified District,First Day of School,5 Aug 2021,
+0408800,AZ,Tucson Unified District,Fall Break,11 Oct 2021,15 Oct 2021
+0408800,AZ,Tucson Unified District,Thanksgiving Break	,25 Nov 2021,26 Nov 2021
+0408800,AZ,Tucson Unified District,Christmas Break	,20 Dec 2021,31 Dec 2021
+0408800,AZ,Tucson Unified District,Mid Winter Break	,24 Feb 2022,25 Feb 2022
+0408800,AZ,Tucson Unified District,Spring Break	,14 Mar 2022,18 Mar 2022
+0408800,AZ,Tucson Unified District,Last Day of School	,26 May 2022,
+0509000,AR,Little Rock School District,First Day of School,24 Aug 2020,
+0509000,AR,Little Rock School District,Thanksgiving Break	,26 Nov 2020,27 Nov 2020
+0509000,AR,Little Rock School District,Christmas Break	,21 Dec 2020,4 Jan 2021
+0509000,AR,Little Rock School District,Spring Break	,22 Mar 2021,26 Mar 2021
+0509000,AR,Little Rock School District,Last Day of School	,26 May 2021,
+0622710,CA,Los Angeles Unified,First Day of School,18 Aug 2020,
+0622710,CA,Los Angeles Unified,Thanksgiving Break	,26 Nov 2020,27 Nov 2020
+0622710,CA,Los Angeles Unified,Christmas Break	,21 Dec 2020,8 Jan 2021
+0622710,CA,Los Angeles Unified,Spring Break	,26 Mar 2021,2 Apr 2021
+0622710,CA,Los Angeles Unified,Last Day of School	,10 Jun 2021,
+0803360,CO,Denver Public Schools,First Day of School,17 Aug 2020,
+0803360,CO,Denver Public Schools,Fall Break,16 Oct 2020,20 Oct 2020
+0803360,CO,Denver Public Schools,Thanksgiving Break	,23 Nov 2020,27 Nov 2020
+0803360,CO,Denver Public Schools,Christmas Break	,21 Dec 2020,4 Jan 2021
+0803360,CO,Denver Public Schools,Mid Winter Break	,15 Feb 2021,16 Feb 2021
+0803360,CO,Denver Public Schools,Spring Break	,29 Mar 2021,5 Apr 2021
+0803360,CO,Denver Public Schools,Last Day of School	,28 May 2021,
+0900450,CT,Bridgeport School District,First Day of School,1 Sep 2020,
+0900450,CT,Bridgeport School District,Thanksgiving Break	,25 Nov 2020,27 Nov 2020
+0900450,CT,Bridgeport School District,Christmas Break	,24 Dec 2020,1 Jan 2021
+0900450,CT,Bridgeport School District,Mid Winter Break	,12 Feb 2021,15 Feb 2021
+0900450,CT,Bridgeport School District,Spring Break	,12 Apr 2021,16 Apr 2021
+0900450,CT,Bridgeport School District,Last Day of School	,15 Jun 2021,
+1000200,DE,Christina School District,First Day of School,31 Aug 2020,
+1000200,DE,Christina School District,Fall Break,2 Nov 2020,3 Nov 2020
+1000200,DE,Christina School District,Thanksgiving Break	,25 Nov 2020,27 Nov 2020
+1000200,DE,Christina School District,Christmas Break	,24 Dec 2020,1 Jan 2021
+1000200,DE,Christina School District,Mid Winter Break	,12 Feb 2021,15 Feb 2021
+1000200,DE,Christina School District,Spring Break	,25 Mar 2021,26 Mar 2021
+1000200,DE,Christina School District,Easter Break	,2 Apr 2021,9 Apr 2021
+1000200,DE,Christina School District,Last Day of School	,3 Jun 2021,
+1100030,DC,District Of Columbia Public Schools,First Day of School,31 Aug 2020,
+1100030,DC,District Of Columbia Public Schools,Fall Break,9 Oct 2020,12 Oct 2020
+1100030,DC,District Of Columbia Public Schools,Thanksgiving Break	,25 Nov 2020,27 Nov 2020
+1100030,DC,District Of Columbia Public Schools,Christmas Break	,23 Dec 2020,1 Jan 2021
+1100030,DC,District Of Columbia Public Schools,Spring Break	,12 Apr 2021,16 Apr 2021
+1100030,DC,District Of Columbia Public Schools,Last Day of School	,24 Jun 2021,
+1100030,DC,District Of Columbia Public Schools,First Day of School,30 Aug 2021,
+1100030,DC,District Of Columbia Public Schools,Fall Break,7 Oct 2021,11 Oct 2021
+1100030,DC,District Of Columbia Public Schools,Thanksgiving Break	,24 Nov 2021,26 Nov 2021
+1100030,DC,District Of Columbia Public Schools,Christmas Break	,23 Dec 2021,31 Dec 2021
+1100030,DC,District Of Columbia Public Schools,Mid Winter Break	,21 Feb 2022,25 Feb 2022
+1100030,DC,District Of Columbia Public Schools,March Break	,10 Mar 2022,11 Mar 2022
+1100030,DC,District Of Columbia Public Schools,Spring Break	,11 Apr 2022,18 Apr 2022
+1100030,DC,District Of Columbia Public Schools,Last Day of School	,22 Jun 2022,
+1200390,FL,Miami-Dade County,First Day of School,24 Aug 2020,
+1200390,FL,Miami-Dade County,Thanksgiving Break	,25 Nov 2020,27 Nov 2020
+1200390,FL,Miami-Dade County,Christmas Break	,21 Dec 2020,1 Jan 2021
+1200390,FL,Miami-Dade County,Spring Break	,26 Mar 2021,2 Apr 2021
+1200390,FL,Miami-Dade County,Last Day of School	,9 Jun 2021,
+1302550,GA,Gwinnett County,First Day of School,12 Aug 2020,
+1302550,GA,Gwinnett County,Fall Break,8 Oct 2020,12 Oct 2020
+1302550,GA,Gwinnett County,Thanksgiving Break	,23 Nov 2020,27 Nov 2020
+1302550,GA,Gwinnett County,Christmas Break	,21 Dec 2020,6 Jan 2021
+1302550,GA,Gwinnett County,Mid Winter Break	,12 Feb 2021,15 Feb 2021
+1302550,GA,Gwinnett County,Spring Break	,5 Apr 2021,9 Apr 2021
+1302550,GA,Gwinnett County,Last Day of School	,26 May 2021,
+1500030,HI,Hawaii Department Of Education,First Day of School,4 Aug 2020,
+1500030,HI,Hawaii Department Of Education,Fall Break,5 Oct 2020,9 Oct 2020
+1500030,HI,Hawaii Department Of Education,Thanksgiving Break	,26 Nov 2020,27 Nov 2020
+1500030,HI,Hawaii Department Of Education,Christmas Break	,21 Dec 2020,4 Jan 2021
+1500030,HI,Hawaii Department Of Education,Spring Break	,15 Mar 2021,19 Mar 2021
+1500030,HI,Hawaii Department Of Education,Last Day of School	,1 Jun 2021,
+1602100,ID,West Ada School District,First Day of School,27 Aug 2020,
+1602100,ID,West Ada School District,Fall Break,22 Oct 2020,23 Oct 2020
+1602100,ID,West Ada School District,Thanksgiving Break	,23 Nov 2020,27 Nov 2020
+1602100,ID,West Ada School District,Christmas Break	,21 Dec 2020,1 Jan 2021
+1602100,ID,West Ada School District,Spring Break	,22 Mar 2021,26 Mar 2021
+1602100,ID,West Ada School District,Last Day of School	,4 Jun 2021,
+1709930,IL,Chicago Public Schools,First Day of School,8 Sep 2020,
+1709930,IL,Chicago Public Schools,Thanksgiving Break	,25 Nov 2020,27 Nov 2020
+1709930,IL,Chicago Public Schools,Christmas Break	,21 Dec 2020,1 Jan 2021
+1709930,IL,Chicago Public Schools,Spring Break	,29 Mar 2021,2 Apr 2021
+1709930,IL,Chicago Public Schools,Last Day of School	,22 Jun 2021,
+1804770,IN,Indianapolis Public Schools,First Day of School,3 Aug 2020,
+1804770,IN,Indianapolis Public Schools,Fall Break,12 Oct 2020,16 Oct 2020
+1804770,IN,Indianapolis Public Schools,Thanksgiving Break	,25 Nov 2020,27 Nov 2020
+1804770,IN,Indianapolis Public Schools,Christmas Break	,18 Dec 2020,1 Jan 2021
+1804770,IN,Indianapolis Public Schools,Mid Winter Break	,15 Feb 2021,16 Feb 2021
+1804770,IN,Indianapolis Public Schools,Spring Break	,22 Mar 2021,2 Apr 2021
+1804770,IN,Indianapolis Public Schools,Last Day of School	,3 Jun 2021,
+1908970	,IA,Des Moines Public Schools,First Day of School,8 Sep 2020,
+1908970	,IA,Des Moines Public Schools,Fall Break,30 Oct 2020,3 Nov 2020
+1908970	,IA,Des Moines Public Schools,Thanksgiving Break	,25 Nov 2020,27 Nov 2020
+1908970	,IA,Des Moines Public Schools,Christmas Break	,23 Dec 2020,1 Jan 2021
+1908970	,IA,Des Moines Public Schools,Spring Break	,15 Mar 2021,23 Mar 2021
+1908970	,IA,Des Moines Public Schools,Last Day of School	,2 Jun 2021,
+2012990,KS,Wichita County USD 467,First Day of School,15 Aug 2019,
+2012990,KS,Wichita County USD 467,Thanksgiving Break	,27 Nov 2019,29 Nov 2019
+2012990,KS,Wichita County USD 467,Christmas Break	,23 Dec 2019,6 Jan 2020
+2012990,KS,Wichita County USD 467,Spring Break	,13 Mar 2020,20 Mar 2020
+2012990,KS,Wichita County USD 467,Last Day of School	,21 May 2020,
+2012990,KS,Wichita Public Schools,First Day of School,8 Sep 2020,
+2012990,KS,Wichita Public Schools,Thanksgiving Break	,25 Nov 2020,27 Nov 2020
+2012990,KS,Wichita Public Schools,Christmas Break	,21 Dec 2020,1 Jan 2021
+2012990,KS,Wichita Public Schools,Spring Break	,22 Mar 2021,26 Mar 2021
+2012990,KS,Wichita Public Schools,Easter Break	,2 Apr 2021,5 Apr 2021
+2012990,KS,Wichita Public Schools,Last Day of School	,25 May 2021,
+2102990,KY,Jefferson County Public Schools,First Day of School,12 Aug 2020,
+2102990,KY,Jefferson County Public Schools,Fall Break,2 Oct 2020,6 Oct 2020
+2102990,KY,Jefferson County Public Schools,Thanksgiving Break	,25 Nov 2020,27 Nov 2020
+2102990,KY,Jefferson County Public Schools,Christmas Break	,21 Dec 2020,4 Jan 2021
+2102990,KY,Jefferson County Public Schools,Mid Winter Break	,12 Feb 2021,15 Feb 2021
+2102990,KY,Jefferson County Public Schools,Spring Break	,26 Mar 2021,2 Apr 2021
+2102990,KY,Jefferson County Public Schools,Last Day of School	,26 May 2021,
+2200840,LA,Jefferson Parish Public Schools,First Day of School,31 Aug 2020,
+2200840,LA,Jefferson Parish Public Schools,Thanksgiving Break	,23 Nov 2020,27 Nov 2020
+2200840,LA,Jefferson Parish Public Schools,Christmas Break	,23 Dec 2020,1 Jan 2021
+2200840,LA,Jefferson Parish Public Schools,Mid Winter Break	,15 Feb 2021,19 Feb 2021
+2200840,LA,Jefferson Parish Public Schools,Spring Break	,2 Apr 2021,6 Apr 2021
+2200840,LA,Jefferson Parish Public Schools,Last Day of School	,26 May 2021,
+2309930,ME,Portland Public Schools ,First Day of School,31 Aug 2020,
+2309930,ME,Portland Public Schools ,Fall Break,9 Oct 2020,12 Oct 2020
+2309930,ME,Portland Public Schools ,Thanksgiving Break	,25 Nov 2020,27 Nov 2020
+2309930,ME,Portland Public Schools ,Christmas Break	,23 Dec 2020,1 Jan 2021
+2309930,ME,Portland Public Schools ,Mid Winter Break	,15 Feb 2021,19 Feb 2021
+2309930,ME,Portland Public Schools ,Spring Break	,16 Apr 2021,23 Apr 2021
+2309930,ME,Portland Public Schools ,Last Day of School	,9 Jun 2021,
+2400480,MD,Montgomery County Public Schools,First Day of School,6 Jul 2020,
+2400480,MD,Montgomery County Public Schools,Thanksgiving Break	,26 Nov 2020,27 Nov 2020
+2400480,MD,Montgomery County Public Schools,Christmas Break	,24 Dec 2020,1 Jan 2021
+2400480,MD,Montgomery County Public Schools,Mid Winter Break	,12 Feb 2021,15 Feb 2021
+2400480,MD,Montgomery County Public Schools,Spring Break	,29 Mar 2021,5 Apr 2021
+2400480,MD,Montgomery County Public Schools,Last Day of School	,14 Jun 2021,
+2502790,MA,Boston Public Schools,First Day of School,1 Sep 2020,
+2502790,MA,Boston Public Schools,Thanksgiving Break	,26 Nov 2020,27 Nov 2020
+2502790,MA,Boston Public Schools,Christmas Break	,24 Dec 2020,4 Jan 2021
+2502790,MA,Boston Public Schools,Mid Winter Break	,15 Feb 2021,19 Feb 2021
+2502790,MA,Boston Public Schools,Spring Break	,19 Apr 2021,23 Apr 2021
+2502790,MA,Boston Public Schools,Last Day of School	,18 Jun 2021,
+2616440,MI,East Grand Rapids Public Schools,First Day of School,24 Aug 2020,
+2616440,MI,East Grand Rapids Public Schools,Thanksgiving Break	,25 Nov 2020,27 Nov 2020
+2616440,MI,East Grand Rapids Public Schools,Christmas Break	,21 Dec 2020,1 Jan 2021
+2616440,MI,East Grand Rapids Public Schools,Mid Winter Break	,15 Feb 2021,19 Feb 2021
+2616440,MI,East Grand Rapids Public Schools,Spring Break	,2 Apr 2021,9 Apr 2021
+2616440,MI,East Grand Rapids Public Schools,Last Day of School	,3 Jun 2021,
+2721240,MN,Minneapolis Public Schools,First Day of School,8 Sep 2020,
+2721240,MN,Minneapolis Public Schools,Fall Break,14 Oct 2020,16 Oct 2020
+2721240,MN,Minneapolis Public Schools,Thanksgiving Break	,25 Nov 2020,27 Nov 2020
+2721240,MN,Minneapolis Public Schools,Christmas Break	,21 Dec 2020,1 Jan 2021
+2721240,MN,Minneapolis Public Schools,Mid Winter Break	,15 Feb 2021,16 Feb 2021
+2721240,MN,Minneapolis Public Schools,Spring Break	,2 Apr 2021,9 Apr 2021
+2721240,MN,Minneapolis Public Schools,Last Day of School	,11 Jun 2021,
+2802190,MS,Jackson Public Schools,First Day of School,10 Aug 2020,
+2802190,MS,Jackson Public Schools,Thanksgiving Break	,23 Nov 2020,27 Nov 2020
+2802190,MS,Jackson Public Schools,Christmas Break	,21 Dec 2020,4 Jan 2021
+2802190,MS,Jackson Public Schools,Spring Break	,15 Mar 2021,19 Mar 2021
+2802190,MS,Jackson Public Schools,Easter Break	,2 Apr 2021,5 Apr 2021
+2802190,MS,Jackson Public Schools,Last Day of School	,26 May 2021,
+2929280,MO,Saint Louis Public Schools,First Day of School,24 Aug 2020,
+2929280,MO,Saint Louis Public Schools,Thanksgiving Break	,25 Nov 2020,27 Nov 2020
+2929280,MO,Saint Louis Public Schools,Christmas Break	,21 Dec 2020,1 Jan 2021
+2929280,MO,Saint Louis Public Schools,Mid winter Break	,12 Feb 2021,15 Feb 2021
+2929280,MO,Saint Louis Public Schools,Spring Break	,19 Mar 2021,26 Mar 2021
+2929280,MO,Saint Louis Public Schools,Last Day of School	,3 Jun 2021,
+3013260,MT,Hamilton School District 3,First Day of School,24 Aug 2020,
+3013260,MT,Hamilton School District 3,Fall Break,15 Oct 2020,16 Oct 2020
+3013260,MT,Hamilton School District 3,Thanksgiving Break	,25 Nov 2020,27 Nov 2020
+3013260,MT,Hamilton School District 3,Christmas Break	,23 Dec 2020,1 Jan 2021
+3013260,MT,Hamilton School District 3,Spring Break	,29 Mar 2021,5 Apr 2021
+3013260,MT,Hamilton School District 3,Last Day of School	,4 Jun 2021,
+3013260,MT,Hamilton School District 3,First Day of School,23 Aug 2021,
+3013260,MT,Hamilton School District 3,Fall Break,14 Oct 2021,15 Oct 2021
+3013260,MT,Hamilton School District 3,Thanksgiving Break	,24 Nov 2021,26 Nov 2021
+3013260,MT,Hamilton School District 3,Christmas Break	,22 Dec 2021,31 Dec 2021
+3013260,MT,Hamilton School District 3,Spring Break	,28 Mar 2022,1 Apr 2022
+3013260,MT,Hamilton School District 3,Last Day of School	,3 Jun 2022,
+3200060,NV,Clark County School District,First Day of School,10 Aug 2020,
+3200060,NV,Clark County School District,Fall Break,30 Oct 2020,3 Nov 2020
+3200060,NV,Clark County School District,Thanksgiving Break	,25 Nov 2020,27 Nov 2020
+3200060,NV,Clark County School District,Christmas Break	,21 Dec 2020,5 Jan 2021
+3200060,NV,Clark County School District,Spring Break	,29 Mar 2021,5 Apr 2021
+3200060,NV,Clark County School District,Last Day of School	,26 May 2021,
+3200060,NV,Clark County School District,First Day of School,9 Aug 2021,
+3200060,NV,Clark County School District,Fall Break,11 Nov 2021,12 Nov 2021
+3200060,NV,Clark County School District,Thanksgiving Break	,24 Nov 2021,26 Nov 2021
+3200060,NV,Clark County School District,Christmas Break	,20 Dec 2021,4 Jan 2022
+3200060,NV,Clark County School District,Spring Break	,11 Apr 2022,18 Apr 2022
+3200060,NV,Clark County School District,Last Day of School	,25 May 2022,
+3304590,NH,Manchester School District,First Day of School,2 Sep 2020,
+3304590,NH,Manchester School District,Thanksgiving Break	,25 Nov 2020,27 Nov 2020
+3304590,NH,Manchester School District,Christmas Break	,24 Dec 2020,1 Jan 2021
+3304590,NH,Manchester School District,MId winter Break	,22 Feb 2021,26 Feb 2021
+3304590,NH,Manchester School District,Spring Break	,26 Apr 2021,30 Apr 2021
+3304590,NH,Manchester School District,Last Day of School	,16 Jun 2021,
+3411340,NJ,Newark Public Schools,First Day of School,8 Sep 2020,
+3411340,NJ,Newark Public Schools,Fall Break,5 Nov 2020,10 Nov 2020
+3411340,NJ,Newark Public Schools,Thanksgiving Break	,26 Nov 2020,27 Nov 2020
+3411340,NJ,Newark Public Schools,Christmas Break	,24 Dec 2020,1 Jan 2021
+3411340,NJ,Newark Public Schools,MId winter Break	,12 Feb 2021,15 Feb 2021
+3411340,NJ,Newark Public Schools,Spring Break	,2 Apr 2021,9 Apr 2021
+3411340,NJ,Newark Public Schools,Last Day of School	,28 Jun 2021,
+3500060,NM,Albuquerque Public Schools,First Day of School,29 Jul 2020,
+3500060,NM,Albuquerque Public Schools,Fall Break,8 Oct 2020,9 Oct 2020
+3500060,NM,Albuquerque Public Schools,Thanksgiving Break	,23 Nov 2020,27 Nov 2020
+3500060,NM,Albuquerque Public Schools,Christmas Break	,21 Dec 2020,4 Jan 2021
+3500060,NM,Albuquerque Public Schools,Spring Break	,18 Mar 2021,26 Mar 2021
+3500060,NM,Albuquerque Public Schools,Last Day of School	,25 May 2021,
+3620580,NY,New York City School District,First Day of School,21 Sep 2020,
+3620580,NY,New York City School District,Thanksgiving Break	,26 Nov 2020,27 Nov 2020
+3620580,NY,New York City School District,Christmas Break	,24 Dec 2020,1 Jan 2021
+3620580,NY,New York City School District,Mid winter Break	,12 Feb 2021,19 Feb 2021
+3620580,NY,New York City School District,Spring Break        ,29 Mar 2021,2 Apr 2021
+3620580,NY,New York City School District,Last Day of School	,25 Jun 2021,
+3702970,NC,Charlotte-Mecklenburg,First Day of School,17 Aug 2020,
+3702970,NC,Charlotte-Mecklenburg,Thanksgiving Break	,25 Nov 2020,27 Nov 2020
+3702970,NC,Charlotte-Mecklenburg,Christmas Break	,22 Dec 2020,4 Jan 2021
+3702970,NC,Charlotte-Mecklenburg,Spring Break        ,1 Apr 2021,9 Apr 2021
+3702970,NC,Charlotte-Mecklenburg,Last Day of School	,28 May 2021,
+3702970,NC,Charlotte-Mecklenburg,First Day of School,25 Aug 2021,
+3702970,NC,Charlotte-Mecklenburg,Thanksgiving Break	,24 Nov 2021,26 Nov 2021
+3702970,NC,Charlotte-Mecklenburg,Christmas Break	,20 Dec 2021,3 Jan 2022
+3702970,NC,Charlotte-Mecklenburg,Spring Break        ,11 Apr 2022,18 Apr 2022
+3702970,NC,Charlotte-Mecklenburg,Last Day of School	,8 Jun 2022,
+3806780,ND,Fargo Public Schools,First Day of School,27 Aug 2020,
+3806780,ND,Fargo Public Schools,Fall Break,22 Oct 2020,23 Oct 2020
+3806780,ND,Fargo Public Schools,Thanksgiving Break	,25 Nov 2020,27 Nov 2020
+3806780,ND,Fargo Public Schools,Christmas Break	,24 Dec 2020,1 Jan 2021
+3806780,ND,Fargo Public Schools,Mid winter Break	,15 Feb 2021,16 Feb 2021
+3806780,ND,Fargo Public Schools,Spring Break        ,15 Mar 2021,19 Mar 2021
+3806780,ND,Fargo Public Schools,Last Day of School	,3 Jun 2021,
+3806780,ND,Fargo Public Schools,First Day of School,25 Aug 2021,
+3806780,ND,Fargo Public Schools,Fall Break,21 Oct 2021,22 Oct 2021
+3806780,ND,Fargo Public Schools,Thanksgiving Break	,24 Nov 2021,26 Nov 2021
+3806780,ND,Fargo Public Schools,Christmas Break	,23 Dec 2021,31 Dec 2021
+3806780,ND,Fargo Public Schools,Mid winter Break	,17 Mar 2022,18 Mar 2022
+3806780,ND,Fargo Public Schools,Spring Break        ,15 Apr 2022,18 Apr 2022
+3806780,ND,Fargo Public Schools,Last Day of School	,26 May 2022,
+3904380,OH,Columbus City Schools,First Day of School,27 Aug 2020,
+3904380,OH,Columbus City Schools,Thanksgiving Break	,25 Nov 2020,27 Nov 2020
+3904380,OH,Columbus City Schools,Christmas Break	,21 Dec 2020,1 Jan 2021
+3904380,OH,Columbus City Schools,Spring Break        ,2 Apr 2021,9 Apr 2021
+3904380,OH,Columbus City Schools,Last Day of School	,3 Jun 2021,
+3904380,OH,Columbus City Schools,First Day of School,26 Aug 2021,
+3904380,OH,Columbus City Schools,Thanksgiving Break	,24 Nov 2021,26 Nov 2021
+3904380,OH,Columbus City Schools,Christmas Break	,20 Dec 2021,31 Dec 2021
+3904380,OH,Columbus City Schools,Spring Break        ,15 Apr 2022,22 Apr 2022
+3904380,OH,Columbus City Schools,Last Day of School	,2 Jun 2022,
+4022770,OK,Oklahoma City Public Schools,First Day of School,10 Aug 2020,
+4022770,OK,Oklahoma City Public Schools,Fall Break,12 Oct 2020,16 Oct 2020
+4022770,OK,Oklahoma City Public Schools,Thanksgiving Break	,23 Nov 2020,27 Nov 2020
+4022770,OK,Oklahoma City Public Schools,Christmas Break	,21 Dec 2020,1 Jan 2021
+4022770,OK,Oklahoma City Public Schools,Mid winter Break	,12 Feb 2021,15 Feb 2021
+4022770,OK,Oklahoma City Public Schools,Spring Break        ,15 Mar 2021,19 Mar 2021
+4022770,OK,Oklahoma City Public Schools,Last Day of School	,20 May 2021,
+4022770,OK,Oklahoma City Public Schools,First Day of School,9 Aug 2021,
+4022770,OK,Oklahoma City Public Schools,Fall Break,11 Oct 2021,18 Oct 2021
+4022770,OK,Oklahoma City Public Schools,Thanksgiving Break	,22 Nov 2021,26 Nov 2021
+4022770,OK,Oklahoma City Public Schools,Christmas Break	,20 Dec 2021,31 Dec 2021
+4022770,OK,Oklahoma City Public Schools,Mid winter Break	,18 Feb 2022,21 Feb 2022
+4022770,OK,Oklahoma City Public Schools,Spring Break        ,14 Mar 2022,18 Mar 2022
+4022770,OK,Oklahoma City Public Schools,Last Day of School	,18 May 2022,
+4110040,OR,Portland Public Schools ,First Day of School,2 Sep 2020,
+4110040,OR,Portland Public Schools ,Thanksgiving Break	,23 Nov 2020,27 Nov 2020
+4110040,OR,Portland Public Schools ,Christmas Break	,21 Dec 2020,1 Jan 2021
+4110040,OR,Portland Public Schools ,Spring Break        ,22 Mar 2021,26 Mar 2021
+4110040,OR,Portland Public Schools ,Last Day of School	,11 Jun 2021,
+4218990,PA,Philadelphia City School District,First Day of School,2 Sep 2020,
+4218990,PA,Philadelphia City School District,Thanksgiving Break	,26 Nov 2020,27 Nov 2020
+4218990,PA,Philadelphia City School District,Christmas Break	,24 Dec 2020,1 Jan 2021
+4218990,PA,Philadelphia City School District,Spring Break        ,29 Mar 2021,2 Apr 2021
+4218990,PA,Philadelphia City School District,Last Day of School	,11 Jun 2021,
+4400900,RI,Providence Public Schools,First Day of School,3 Sep 2019,
+4400900,RI,Providence Public Schools,Thanksgiving Break	,28 Nov 2019,29 Nov 2019
+4400900,RI,Providence Public Schools,Christmas Break	,23 Dec 2019,1 Jan 2020
+4400900,RI,Providence Public Schools,Mid winter Break	,17 Feb 2020,18 Feb 2020
+4400900,RI,Providence Public Schools,Spring Break        ,10 Apr 2020,17 Apr 2020
+4400900,RI,Providence Public Schools,Last Day of School	,17 Jun 2020,
+4502310,SC,Greenville County Schools,First Day of School,17 Aug 2020,
+4502310,SC,Greenville County Schools,Fall Break,2 Nov 2020,3 Nov 2020
+4502310,SC,Greenville County Schools,Thanksgiving Break	,25 Nov 2020,27 Nov 2020
+4502310,SC,Greenville County Schools,Christmas Break	,21 Dec 2020,1 Jan 2021
+4502310,SC,Greenville County Schools,March Break,18 Mar 2021,19 Mar 2021
+4502310,SC,Greenville County Schools,Spring Break        ,2 Apr 2021,9 Apr 2021
+4502310,SC,Greenville County Schools,Last Day of School	,4 Jun 2021,
+4666270,SD,Sioux Falls School District,First Day of School,27 Aug 2020,
+4666270,SD,Sioux Falls School District,Fall Break,12 Oct 2020,13 Oct 2020
+4666270,SD,Sioux Falls School District,Thanksgiving Break	,25 Nov 2020,27 Nov 2020
+4666270,SD,Sioux Falls School District,Christmas Break	,23 Dec 2020,1 Jan 2021
+4666270,SD,Sioux Falls School District,Mid winter Break	,15 Feb 2021,16 Feb 2021
+4666270,SD,Sioux Falls School District,Spring Break        ,2 Apr 2021,5 Apr 2021
+4666270,SD,Sioux Falls School District,Last Day of School	,25 May 2021,
+4666270,SD,Sioux Falls School District,First Day of School,26 Aug 2021,
+4666270,SD,Sioux Falls School District,Fall Break,11 Oct 2021,12 Oct 2021
+4666270,SD,Sioux Falls School District,Thanksgiving Break	,24 Nov 2021,26 Nov 2021
+4666270,SD,Sioux Falls School District,Christmas Break	,23 Dec 2021,31 Dec 2021
+4666270,SD,Sioux Falls School District,Mid winter Break	,21 Feb 2022,22 Feb 2022
+4666270,SD,Sioux Falls School District,Spring Break        ,15 Apr 2022,18 Apr 2022
+4666270,SD,Sioux Falls School District,Last Day of School	,24 May 2022,
+4700148,TN,Shelby County Schools,First Day of School,10 Aug 2020,
+4700148,TN,Shelby County Schools,Fall Break,12 Oct 2020,16 Oct 2020
+4700148,TN,Shelby County Schools,Thanksgiving Break	,25 Nov 2020,27 Nov 2020
+4700148,TN,Shelby County Schools,Christmas Break	,21 Dec 2020,4 Jan 2021
+4700148,TN,Shelby County Schools,Spring Break        ,15 Mar 2021,19 Mar 2021
+4700148,TN,Shelby County Schools,Last Day of School	,26 May 2021,
+4823640,TX,Houston Independent School District,First Day of School,24 Aug 2020,
+4823640,TX,Houston Independent School District,Thanksgiving Break	,23 Nov 2020,27 Nov 2020
+4823640,TX,Houston Independent School District,Christmas Break	,21 Dec 2020,4 Jan 2021
+4823640,TX,Houston Independent School District,Spring Break        ,15 Mar 2021,19 Mar 2021
+4823640,TX,Houston Independent School District,Last Day of School	,28 May 2021,
+5002820,VT,Burlington School District,First Day of School,26 Aug 2020,
+5002820,VT,Burlington School District,Thanksgiving Break	,23 Nov 2020,27 Nov 2020
+5002820,VT,Burlington School District,Christmas Break	,23 Dec 2020,1 Jan 2021
+5002820,VT,Burlington School District,Mid winter Break	,22 Feb 2021,2 Mar 2021
+5002820,VT,Burlington School District,Spring Break        ,19 Apr 2021,23 Apr 2021
+5002820,VT,Burlington School District,Last Day of School	,11 Jun 2021,
+5101260,VA,Fairfax County Public Schools,First Day of School,25 Aug 2020,
+5101260,VA,Fairfax County Public Schools,Rosh Hashanah Break	,4 Sep 2020,7 Sep 2020
+5101260,VA,Fairfax County Public Schools,Thanksgiving Break	,25 Nov 2020,27 Nov 2020
+5101260,VA,Fairfax County Public Schools,Christmas Break	,21 Dec 2020,1 Jan 2021
+5101260,VA,Fairfax County Public Schools,Spring Break        ,29 Mar 2021,5 Apr 2021
+5101260,VA,Fairfax County Public Schools,Last Day of School	,11 Jun 2021,
+5101260,VA,Fairfax County Public Schools,First Day of School,23 Aug 2021,
+5101260,VA,Fairfax County Public Schools,Rosh Hashanah Break	,3 Sep 2021,7 Sep 2021
+5101260,VA,Fairfax County Public Schools,Fall Break,11 Oct 2021,12 Oct 2021
+5101260,VA,Fairfax County Public Schools,November Break,1 Nov 2021,2 Nov 2021
+5101260,VA,Fairfax County Public Schools,Thanksgiving Break	,24 Nov 2021,26 Nov 2021
+5101260,VA,Fairfax County Public Schools,Christmas Break	,20 Dec 2021,31 Dec 2021
+5101260,VA,Fairfax County Public Schools,Mid winter Break	,18 Feb 2022,21 Feb 2022
+5101260,VA,Fairfax County Public Schools,March Break,11 Mar 2022,14 Mar 2022
+5101260,VA,Fairfax County Public Schools,Spring Break        ,8 Apr 2022,15 Apr 2022
+5101260,VA,Fairfax County Public Schools,Last Day of School	,17 Jun 2022,
+5307710,WA,Seattle Public Schools,First Day of School,2 Sep 2020,
+5307710,WA,Seattle Public Schools,Thanksgiving Break	,23 Nov 2020,27 Nov 2020
+5307710,WA,Seattle Public Schools,Christmas Break	,21 Dec 2020,1 Jan 2021
+5307710,WA,Seattle Public Schools,Mid winter Break	,15 Feb 2021,19 Feb 2021
+5307710,WA,Seattle Public Schools,Spring Break        ,12 Apr 2021,16 Apr 2021
+5307710,WA,Seattle Public Schools,Last Day of School	,18 Jun 2021,
+5400600,WV,Kanawha County,First Day of School,8 Sep 2020,
+5400600,WV,Kanawha County,Thanksgiving Break	,26 Nov 2020,27 Nov 2020
+5400600,WV,Kanawha County,Christmas Break	,24 Dec 2020,1 Jan 2021
+5400600,WV,Kanawha County,Spring Break        ,2 Apr 2021,5 Apr 2021
+5400600,WV,Kanawha County,Last Day of School	,28 May 2021,
+5509600,WI,Milwaukee Public Schools,First Day of School,1 Sep 2020,
+5509600,WI,Milwaukee Public Schools,Fall Break,23 Oct 2020,26 Oct 2020
+5509600,WI,Milwaukee Public Schools,Thanksgiving Break	,25 Nov 2020,27 Nov 2020
+5509600,WI,Milwaukee Public Schools,Christmas Break	,23 Dec 2020,1 Jan 2021
+5509600,WI,Milwaukee Public Schools,Mid winter Break	,15 Feb 2021,16 Feb 2021
+5509600,WI,Milwaukee Public Schools,Spring Break        ,2 Apr 2021,9 Apr 2021
+5509600,WI,Milwaukee Public Schools,Last Day of School	,11 Jun 2021,
+5601980,WY,Laramie County School District 1,First Day of School,24 Aug 2020,
+5601980,WY,Laramie County School District 1,Thanksgiving Break	,25 Nov 2020,27 Nov 2020
+5601980,WY,Laramie County School District 1,Christmas Break	,21 Dec 2020,1 Jan 2021
+5601980,WY,Laramie County School District 1,Mid winter Break	,12 Feb 2021,15 Feb 2021
+5601980,WY,Laramie County School District 1,Spring Break        ,29 Mar 2021,2 Apr 2021
+5601980,WY,Laramie County School District 1,Last Day of School	,3 Jun 2021,
+5601980,WY,Laramie County School District 1,First Day of School,23 Aug 2021,
+5601980,WY,Laramie County School District 1,Thanksgiving Break	,24 Nov 2021,26 Nov 2021
+5601980,WY,Laramie County School District 1,Christmas Break	,20 Dec 2021,31 Dec 2021
+5601980,WY,Laramie County School District 1,Mid winter Break	,18 Feb 2022,21 Feb 2022
+5601980,WY,Laramie County School District 1,Spring Break        ,28 Mar 2022,1 Apr 2022
+5601980,WY,Laramie County School District 1,Last Day of School	,2 Jun 2022,
+3174820,NE,Omaha Public Schools,First Day of School,18 Aug 2020,
+3174820,NE,Omaha Public Schools,Thanksgiving Break	,25 Nov 2020,27 Nov 2020
+3174820,NE,Omaha Public Schools,Christmas Break	,21 Dec 2020,4 Jan 2021
+3174820,NE,Omaha Public Schools,Spring Break        ,8 Mar 2021,12 Mar 2021
+3174820,NE,Omaha Public Schools,Last Day of School	,26 May 2021,
+4900360,UT,Granite School District,First Day of School,24 Aug 2020,
+4900360,UT,Granite School District,Fall Break,21 Oct 2020,23 Oct 2020
+4900360,UT,Granite School District,Thanksgiving Break	,25 Nov 2020,27 Nov 2020
+4900360,UT,Granite School District,Christmas Break	,21 Dec 2020,1 Jan 2021
+4900360,UT,Granite School District,Mid winter Break	,12 Feb 2021,15 Feb 2021
+4900360,UT,Granite School District,Spring Break        ,26 Mar 2021,2 Apr 2021
+4900360,UT,Granite School District,Last Day of School	,3 Jun 2021,
+4900360,UT,Granite School District,First Day of School,16 Aug 2021,
+4900360,UT,Granite School District,Fall Break,21 Oct 2021,25 Oct 2021
+4900360,UT,Granite School District,Thanksgiving Break	,24 Nov 2021,29 Nov 2021
+4900360,UT,Granite School District,Christmas Break	,20 Dec 2021,31 Dec 2021
+4900360,UT,Granite School District,Mid winter Break	,21 Feb 2022,22 Feb 2022
+4900360,UT,Granite School District,Spring Break        ,4 Apr 2022,8 Apr 2022
+4900360,UT,Granite School District,Last Day of School	,2 Jun 2022,
