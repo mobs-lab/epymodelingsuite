@@ -858,7 +858,9 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
             meta_dict["delta_t"].append(calibration.delta_t)
             meta_dict["population"].append(calibration.population)
             if calibration.results.projections:
-                meta_dict["n_projections"].append(len(calibration.results.projections["baseline"]))
+                for scenario_id in calibration.results.projections:
+                    colname = f"n_projections_{scenario_id}"
+                    meta_dict[colname].append(len(calibration.results.projections[scenario_id]))
 
             # Fitting window
             trajc = calibration.results.get_calibration_trajectories()
@@ -870,21 +872,14 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
             meta_dict["start_date"].append(str(sorted(trajp["date"][0])[0].date()))
             meta_dict["end_date"].append(str(sorted(trajp["date"][0])[-1].date()))
 
-            # Parameters
-            for p, v in calibration.results.calibration_params:
-                colname = f"cal_{p}"
-                meta_dict[p].append(str(v))
+            # Projection parameters
+            # No calibration parameters, this is covered by posteriors.
             if output.model_meta.projection_parameters:
-                proj_params = calibration.results.projection_parameters["baseline"]
-                for p in proj_params:
-                    colname = f"proj_{p}"
-                    meta_dict[colname].append(str(proj_params[p]))
-
-            # Initial conditions
-            # inits = {k: [int(v[0]) for v in vs] for k, vs in simulation.results.get_stacked_compartments().items()}
-            # for c, i in inits:
-            #    colname = f"init_{c}"
-            #    meta_dict[colname].append(str(i))
+                for scenario_id in calibration.results.projections:
+                    proj_params = calibration.results.projection_parameters[scenario_id]
+                    for p in proj_params:
+                        colname = f"proj_{scenario_id}_{p}"
+                        meta_dict[colname].append(str(proj_params[p]))
 
         model_meta = pd.DataFrame(meta_dict)
 
