@@ -3,7 +3,7 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "flumodelingsuite"
+name = "epymodelingsuite"
 version = "0.0.1"
 authors = [
   { name="Remy LeWinter", email="lewinter.r@northeastern.edu" },
@@ -40,16 +40,16 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/mobs-lab/flumodelingsuite"
+Homepage = "https://github.com/mobs-lab/epymodelingsuite"
 
 [tool.setuptools]
 packages = [
-    "flumodelingsuite",
-    "flumodelingsuite.schema",
-    "flumodelingsuite.builders",
-    "flumodelingsuite.dispatcher",
-    "flumodelingsuite.utils",
-    "flumodelingsuite.data",
+    "epymodelingsuite",
+    "epymodelingsuite.schema",
+    "epymodelingsuite.builders",
+    "epymodelingsuite.dispatcher",
+    "epymodelingsuite.utils",
+    "epymodelingsuite.data",
 ]
 include-package-data = true
 

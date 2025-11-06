@@ -1,4 +1,4 @@
-"""Tests for flumodelingsuite.builders.orchestrators module."""
+"""Tests for epymodelingsuite.builders.orchestrators module."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from flumodelingsuite.builders.orchestrators import (
+from epymodelingsuite.builders.orchestrators import (
     apply_calibrated_parameters,
     apply_seasonality_with_sampled_min,
     apply_vaccination_for_sampled_start,
@@ -21,7 +21,7 @@ from flumodelingsuite.builders.orchestrators import (
     get_aggregated_comparison_transition,
     setup_vaccination_schedules,
 )
-from flumodelingsuite.schema.basemodel import (
+from epymodelingsuite.schema.basemodel import (
     BaseEpiModel,
     Compartment,
     Parameter,
@@ -32,7 +32,7 @@ from flumodelingsuite.schema.basemodel import (
     Transition,
     Vaccination,
 )
-from flumodelingsuite.schema.calibration import ComparisonSpec
+from epymodelingsuite.schema.calibration import ComparisonSpec
 
 
 class TestCreateModelCollection:
@@ -126,7 +126,7 @@ class TestCreateModelCollection:
             }
         )
 
-        with patch("flumodelingsuite.builders.orchestrators.get_location_codebook", return_value=mock_codebook):
+        with patch("epymodelingsuite.builders.orchestrators.get_location_codebook", return_value=mock_codebook):
             population_names = ["all"]
             models, resolved_names = create_model_collection(base_model_config, population_names)
 
@@ -394,7 +394,7 @@ class TestSetupVaccinationSchedules:
         mock_vax_schedule = pd.DataFrame({"date": ["2024-01-01"], "doses": [100]})
 
         with patch(
-            "flumodelingsuite.builders.orchestrators.scenario_to_epydemix", return_value=mock_vax_schedule
+            "epymodelingsuite.builders.orchestrators.scenario_to_epydemix", return_value=mock_vax_schedule
         ) as mock_scenario_to_epydemix:
             result_models, earliest_vax = setup_vaccination_schedules(
                 basemodel=base_model_with_vaccination,
@@ -420,7 +420,7 @@ class TestSetupVaccinationSchedules:
         models, population_names = sample_models
 
         # Mock _add_vaccination_schedules_from_config
-        with patch("flumodelingsuite.builders.orchestrators.add_vaccination_schedules_from_config") as mock_add_vax:
+        with patch("epymodelingsuite.builders.orchestrators.add_vaccination_schedules_from_config") as mock_add_vax:
             result_models, earliest_vax = setup_vaccination_schedules(
                 basemodel=base_model_with_vaccination,
                 models=models,
@@ -447,7 +447,7 @@ class TestSetupVaccinationSchedules:
 
         sampled_start_timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
 
-        with patch("flumodelingsuite.builders.orchestrators.scenario_to_epydemix") as mock_scenario_to_epydemix:
+        with patch("epymodelingsuite.builders.orchestrators.scenario_to_epydemix") as mock_scenario_to_epydemix:
             setup_vaccination_schedules(
                 basemodel=base_model_config,
                 models=models,
@@ -468,8 +468,8 @@ class TestSetupVaccinationSchedules:
 
         mock_vax_schedule = pd.DataFrame({"date": ["2024-01-01"], "doses": [100]})
 
-        with patch("flumodelingsuite.builders.orchestrators.scenario_to_epydemix", return_value=mock_vax_schedule):
-            with patch("flumodelingsuite.builders.vaccination.add_vaccination_schedules_from_config") as mock_add_vax:
+        with patch("epymodelingsuite.builders.orchestrators.scenario_to_epydemix", return_value=mock_vax_schedule):
+            with patch("epymodelingsuite.builders.vaccination.add_vaccination_schedules_from_config") as mock_add_vax:
                 setup_vaccination_schedules(
                     basemodel=base_model_with_vaccination,
                     models=models,
@@ -543,7 +543,7 @@ class TestApplyCalibratedParameters:
             "alpha": Parameter(type="scalar", value=0.1),
         }
 
-        with patch("flumodelingsuite.builders.orchestrators.add_model_parameters_from_config") as mock_add:
+        with patch("epymodelingsuite.builders.orchestrators.add_model_parameters_from_config") as mock_add:
             apply_calibrated_parameters(model, params, parameter_config)
 
             # Should only extract beta and gamma (calibrated params)
@@ -563,7 +563,7 @@ class TestApplyCalibratedParameters:
         params = {"epimodel": "something", "projection": False}
         parameter_config = {"alpha": Parameter(type="scalar", value=0.1)}
 
-        with patch("flumodelingsuite.builders.orchestrators.add_model_parameters_from_config") as mock_add:
+        with patch("epymodelingsuite.builders.orchestrators.add_model_parameters_from_config") as mock_add:
             apply_calibrated_parameters(model, params, parameter_config)
 
             # Should not call add since no calibrated params
@@ -579,8 +579,8 @@ class TestApplyCalibratedParameters:
         }
 
         with (
-            patch("flumodelingsuite.builders.orchestrators.add_model_parameters_from_config") as mock_add,
-            patch("flumodelingsuite.builders.orchestrators.calculate_parameters_from_config") as mock_calc,
+            patch("epymodelingsuite.builders.orchestrators.add_model_parameters_from_config") as mock_add,
+            patch("epymodelingsuite.builders.orchestrators.calculate_parameters_from_config") as mock_calc,
         ):
             apply_calibrated_parameters(model, params, parameter_config)
 
@@ -599,8 +599,8 @@ class TestApplyVaccinationForSampledStart:
         timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
 
         with (
-            patch("flumodelingsuite.builders.orchestrators.reaggregate_vaccines") as mock_reagg,
-            patch("flumodelingsuite.builders.orchestrators.add_vaccination_schedules_from_config") as mock_add,
+            patch("epymodelingsuite.builders.orchestrators.reaggregate_vaccines") as mock_reagg,
+            patch("epymodelingsuite.builders.orchestrators.add_vaccination_schedules_from_config") as mock_add,
         ):
             apply_vaccination_for_sampled_start(model, basemodel, timespan, None, None)
 
@@ -615,8 +615,8 @@ class TestApplyVaccinationForSampledStart:
         timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
 
         with (
-            patch("flumodelingsuite.builders.orchestrators.reaggregate_vaccines") as mock_reagg,
-            patch("flumodelingsuite.builders.orchestrators.add_vaccination_schedules_from_config") as mock_add,
+            patch("epymodelingsuite.builders.orchestrators.reaggregate_vaccines") as mock_reagg,
+            patch("epymodelingsuite.builders.orchestrators.add_vaccination_schedules_from_config") as mock_add,
         ):
             apply_vaccination_for_sampled_start(model, basemodel, timespan, None, sampled_start_timespan=None)
 
@@ -633,9 +633,9 @@ class TestApplyVaccinationForSampledStart:
         sampled_start_timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
 
         with (
-            patch("flumodelingsuite.builders.orchestrators.reaggregate_vaccines") as mock_reagg,
-            patch("flumodelingsuite.builders.orchestrators.resample_dataframe") as mock_resample,
-            patch("flumodelingsuite.builders.orchestrators.add_vaccination_schedules_from_config") as mock_add,
+            patch("epymodelingsuite.builders.orchestrators.reaggregate_vaccines") as mock_reagg,
+            patch("epymodelingsuite.builders.orchestrators.resample_dataframe") as mock_resample,
+            patch("epymodelingsuite.builders.orchestrators.add_vaccination_schedules_from_config") as mock_add,
         ):
             mock_reagg.return_value = {"reaggregated": "data"}
             mock_resample.return_value = {"resampled": "data"}
@@ -658,7 +658,7 @@ class TestApplySeasonalityWithSampledMin:
         timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
         params = {}
 
-        with patch("flumodelingsuite.builders.orchestrators.add_seasonality_from_config") as mock_add:
+        with patch("epymodelingsuite.builders.orchestrators.add_seasonality_from_config") as mock_add:
             apply_seasonality_with_sampled_min(model, basemodel, timespan, params)
 
             # Should not call seasonality functions
@@ -680,7 +680,7 @@ class TestApplySeasonalityWithSampledMin:
         timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
         params = {}
 
-        with patch("flumodelingsuite.builders.orchestrators.add_seasonality_from_config") as mock_add:
+        with patch("epymodelingsuite.builders.orchestrators.add_seasonality_from_config") as mock_add:
             apply_seasonality_with_sampled_min(model, basemodel, timespan, params)
 
             # Should call with copied config
@@ -705,7 +705,7 @@ class TestApplySeasonalityWithSampledMin:
         timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
         params = {"seasonality_min": 0.3}
 
-        with patch("flumodelingsuite.builders.orchestrators.add_seasonality_from_config") as mock_add:
+        with patch("epymodelingsuite.builders.orchestrators.add_seasonality_from_config") as mock_add:
             apply_seasonality_with_sampled_min(model, basemodel, timespan, params)
 
             # Should call with modified min_value
@@ -730,7 +730,7 @@ class TestApplySeasonalityWithSampledMin:
         timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
         params = {"seasonality_min": 0.3}
 
-        with patch("flumodelingsuite.builders.orchestrators.add_seasonality_from_config"):
+        with patch("epymodelingsuite.builders.orchestrators.add_seasonality_from_config"):
             apply_seasonality_with_sampled_min(model, basemodel, timespan, params)
 
             # Original should not be mutated

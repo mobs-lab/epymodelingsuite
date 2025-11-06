@@ -4,7 +4,7 @@ from datetime import timedelta
 
 import pytest
 
-from flumodelingsuite.schema.calibration import (
+from epymodelingsuite.schema.calibration import (
     CalibrationConfig,
     CalibrationStrategy,
 )

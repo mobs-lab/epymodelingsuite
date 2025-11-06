@@ -1,4 +1,4 @@
-"""Tests for flumodelingsuite.dispatcher.output module."""
+"""Tests for epymodelingsuite.dispatcher.output module."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from flumodelingsuite.dispatcher.output import filter_failed_projections
+from epymodelingsuite.dispatcher.output import filter_failed_projections
 
 
 class TestFilterFailedProjections:
@@ -180,7 +180,7 @@ class TestFilterFailedProjections:
         assert filtered.projections["baseline"] == []
         assert filtered._filtered_count == 3
 
-    @patch("flumodelingsuite.dispatcher.output.logger")
+    @patch("epymodelingsuite.dispatcher.output.logger")
     def test_logs_warning_when_filtering(self, mock_logger, mock_calibration_results_with_failures):
         """Test that warning is logged when failed projections are filtered."""
         filter_failed_projections(mock_calibration_results_with_failures)
@@ -197,7 +197,7 @@ class TestFilterFailedProjections:
         assert call_args[3] == 3  # Number kept
         assert call_args[4] == 5  # Total original
 
-    @patch("flumodelingsuite.dispatcher.output.logger")
+    @patch("epymodelingsuite.dispatcher.output.logger")
     def test_no_warning_when_all_valid(self, mock_logger, mock_calibration_results):
         """Test that no warning is logged when all simulations are valid."""
         filter_failed_projections(mock_calibration_results)
@@ -205,7 +205,7 @@ class TestFilterFailedProjections:
         # Should not have logged a warning
         assert not mock_logger.warning.called
 
-    @patch("flumodelingsuite.dispatcher.output.logger")
+    @patch("epymodelingsuite.dispatcher.output.logger")
     def test_logs_warning_for_each_scenario_with_failures(
         self, mock_logger, mock_calibration_results_multiple_scenarios
     ):

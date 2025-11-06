@@ -4,8 +4,8 @@ from datetime import timedelta
 
 import pytest
 
-from flumodelingsuite.utils import parse_timedelta
-from flumodelingsuite.utils.common import parse_transition_name, strip_agegroup_suffix, to_set
+from epymodelingsuite.utils import parse_timedelta
+from epymodelingsuite.utils.common import parse_transition_name, strip_agegroup_suffix, to_set
 
 
 class TestParseTimedelta:

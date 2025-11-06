@@ -7,13 +7,13 @@ from datetime import date
 
 import pytest
 
-from flumodelingsuite.schema.calibration import (
+from epymodelingsuite.schema.calibration import (
     CalibrationConfiguration,
     CalibrationStrategy,
     ComparisonSpec,
     FittingWindow,
 )
-from flumodelingsuite.schema.common import DateParameter, Distribution
+from epymodelingsuite.schema.common import DateParameter, Distribution
 
 
 class TestSampledStartDateValidation:
@@ -155,7 +155,7 @@ class TestSampledStartDateValidation:
 
     def test_no_start_date_specified(self, caplog):
         """Test that validation is skipped when start_date is not specified."""
-        from flumodelingsuite.schema.calibration import CalibrationParameter
+        from epymodelingsuite.schema.calibration import CalibrationParameter
 
         with caplog.at_level(logging.WARNING):
             config = CalibrationConfiguration(

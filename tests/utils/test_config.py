@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from flumodelingsuite.utils.config import identify_config_type
+from epymodelingsuite.utils.config import identify_config_type
 
 
 class TestIdentifyConfigType:

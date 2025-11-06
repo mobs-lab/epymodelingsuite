@@ -1,4 +1,4 @@
-# flumodelingsuite/__init__.py
+# epymodelingsuite/__init__.py
 
 from .config_loader import (
     load_basemodel_config_from_file,

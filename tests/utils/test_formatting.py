@@ -2,7 +2,7 @@
 
 import pytest
 
-from flumodelingsuite.utils.formatting import format_data_size, format_duration
+from epymodelingsuite.utils.formatting import format_data_size, format_duration
 
 
 class TestFormatDuration:

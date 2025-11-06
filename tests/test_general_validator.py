@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from flumodelingsuite.schema.general import (
+from epymodelingsuite.schema.general import (
     _ensure_compartments_valid,
     _ensure_output_references_valid,
     _ensure_parameters_present,
@@ -16,7 +16,7 @@ from flumodelingsuite.schema.general import (
     _validate_transition_list,
     validate_cross_config_consistency,
 )
-from flumodelingsuite.schema.output import OutputConfig, OutputConfiguration, QuantilesOutput, TrajectoriesOutput
+from epymodelingsuite.schema.output import OutputConfig, OutputConfiguration, QuantilesOutput, TrajectoriesOutput
 
 
 @dataclass
