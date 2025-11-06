@@ -1,14 +1,18 @@
 import logging
 from datetime import date, timedelta
 from enum import Enum
-from typing import Any
+from typing import Any, Callable
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from ..utils import parse_timedelta, validate_iso3166
+# from ..schema.basemodel import BasemodelConfig, Timespan
+# from ..schema.general import validate_modelset_consistency
+# from ..builders.utils import get_data_in_location, get_data_in_window
 from .common import DateParameter, Distribution, Meta
 
 from epydemix.calibration import ABCSampler, CalibrationResults
+
 
 logger = logging.getLogger(__name__)
 
@@ -17,9 +21,11 @@ def reproduce_trajectory(
     calibration_results: CalibrationResults,
     particle_index: int,
     generation: int,
+    simulation_function: Callable,
+    end_date: date,
 ) -> dict:
     """
-    Reproduce a specific trajectory using the stored simulate_wrapper.
+    Reproduce a specific trajectory using the a provided simulation function.
 
     Parameters
     ----------
@@ -67,9 +73,10 @@ def reproduce_trajectory(
     # Add random state to params
     all_params["random_state"] = random_state
     all_params["projection"] = True
+    all_params["end_date"] = end_date
 
     # Call the stored simulate_wrapper
-    result = calibrator.simulation_function(all_params)
+    result = simulation_function(all_params)
 
     return result
 
@@ -77,6 +84,8 @@ def reproduce_trajectory(
 def reproduce_trajectories_in_generation(
     calibrator: ABCSampler,
     calibration_results: CalibrationResults,
+    simulation_function: Callable,
+    end_date: date,
     generation: int | None = None,
 ) -> list[dict]:
     """
@@ -106,6 +115,8 @@ def reproduce_trajectories_in_generation(
             calibration_results=calibration_results,
             particle_index=particle_index,
             generation=generation,
+            simulation_function=simulation_function,
+            end_date=end_date,
         )
         results.append(reproduced)
 
@@ -115,6 +126,8 @@ def reproduce_trajectories_in_generation(
 def reproduce_all_trajectories(
     calibrator: ABCSampler,
     calibration_results: CalibrationResults,
+    simulation_function: Callable,
+    end_date: date,
 ) -> dict[int, list[dict]]:
     """
     Reproduce all trajectories across all generations.
@@ -137,6 +150,8 @@ def reproduce_all_trajectories(
             calibrator=calibrator,
             calibration_results=calibration_results,
             generation=generation,
+            simulation_function=simulation_function,
+            end_date=end_date,
         )
 
     return results
