@@ -1,28 +1,12 @@
 import logging
-from collections.abc import Iterable
 
+from ..utils.common import parse_transition_name, strip_agegroup_suffix, to_set
 from .basemodel import BasemodelConfig
 from .calibration import CalibrationConfig, CalibrationConfiguration
+from .output import OutputConfig
 from .sampling import SamplingConfig, SamplingConfiguration
 
 logger = logging.getLogger(__name__)
-
-
-def _to_set(values: Iterable | None) -> set:
-    """
-    Normalize an optional iterable into a set.
-
-    Parameters
-    ----------
-    values : Iterable or None
-        Input iterable (or ``None``) to convert.
-
-    Returns
-    -------
-    set
-        Set containing the iterable values, or an empty set when ``None``.
-    """
-    return set(values or [])
 
 
 def _ensure_parameters_present(base_params: set, modelset_params: set) -> None:
@@ -120,18 +104,125 @@ def _ensure_transitions_valid(base_transitions: set, calibration: CalibrationCon
             raise ValueError(err_msg)
 
 
-def validate_modelset_consistency(
-    base_config: BasemodelConfig, modelset_config: SamplingConfig | CalibrationConfig
-) -> None:
+def _validate_compartment_list(names: list[str], base_compartments: set, context: str) -> None:
     """
-    Cross-validate a modelset against the base model configuration.
+    Validate compartment names exist in basemodel.
 
     Parameters
     ----------
-    base_config : RootConfig
+    names : list[str]
+        List of compartment names to validate.
+    base_compartments : set
+        Compartment identifiers defined in base model.
+    context : str
+        Description of where these compartments are referenced (for error messages).
+
+    Raises
+    ------
+    ValueError
+        If any compartment names are not defined in base model.
+    """
+    invalid = {strip_agegroup_suffix(name) for name in names} - base_compartments
+    if invalid:
+        err_msg = f"Compartments in {context} not defined in basemodel: {sorted(invalid)}"
+        raise ValueError(err_msg)
+
+
+def _validate_transition_list(names: list[str], base_transitions: set, context: str) -> None:
+    """
+    Validate transition names exist in basemodel.
+
+    Parameters
+    ----------
+    names : list[str]
+        List of transition names to validate.
+    base_transitions : set
+        Transition identifiers defined in base model (format: {source}_to_{target}).
+    context : str
+        Description of where these transitions are referenced (for error messages).
+
+    Raises
+    ------
+    ValueError
+        If any transition names are not defined in base model.
+    """
+    invalid = set()
+    for name in names:
+        try:
+            source, target = parse_transition_name(name)
+            transition_id = f"{source}_to_{target}"
+            if transition_id not in base_transitions:
+                invalid.add(transition_id)
+        except ValueError:
+            invalid.add(name)
+
+    if invalid:
+        err_msg = f"Transitions in {context} not defined in basemodel: {sorted(invalid)}"
+        raise ValueError(err_msg)
+
+
+def _ensure_output_references_valid(
+    base_compartments: set[str], base_transitions: set[str], output_config: OutputConfig
+) -> None:
+    """
+    Validate that output config references exist in basemodel.
+
+    Parameters
+    ----------
+    base_compartments : set[str]
+        Compartment identifiers defined in base model.
+    base_transitions : set[str]
+        Transition identifiers defined in base model (format: {source}_to_{target}).
+    output_config : OutputConfig
+        Output configuration to validate.
+
+    Raises
+    ------
+    ValueError
+        If any referenced compartments or transitions are not defined in base model.
+    """
+    output = output_config.output
+
+    # Validate quantiles section
+    if output.quantiles is not None:
+        quantiles = output.quantiles
+        # Validate compartments if it's a list (skip if boolean)
+        if isinstance(quantiles.compartments, list):
+            _validate_compartment_list(quantiles.compartments, base_compartments, "quantiles.compartments")
+        # Validate transitions if it's a list (skip if boolean)
+        if isinstance(quantiles.transitions, list):
+            _validate_transition_list(quantiles.transitions, base_transitions, "quantiles.transitions")
+
+    # Validate trajectories section
+    if output.trajectories is not None:
+        trajectories = output.trajectories
+        # Validate compartments if it's a list (skip if boolean)
+        if isinstance(trajectories.compartments, list):
+            _validate_compartment_list(trajectories.compartments, base_compartments, "trajectories.compartments")
+        # Validate transitions if it's a list (skip if boolean)
+        if isinstance(trajectories.transitions, list):
+            _validate_transition_list(trajectories.transitions, base_transitions, "trajectories.transitions")
+
+
+def validate_cross_config_consistency(
+    base_config: BasemodelConfig,
+    modelset_config: SamplingConfig | CalibrationConfig,
+    output_config: OutputConfig | None = None,
+) -> None:
+    """
+    Cross-validate modelset and output configs against the base model configuration.
+
+    Ensures that all references (parameters, compartments, transitions) in
+    modelset and output configs are defined in the basemodel config.
+
+    Parameters
+    ----------
+    base_config : BasemodelConfig
         Validated base model configuration.
-    modelset_config : SamplingConfig or CalibrationConfig
+    modelset_config : SamplingConfig | CalibrationConfig
         Validated modelset configuration (sampling or calibration).
+    output_config : OutputConfig | None, optional
+        Output configuration to validate.
 
     Raises
     ------
@@ -172,7 +263,7 @@ def validate_modelset_consistency(
     # - Get basemodel population name and modelset population(s)
     # - Ensure modelset populations match basemodel population or "all"
     base_population_name = getattr(getattr(basemodel, "population", None), "name", None)
-    modelset_populations = _to_set(getattr(modelset, "population_names", None))
+    modelset_populations = to_set(getattr(modelset, "population_names", None))
     _ensure_populations_valid(base_population_name, modelset_populations)
 
     # Transitions consistency checks (for calibration comparison)
@@ -181,4 +272,11 @@ def validate_modelset_consistency(
     base_transitions = {f"{t.source}_to_{t.target}_total" for t in basemodel.transitions or []}
     _ensure_transitions_valid(base_transitions, calibration)
 
-    logger.info("Modelset consistency validated successfully.")
+    # Output config consistency checks
+    # - Validate output config references if provided
+    if output_config is not None:
+        base_compartments_output = {comp.id for comp in basemodel.compartments or []}
+        base_transitions_output = {f"{t.source}_to_{t.target}" for t in basemodel.transitions or []}
+        _ensure_output_references_valid(base_compartments_output, base_transitions_output, output_config)
+
+    logger.info("Config consistency validated successfully.")
