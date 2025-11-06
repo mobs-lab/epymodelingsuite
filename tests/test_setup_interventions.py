@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
-from flumodelingsuite.builders.orchestrators import create_model_collection, setup_interventions
+from epymodelingsuite.builders.orchestrators import create_model_collection, setup_interventions
 
 
 class TestSetupInterventions:
@@ -14,7 +14,7 @@ class TestSetupInterventions:
     @pytest.fixture
     def base_model_config(self):
         """Create a minimal BaseEpiModel configuration for testing."""
-        from flumodelingsuite.schema.basemodel import (
+        from epymodelingsuite.schema.basemodel import (
             BaseEpiModel,
             Compartment,
             Parameter,
@@ -109,7 +109,7 @@ class TestSetupInterventions:
 
     def test_adds_school_closure_when_in_intervention_types(self, base_model_config, sample_models):
         """Test that school closure intervention is added when 'school_closure' is in intervention_types."""
-        from flumodelingsuite.schema.basemodel import Intervention
+        from epymodelingsuite.schema.basemodel import Intervention
 
         # Mock interventions configuration
         base_model_config.interventions = [
@@ -122,9 +122,9 @@ class TestSetupInterventions:
         intervention_types = ["school_closure"]
 
         with (
-            patch("flumodelingsuite.builders.orchestrators.make_school_closure_dict") as mock_closure_dict,
+            patch("epymodelingsuite.builders.orchestrators.make_school_closure_dict") as mock_closure_dict,
             patch(
-                "flumodelingsuite.builders.orchestrators.add_school_closure_intervention_from_config"
+                "epymodelingsuite.builders.orchestrators.add_school_closure_intervention_from_config"
             ) as mock_add_closure,
         ):
             mock_closure_dict.return_value = {"2024": []}
@@ -155,7 +155,7 @@ class TestSetupInterventions:
 
     def test_adds_contact_matrix_when_in_intervention_types(self, base_model_config, sample_models):
         """Test that contact matrix intervention is added when 'contact_matrix' is in intervention_types."""
-        from flumodelingsuite.schema.basemodel import Intervention
+        from epymodelingsuite.schema.basemodel import Intervention
 
         # Mock interventions configuration
         base_model_config.interventions = [
@@ -171,7 +171,7 @@ class TestSetupInterventions:
         intervention_types = ["contact_matrix"]
 
         with patch(
-            "flumodelingsuite.builders.orchestrators.add_contact_matrix_interventions_from_config"
+            "epymodelingsuite.builders.orchestrators.add_contact_matrix_interventions_from_config"
         ) as mock_add_contact:
             result = setup_interventions(
                 models=models,
@@ -191,7 +191,7 @@ class TestSetupInterventions:
 
     def test_adds_both_interventions_when_both_in_types(self, base_model_config, sample_models):
         """Test that both school closure and contact matrix are added when both are in intervention_types."""
-        from flumodelingsuite.schema.basemodel import Intervention
+        from epymodelingsuite.schema.basemodel import Intervention
 
         # Mock interventions configuration
         base_model_config.interventions = [
@@ -208,12 +208,12 @@ class TestSetupInterventions:
         intervention_types = ["school_closure", "contact_matrix"]
 
         with (
-            patch("flumodelingsuite.builders.orchestrators.make_school_closure_dict") as mock_closure_dict,
+            patch("epymodelingsuite.builders.orchestrators.make_school_closure_dict") as mock_closure_dict,
             patch(
-                "flumodelingsuite.builders.orchestrators.add_school_closure_intervention_from_config"
+                "epymodelingsuite.builders.orchestrators.add_school_closure_intervention_from_config"
             ) as mock_add_closure,
             patch(
-                "flumodelingsuite.builders.orchestrators.add_contact_matrix_interventions_from_config"
+                "epymodelingsuite.builders.orchestrators.add_contact_matrix_interventions_from_config"
             ) as mock_add_contact,
         ):
             mock_closure_dict.return_value = {"2024": []}
@@ -234,16 +234,16 @@ class TestSetupInterventions:
 
     def test_uses_basemodel_timespan_when_no_sampled_start(self, base_model_config, sample_models):
         """Test that basemodel.timespan is used when sampled_start_timespan is None."""
-        from flumodelingsuite.schema.basemodel import Intervention
+        from epymodelingsuite.schema.basemodel import Intervention
 
         base_model_config.interventions = [Intervention(type="school_closure", label="School Closures")]
         models = sample_models
         intervention_types = ["school_closure"]
 
         with (
-            patch("flumodelingsuite.builders.orchestrators.make_school_closure_dict") as mock_closure_dict,
+            patch("epymodelingsuite.builders.orchestrators.make_school_closure_dict") as mock_closure_dict,
             patch(
-                "flumodelingsuite.builders.orchestrators.add_school_closure_intervention_from_config"
+                "epymodelingsuite.builders.orchestrators.add_school_closure_intervention_from_config"
             ) as mock_add_closure,
         ):
             mock_closure_dict.return_value = {"2024": []}
@@ -261,7 +261,7 @@ class TestSetupInterventions:
 
     def test_uses_sampled_start_timespan_when_provided(self, base_model_config, sample_models):
         """Test that sampled_start_timespan is used when provided instead of basemodel.timespan."""
-        from flumodelingsuite.schema.basemodel import Intervention, Timespan
+        from epymodelingsuite.schema.basemodel import Intervention, Timespan
 
         base_model_config.interventions = [Intervention(type="school_closure", label="School Closures")]
         models = sample_models
@@ -271,9 +271,9 @@ class TestSetupInterventions:
         sampled_start_timespan = Timespan(start_date=date(2023, 1, 1), end_date=date(2025, 12, 31), delta_t=1.0)
 
         with (
-            patch("flumodelingsuite.builders.orchestrators.make_school_closure_dict") as mock_closure_dict,
+            patch("epymodelingsuite.builders.orchestrators.make_school_closure_dict") as mock_closure_dict,
             patch(
-                "flumodelingsuite.builders.orchestrators.add_school_closure_intervention_from_config"
+                "epymodelingsuite.builders.orchestrators.add_school_closure_intervention_from_config"
             ) as mock_add_closure,
         ):
             mock_closure_dict.return_value = {"2023": [], "2024": [], "2025": []}
@@ -294,7 +294,7 @@ class TestSetupInterventions:
 
     def test_handles_multi_year_timespan(self, base_model_config, sample_models):
         """Test that school closures are created for all years in the timespan."""
-        from flumodelingsuite.schema.basemodel import Intervention, Timespan
+        from epymodelingsuite.schema.basemodel import Intervention, Timespan
 
         # Create a multi-year timespan
         base_model_config.timespan = Timespan(start_date=date(2022, 6, 1), end_date=date(2024, 3, 31), delta_t=1.0)
@@ -303,9 +303,9 @@ class TestSetupInterventions:
         intervention_types = ["school_closure"]
 
         with (
-            patch("flumodelingsuite.builders.orchestrators.make_school_closure_dict") as mock_closure_dict,
+            patch("epymodelingsuite.builders.orchestrators.make_school_closure_dict") as mock_closure_dict,
             patch(
-                "flumodelingsuite.builders.orchestrators.add_school_closure_intervention_from_config"
+                "epymodelingsuite.builders.orchestrators.add_school_closure_intervention_from_config"
             ) as mock_add_closure,
         ):
             mock_closure_dict.return_value = {"2022": [], "2023": [], "2024": []}
@@ -326,7 +326,7 @@ class TestSetupInterventions:
 
     def test_does_not_add_school_closure_if_not_in_types(self, base_model_config, sample_models):
         """Test that school closure is not added if 'school_closure' is not in intervention_types."""
-        from flumodelingsuite.schema.basemodel import Intervention
+        from epymodelingsuite.schema.basemodel import Intervention
 
         base_model_config.interventions = [
             Intervention(type="school_closure", label="School Closures", scaling_factor=0.5),
@@ -343,9 +343,9 @@ class TestSetupInterventions:
         intervention_types = ["contact_matrix"]  # school_closure not included
 
         with (
-            patch("flumodelingsuite.builders.orchestrators.make_school_closure_dict") as mock_closure_dict,
+            patch("epymodelingsuite.builders.orchestrators.make_school_closure_dict") as mock_closure_dict,
             patch(
-                "flumodelingsuite.builders.orchestrators.add_school_closure_intervention_from_config"
+                "epymodelingsuite.builders.orchestrators.add_school_closure_intervention_from_config"
             ) as mock_add_closure,
         ):
             setup_interventions(
@@ -361,7 +361,7 @@ class TestSetupInterventions:
 
     def test_does_not_add_contact_matrix_if_not_in_types(self, base_model_config, sample_models):
         """Test that contact matrix is not added if 'contact_matrix' is not in intervention_types."""
-        from flumodelingsuite.schema.basemodel import Intervention
+        from epymodelingsuite.schema.basemodel import Intervention
 
         base_model_config.interventions = [
             Intervention(type="school_closure", label="School Closures", scaling_factor=0.5),
@@ -378,7 +378,7 @@ class TestSetupInterventions:
         intervention_types = ["school_closure"]  # contact_matrix not included
 
         with patch(
-            "flumodelingsuite.builders.orchestrators.add_contact_matrix_interventions_from_config"
+            "epymodelingsuite.builders.orchestrators.add_contact_matrix_interventions_from_config"
         ) as mock_add_contact:
             setup_interventions(
                 models=models,
@@ -392,7 +392,7 @@ class TestSetupInterventions:
 
     def test_handles_empty_intervention_types_list(self, base_model_config, sample_models):
         """Test that no interventions are added when intervention_types is an empty list."""
-        from flumodelingsuite.schema.basemodel import Intervention
+        from epymodelingsuite.schema.basemodel import Intervention
 
         base_model_config.interventions = [
             Intervention(type="school_closure", label="School Closures"),
@@ -408,12 +408,12 @@ class TestSetupInterventions:
         intervention_types = []
 
         with (
-            patch("flumodelingsuite.builders.orchestrators.make_school_closure_dict") as mock_closure_dict,
+            patch("epymodelingsuite.builders.orchestrators.make_school_closure_dict") as mock_closure_dict,
             patch(
-                "flumodelingsuite.builders.orchestrators.add_school_closure_intervention_from_config"
+                "epymodelingsuite.builders.orchestrators.add_school_closure_intervention_from_config"
             ) as mock_add_closure,
             patch(
-                "flumodelingsuite.builders.orchestrators.add_contact_matrix_interventions_from_config"
+                "epymodelingsuite.builders.orchestrators.add_contact_matrix_interventions_from_config"
             ) as mock_add_contact,
         ):
             result = setup_interventions(
@@ -433,7 +433,7 @@ class TestSetupInterventions:
 
     def test_handles_single_model_in_list(self, base_model_config):
         """Test that interventions are added correctly for a single model."""
-        from flumodelingsuite.schema.basemodel import Intervention
+        from epymodelingsuite.schema.basemodel import Intervention
 
         # Create a single model
         models, _ = create_model_collection(base_model_config, ["US-CA"])
@@ -443,9 +443,9 @@ class TestSetupInterventions:
         intervention_types = ["school_closure"]
 
         with (
-            patch("flumodelingsuite.builders.orchestrators.make_school_closure_dict") as mock_closure_dict,
+            patch("epymodelingsuite.builders.orchestrators.make_school_closure_dict") as mock_closure_dict,
             patch(
-                "flumodelingsuite.builders.orchestrators.add_school_closure_intervention_from_config"
+                "epymodelingsuite.builders.orchestrators.add_school_closure_intervention_from_config"
             ) as mock_add_closure,
         ):
             mock_closure_dict.return_value = {"2024": []}
@@ -463,7 +463,7 @@ class TestSetupInterventions:
 
     def test_handles_many_models(self, base_model_config):
         """Test that interventions are added correctly for many models."""
-        from flumodelingsuite.schema.basemodel import Intervention
+        from epymodelingsuite.schema.basemodel import Intervention
 
         # Create multiple models
         models, _ = create_model_collection(base_model_config, ["US-CA", "US-TX", "US-NY", "US-FL"])
@@ -481,7 +481,7 @@ class TestSetupInterventions:
         intervention_types = ["contact_matrix"]
 
         with patch(
-            "flumodelingsuite.builders.orchestrators.add_contact_matrix_interventions_from_config"
+            "epymodelingsuite.builders.orchestrators.add_contact_matrix_interventions_from_config"
         ) as mock_add_contact:
             result = setup_interventions(
                 models=models,
@@ -496,14 +496,14 @@ class TestSetupInterventions:
 
     def test_returns_same_model_list_reference(self, base_model_config, sample_models):
         """Test that the function returns the same list object (models are modified in place)."""
-        from flumodelingsuite.schema.basemodel import Intervention
+        from epymodelingsuite.schema.basemodel import Intervention
 
         base_model_config.interventions = [Intervention(type="school_closure", label="School Closures")]
         models = sample_models
         intervention_types = ["school_closure"]
 
-        with patch("flumodelingsuite.builders.orchestrators.make_school_closure_dict", return_value={"2024": []}):
-            with patch("flumodelingsuite.builders.orchestrators.add_school_closure_intervention_from_config"):
+        with patch("epymodelingsuite.builders.orchestrators.make_school_closure_dict", return_value={"2024": []}):
+            with patch("epymodelingsuite.builders.orchestrators.add_school_closure_intervention_from_config"):
                 result = setup_interventions(
                     models=models,
                     basemodel=base_model_config,
@@ -516,7 +516,7 @@ class TestSetupInterventions:
 
     def test_intervention_types_with_parameter_type_ignored(self, base_model_config, sample_models):
         """Test that 'parameter' intervention type is ignored by setup_interventions."""
-        from flumodelingsuite.schema.basemodel import Intervention
+        from epymodelingsuite.schema.basemodel import Intervention
 
         base_model_config.interventions = [
             Intervention(
@@ -532,12 +532,12 @@ class TestSetupInterventions:
         intervention_types = ["parameter"]  # This should be ignored by _setup_interventions
 
         with (
-            patch("flumodelingsuite.builders.orchestrators.make_school_closure_dict") as mock_closure_dict,
+            patch("epymodelingsuite.builders.orchestrators.make_school_closure_dict") as mock_closure_dict,
             patch(
-                "flumodelingsuite.builders.orchestrators.add_school_closure_intervention_from_config"
+                "epymodelingsuite.builders.orchestrators.add_school_closure_intervention_from_config"
             ) as mock_add_closure,
             patch(
-                "flumodelingsuite.builders.orchestrators.add_contact_matrix_interventions_from_config"
+                "epymodelingsuite.builders.orchestrators.add_contact_matrix_interventions_from_config"
             ) as mock_add_contact,
         ):
             result = setup_interventions(

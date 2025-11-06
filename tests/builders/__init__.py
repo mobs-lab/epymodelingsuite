@@ -1,1 +1,1 @@
-"""Tests for flumodelingsuite.builders module."""
+"""Tests for epymodelingsuite.builders module."""

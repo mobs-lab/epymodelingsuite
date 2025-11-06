@@ -9,8 +9,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from flumodelingsuite.builders.orchestrators import create_model_collection, make_simulate_wrapper
-from flumodelingsuite.schema.basemodel import (
+from epymodelingsuite.builders.orchestrators import create_model_collection, make_simulate_wrapper
+from epymodelingsuite.schema.basemodel import (
     BaseEpiModel,
     Compartment,
     Intervention,

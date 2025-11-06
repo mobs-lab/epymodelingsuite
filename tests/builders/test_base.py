@@ -1,4 +1,4 @@
-"""Tests for flumodelingsuite.builders.base module."""
+"""Tests for epymodelingsuite.builders.base module."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import numpy as np
 import pytest
 
-from flumodelingsuite.builders.base import calculate_compartment_initial_conditions
+from epymodelingsuite.builders.base import calculate_compartment_initial_conditions
 
 
 @dataclass

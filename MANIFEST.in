@@ -1,1 +1,1 @@
-include flumodelingsuite/data/*.csv
+include epymodelingsuite/data/*.csv
