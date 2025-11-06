@@ -1,0 +1,69 @@
+modelset:
+
+  meta:
+    description: "Vaccination scenarios for 2024"
+    author: "Flu Modeling Suite"
+    version: 1.0.0
+
+  population_names:
+    - US-MA
+    - US-NY # or 'all'
+
+  sampling:
+
+    samplers:
+      # - strategy: grid
+      #   parameters:
+      #     - gamma
+      - strategy: LHS
+        n_samples: 100 # Total number of parameter sets we sample for. Only required for sampling methods (e.g., LHS).
+        compartments:
+          - L
+          - I_symp
+        parameters:
+          - start_date
+          - Rt
+          # - vaccine_effectiveness
+
+    compartments:
+      L:
+        min: 0
+        max: 0.25
+      I_symp:
+        min: 0
+        max: 0.1
+
+    start_date:
+      # We set a reference date and add days sampled from a distribution
+      reference_date: 2024-10-01
+      distribution:
+        type: scipy
+        name: randint
+        args:
+          - 0
+          - 30
+
+    parameters:
+      Rt:
+        distribution:
+          type: scipy
+          name: uniform
+          args:
+            - 0.0
+            - 2.0
+          kwargs:
+            some_other_param: 100
+      # vaccine_effectiveness:
+      #   distribution:
+      #     type: scipy
+      #     name: uniform
+      #     args:
+      #       - 0.0
+      #       - 0.5
+      # gamma:
+      #   values:
+      #     - 0.1
+      #     - 0.2
+      #     - 0.3
+      #     - 0.4
+      #     - 0.5

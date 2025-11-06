@@ -1,0 +1,39 @@
+output:
+  meta:
+    description: "Example output config for projection."
+    author: "epymodelingsuite"
+    version: "0.0.1"
+    date: "2038-01-19"
+
+  # Default format outputs quantiles of compartments and transitions
+  quantiles:
+    # Output all compartments if 'true', or supply list
+    compartments: true
+    # Output selected transitions
+    transitions:
+      - Home_sev_to_Hosp_total
+      - Home_sev_vax_to_Hosp_vax_total
+
+  # Optional: specify which trajectories to output
+  trajectories:
+    compartments:
+      - Hosp_total
+      - Hosp_vax_total
+    transitions: true
+
+  # Set true for default behavior or use subfield 'generations'
+  posteriors: true
+
+  # Hub format
+  flusight_format:
+    reference_date: "2025-04-05"
+    rate_trends:
+        observed_data_path: data/flu_hosp_24.csv
+        observed_value_column: hospitalizations
+        observed_date_column: target_end_date
+        observed_location_column: geo_value
+
+  # Model metadata is always generated, even if the model_meta field is not present.
+  # Use the model_meta field to record projection parameters.
+  model_meta:
+    projection_parameters: true

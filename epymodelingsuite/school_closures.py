@@ -1,8 +1,11 @@
 ### school_closures.py
 # Functions for calculating and adding school closure interventions to an epydemix EpiModel
 import datetime as dt
+import logging
 
 from epydemix import EpiModel
+
+logger = logging.getLogger(__name__)
 
 
 def make_school_closure_dict(
@@ -48,7 +51,7 @@ def make_school_closure_dict(
 
     ### Determine closures for given years from school calendar data
 
-    print("Calculating closures from school calendars...\n")
+    logger.info("Calculating closures from school calendars...\n")
 
     # Iterate through years
     for year in years:
@@ -122,54 +125,48 @@ def make_school_closure_dict(
 
         # DEBUG: keep track of how the data tables look like
         if DEBUG == 1:
-            print("\n Prior df (iteration = 0)")
-            print(df_synthetic)
+            logger.info(f"Prior df (iteration = 0):\n{df_synthetic}")
 
-            print("\n Posterior df (iteration = 1)")
-            print(red_df)
-            print("\n")
+            logger.info(f"Posterior df (iteration = 1):\n{red_df}")
 
         if red_df is None:
             raise ValueError("Output is empty. Critical Error!!!")
 
         # If red_df == df_synthetic, then stop
         if red_df.equals(df_synthetic):
-            print("Max reduction")
-            print("Iteration = 1\n")
+            logger.info("Max reduction")
+            logger.info("Iteration = 1")
         else:
             df_synthetic = red_df.copy()
 
             i = 1
             while i < n_iter:
-                print(f"Finished iteration = {i}. Progress to next iteration... \n")
+                logger.info(f"Finished iteration = {i}. Progress to next iteration...")
                 # Identify & group overlapping intervals
                 red_df = reduce_intervals(df_synthetic, cat, start_str, end_str)
 
                 # DEBUG: keep track of how the data tables look like
                 if DEBUG == 1:
-                    print(f"\n Prior df (iteration = {i})")
-                    print(df_synthetic)
-                    print(f"\n Posterior df (iteration = {i + 1})")
-                    print(red_df)
-                    print("\n")
+                    logger.info(f"Prior df (iteration = {i}):\n{df_synthetic}")
+                    logger.info(f"Posterior df (iteration = {i + 1}):\n{red_df}")
 
                 # If red_df == df_synthetic, then stop
                 if red_df.equals(df_synthetic):
-                    print(f"Data reduction succesful! Stopped at iteration {i + 1}\n")
+                    logger.info(f"Data reduction succesful! Stopped at iteration {i + 1}")
                     break
                 df_synthetic = red_df.copy()
                 i += 1
 
             # if max possible number of iterations is reached, then stop
             if i == n_iter:
-                raise RuntimeError(f"Data reduction failed! Stopped at iteration {i}\n")
+                raise RuntimeError(f"Data reduction failed! Stopped at iteration {i}")
 
         return red_df
 
     ### Combine all state school closures for total US model, but don't add yet
     # Based on https://github.com/kwovadis/merge_overlapping_pandas_intervals
 
-    print("Merging school closures for total US model...\n")
+    logger.info("Merging school closures for total US model...")
 
     # Make a df from the closure dict
     closure_df = pd.DataFrame([_ for sublist in list(closure_dict.values()) for _ in sublist])
@@ -207,7 +204,7 @@ def make_school_closure_dict(
 
     ### Add all state and national holidays, check that holidays are not falling within previously defined school closures
 
-    print("Adding state and national holidays...\n")
+    logger.info("Adding state and national holidays...\n")
 
     # Helper for determining whether a date falls between two other dates
     def date_in_range(start: dt.date, end: dt.date, comp: dt.date) -> bool:
@@ -239,13 +236,13 @@ def make_school_closure_dict(
     # Add the US closures set to the closure dict
     closure_dict["US"] = us_closures
 
-    print("School closures computed.\n")
+    logger.info("School closures computed.\n")
     return closure_dict
 
 
 def add_school_closure_interventions(
-    model: EpiModel, closure_dict: dict[str, set[tuple[dt.date, dt.date, str]]], reduction_factor: int
-) -> None:
+    model: EpiModel, closure_dict: dict[str, set[tuple[dt.date, dt.date, str]]], reduction_factor: float
+) -> EpiModel:
     """
     Add school closure interventions to a model. Called for effect.
 
@@ -281,4 +278,6 @@ def add_school_closure_interventions(
         for closure in closures
     ]
 
-    print(f"School closure interventions added to model for {model.population.name}\n")
+    logger.info(f"School closure interventions added to model for {model.population.name}.")
+
+    return model

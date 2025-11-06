@@ -1,11 +1,16 @@
-# flumodelingsuite/__init__.py
+# epymodelingsuite/__init__.py
 
-from .config_loader import load_model_config_from_file, setup_epimodel_from_config
+from .config_loader import (
+    load_basemodel_config_from_file,
+    load_calibration_config_from_file,
+    load_output_config_from_file,
+    load_sampling_config_from_file,
+)
 from .school_closures import add_school_closure_interventions, make_school_closure_dict
 from .seasonality import get_seasonal_transmission_balcan
 from .vaccinations import (
     add_vaccination_schedule,
-    make_vaccination_probability_function,
+    make_vaccination_rate_function,
     scenario_to_epydemix,
     smh_data_to_epydemix,
 )
@@ -14,9 +19,12 @@ __all__ = [
     "add_school_closure_interventions",
     "add_vaccination_schedule",
     "get_seasonal_transmission_balcan",
-    "load_model_config_from_file",
+    "load_basemodel_config_from_file",
+    "load_calibration_config_from_file",
+    "load_output_config_from_file",
+    "load_sampling_config_from_file",
     "make_school_closure_dict",
-    "make_vaccination_probability_function",
+    "make_vaccination_rate_function",
     "scenario_to_epydemix",
     "setup_epimodel_from_config",
     "smh_data_to_epydemix",

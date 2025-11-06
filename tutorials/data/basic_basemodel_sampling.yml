@@ -1,0 +1,160 @@
+model:
+  meta:
+    description: "Example SLIR model for sampling workflow"
+    author: "epymodelingsuite"
+    version: "0.0.1"
+    date: "2038-01-19"
+    
+  name: "example_SLIR_sampling"
+  random_seed: 42
+
+  timespan:
+    start_date: sampled
+    end_date: "2025-08-05"
+    delta_t: 0.2
+
+  simulation:
+    resample_frequency: W-SAT
+    n_sims: 10
+    
+  population: # no population name provided, specify in modelset
+    age_groups:
+      - "0-4"
+      - "5-17"
+      - "18-49"
+      - "50-64"
+      - "65+"
+
+  compartments:
+    - id: S
+      label: "Susceptible"
+      init: default
+    - id: L
+      label: "Latent"
+      # number of individuals
+      init: 10
+      # proportion of population
+      #init: 0.05
+    - id: I
+      label: "Infectious"
+      init: sampled
+    - id: R
+      label: "Recovered"
+    - id: S_vax
+      label: "Susceptible (vaccinated)"
+    - id: L_vax
+      label: "Latent (vaccinated)"
+    - id: I_vax
+      label: "Infectious (vaccinated)"
+    - id: R_vax
+      label: "Recovered (vaccinated)"
+
+  transitions:
+    # Main compartments branch
+    - type: mediated
+      source: S
+      target: L
+      rate: beta
+      mediator: I
+    - type: mediated
+      source: S
+      target: L
+      rate: beta
+      mediator: I_vax
+    - type: spontaneous
+      source: L
+      target: I
+      rate: eps
+    - type: spontaneous
+      source: I
+      target: R
+      rate: mu
+    # Vaccinations branch
+    - type: vaccination
+      source: S
+      target: S_vax
+    - type: mediated
+      source: S_vax
+      target: L_vax
+      rate: beta*r_vax
+      mediator: I
+    - type: mediated
+      source: S_vax
+      target: L_vax
+      rate: beta*r_vax
+      mediator: I_vax
+    - type: spontaneous
+      source: L_vax
+      target: I_vax
+      rate: eps
+    - type: spontaneous
+      source: I_vax
+      target: R_vax
+      rate: mu
+
+  parameters:
+    beta:
+      type: sampled
+    eps:
+      type: sampled
+    mu:
+      type: scalar
+      value: 1/1.5
+    VE:
+      type: age_varying
+      values:
+        - 0.4
+        - 0.4
+        - 0.4
+        - 0.4
+        - 0.3
+    r_vax:
+      type: scalar
+      value: 0.3
+      # FIXME: When calculated paramaters uses an age-varying parameter, it fails.
+      #type: calculated
+      #value: 1 - VE
+
+  seasonality:
+    target_parameter: beta
+    method: balcan
+    seasonality_max_date: "2024-10-01"
+    seasonality_min_date: "2025-04-01" # optional
+    max_value: 1.00
+    min_value: 0.50
+        
+  vaccination:
+    # preprocessed_vaccination_data_path: "data/PROCESSED_Age_Specific_Coverage_Flu_RD1_2024_25_Sc_A_B_C_D_E_F.csv"
+    scenario_data_path: "data/vaccine_scenarios_2425_cd.csv"
+    scenario: "A_B"
+    origin_compartment: S
+    eligible_compartments:
+      - S
+      - L
+      - R
+      
+  interventions:
+    # School closure intervention
+    - type: school_closure
+      scaling_factor: 0.344
+    # Contact matrix intervention
+    - type: contact_matrix
+      scaling_factor: 1.6
+      contact_matrix_layer: "home"
+      start_date: "2024-11-25"
+      end_date: "2025-01-01"
+    # Parameter scaling intervention
+    - type: parameter
+      scaling_factor: 0.95
+      target_parameter: mu
+      start_date: "2024-09-01"
+      end_date: "2024-09-21"
+    # Parameter override intervention
+    - type: parameter
+      override_value: 0.25
+      target_parameter: beta
+      start_date: "2024-10-01"
+      end_date: "2024-10-01"
+
+
+      

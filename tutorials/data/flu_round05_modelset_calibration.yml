@@ -1,0 +1,80 @@
+modelset:
+  meta:
+    description: "2024 vaccination scenarios"
+    author: "epymodelingsuite"
+    version: "0.0.1"
+    date: "2038-01-19"
+
+  population_names:
+    - US-MA
+    - US-NY # or 'all'
+
+  calibration:
+
+    strategy:
+      name: smc
+      options: # strategy specific arguments in calibrate() function
+        num_particles: 20
+        num_generations: 5
+
+    # Sampler options, passed directly when initializing ABCSampler
+    distance_function: rmse # Default, but we could provide custom distance function
+    observed_data_path: data/flu_hosp_24.csv
+    
+    comparison:
+      - observed_date_column: target_end_date
+      # Distance function will calculate the difference between observed and simulated data
+        observed_value_column: hospitalizations # column name from CSV
+        simulation: # we sum these transitions to compare with observed data
+          - Home_sev_to_Hosp_total
+          - Home_sev_vax_to_Hosp_vax_total
+    
+    fitting_window:
+      start_date: "2024-09-15"
+      end_date: "2025-05-17"
+    
+    projection:
+      n_trajectories: 100
+    
+    compartments:
+      L:
+        prior:
+          type: scipy
+          name: uniform
+          args:
+            - 0.0001
+            - 0.0009
+      Initial_immune:
+        prior:
+          type: scipy
+          name: uniform
+          args:
+            - 0.02
+            - 0.33
+    start_date:
+      # For 'date' types, we set a reference date and add days sampled from a distribution
+      reference_date: 2024-09-15
+      prior:
+        type: scipy
+        name: randint
+        args:
+        - 0
+        - 80
+
+    parameters:
+      Rt:
+        prior:
+          type: scipy
+          name: uniform
+          args:
+            - 1.0
+            - 1.0
+      seasonality_min:
+        prior:
+          type: scipy
+          name: uniform
+          args:
+            - 0.65
+            - 0.20
+
+        

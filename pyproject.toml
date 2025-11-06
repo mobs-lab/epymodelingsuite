@@ -3,22 +3,24 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "flumodelingsuite"
-version = "0.0.1"
+name = "epymodelingsuite"
+version = "0.1.0"
 authors = [
   { name="Remy LeWinter", email="lewinter.r@northeastern.edu" },
   { name="Nima Moghaddas", email="moghaddas.n@northeastern.edu" },
   { name="Minami Ueda", email="ueda.m@northeastern.edu" }
 ]
-description = "Models for influenza forecasting and scenario modeling. A codebase for working with epydemix."
+description = "Models and calibrators for forecasting and scenario modeling. A codebase for large workloads with epydemix and expanded functionality."
 dependencies = [
     "epydemix",
     "pandas",
     "numpy",
+    "scipy",
     "holidays",
     "matplotlib",
     "pydantic",
-    "pyyaml"
+    "pyyaml",
+    "psutil"
 ]
 
 readme = "README.md"
@@ -33,13 +35,22 @@ license-files = ["LICEN[CS]E*"]
 [project.optional-dependencies]
 dev = [
     "ruff",
+    "pytest",
+    "pytest-cov",
 ]
 
 [project.urls]
-Homepage = "https://github.com/mobs-lab/flu-modeling-suite"
+Homepage = "https://github.com/mobs-lab/epymodelingsuite"
 
 [tool.setuptools]
-packages = ["flumodelingsuite"]
+packages = [
+    "epymodelingsuite",
+    "epymodelingsuite.schema",
+    "epymodelingsuite.builders",
+    "epymodelingsuite.dispatcher",
+    "epymodelingsuite.utils",
+    "epymodelingsuite.data",
+]
 include-package-data = true
 
 [tool.ruff]
@@ -58,6 +69,7 @@ ignore = [
   "D205",  # blank-line-after-summary
   "D213",  # multi-line summary second line
   "E501",  # line too long
+  "N806",  # non-lowercase-variable-in-function
   "TD001", # invalid todo tag
   "TD002", # missing todo author
   "TD003", # missing todo link

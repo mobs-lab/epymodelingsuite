@@ -1,8 +1,11 @@
 epydemix
 numpy
+scipy
+pandas
 holidays
 matplotlib
-pandas
-pyyaml
 pydantic
+pyyaml
 ruff
+pytest
+pytest-cov

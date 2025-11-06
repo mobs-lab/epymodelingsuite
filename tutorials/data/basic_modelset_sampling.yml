@@ -1,0 +1,56 @@
+modelset:
+  meta:
+    description: "Example SLIR sampling"
+    author: "epymodelingsuite"
+    version: "0.0.1"
+    date: "2038-01-19"
+
+  population_names:
+    - US-MA
+    - US-NY # or 'all'
+
+  sampling:
+
+    samplers:
+      - strategy: grid
+        parameters:
+          - eps
+      - strategy: LHS
+        n_samples: 100 # Total number of parameter sets we sample for. Only required for sampling methods (e.g., LHS).
+        compartments:
+          - I
+        parameters:
+          - beta
+          - start_date
+
+    compartments:
+      I:
+        min: 0
+        max: 0.1
+
+    start_date:
+      # We set a reference date and add days sampled from a distribution
+      reference_date: 2024-10-01
+      distribution:
+        type: scipy
+        name: randint
+        args:
+          - 0
+          - 30
+
+    parameters:
+      beta:
+        distribution:
+          type: scipy
+          name: uniform
+          args:
+            - 0.0
+            - 0.3
+            
+      eps:
+        values:
+          - 0.1
+          - 0.2
+          - 0.3
+          - 0.4
+          - 0.5
