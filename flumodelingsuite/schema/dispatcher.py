@@ -92,7 +92,7 @@ class SimulationOutput(BaseModel):
     seed: int | None = Field(None, description="Random seed.")
     delta_t: float | None = Field(None, description="Timestep.")
     population: str = Field(description="Population name (epydemix).")
-    results: SimulationResults = Field(description="Results of a call to EpiModel.run_simulations()")
+    results: SimulationResults | None = Field(description="Results of a call to EpiModel.run_simulations()")
 
 
 class CalibrationOutput(BaseModel):
