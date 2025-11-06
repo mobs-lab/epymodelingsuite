@@ -128,12 +128,14 @@ def get_age_groups_from_data(data: pd.DataFrame) -> dict[str, str]:
 
 def resample_dataframe(df: pd.DataFrame, delta_t: float) -> pd.DataFrame:
     """
-    Resample a vaccination coverage DataFrame to a finer time resolution
-    by repeating values (step interpolation) and scaling by delta_t.
+    Resample a vaccination coverage DataFrame to match epydemix simulation time steps
+    by repeating values (step interpolation).
 
     This function preserves the step-wise nature of vaccination schedules,
     where values should remain constant within each day/period rather than
     being smoothly interpolated between periods.
+
+    Uses epydemix's compute_simulation_dates() to ensure exact alignment with simulation steps.
 
     Parameters
     ----------
@@ -150,29 +152,27 @@ def resample_dataframe(df: pd.DataFrame, delta_t: float) -> pd.DataFrame:
     -------
     pd.DataFrame
         Resampled DataFrame with:
-        - 'dates' as the new index column at the finer resolution
+        - 'dates' as the new index column matching simulation time steps
         - 'location' carried forward
-        - numeric columns repeated (not interpolated) and scaled by `delta_t`
+        - numeric columns repeated (not interpolated)
     """
     import numpy as np
+    from epydemix.utils import compute_simulation_dates
 
-    frequency = f"{24 * delta_t}h"
-
-    # Create new time index
-    new_index = pd.date_range(start=df.dates.iloc[0], end=df.dates.iloc[-1] + pd.Timedelta(days=1), freq=frequency)[
-        :-1
-    ]  # Remove the last point to avoid going beyond end date
+    # Use epydemix's date calculation for exact alignment
+    # Use min/max to handle unsorted DataFrames
+    start_date = df.dates.min()
+    end_date = df.dates.max()
+    simulation_dates = compute_simulation_dates(start_date, end_date, dt=delta_t)
+    new_index = pd.DatetimeIndex(simulation_dates)
 
     df = df.set_index("dates")
     numeric_cols = df.select_dtypes(include=[np.number]).columns
 
-    # Use forward fill (step interpolation) instead of linear interpolation
+    # Use forward fill (step interpolation) to fill in new time points
     combined_index = df.index.union(new_index)
     vaccines_step = df[numeric_cols].reindex(combined_index).ffill()
     vaccines_fine = vaccines_step.reindex(new_index)
-
-    # Scale by delta_t to maintain total doses per day
-    vaccines_fine = vaccines_fine * delta_t
 
     vaccines_fine = vaccines_fine.reset_index().rename(columns={"index": "dates"})
     vaccines_fine.insert(1, "location", df["location"].values[0])
@@ -355,6 +355,7 @@ def scenario_to_epydemix(
     - Location names are converted to ISO codes for compatibility with Epydemix.
     """
     import numpy as np
+    from epydemix.utils import compute_simulation_dates
 
     from .utils import convert_location_name_format, get_population_codebook
 
@@ -362,6 +363,12 @@ def scenario_to_epydemix(
     population_codebook = get_population_codebook()
     if states:
         states = [convert_location_name_format(s, "name") for s in states]
+
+    # ========== COMPUTE SIMULATION DATES ==========
+    # Use epydemix's date calculation to ensure alignment with simulation time steps
+    simulation_dates_array = compute_simulation_dates(start_date, end_date, dt=delta_t)
+    simulation_dates_index = pd.DatetimeIndex(simulation_dates_array)
+
     # ========== LOAD AND FILTER DATA ==========
     vaccines = pd.read_csv(input_filepath)
     # Date and time handling
@@ -529,15 +536,21 @@ def scenario_to_epydemix(
             new_coverages[target_group] = daily_vaccines_wide_subset.mul(weights, axis=1).sum(axis=1)
 
         daily_vaccines_transformed = pd.DataFrame(new_coverages, index=daily_vaccines_wide_subset.index)
-        daily_vaccines_transformed.insert(0, "dates", this_location_wide["dates"])
-        daily_vaccines_transformed.insert(1, "location", this_location_wide["location"])
 
-        if delta_t != 1.0:
-            vaccines_fine = resample_dataframe(daily_vaccines_transformed, delta_t)
-        else:
-            vaccines_fine = daily_vaccines_transformed.copy()
+        # Reindex to match simulation dates exactly
+        # Set dates as index temporarily for reindexing
+        daily_vaccines_transformed["dates"] = this_location_wide["dates"]
+        daily_vaccines_transformed = daily_vaccines_transformed.set_index("dates")
 
-        all_locations_df = pd.concat([all_locations_df, vaccines_fine], ignore_index=True)
+        # Reindex to simulation_dates_index, filling missing dates with 0
+        daily_vaccines_transformed = daily_vaccines_transformed.reindex(simulation_dates_index, fill_value=0)
+
+        # Reset index and add metadata columns
+        daily_vaccines_transformed = daily_vaccines_transformed.reset_index()
+        daily_vaccines_transformed.rename(columns={"index": "dates"}, inplace=True)
+        daily_vaccines_transformed.insert(1, "location", this_location_wide["location"].iloc[0])
+
+        all_locations_df = pd.concat([all_locations_df, daily_vaccines_transformed], ignore_index=True)
         # all_locations_data.extend(daily_vaccines_list)
 
     # ========== WRITE OUTPUT CSV ==========
@@ -752,43 +765,58 @@ def reaggregate_vaccines(schedule: pd.DataFrame, actual_start_date: dt.date | pd
     return reaggregated_schedule
 
 
-def make_vaccination_probability_function(origin_compartment: str, eligible_compartments: list[str]) -> callable:
+def make_vaccination_rate_function(origin_compartment: str, eligible_compartments: list[str]) -> callable:
     """
-    Return a vaccination probability function for a given origin compartment and a set of
+    Return a vaccination rate function for a given origin compartment and a set of
     eligible compartments used in the denominator when allocating doses.
 
-    Args:
-            origin_compartment (str): The compartment receiving the vaccination (e.g., 'S').
-            eligible_compartments (list of str): Compartments included in dose allocation denominator
-                                                                                     (e.g., ['S', 'R']).
+    Returns a RATE function (vaccinations per person per unit time), not a probability.
+    In epydemix >= v1.0.2, callables that compute rates are passed to
+    EpiModel.register_transition_kind(), instead of callables that compute probabilities.
+    epydemix converts rates to probabilities internally using p = 1 - exp(-rate * dt).
+
+    Parameters
+    ----------
+    origin_compartment : str
+        The compartment receiving the vaccination (e.g., 'S').
+    eligible_compartments : list of str
+        Compartments included in dose allocation denominator (e.g., ['S', 'R']).
 
     Returns
     -------
-            function: A function (params, data) -> np.ndarray suitable for use with
-                              model.register_transition_kind.
+    callable
+        A function (params, data) -> np.ndarray suitable for use with
+        model.register_transition_kind.
     """
     import numpy as np
     from epydemix.model.epimodel import validate_transition_function
 
-    def compute_vaccination_probability(params: list, data: dict) -> np.ndarray:
+    def compute_vaccination_rate(params: list, data: dict) -> np.ndarray:
         """
-        Compute the probability of the spontaneous transition required to move a certain
-        number of individuals out of the origin compartment at the current time step, based
-        on the total available doses and the distribution of the population across compartments.
+        Compute the vaccination rate (per unit time) required to allocate available doses
+        to individuals in the origin compartment, based on the distribution of the population
+        across eligible compartments.
 
-        Args:
-                params (list): A list containing one element: a 1D array of daily total doses
-                                        (aligned with simulation time steps).
-                data (dict): A dictionary with the following keys:
-                        - 't': Current time index (int)
-                        - 'dt': Duration of the current time step
-                        - 'pop': Array of compartment population counts
-                        - 'comp_indices': Dict mapping compartment names ('S', 'R', etc.) to their indices in 'pop'
+        Returns a RATE (vaccinations per person per unit time), not a probability.
+        epydemix converts this to a probability using p = 1 - exp(-rate * dt).
+
+        Parameters
+        ----------
+        params : list
+            A list containing one element: a 1D array of daily total doses
+            (aligned with simulation time steps).
+        data : dict
+            A dictionary with the following keys:
+            - 't': Current time index (int)
+            - 'dt': Duration of the current time step (used by epydemix, not here)
+            - 'pop': Array of compartment population counts
+            - 'comp_indices': Dict mapping compartment names ('S', 'R', etc.) to their indices in 'pop'
 
         Returns
         -------
-                np.ndarray: Array of vaccination probabilities for the susceptible population,
-                                        clipped between 0 and 0.999.
+        np.ndarray
+            Array of vaccination rates (per unit time) for the origin compartment.
+            Can exceed 1.0 (e.g., if daily doses > origin population).
         """
         total_doses = params[0][data["t"]]
         origin_pop = data["pop"][data["comp_indices"][origin_compartment]]
@@ -798,20 +826,24 @@ def make_vaccination_probability_function(origin_compartment: str, eligible_comp
         with np.errstate(divide="ignore", invalid="ignore"):
             fraction_origin = np.where(denom > 0, origin_pop / denom, 0)
 
-        effective_doses = total_doses * data["dt"] * fraction_origin
+        # Calculate effective doses for origin compartment
+        effective_doses = total_doses * fraction_origin
 
+        # Calculate vaccination rate: doses per unit time / population
         with np.errstate(divide="ignore", invalid="ignore"):
-            p_vax = np.where(origin_pop > 0, effective_doses / origin_pop, 0)
+            vaccination_rate = np.where(origin_pop > 0, effective_doses / origin_pop, 0)
 
-        return np.clip(p_vax, 0, 0.999)
+        # Return rate (can be > 1, no upper cap needed)
+        # Only ensure non-negative
+        return np.maximum(vaccination_rate, 0)
 
-    validate_transition_function(compute_vaccination_probability)
-    return compute_vaccination_probability
+    validate_transition_function(compute_vaccination_rate)
+    return compute_vaccination_rate
 
 
 def add_vaccination_schedule(
     model: EpiModel,
-    vaccine_probability_function: Callable,
+    vaccine_rate_function: Callable,
     source_comp: str,
     target_comp: str,
     vaccination_schedule: pd.DataFrame,
@@ -823,7 +855,7 @@ def add_vaccination_schedule(
     ----------
         model (EpiModel): The model object to which the vaccination schedule will be added. Must have a population
                           age groups same as the columns in `vaccination_schedule`.
-        vaccine_probability_function (Callable): A function defining time-dependent vaccination probabilities.
+        vaccine_rate_function (Callable): A function defining time-dependent vaccination rates.
         vaccination_schedule (pd.DataFrame): Vaccination schedule with age groups as columns and time as rows.
                                              Must include all age groups used in the model.
         source_comp (str): The name of the source compartment (e.g., "S").
@@ -852,7 +884,9 @@ def add_vaccination_schedule(
         raise ValueError(f"Location {iso_location} not found in vaccination schedule data.")
 
     vaccination_schedule = vaccination_schedule.query("location == @iso_location").copy()
-    model.register_transition_kind("vaccination", vaccine_probability_function)
+
+    # From epydemix v1.0.2, register_transition_kind accepts Callable for rate not probability
+    model.register_transition_kind("vaccination", vaccine_rate_function)
 
     age_groups_model = model.population.Nk_names
     age_groups_data = vaccination_schedule.columns.tolist()
