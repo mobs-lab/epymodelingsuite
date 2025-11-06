@@ -204,6 +204,41 @@ def _ensure_output_references_valid(
             _validate_transition_list(trajectories.transitions, base_transitions, "trajectories.transitions")
 
 
+def _warn_mismatched_observed_data_paths(
+    calibration: CalibrationConfiguration | None, output_config: OutputConfig
+) -> None:
+    """
+    Warn if observed data paths differ between calibration and output configs.
+
+    Parameters
+    ----------
+    calibration : CalibrationConfiguration or None
+        Calibration configuration, if present.
+    output_config : OutputConfig
+        Output configuration to check.
+    """
+    # Only check if we have both calibration config and FluSight rate trends output
+    if calibration is None:
+        return
+
+    output = output_config.output
+    if output.flusight_format is None or output.flusight_format.rate_trends is None:
+        return
+
+    calibration_path = calibration.observed_data_path
+    output_path = output.flusight_format.rate_trends.observed_data_path
+
+    if calibration_path != output_path:
+        logger.warning(
+            "Observed data paths differ between configs: "
+            "calibration='%s', "
+            "output.flusight_format.rate_trends='%s'. "
+            "This may lead to inconsistent results if the files contain different data.",
+            calibration_path,
+            output_path,
+        )
+
+
 def validate_cross_config_consistency(
     base_config: BasemodelConfig,
     modelset_config: SamplingConfig | CalibrationConfig,
@@ -278,5 +313,8 @@ def validate_cross_config_consistency(
         base_compartments_output = {comp.id for comp in basemodel.compartments or []}
         base_transitions_output = {f"{t.source}_to_{t.target}" for t in basemodel.transitions or []}
         _ensure_output_references_valid(base_compartments_output, base_transitions_output, output_config)
+
+        # Warn if observed data paths differ between calibration and output configs
+        _warn_mismatched_observed_data_paths(calibration, output_config)
 
     logger.info("Config consistency validated successfully.")
