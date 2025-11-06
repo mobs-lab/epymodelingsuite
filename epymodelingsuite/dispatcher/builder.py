@@ -2,6 +2,8 @@
 
 import copy
 import logging
+from pathlib import Path
+from typing import Callable
 
 import numpy as np
 import pandas as pd
@@ -466,3 +468,108 @@ def dispatch_builder(**configs) -> BuilderOutput | list[BuilderOutput]:
     finally:
         # Clear context when done
         ExecutionTelemetry.set_current(None)
+
+def make_scenario_projection_simulate_wrappers(
+    basemodel_config: BasemodelConfig, 
+    calibration_config: CalibrationConfig,
+    overrides: dict | None = None,
+) -> list[Callable]:
+    """
+    Construct a list of simulate_wrappers from basemodel and calibration config, which differ only 
+    in the overrides 
+
+    Parameters
+    ----------
+        basemodel_config: configuration parsed from YAML
+        calibration_config: configuration parsed from YAML
+        overrides: dict | None = None, optional
+
+    Supported overrides (keys in overrides dict):
+    - "vaccination": { "scenario_data_path": str }  # replace vaccination CSV path
+    - "seasonality": { "min_value": float }         # override min_value
+    - "interventions": dict                         # replace interventions block entirely
+
+    Returns
+    -------
+        BuilderOutput containing id, seed, ABCSampler, and arguments for calibration and projection.
+    """
+
+    from ..builders.orchestrators import (
+        create_model_collection,
+        make_simulate_wrapper,
+        setup_interventions,
+        setup_vaccination_schedules,
+    )
+    # Validate references between basemodel and calibration
+    validate_modelset_consistency(basemodel_config, calibration_config)
+
+    # For compactness
+    basemodel = copy.deepcopy(basemodel_config.model)
+    modelset = calibration_config.modelset
+    calibration = modelset.calibration
+
+    if overrides:
+        # Vaccination overrides
+        if "vaccination" in overrides and basemodel.vaccination:
+            vac_ovr = overrides["vaccination"] or {}
+            if "scenario_data_path" in vac_ovr and vac_ovr["scenario_data_path"]:
+                basemodel.vaccination.scenario_data_path = vac_ovr["scenario_data_path"]
+
+        # Seasonality overrides
+        if "seasonality" in overrides and basemodel.seasonality:
+            seas_ovr = overrides["seasonality"] or {}
+            if "min_value" in seas_ovr and seas_ovr["min_value"] is not None:
+                basemodel.seasonality.min_value = seas_ovr["min_value"]
+
+        # Interventions overrides (replace entire block if provided)
+        if "interventions" in overrides and overrides["interventions"] is not None:
+            basemodel.interventions = overrides["interventions"]
+
+    # Create random number generator
+    rng = np.random.default_rng(basemodel.random_seed)
+
+    # Build a collection of EpiModels
+    models, population_names = create_model_collection(basemodel, modelset.population_names)
+
+    # Extract intervention types
+    if basemodel.interventions:
+        intervention_types = [i.type for i in basemodel.interventions]
+
+    # If start_date is sampled, make earliest timespan
+    if calibration.start_date:
+        sampled_start_timespan = Timespan(
+            start_date=calibration.start_date.reference_date,
+            end_date=basemodel.timespan.end_date,
+            delta_t=basemodel.timespan.delta_t,
+        )
+    else:  # case where start_date is not sampled
+        sampled_start_timespan = None
+
+    # Vaccination is sensitive to location and start_date but not to model parameters.
+    models, earliest_vax = setup_vaccination_schedules(basemodel, models, sampled_start_timespan, population_names)
+
+    # These interventions are sensitive to location but not to model parameters and can be applied
+    # using the earliest start_date before creating ABCSamplers.
+    models = setup_interventions(models, basemodel, intervention_types, sampled_start_timespan)
+    observed_raw = pd.read_csv(calibration.observed_data_path)
+    observed_in_window = get_data_in_window(observed_raw, calibration)
+    simulation_functions = []
+    for model in models:
+        # TODO: Make location column name configurable instead of hardcoded "geo_value"
+        # Should be added to ComparisonSpec schema (e.g., observed_location_column)
+        observed_data = get_data_in_location(observed_in_window, model, "geo_value")
+        vax_state = get_data_in_location(earliest_vax, model, "location")
+        # Create simulate_wrapper
+        simulate_wrapper = make_simulate_wrapper(
+            basemodel=basemodel,
+            calibration=calibration,
+            observed_data=observed_data,
+            intervention_types=intervention_types,
+            sampled_start_timespan=sampled_start_timespan,
+            earliest_vax=vax_state,
+            rng=rng,
+        )
+        simulation_functions.append(simulate_wrapper)
+
+    return simulation_functions
+    
