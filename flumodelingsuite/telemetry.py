@@ -530,7 +530,7 @@ class ExecutionTelemetry:
         self.output["duration_seconds"] = (end_time - start_time).total_seconds()
 
         # Calculate total file size
-        if "files" in self.output and self.output["files"]:
+        if self.output.get("files"):
             total_size = sum(f["size_bytes"] for f in self.output["files"])
             self.output["total_size_bytes"] = total_size
 

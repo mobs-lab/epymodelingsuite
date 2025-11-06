@@ -2,7 +2,6 @@
 
 import logging
 import time
-
 import numpy as np
 
 from ..schema.dispatcher import BuilderOutput, CalibrationOutput, SimulationOutput

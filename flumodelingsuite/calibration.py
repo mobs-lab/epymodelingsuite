@@ -39,7 +39,7 @@ def resimulate_with_posterior(
     residual_immunity_compartments: list[str],
     all_scen: pd.DataFrame,
     scenario: str,
-    vaccine_probability_function: callable,
+    vaccine_rate_function: callable,
     n_trajectories: int,
     rng=None,
 ):
@@ -62,8 +62,8 @@ def resimulate_with_posterior(
         Vaccination schedules with 'location' and 'scenario' columns
     scenario : str
         Scenario to filter vaccination schedule
-    vaccine_probability_function : callable
-        Function for vaccination probability
+    vaccine_rate_function : callable
+        Function for vaccination rate
     n_trajectories : int
         Number of posterior draws to simulate
     rng : np.random.Generator | None, optional
@@ -116,7 +116,7 @@ def resimulate_with_posterior(
         vax_schedule_reag = reaggregate_vaccines(schedule=vax_schedule_state, actual_start_date=actual_start_date)
         model_copy = add_vaccination_schedule(
             model=model_copy,
-            vaccine_probability_function=vaccine_probability_function,
+            vaccine_rate_function=vaccine_rate_function,
             source_comp="Susceptible",
             target_comp="Susceptible_vax",
             vaccination_schedule=vax_schedule_reag,

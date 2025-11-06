@@ -110,3 +110,90 @@ def parse_timedelta(text: str) -> timedelta:
     # Otherwise it's calendar/anchored/variable; cannot be a pure timedelta
     msg = f"Frequency {text!r} is not a fixed-length duration and cannot be represented as a datetime.timedelta."
     raise ValueError(msg)
+
+
+def to_set(values: object | None) -> set:
+    """
+    Normalize an optional iterable into a set.
+
+    Parameters
+    ----------
+    values : Iterable or None
+        Input iterable (or ``None``) to convert.
+
+    Returns
+    -------
+    set
+        Set containing the iterable values, or an empty set when ``None``.
+    """
+    from collections.abc import Iterable
+
+    if values is None:
+        return set()
+    if isinstance(values, Iterable) and not isinstance(values, (str, bytes)):
+        return set(values)
+    return set()
+
+
+def strip_agegroup_suffix(name: str, age_group: str = "total") -> str:
+    """
+    Strip age group suffix from compartment/transition names.
+
+    Parameters
+    ----------
+    name : str
+        Name potentially ending with age group suffix.
+    age_group : str, default="total"
+        Age group suffix to remove (without underscore prefix).
+
+    Returns
+    -------
+    str
+        Name with age group suffix removed.
+
+    Examples
+    --------
+    >>> strip_agegroup_suffix("S_total")
+    'S'
+    >>> strip_agegroup_suffix("I_child", age_group="child")
+    'I'
+    """
+    return name.removesuffix(f"_{age_group}")
+
+
+def parse_transition_name(name: str, age_group: str = "total") -> tuple[str, str]:
+    """
+    Parse transition name from format: {source}_to_{target}_{age_group}.
+
+    Parameters
+    ----------
+    name : str
+        Transition name in format {source}_to_{target}_{age_group}.
+    age_group : str, default="total"
+        Age group suffix to remove (without underscore prefix).
+
+    Returns
+    -------
+    tuple[str, str]
+        Source and target compartment names.
+
+    Raises
+    ------
+    ValueError
+        If name does not match expected format.
+
+    Examples
+    --------
+    >>> parse_transition_name("S_to_I_total")
+    ('S', 'I')
+    >>> parse_transition_name("S_to_I_child", age_group="child")
+    ('S', 'I')
+    """
+    # Strip age group suffix first
+    name_no_suffix = strip_agegroup_suffix(name, age_group=age_group)
+    # Split on '_to_'
+    parts = name_no_suffix.split("_to_")
+    if len(parts) != 2:  # noqa: PLR2004
+        msg = f"Invalid transition name format: {name}"
+        raise ValueError(msg)
+    return parts[0], parts[1]
