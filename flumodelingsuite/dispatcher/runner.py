@@ -2,6 +2,7 @@
 
 import logging
 import time
+import numpy as np
 
 from ..schema.dispatcher import BuilderOutput, CalibrationOutput, SimulationOutput
 from ..telemetry import ExecutionTelemetry
@@ -12,7 +13,7 @@ logger = logging.getLogger(__name__)
 # ===== Runner Functions =====
 
 
-def run_simulation(configs: BuilderOutput) -> SimulationOutput:
+def run_simulation(configs: BuilderOutput, rng: np.random.Generator | None = None) -> SimulationOutput:
     """
     Run a simulation using EpiModel.run_simulations.
 
@@ -20,6 +21,9 @@ def run_simulation(configs: BuilderOutput) -> SimulationOutput:
     ----------
     configs : BuilderOutput
         BuilderOutput containing model and simulation parameters.
+    rng : np.random.Generator | None, optional
+        Random number generator for reproducible simulations.
+        If None, creates a new RNG from configs.seed.
 
     Returns
     -------
@@ -34,8 +38,12 @@ def run_simulation(configs: BuilderOutput) -> SimulationOutput:
     logger.info("RUNNER: running simulation.")
     start_time = time.time()
 
+    # Create RNG if not provided
+    if rng is None:
+        rng = np.random.default_rng(configs.seed)
+
     try:
-        results = configs.model.run_simulations(**dict(configs.simulation))
+        results = configs.model.run_simulations(**dict(configs.simulation), rng=rng)
         duration = time.time() - start_time
         logger.info("RUNNER: completed simulation.")
 
@@ -69,7 +77,7 @@ def run_simulation(configs: BuilderOutput) -> SimulationOutput:
         raise RuntimeError(f"Error during simulation: {e}")
 
 
-def run_calibration(configs: BuilderOutput) -> CalibrationOutput:
+def run_calibration(configs: BuilderOutput, rng: np.random.Generator | None = None) -> CalibrationOutput:
     """
     Run a calibration using ABCSampler.calibrate.
 
@@ -77,6 +85,10 @@ def run_calibration(configs: BuilderOutput) -> CalibrationOutput:
     ----------
     configs : BuilderOutput
         BuilderOutput containing calibrator and calibration parameters.
+    rng : np.random.Generator | None, optional
+        Random number generator for reproducible calibration.
+        If None, creates a new RNG from configs.seed.
+        The RNG is passed to the builder, which creates simulate_wrapper with it.
 
     Returns
     -------
@@ -126,7 +138,9 @@ def run_calibration(configs: BuilderOutput) -> CalibrationOutput:
         raise RuntimeError(f"Error during calibration: {e}")
 
 
-def run_calibration_with_projection(configs: BuilderOutput) -> CalibrationOutput:
+def run_calibration_with_projection(
+    configs: BuilderOutput, rng: np.random.Generator | None = None
+) -> CalibrationOutput:
     """
     Run a calibration followed by projection using ABCSampler.
 
@@ -134,6 +148,10 @@ def run_calibration_with_projection(configs: BuilderOutput) -> CalibrationOutput
     ----------
     configs : BuilderOutput
         BuilderOutput containing calibrator, calibration, and projection parameters.
+    rng : np.random.Generator | None, optional
+        Random number generator for reproducible calibration and projection.
+        If None, creates a new RNG from configs.seed.
+        The RNG is passed to the builder, which creates simulate_wrapper with it.
 
     Returns
     -------
@@ -260,6 +278,9 @@ def dispatch_runner(configs: BuilderOutput) -> SimulationOutput | CalibrationOut
     AssertionError
         If configs are invalid.
     """
+    # Create RNG from seed
+    rng = np.random.default_rng(configs.seed)
+
     # Get telemetry from context
     telemetry = ExecutionTelemetry.get_current()
 
@@ -274,15 +295,15 @@ def dispatch_runner(configs: BuilderOutput) -> SimulationOutput | CalibrationOut
         # Handle simulation
         if configs.simulation:
             logger.info("RUNNER: dispatched for simulation.")
-            result = run_simulation(configs)
+            result = run_simulation(configs, rng=rng)
         # Handle calibration
         elif configs.calibration and not configs.projection:
             logger.info("RUNNER: dispatched for calibration.")
-            result = run_calibration(configs)
+            result = run_calibration(configs, rng=rng)
         # Handle calibration and projection
         elif configs.calibration and configs.projection:
             logger.info("RUNNER: dispatched for calibration and projection.")
-            result = run_calibration_with_projection(configs)
+            result = run_calibration_with_projection(configs, rng=rng)
         # Error
         else:
             raise AssertionError(

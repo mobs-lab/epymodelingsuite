@@ -487,6 +487,9 @@ def format_calibration_data(
             List of transition keys to sum (e.g., ["Hosp_vax", "Hosp_unvax"]).
     data_dates : list
             List of observation dates from observed data.
+    random_state : dict[str, Any]
+            Random number generator state from rng.bit_generator.state.
+            Returned with results for reproducibility.
 
     Returns
     -------
@@ -495,6 +498,7 @@ def format_calibration_data(
             - "data": np.ndarray of aggregated simulation values aligned to observation dates.
                 Padded with zeros at the beginning if simulation starts after first observation.
             - "date": list of observation dates from observed data.
+            - "random_state": dict containing RNG state for reproducibility.
     """
     # Step 1: Aggregate specified transitions
     # Match simulation outputs to observed data granularity.
