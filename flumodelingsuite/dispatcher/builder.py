@@ -2,10 +2,9 @@
 
 import copy
 import logging
-from pathlib import Path
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 from epydemix.calibration import ABCSampler, ae, mae, mape, rmse, wmape
 from epydemix.model import EpiModel
 

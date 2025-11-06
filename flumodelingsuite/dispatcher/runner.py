@@ -2,9 +2,6 @@
 
 import logging
 import time
-from pathlib import Path
-
-import numpy as np
 
 from ..schema.dispatcher import BuilderOutput, CalibrationOutput, SimulationOutput
 from ..telemetry import ExecutionTelemetry
@@ -263,7 +260,6 @@ def dispatch_runner(configs: BuilderOutput) -> SimulationOutput | CalibrationOut
     AssertionError
         If configs are invalid.
     """
-
     # Get telemetry from context
     telemetry = ExecutionTelemetry.get_current()
 
