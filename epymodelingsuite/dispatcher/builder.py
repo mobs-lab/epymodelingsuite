@@ -325,6 +325,7 @@ def build_calibration(
     models, population_names = create_model_collection(basemodel, modelset.population_names)
 
     # Extract intervention types
+    intervention_types = []
     if basemodel.interventions:
         intervention_types = [i.type for i in basemodel.interventions]
 
