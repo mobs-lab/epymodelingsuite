@@ -500,8 +500,6 @@ def make_scenario_projection_simulate_wrappers(
         setup_interventions,
         setup_vaccination_schedules,
     )
-    # Validate references between basemodel and calibration
-    validate_modelset_consistency(basemodel_config, calibration_config)
 
     # For compactness
     basemodel = copy.deepcopy(basemodel_config.model)
