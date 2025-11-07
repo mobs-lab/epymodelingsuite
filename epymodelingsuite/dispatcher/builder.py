@@ -355,7 +355,7 @@ def build_calibration(
         # TODO: Make location column name configurable instead of hardcoded "geo_value"
         # Should be added to ComparisonSpec schema (e.g., observed_location_column)
         observed_data = get_data_in_location(observed_in_window, model, "geo_value")
-        vax_state = get_data_in_location(earliest_vax, model, "location")
+        vax_state = get_data_in_location(earliest_vax, model, "location") if earliest_vax is not None else None
         # Create simulate_wrapper
         simulate_wrapper = make_simulate_wrapper(
             basemodel=basemodel,
