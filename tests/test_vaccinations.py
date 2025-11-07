@@ -8,11 +8,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from epymodelingsuite.vaccinations import resample_dataframe, scenario_to_epydemix
+from epymodelingsuite.vaccinations import resample_vaccination_schedule, scenario_to_epydemix
 
 
 class TestResampleVaccinationSchedule:
-    """Tests for resample_dataframe function."""
+    """Tests for resample_vaccination_schedule function."""
 
     def test_forward_fill_subdaily(self):
         """Test forward-fill for dt < 1 without scaling."""
@@ -27,7 +27,7 @@ class TestResampleVaccinationSchedule:
         )
 
         # Resample to 12-hour timesteps (dt=0.5)
-        resampled = resample_dataframe(daily_schedule, delta_t=0.5)
+        resampled = resample_vaccination_schedule(daily_schedule, delta_t=0.5)
 
         # Values should be forward-filled (repeated), not scaled
         # Check that first day's values are repeated
@@ -48,7 +48,7 @@ class TestResampleVaccinationSchedule:
             }
         )
 
-        resampled = resample_dataframe(daily_schedule, delta_t=1.0)
+        resampled = resample_vaccination_schedule(daily_schedule, delta_t=1.0)
 
         # Should be identical to input
         assert len(resampled) == len(daily_schedule)
@@ -66,7 +66,7 @@ class TestResampleVaccinationSchedule:
         )
 
         # Resample to 12-hour timesteps
-        resampled = resample_dataframe(daily_schedule, delta_t=0.5)
+        resampled = resample_vaccination_schedule(daily_schedule, delta_t=0.5)
 
         # Verify structure is preserved
         assert "dates" in resampled.columns

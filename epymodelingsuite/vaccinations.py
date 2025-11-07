@@ -126,7 +126,7 @@ def get_age_groups_from_data(data: pd.DataFrame) -> dict[str, str]:
     return age_group_map_data
 
 
-def resample_dataframe(df: pd.DataFrame, delta_t: float) -> pd.DataFrame:
+def resample_vaccination_schedule(df: pd.DataFrame, delta_t: float) -> pd.DataFrame:
     """
     Resample daily vaccination schedule to match simulation timesteps.
 
