@@ -162,8 +162,8 @@ class TestExecutionTelemetry:
         model = telemetry.runner["models"][0]
         assert model["primary_id"] == 0
         assert model["population"] == "US-CA"
-        assert model["calibration"]["duration_seconds"] == 10.5
-        assert model["calibration"]["n_sims"] == 100
+        assert model["simulation"]["duration_seconds"] == 10.5
+        assert model["simulation"]["n_sims"] == 100
 
         # Add calibration with projection metrics
         proj_output = make_mock_projection_output(

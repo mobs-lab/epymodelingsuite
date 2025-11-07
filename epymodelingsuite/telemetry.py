@@ -379,8 +379,8 @@ class ExecutionTelemetry:
             "population": output.population,
         }
 
-        # Record simulation info (not really calibration, but we store it as such for consistency)
-        model_data["calibration"] = {
+        # Record simulation info
+        model_data["simulation"] = {
             "duration_seconds": duration,
             "n_sims": output.results.Nsim if hasattr(output.results, "Nsim") else None,
         }
@@ -749,6 +749,11 @@ class ExecutionTelemetry:
                 pid = model["primary_id"]
                 lines.append(f"{pop} (primary_id: {pid}):")
 
+                if "simulation" in model:
+                    sim = model["simulation"]
+                    dur = format_duration(sim["duration_seconds"])
+                    lines.append(f"  Simulation: {dur}")
+
                 if "calibration" in model:
                     cal = model["calibration"]
                     dur = format_duration(cal["duration_seconds"])
@@ -933,6 +938,7 @@ class ExecutionTelemetry:
                 "fitting_window_start",
                 "fitting_window_end",
                 "random_seed",
+                "simulation_duration",
                 "calibration_duration",
                 "calibration_strategy",
                 "calibration_particles",
@@ -983,6 +989,14 @@ class ExecutionTelemetry:
 
             row["random_seed"] = self.configuration.get("random_seed", "")
 
+            # Simulation metrics
+            simulation = model.get("simulation", {})
+            if simulation:
+                sim_duration = simulation.get("duration_seconds", 0.0)
+                row["simulation_duration"] = format_duration(sim_duration) if format == "readable" else sim_duration
+            else:
+                row["simulation_duration"] = "" if format == "readable" else 0.0
+
             # Calibration metrics
             calibration = model.get("calibration", {})
             if calibration:
@@ -1023,6 +1037,8 @@ class ExecutionTelemetry:
 
             # Total duration
             total_duration = builder_duration
+            if simulation:
+                total_duration += simulation.get("duration_seconds", 0.0)
             if calibration:
                 total_duration += calibration.get("duration_seconds", 0.0)
             if projection:
