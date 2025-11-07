@@ -84,7 +84,11 @@ def extract_builder_metadata(
         "random_seed": basemodel.random_seed,
     }
 
-    # Extract fitting window if calibration config is present
+    # Extract age groups from basemodel
+    if basemodel.population.age_groups:
+        metadata["age_groups"] = basemodel.population.age_groups
+
+    # Extract calibration-specific fields if calibration config is present
     calibration_config = configs.get("calibration_config")
     if calibration_config:
         fitting_window = calibration_config.modelset.calibration.fitting_window
@@ -92,6 +96,8 @@ def extract_builder_metadata(
             str(fitting_window.start_date),
             str(fitting_window.end_date),
         )
+        # Extract distance function
+        metadata["distance_function"] = calibration_config.distance_function
 
     return metadata
 
@@ -227,7 +233,9 @@ class ExecutionTelemetry:
         end_date: str | None = None,
         delta_t: float | None = None,
         random_seed: int | None = None,
+        age_groups: list[str] | None = None,
         fitting_window: tuple[str, str] | None = None,
+        distance_function: str | None = None,
     ) -> None:
         """Exit the builder stage and record metrics.
 
@@ -245,8 +253,12 @@ class ExecutionTelemetry:
             Simulation time step
         random_seed : int | None, optional
             Random seed used
+        age_groups : list[str] | None, optional
+            List of age groups in population
         fitting_window : tuple[str, str] | None, optional
             Fitting window for calibration (start_date, end_date)
+        distance_function : str | None, optional
+            Distance function for calibration
         """
         end_time = datetime.now()
         self.builder["end_time"] = end_time.isoformat()
@@ -268,11 +280,15 @@ class ExecutionTelemetry:
             self.configuration["delta_t"] = delta_t
         if random_seed is not None:
             self.configuration["random_seed"] = random_seed
+        if age_groups is not None:
+            self.configuration["age_groups"] = age_groups
         if fitting_window is not None:
             self.configuration["fitting_window"] = {
                 "start_date": fitting_window[0],
                 "end_date": fitting_window[1],
             }
+        if distance_function is not None:
+            self.configuration["distance_function"] = distance_function
 
         # Finalize telemetry for builder stage
         self.status = "completed"
@@ -685,14 +701,27 @@ class ExecutionTelemetry:
             if "populations" in config:
                 pop_list = ", ".join(config["populations"])
                 lines.append(f"Populations: {config['n_populations']} ({pop_list})")
+                # Show age groups inline with populations
+                if "age_groups" in config:
+                    age_groups = config["age_groups"]
+                    age_list = ", ".join(age_groups)
+                    lines.append(f"  Age groups: {len(age_groups)} ({age_list})")
             if "start_date" in config and "end_date" in config:
                 delta_t = config.get("delta_t", "unknown")
                 lines.append(f"Timespan: {config['start_date']} to {config['end_date']} (dt={delta_t})")
-            if "fitting_window" in config:
-                fw = config["fitting_window"]
-                lines.append(f"Fitting window: {fw['start_date']} to {fw['end_date']}")
             if "random_seed" in config:
                 lines.append(f"Random seed: {config['random_seed']}")
+
+            # Calibration subsection
+            if "fitting_window" in config or "distance_function" in config:
+                lines.append("")
+                lines.append("Calibration:")
+                if "fitting_window" in config:
+                    fw = config["fitting_window"]
+                    lines.append(f"  Fitting window: {fw['start_date']} to {fw['end_date']}")
+                if "distance_function" in config:
+                    lines.append(f"  Distance function: {config['distance_function']}")
+
             lines.append("")
 
         # Builder section
@@ -731,8 +760,7 @@ class ExecutionTelemetry:
                         generations = cal.get("num_generations", "?")
                         lines.append(f"    Strategy: {strategy} ({particles} particles, {generations} generations)")
 
-                    if "distance_function" in cal:
-                        lines.append(f"    Distance: {cal['distance_function']}")
+                    # Note: distance_function now shown in CONFIGURATION section, not here
 
                     if "particles_accepted" in cal:
                         lines.append(f"    Particles accepted: {cal['particles_accepted']}")

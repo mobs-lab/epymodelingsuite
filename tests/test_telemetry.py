@@ -726,6 +726,181 @@ class TestFittingWindow:
         assert "fitting_window" not in json_data["configuration"]
 
 
+class TestCalibrationSubsection:
+    """Test calibration subsection and age groups in telemetry."""
+
+    def test_age_groups_display(self):
+        """Test that age groups appear inline with populations."""
+        telemetry = ExecutionTelemetry()
+        telemetry.enter_builder("simulation")
+        telemetry.exit_builder(
+            n_models=1,
+            populations=["US-CA"],
+            start_date="2024-01-01",
+            end_date="2024-12-31",
+            delta_t=1.0,
+            random_seed=42,
+            age_groups=["0-4", "5-17", "18-49", "50-64", "65+"],
+        )
+
+        text_output = telemetry.to_text()
+        json_data = telemetry.to_dict()
+
+        # Verify age groups appear in text
+        assert "Age groups: 5 (0-4, 5-17, 18-49, 50-64, 65+)" in text_output
+        # Verify it appears after populations line
+        assert text_output.index("Populations:") < text_output.index("Age groups:")
+
+        # Verify in JSON
+        assert "age_groups" in json_data["configuration"]
+        assert json_data["configuration"]["age_groups"] == ["0-4", "5-17", "18-49", "50-64", "65+"]
+
+    def test_calibration_subsection_with_all_fields(self):
+        """Test calibration subsection with fitting window and distance function."""
+        telemetry = ExecutionTelemetry()
+        telemetry.enter_builder("calibration")
+        telemetry.exit_builder(
+            n_models=1,
+            populations=["US-CA"],
+            start_date="2024-01-01",
+            end_date="2024-12-31",
+            delta_t=1.0,
+            random_seed=42,
+            fitting_window=("2024-03-01", "2024-06-01"),
+            distance_function="rmse",
+        )
+
+        text_output = telemetry.to_text()
+        json_data = telemetry.to_dict()
+
+        # Verify calibration subsection appears
+        assert "Calibration:" in text_output
+        assert "  Fitting window: 2024-03-01 to 2024-06-01" in text_output
+        assert "  Distance function: rmse" in text_output
+
+        # Verify ordering: Calibration subsection after main config items
+        assert text_output.index("Random seed:") < text_output.index("Calibration:")
+        assert text_output.index("Calibration:") < text_output.index("Fitting window:")
+        assert text_output.index("Fitting window:") < text_output.index("Distance function:")
+
+        # Verify in JSON
+        assert json_data["configuration"]["distance_function"] == "rmse"
+        assert json_data["configuration"]["fitting_window"]["start_date"] == "2024-03-01"
+
+    def test_calibration_subsection_fitting_window_only(self):
+        """Test calibration subsection with only fitting window."""
+        telemetry = ExecutionTelemetry()
+        telemetry.enter_builder("calibration")
+        telemetry.exit_builder(
+            n_models=1,
+            populations=["US-CA"],
+            fitting_window=("2024-03-01", "2024-06-01"),
+        )
+
+        text_output = telemetry.to_text()
+
+        # Verify calibration subsection appears with only fitting window
+        assert "Calibration:" in text_output
+        assert "  Fitting window: 2024-03-01 to 2024-06-01" in text_output
+        assert "Distance function:" not in text_output
+
+    def test_calibration_subsection_distance_only(self):
+        """Test calibration subsection with only distance function."""
+        telemetry = ExecutionTelemetry()
+        telemetry.enter_builder("calibration")
+        telemetry.exit_builder(
+            n_models=1,
+            populations=["US-CA"],
+            distance_function="mae",
+        )
+
+        text_output = telemetry.to_text()
+
+        # Verify calibration subsection appears with only distance function
+        assert "Calibration:" in text_output
+        assert "  Distance function: mae" in text_output
+        assert "Fitting window:" not in text_output
+
+    def test_no_calibration_subsection_for_simulation(self):
+        """Test that calibration subsection doesn't appear for simulation workflow."""
+        telemetry = ExecutionTelemetry()
+        telemetry.enter_builder("simulation")
+        telemetry.exit_builder(
+            n_models=1,
+            populations=["US-CA"],
+            start_date="2024-01-01",
+            end_date="2024-12-31",
+        )
+
+        text_output = telemetry.to_text()
+
+        # Verify no calibration subsection
+        assert "Calibration:" not in text_output
+        assert "Fitting window:" not in text_output
+        assert "Distance function:" not in text_output
+
+    def test_extract_builder_metadata_with_age_groups_and_distance(self):
+        """Test extraction of age groups and distance function from configs."""
+        # Create mock calibration config
+        calibration_config = MagicMock()
+        calibration_config.modelset.calibration.fitting_window = FittingWindow(
+            start_date=date(2024, 3, 1), end_date=date(2024, 6, 1)
+        )
+        calibration_config.distance_function = "rmse"
+
+        # Create mock basemodel config
+        basemodel_config = MagicMock()
+        basemodel_config.model.population.name = "US-CA"
+        basemodel_config.model.population.age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
+        basemodel_config.model.timespan.start_date = date(2024, 1, 1)
+        basemodel_config.model.timespan.end_date = date(2024, 12, 31)
+        basemodel_config.model.timespan.delta_t = 1.0
+        basemodel_config.model.random_seed = 42
+
+        # Create mock builder output
+        builder_output = MagicMock()
+        builder_output.model = None
+        builder_output.calibrator.parameters = {"epimodel": MagicMock(population=MagicMock(name="US-CA"))}
+
+        # Extract metadata
+        configs = {"basemodel_config": basemodel_config, "calibration_config": calibration_config}
+        metadata = extract_builder_metadata([builder_output], configs)
+
+        # Verify all fields extracted
+        assert "age_groups" in metadata
+        assert metadata["age_groups"] == ["0-4", "5-17", "18-49", "50-64", "65+"]
+        assert "distance_function" in metadata
+        assert metadata["distance_function"] == "rmse"
+        assert "fitting_window" in metadata
+        assert metadata["fitting_window"] == ("2024-03-01", "2024-06-01")
+
+    def test_distance_function_not_in_runner_output(self):
+        """Test that distance function no longer appears in runner stage."""
+        telemetry = ExecutionTelemetry()
+        telemetry.enter_builder("calibration")
+        telemetry.exit_builder(
+            n_models=1,
+            populations=["US-CA"],
+            distance_function="rmse",
+        )
+
+        telemetry.enter_runner()
+        calib_output = make_mock_calibration_output(0, "US-CA", particles_accepted=50)
+        strategy = CalibrationStrategy(name="SMC", options={"num_particles": 100, "distance_function": "rmse"})
+        telemetry.capture_calibration(calib_output, duration=120.0, calibration_strategy=strategy)
+        telemetry.exit_runner()
+
+        text_output = telemetry.to_text()
+
+        # Distance function should be in CONFIGURATION, not in runner
+        config_section = text_output[: text_output.index("BUILDER STAGE")]
+        runner_section = text_output[text_output.index("RUNNER STAGE") :]
+
+        assert "Distance function: rmse" in config_section
+        assert "Distance:" not in runner_section
+        assert "Distance function:" not in runner_section
+
+
 class TestStrategyInfoCapture:
     """Test capturing ABC strategy information in telemetry."""
 
