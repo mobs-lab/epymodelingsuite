@@ -7,9 +7,6 @@ from epydemix.calibration import ABCSampler, CalibrationResults
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from ..utils import parse_timedelta, validate_iso3166
-# from ..schema.basemodel import BasemodelConfig, Timespan
-# from ..schema.general import validate_modelset_consistency
-# from ..builders.utils import get_data_in_location, get_data_in_window
 from .common import DateParameter, Distribution, Meta
 
 from epydemix.calibration import ABCSampler, CalibrationResults
