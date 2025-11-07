@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from epymodelingsuite.schema.calibration import CalibrationStrategy, FittingWindow
-from epymodelingsuite.schema.dispatcher import CalibrationOutput, SimulationOutput
+from epymodelingsuite.schema.dispatcher import BuilderOutput, CalibrationOutput, SimulationOutput
 from epymodelingsuite.telemetry import (
     ExecutionTelemetry,
     create_workflow_telemetry,
@@ -53,6 +53,20 @@ def make_mock_calibration_output(
         delta_t=1.0,
         population=population,
         results=mock_results,
+    )
+
+
+def make_mock_builder_output(calibration_strategy: CalibrationStrategy | None = None):
+    """Create a mock BuilderOutput for testing."""
+    mock_model = MagicMock()
+    mock_model.population.name = "US-CA"
+
+    return BuilderOutput.model_construct(
+        primary_id=0,
+        seed=42,
+        delta_t=1.0,
+        model=mock_model,
+        calibration=calibration_strategy,
     )
 
 
@@ -887,7 +901,8 @@ class TestCalibrationSubsection:
         telemetry.enter_runner()
         calib_output = make_mock_calibration_output(0, "US-CA", particles_accepted=50)
         strategy = CalibrationStrategy(name="SMC", options={"num_particles": 100, "distance_function": "rmse"})
-        telemetry.capture_calibration(calib_output, duration=120.0, calibration_strategy=strategy)
+        builder_output = make_mock_builder_output(calibration_strategy=strategy)
+        telemetry.capture_calibration(calib_output, duration=120.0, builder_output=builder_output)
         telemetry.exit_runner()
 
         text_output = telemetry.to_text()
@@ -913,8 +928,9 @@ class TestStrategyInfoCapture:
         strategy = CalibrationStrategy(
             name="SMC", options={"num_particles": 100, "num_generations": 5, "max_time": "30m"}
         )
+        builder_output = make_mock_builder_output(calibration_strategy=strategy)
 
-        telemetry.capture_calibration(calib_output, duration=120.0, calibration_strategy=strategy)
+        telemetry.capture_calibration(calib_output, duration=120.0, builder_output=builder_output)
 
         assert len(telemetry.runner["models"]) == 1
         model = telemetry.runner["models"][0]
@@ -931,13 +947,14 @@ class TestStrategyInfoCapture:
 
         proj_output = make_mock_projection_output(0, "US-CA", particles_accepted=50, successful_trajectories=95)
         strategy = CalibrationStrategy(name="SMC", options={"num_particles": 100, "num_generations": 5})
+        builder_output = make_mock_builder_output(calibration_strategy=strategy)
 
         telemetry.capture_projection(
             proj_output,
             calib_duration=120.0,
             proj_duration=30.0,
             n_trajectories=100,
-            calibration_strategy=strategy,
+            builder_output=builder_output,
         )
 
         assert len(telemetry.runner["models"]) == 1
@@ -1020,7 +1037,8 @@ class TestTelemetryCsv:
         mock_strategy = MagicMock(spec=CalibrationStrategy)
         mock_strategy.name = "smc"
         mock_strategy.options = {"num_particles": 1000, "num_generations": 10}
-        telemetry.capture_calibration(calib_output, duration=150.5, calibration_strategy=mock_strategy)
+        builder_output = make_mock_builder_output(calibration_strategy=mock_strategy)
+        telemetry.capture_calibration(calib_output, duration=150.5, builder_output=builder_output)
         telemetry.exit_runner()
         telemetry.enter_output()
         telemetry.exit_output()
@@ -1059,12 +1077,13 @@ class TestTelemetryCsv:
         mock_strategy = MagicMock(spec=CalibrationStrategy)
         mock_strategy.name = "smc"
         mock_strategy.options = {"num_particles": 1000, "num_generations": 10}
+        builder_output = make_mock_builder_output(calibration_strategy=mock_strategy)
         telemetry.capture_projection(
             proj_output,
             calib_duration=150.5,
             proj_duration=45.2,
             n_trajectories=1000,
-            calibration_strategy=mock_strategy,
+            builder_output=builder_output,
         )
         telemetry.exit_runner()
         telemetry.enter_output()

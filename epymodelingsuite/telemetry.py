@@ -403,7 +403,7 @@ class ExecutionTelemetry:
         output: "CalibrationOutput",
         duration: float,
         error: str | None = None,
-        calibration_strategy: "CalibrationStrategy | None" = None,
+        builder_output: "BuilderOutput | None" = None,
     ) -> None:
         """Capture metrics from a calibration.
 
@@ -415,8 +415,8 @@ class ExecutionTelemetry:
             Calibration execution time in seconds
         error : str | None, optional
             Error message if calibration failed
-        calibration_strategy : CalibrationStrategy | None, optional
-            Calibration strategy configuration containing name and options
+        builder_output : BuilderOutput | None, optional
+            Builder output containing calibration strategy and other metadata
         """
         model_data: dict[str, Any] = {
             "primary_id": output.primary_id,
@@ -430,8 +430,9 @@ class ExecutionTelemetry:
             **calibration_info,
         }
 
-        # Add strategy info if provided
-        if calibration_strategy:
+        # Extract info from builder_output if provided
+        if builder_output and builder_output.calibration:
+            calibration_strategy = builder_output.calibration
             model_data["calibration"]["strategy"] = str(calibration_strategy.name)
             # Extract key metrics from options
             if "num_particles" in calibration_strategy.options:
@@ -461,7 +462,7 @@ class ExecutionTelemetry:
         proj_duration: float,
         n_trajectories: int,
         error: str | None = None,
-        calibration_strategy: "CalibrationStrategy | None" = None,
+        builder_output: "BuilderOutput | None" = None,
     ) -> None:
         """Capture metrics from a calibration with projection.
 
@@ -477,8 +478,8 @@ class ExecutionTelemetry:
             Number of requested projection trajectories
         error : str | None, optional
             Error message if calibration or projection failed
-        calibration_strategy : CalibrationStrategy | None, optional
-            Calibration strategy configuration containing name and options
+        builder_output : BuilderOutput | None, optional
+            Builder output containing calibration strategy and other metadata
         """
         model_data: dict[str, Any] = {
             "primary_id": output.primary_id,
@@ -492,8 +493,9 @@ class ExecutionTelemetry:
             **calibration_info,
         }
 
-        # Add strategy info if provided
-        if calibration_strategy:
+        # Extract info from builder_output if provided
+        if builder_output and builder_output.calibration:
+            calibration_strategy = builder_output.calibration
             model_data["calibration"]["strategy"] = str(calibration_strategy.name)
             # Extract key metrics from options
             if "num_particles" in calibration_strategy.options:
@@ -533,6 +535,20 @@ class ExecutionTelemetry:
         self._update_peak_memory()
         if self._peak_memory_mb > self.builder.get("peak_memory_mb", 0):
             self.runner["peak_memory_mb"] = self._peak_memory_mb
+
+        # If configuration wasn't set by builder, extract from runner models
+        if not self.configuration.get("populations") and self.runner.get("models"):
+            populations = [model["population"] for model in self.runner["models"]]
+            self.configuration["populations"] = populations
+            self.configuration["n_populations"] = len(populations)
+
+            # Extract calibration metadata from first calibration model if present
+            for model in self.runner["models"]:
+                if "calibration" in model:
+                    cal = model["calibration"]
+                    if "distance_function" in cal:
+                        self.configuration["distance_function"] = cal["distance_function"]
+                    break
 
         # Finalize telemetry for runner stage
         self.status = "completed"
