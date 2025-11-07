@@ -8,21 +8,20 @@ summaries and structured JSON data for automated analysis.
 import json
 import os
 import sys
+import warnings
 from contextvars import ContextVar
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from .utils.formatting import format_data_size, format_duration
+from ..utils.formatting import format_data_size, format_duration
+from .extractors import extract_builder_metadata, extract_calibration_info, extract_projection_info
+from .formatters import CsvFormatter, JsonFormatter, TextFormatter
+from .resource_tracker import ResourceTracker
 
 if TYPE_CHECKING:
-    from .schema.calibration import CalibrationStrategy
-    from .schema.dispatcher import BuilderOutput, CalibrationOutput, SimulationOutput
-
-try:
-    import psutil
-except ImportError:
-    psutil = None
+    from ..schema.calibration import CalibrationStrategy
+    from ..schema.dispatcher import BuilderOutput, CalibrationOutput, SimulationOutput
 
 
 def _get_package_version() -> str:
@@ -33,73 +32,6 @@ def _get_package_version() -> str:
         return getattr(epymodelingsuite, "__version__", "unknown")
     except (ImportError, AttributeError):
         return "unknown"
-
-
-def extract_builder_metadata(
-    builder_outputs: "BuilderOutput | list[BuilderOutput]",
-    configs: dict[str, Any],
-) -> dict[str, Any] | None:
-    """Extract metadata from builder outputs and configs for telemetry tracking.
-
-    Parameters
-    ----------
-    builder_outputs : BuilderOutput | list[BuilderOutput]
-        Builder outputs from dispatch_builder
-    configs : dict
-        Configuration dictionary containing basemodel_config, etc.
-
-    Returns
-    -------
-    dict | None
-        Metadata dict to pass to telemetry.exit_builder() via **kwargs,
-        or None if no basemodel_config available
-    """
-    basemodel_config = configs.get("basemodel_config")
-    if not basemodel_config:
-        return None
-
-    basemodel = basemodel_config.model
-
-    # Get population names and count
-    if isinstance(builder_outputs, list):
-        # For sampling/calibration, extract unique population names from models
-        populations = list(
-            {
-                bo.model.population.name if bo.model else bo.calibrator.parameters["epimodel"].population.name
-                for bo in builder_outputs
-            }
-        )
-        n_models = len(builder_outputs)
-    else:
-        # For single model
-        populations = [basemodel.population.name]
-        n_models = 1
-
-    metadata = {
-        "n_models": n_models,
-        "populations": populations,
-        "start_date": str(basemodel.timespan.start_date),
-        "end_date": str(basemodel.timespan.end_date),
-        "delta_t": basemodel.timespan.delta_t,
-        "random_seed": basemodel.random_seed,
-    }
-
-    # Extract age groups from basemodel
-    if basemodel.population.age_groups:
-        metadata["age_groups"] = basemodel.population.age_groups
-
-    # Extract calibration-specific fields if calibration config is present
-    calibration_config = configs.get("calibration_config")
-    if calibration_config:
-        fitting_window = calibration_config.modelset.calibration.fitting_window
-        metadata["fitting_window"] = (
-            str(fitting_window.start_date),
-            str(fitting_window.end_date),
-        )
-        # Extract distance function
-        metadata["distance_function"] = calibration_config.modelset.calibration.distance_function
-
-    return metadata
 
 
 class ExecutionTelemetry:
@@ -197,21 +129,29 @@ class ExecutionTelemetry:
         self.status = "running"
         self.warnings: list[str] = []
 
-        # Initialize process tracking
-        self._process = psutil.Process(os.getpid()) if psutil else None
-        self._baseline_memory = self._get_current_memory_mb()
-        self._peak_memory_mb = self._baseline_memory
+        # Initialize resource tracking
+        self._resource_tracker = ResourceTracker()
 
     def _get_current_memory_mb(self) -> float:
         """Get current process memory usage in MB."""
-        if self._process:
-            return self._process.memory_info().rss / (1024 * 1024)
-        return 0.0
+        return self._resource_tracker.get_current_memory_mb()
 
     def _update_peak_memory(self) -> None:
         """Update peak memory if current usage is higher."""
-        current = self._get_current_memory_mb()
-        self._peak_memory_mb = max(self._peak_memory_mb, current)
+        self._resource_tracker.update_peak_memory()
+
+    def _record_stage_end(self, stage_dict: dict[str, Any]) -> None:
+        """Record end time and calculate duration for a stage.
+
+        Parameters
+        ----------
+        stage_dict : dict
+            Stage dictionary to update with end_time and duration_seconds
+        """
+        end_time = datetime.now()
+        stage_dict["end_time"] = end_time.isoformat()
+        start_time = datetime.fromisoformat(stage_dict["start_time"])
+        stage_dict["duration_seconds"] = (end_time - start_time).total_seconds()
 
     def enter_builder(self, workflow_type: str) -> None:
         """Enter the builder stage.
@@ -260,14 +200,11 @@ class ExecutionTelemetry:
         distance_function : str | None, optional
             Distance function for calibration
         """
-        end_time = datetime.now()
-        self.builder["end_time"] = end_time.isoformat()
-        start_time = datetime.fromisoformat(self.builder["start_time"])
-        self.builder["duration_seconds"] = (end_time - start_time).total_seconds()
+        self._record_stage_end(self.builder)
         self.builder["n_models"] = n_models
 
         self._update_peak_memory()
-        self.builder["peak_memory_mb"] = self._peak_memory_mb
+        self.builder["peak_memory_mb"] = self._resource_tracker.get_peak_memory_mb()
 
         # Update configuration
         self.configuration["populations"] = populations
@@ -313,13 +250,7 @@ class ExecutionTelemetry:
         dict
             Calibration info dict with particles_accepted, etc.
         """
-        calibration_info = {}
-
-        # Extract particles accepted from calibration results
-        if hasattr(results, "accepted") and results.accepted is not None:
-            calibration_info["particles_accepted"] = len(results.accepted)
-
-        return calibration_info
+        return extract_calibration_info(results)
 
     def _extract_projection_info(self, results: Any, n_trajectories: int) -> dict[str, Any]:
         """Extract projection metrics from epydemix CalibrationResults.
@@ -336,26 +267,7 @@ class ExecutionTelemetry:
         dict
             Projection info dict with requested/successful/failed trajectories
         """
-        projection_info = {
-            "requested_trajectories": n_trajectories,
-        }
-
-        if results and hasattr(results, "projections") and results.projections:
-            # projections is a dict mapping scenario_id to list of projection dicts
-            # Count non-empty projection dicts across all scenarios
-            successful = 0
-            for scenario_id, projections_list in results.projections.items():
-                # Count non-empty dicts (empty dict {} means failed projection)
-                successful += sum(1 for proj in projections_list if proj)
-
-            projection_info["successful_trajectories"] = successful
-            projection_info["failed_trajectories"] = n_trajectories - successful
-        else:
-            # If no results, all failed
-            projection_info["successful_trajectories"] = 0
-            projection_info["failed_trajectories"] = n_trajectories
-
-        return projection_info
+        return extract_projection_info(results, n_trajectories)
 
     def capture_simulation(
         self,
@@ -527,14 +439,12 @@ class ExecutionTelemetry:
 
     def exit_runner(self) -> None:
         """Exit the runner stage and record metrics."""
-        end_time = datetime.now()
-        self.runner["end_time"] = end_time.isoformat()
-        start_time = datetime.fromisoformat(self.runner["start_time"])
-        self.runner["duration_seconds"] = (end_time - start_time).total_seconds()
+        self._record_stage_end(self.runner)
 
         self._update_peak_memory()
-        if self._peak_memory_mb > self.builder.get("peak_memory_mb", 0):
-            self.runner["peak_memory_mb"] = self._peak_memory_mb
+        peak_memory = self._resource_tracker.get_peak_memory_mb()
+        if peak_memory > self.builder.get("peak_memory_mb", 0):
+            self.runner["peak_memory_mb"] = peak_memory
 
         # Finalize telemetry for runner stage
         self.status = "completed"
@@ -561,10 +471,7 @@ class ExecutionTelemetry:
 
     def exit_output(self) -> None:
         """Exit the output stage and finalize the telemetry."""
-        end_time = datetime.now()
-        self.output["end_time"] = end_time.isoformat()
-        start_time = datetime.fromisoformat(self.output["start_time"])
-        self.output["duration_seconds"] = (end_time - start_time).total_seconds()
+        self._record_stage_end(self.output)
 
         # Calculate total file size
         if self.output.get("files"):
@@ -572,8 +479,9 @@ class ExecutionTelemetry:
             self.output["total_size_bytes"] = total_size
 
         self._update_peak_memory()
-        if self._peak_memory_mb > self.runner.get("peak_memory_mb", 0):
-            self.output["peak_memory_mb"] = self._peak_memory_mb
+        peak_memory = self._resource_tracker.get_peak_memory_mb()
+        if peak_memory > self.runner.get("peak_memory_mb", 0):
+            self.output["peak_memory_mb"] = peak_memory
 
         # Finalize telemetry
         self.status = "completed"
@@ -582,12 +490,7 @@ class ExecutionTelemetry:
 
     def _finalize_resources(self) -> None:
         """Calculate final resource usage metrics."""
-        self.resources["peak_memory_mb"] = self._peak_memory_mb
-
-        if self._process:
-            cpu_times = self._process.cpu_times()
-            self.resources["cpu_time_user_seconds"] = cpu_times.user
-            self.resources["cpu_time_system_seconds"] = cpu_times.system
+        self.resources = self._resource_tracker.finalize()
 
     def _calculate_total_duration(self) -> None:
         """Calculate total workflow duration from earliest start to latest end.
@@ -666,185 +569,13 @@ class ExecutionTelemetry:
         str | None
             Formatted text summary if path is None, otherwise None
         """
-        lines = []
-        lines.append("=" * 60)
-        lines.append("Telemetry Summary")
-        lines.append("=" * 60)
-        lines.append(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        formatter = TextFormatter()
+        data = self.to_dict()
 
-        # Determine what to show: stage name or workflow type
-        workflow_type = self.configuration.get("workflow_type")
-        has_builder = bool(self.builder)
-        has_runner = bool(self.runner and self.runner.get("models"))
-        has_output = bool(self.output)
-        num_stages = sum([has_builder, has_runner, has_output])
-
-        if num_stages > 1 and workflow_type:
-            # Multi-stage workflow - show workflow type
-            lines.append(f"Workflow: {workflow_type.replace('_', ' ').title()}")
-        elif has_builder:
-            lines.append("Stage: Builder")
-        elif has_runner:
-            lines.append("Stage: Runner")
-        elif has_output:
-            lines.append("Stage: Output")
-
-        lines.append("")
-
-        # Configuration section - only show if there's actual configuration data
-        config = self.configuration
-        has_config = (
-            "populations" in config or ("start_date" in config and "end_date" in config) or "random_seed" in config
-        )
-
-        if has_config:
-            lines.append("CONFIGURATION")
-            lines.append("-" * 60)
-            if "populations" in config:
-                pop_list = ", ".join(config["populations"])
-                lines.append(f"Populations: {config['n_populations']} ({pop_list})")
-                # Show age groups inline with populations
-                if "age_groups" in config:
-                    age_groups = config["age_groups"]
-                    age_list = ", ".join(age_groups)
-                    lines.append(f"  Age groups: {len(age_groups)} ({age_list})")
-            if "start_date" in config and "end_date" in config:
-                delta_t = config.get("delta_t", "unknown")
-                lines.append(f"Timespan: {config['start_date']} to {config['end_date']} (dt={delta_t})")
-            if "random_seed" in config:
-                lines.append(f"Random seed: {config['random_seed']}")
-
-            # Calibration subsection
-            if "fitting_window" in config or "distance_function" in config:
-                lines.append("")
-                lines.append("Calibration:")
-                if "fitting_window" in config:
-                    fw = config["fitting_window"]
-                    lines.append(f"  Fitting window: {fw['start_date']} to {fw['end_date']}")
-                if "distance_function" in config:
-                    lines.append(f"  Distance function: {config['distance_function']}")
-
-            lines.append("")
-
-        # Builder section
-        if self.builder:
-            lines.append("BUILDER STAGE")
-            lines.append("-" * 60)
-            if "duration_seconds" in self.builder:
-                lines.append(f"Duration: {format_duration(self.builder['duration_seconds'])}")
-            if "n_models" in self.builder:
-                lines.append(f"Models created: {self.builder['n_models']}")
-            if "peak_memory_mb" in self.builder:
-                lines.append(f"Peak memory: {format_data_size(self.builder['peak_memory_mb'], 'MB')}")
-            lines.append("")
-
-        # Runner section
-        if self.runner and self.runner.get("models"):
-            lines.append("RUNNER STAGE")
-            lines.append("-" * 60)
-            if "duration_seconds" in self.runner:
-                lines.append(f"Total duration: {format_duration(self.runner['duration_seconds'])}")
-            lines.append("")
-
-            for model in self.runner["models"]:
-                pop = model["population"]
-                pid = model["primary_id"]
-                lines.append(f"{pop} (primary_id: {pid}):")
-
-                if "simulation" in model:
-                    sim = model["simulation"]
-                    dur = format_duration(sim["duration_seconds"])
-                    lines.append(f"  Simulation: {dur}")
-
-                if "calibration" in model:
-                    cal = model["calibration"]
-                    dur = format_duration(cal["duration_seconds"])
-                    lines.append(f"  Calibration: {dur}")
-
-                    if "strategy" in cal:
-                        strategy = cal["strategy"]
-                        particles = cal.get("num_particles", "?")
-                        generations = cal.get("num_generations", "?")
-                        lines.append(f"    Strategy: {strategy} ({particles} particles, {generations} generations)")
-
-                    # Note: distance_function now shown in CONFIGURATION section, not here
-
-                    if "particles_accepted" in cal:
-                        lines.append(f"    Particles accepted: {cal['particles_accepted']}")
-
-                if "projection" in model:
-                    proj = model["projection"]
-                    dur = format_duration(proj["duration_seconds"])
-                    lines.append(f"  Projection: {dur}")
-
-                    requested = proj.get("requested_trajectories", 0)
-                    successful = proj.get("successful_trajectories", 0)
-                    failed = proj.get("failed_trajectories", 0)
-
-                    if failed > 0:
-                        lines.append(f"    Trajectories: {successful}/{requested} successful ({failed} failed)")
-                    else:
-                        lines.append(f"    Trajectories: {successful}/{requested} successful")
-
-                if "error" in model:
-                    lines.append(f"  ERROR: {model['error']}")
-
-                lines.append("")
-
-            if "peak_memory_mb" in self.runner:
-                lines.append(f"Peak memory: {format_data_size(self.runner['peak_memory_mb'], 'MB')}")
-            lines.append("")
-
-        # Output section
-        if self.output:
-            lines.append("OUTPUT STAGE")
-            lines.append("-" * 60)
-            if "duration_seconds" in self.output:
-                lines.append(f"Duration: {format_duration(self.output['duration_seconds'])}")
-            if "files" in self.output:
-                lines.append(f"Files generated: {len(self.output['files'])}")
-                for file_info in self.output["files"]:
-                    name = file_info["name"]
-                    size = format_data_size(file_info["size_bytes"])
-                    lines.append(f"  - {name} ({size})")
-                # Show total size if available
-                if "total_size_bytes" in self.output:
-                    total_size = format_data_size(self.output["total_size_bytes"])
-                    lines.append(f"Total size: {total_size}")
-            if self.output.get("filtered_projections", 0) > 0:
-                lines.append(f"Filtered projections: {self.output['filtered_projections']}")
-            if "peak_memory_mb" in self.output:
-                lines.append(f"Peak memory: {format_data_size(self.output['peak_memory_mb'], 'MB')}")
-            lines.append("")
-
-        # Summary section
-        lines.append("SUMMARY")
-        lines.append("-" * 60)
-        if "total_duration_seconds" in self.metadata:
-            lines.append(f"Total duration: {format_duration(self.metadata['total_duration_seconds'])}")
-        if "peak_memory_mb" in self.resources:
-            lines.append(f"Peak memory: {format_data_size(self.resources['peak_memory_mb'], 'MB')}")
-        if "cpu_time_user_seconds" in self.resources:
-            user_time = format_duration(self.resources["cpu_time_user_seconds"])
-            system_time = format_duration(self.resources["cpu_time_system_seconds"])
-            lines.append(f"CPU time: {user_time} (user), {system_time} (system)")
-        lines.append("")
-
-        # Warnings section
-        if self.warnings:
-            lines.append(f"WARNINGS ({len(self.warnings)})")
-            lines.append("-" * 60)
-            for warning in self.warnings:
-                lines.append(f"- {warning}")
-            lines.append("")
-
-        text = "\n".join(lines)
-
-        # Write to file if path provided, otherwise return string
         if path is not None:
-            Path(path).write_text(text)
+            formatter.write(data, path)
             return None
-        return text
+        return formatter.format(data)
 
     def to_json(self, path: str | Path | None = None) -> str | None:
         """Generate structured JSON summary.
@@ -860,13 +591,13 @@ class ExecutionTelemetry:
         str | None
             JSON-formatted summary if path is None, otherwise None
         """
-        json_str = json.dumps(self.to_dict(), indent=2)
+        formatter = JsonFormatter()
+        data = self.to_dict()
 
-        # Write to file if path provided, otherwise return string
         if path is not None:
-            Path(path).write_text(json_str)
+            formatter.write(data, path)
             return None
-        return json_str
+        return formatter.format(data)
 
     def to_csv(self, path: str | Path | None = None, format: str = "readable") -> str | None:
         """Generate CSV summary with one row per model.
@@ -896,164 +627,13 @@ class ExecutionTelemetry:
         (shared across models), as per-model output size tracking is not currently
         implemented.
         """
-        # Validate format parameter
-        if format not in ("readable", "raw"):
-            msg = f"Invalid format: {format}. Must be 'readable' or 'raw'"
-            raise ValueError(msg)
+        formatter = CsvFormatter(format=format)
+        data = self.to_dict()
 
-        # Build DataFrame
-        df = self._build_csv_dataframe(format)
-
-        # Convert to CSV string
-        csv_str = df.to_csv(index=False)
-
-        # Write to file if path provided, otherwise return string
         if path is not None:
-            Path(path).write_text(csv_str)
+            formatter.write(data, path)
             return None
-        return csv_str
-
-    def _build_csv_dataframe(self, format: str) -> Any:
-        """Build pandas DataFrame for CSV export.
-
-        Parameters
-        ----------
-        format : str
-            Output format: 'readable' or 'raw'
-
-        Returns
-        -------
-        pandas.DataFrame
-            DataFrame with one row per model
-        """
-        import pandas as pd
-
-        # If no runner data, return empty DataFrame with headers
-        if not self.runner or not self.runner.get("models"):
-            columns = [
-                "primary_id",
-                "population",
-                "workflow_type",
-                "start_date",
-                "end_date",
-                "delta_t",
-                "fitting_window_start",
-                "fitting_window_end",
-                "random_seed",
-                "simulation_duration",
-                "calibration_duration",
-                "calibration_strategy",
-                "calibration_particles",
-                "calibration_generations",
-                "calibration_accepted",
-                "projection_duration",
-                "projection_success",
-                "projection_failed",
-                "builder_duration",
-                "output_duration",
-                "total_output_size",
-                "total_duration",
-                "error",
-            ]
-            return pd.DataFrame(columns=columns)
-
-        # Extract data for each model
-        rows = []
-        models = self.runner["models"]
-        n_models = len(models)
-
-        # Get shared durations
-        builder_duration = self.builder.get("duration_seconds", 0.0) / n_models if self.builder else 0.0
-        output_duration = self.output.get("duration_seconds", 0.0) / n_models if self.output else 0.0
-        total_output_size = self.output.get("total_size_bytes", 0) if self.output else 0
-
-        for model in models:
-            # Basic identifiers
-            row = {
-                "primary_id": model.get("primary_id", ""),
-                "population": model.get("population", ""),
-            }
-
-            # Configuration
-            row["workflow_type"] = self.configuration.get("workflow_type", "")
-            row["start_date"] = self.configuration.get("start_date", "")
-            row["end_date"] = self.configuration.get("end_date", "")
-            row["delta_t"] = self.configuration.get("delta_t", "")
-
-            # Fitting window (for calibration workflows)
-            fitting_window = self.configuration.get("fitting_window")
-            if fitting_window:
-                row["fitting_window_start"] = fitting_window.get("start_date", "")
-                row["fitting_window_end"] = fitting_window.get("end_date", "")
-            else:
-                row["fitting_window_start"] = ""
-                row["fitting_window_end"] = ""
-
-            row["random_seed"] = self.configuration.get("random_seed", "")
-
-            # Simulation metrics
-            simulation = model.get("simulation", {})
-            if simulation:
-                sim_duration = simulation.get("duration_seconds", 0.0)
-                row["simulation_duration"] = format_duration(sim_duration) if format == "readable" else sim_duration
-            else:
-                row["simulation_duration"] = "" if format == "readable" else 0.0
-
-            # Calibration metrics
-            calibration = model.get("calibration", {})
-            if calibration:
-                cal_duration = calibration.get("duration_seconds", 0.0)
-                row["calibration_duration"] = format_duration(cal_duration) if format == "readable" else cal_duration
-                row["calibration_strategy"] = calibration.get("strategy", "")
-                row["calibration_particles"] = calibration.get("num_particles", "")
-                row["calibration_generations"] = calibration.get("num_generations", "")
-                row["calibration_accepted"] = calibration.get("particles_accepted", 0)
-            else:
-                row["calibration_duration"] = "" if format == "readable" else 0.0
-                row["calibration_strategy"] = ""
-                row["calibration_particles"] = ""
-                row["calibration_generations"] = ""
-                row["calibration_accepted"] = 0
-
-            # Projection metrics
-            projection = model.get("projection", {})
-            if projection:
-                proj_duration = projection.get("duration_seconds", 0.0)
-                row["projection_duration"] = format_duration(proj_duration) if format == "readable" else proj_duration
-                row["projection_success"] = projection.get("successful_trajectories", 0)
-                row["projection_failed"] = projection.get("failed_trajectories", 0)
-            else:
-                row["projection_duration"] = "" if format == "readable" else 0.0
-                row["projection_success"] = 0
-                row["projection_failed"] = 0
-
-            # Stage durations
-            row["builder_duration"] = format_duration(builder_duration) if format == "readable" else builder_duration
-            row["output_duration"] = format_duration(output_duration) if format == "readable" else output_duration
-
-            # Total output size (shared across all models)
-            if format == "readable":
-                row["total_output_size"] = format_data_size(total_output_size) if total_output_size > 0 else ""
-            else:
-                row["total_output_size"] = total_output_size
-
-            # Total duration
-            total_duration = builder_duration
-            if simulation:
-                total_duration += simulation.get("duration_seconds", 0.0)
-            if calibration:
-                total_duration += calibration.get("duration_seconds", 0.0)
-            if projection:
-                total_duration += projection.get("duration_seconds", 0.0)
-            total_duration += output_duration
-            row["total_duration"] = format_duration(total_duration) if format == "readable" else total_duration
-
-            # Error message
-            row["error"] = model.get("error", "")
-
-            rows.append(row)
-
-        return pd.DataFrame(rows)
+        return formatter.format(data)
 
     def __str__(self) -> str:
         """Return full text summary when printing.
