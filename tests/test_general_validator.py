@@ -14,9 +14,17 @@ from epymodelingsuite.schema.general import (
     _ensure_transitions_valid,
     _validate_compartment_list,
     _validate_transition_list,
+    _warn_mismatched_observed_data_paths,
     validate_cross_config_consistency,
 )
-from epymodelingsuite.schema.output import OutputConfig, OutputConfiguration, QuantilesOutput, TrajectoriesOutput
+from epymodelingsuite.schema.output import (
+    FlusightForecastOutput,
+    FlusightRateTrends,
+    OutputConfig,
+    OutputConfiguration,
+    QuantilesOutput,
+    TrajectoriesOutput,
+)
 
 
 @dataclass
@@ -436,3 +444,80 @@ class TestEnsureOutputReferencesValid:
             )
         )
         _ensure_output_references_valid(base_compartments, base_transitions, output)
+
+
+class TestWarnMismatchedObservedDataPaths:
+    def test_no_warning_when_calibration_is_none(self, caplog):
+        output_config = OutputConfig(
+            output=OutputConfiguration(
+                flusight_format=FlusightForecastOutput(
+                    reference_date="2024-01-01",
+                    rate_trends=FlusightRateTrends(
+                        observed_data_path="data/output.csv",
+                        observed_value_column="value",
+                        observed_date_column="date",
+                        observed_location_column="location",
+                    ),
+                )
+            )
+        )
+        _warn_mismatched_observed_data_paths(None, output_config)
+        assert "Observed data paths differ" not in caplog.text
+
+    def test_no_warning_when_flusight_format_is_none(self, caplog):
+        calibration = SimpleNamespace(observed_data_path="data/calibration.csv")
+        output_config = OutputConfig(output=OutputConfiguration(flusight_format=None))
+        _warn_mismatched_observed_data_paths(calibration, output_config)
+        assert "Observed data paths differ" not in caplog.text
+
+    def test_no_warning_when_rate_trends_is_none(self, caplog):
+        calibration = SimpleNamespace(observed_data_path="data/calibration.csv")
+        output_config = OutputConfig(
+            output=OutputConfiguration(
+                flusight_format=FlusightForecastOutput(reference_date="2024-01-01", rate_trends=None)
+            )
+        )
+        _warn_mismatched_observed_data_paths(calibration, output_config)
+        assert "Observed data paths differ" not in caplog.text
+
+    def test_no_warning_when_paths_match(self, caplog):
+        calibration = SimpleNamespace(observed_data_path="data/same.csv")
+        output_config = OutputConfig(
+            output=OutputConfiguration(
+                flusight_format=FlusightForecastOutput(
+                    reference_date="2024-01-01",
+                    rate_trends=FlusightRateTrends(
+                        observed_data_path="data/same.csv",
+                        observed_value_column="value",
+                        observed_date_column="date",
+                        observed_location_column="location",
+                    ),
+                )
+            )
+        )
+        _warn_mismatched_observed_data_paths(calibration, output_config)
+        assert "Observed data paths differ" not in caplog.text
+
+    def test_warning_when_paths_differ(self, caplog):
+        import logging
+
+        caplog.set_level(logging.WARNING)
+
+        calibration = SimpleNamespace(observed_data_path="data/calibration.csv")
+        output_config = OutputConfig(
+            output=OutputConfiguration(
+                flusight_format=FlusightForecastOutput(
+                    reference_date="2024-01-01",
+                    rate_trends=FlusightRateTrends(
+                        observed_data_path="data/output.csv",
+                        observed_value_column="value",
+                        observed_date_column="date",
+                        observed_location_column="location",
+                    ),
+                )
+            )
+        )
+        _warn_mismatched_observed_data_paths(calibration, output_config)
+        assert "Observed data paths differ between configs" in caplog.text
+        assert "calibration='data/calibration.csv'" in caplog.text
+        assert "output.flusight_format.rate_trends='data/output.csv'" in caplog.text
