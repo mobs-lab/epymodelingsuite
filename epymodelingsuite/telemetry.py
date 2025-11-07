@@ -97,7 +97,7 @@ def extract_builder_metadata(
             str(fitting_window.end_date),
         )
         # Extract distance function
-        metadata["distance_function"] = calibration_config.distance_function
+        metadata["distance_function"] = calibration_config.modelset.calibration.distance_function
 
     return metadata
 

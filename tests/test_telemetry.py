@@ -846,7 +846,7 @@ class TestCalibrationSubsection:
         calibration_config.modelset.calibration.fitting_window = FittingWindow(
             start_date=date(2024, 3, 1), end_date=date(2024, 6, 1)
         )
-        calibration_config.distance_function = "rmse"
+        calibration_config.modelset.calibration.distance_function = "rmse"
 
         # Create mock basemodel config
         basemodel_config = MagicMock()
