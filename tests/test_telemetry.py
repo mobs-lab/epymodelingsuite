@@ -1018,7 +1018,7 @@ class TestTelemetryCsv:
         telemetry.enter_runner()
         calib_output = make_mock_calibration_output(0, "US-CA", particles_accepted=850)
         mock_strategy = MagicMock(spec=CalibrationStrategy)
-        mock_strategy.name = "pmc_abc"
+        mock_strategy.name = "smc"
         mock_strategy.options = {"num_particles": 1000, "num_generations": 10}
         telemetry.capture_calibration(calib_output, duration=150.5, calibration_strategy=mock_strategy)
         telemetry.exit_runner()
@@ -1029,7 +1029,7 @@ class TestTelemetryCsv:
         csv_str = telemetry.to_csv(format="readable")
         assert "US-CA" in csv_str
         assert "calibration" in csv_str
-        assert "pmc_abc" in csv_str
+        assert "smc" in csv_str
         assert "1000" in csv_str  # num_particles
         assert "850" in csv_str  # particles_accepted
         assert "2024-03-01" in csv_str  # fitting_window_start
@@ -1057,7 +1057,7 @@ class TestTelemetryCsv:
             0, "US-CA", particles_accepted=850, successful_trajectories=987, failed_trajectories=13
         )
         mock_strategy = MagicMock(spec=CalibrationStrategy)
-        mock_strategy.name = "pmc_abc"
+        mock_strategy.name = "smc"
         mock_strategy.options = {"num_particles": 1000, "num_generations": 10}
         telemetry.capture_projection(
             proj_output,
@@ -1073,7 +1073,7 @@ class TestTelemetryCsv:
         # Test readable format
         csv_str = telemetry.to_csv(format="readable")
         assert "calibration_projection" in csv_str
-        assert "pmc_abc" in csv_str
+        assert "smc" in csv_str
         assert "987" in csv_str  # successful trajectories
         assert "13" in csv_str  # failed trajectories
 
