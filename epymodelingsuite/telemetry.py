@@ -536,20 +536,6 @@ class ExecutionTelemetry:
         if self._peak_memory_mb > self.builder.get("peak_memory_mb", 0):
             self.runner["peak_memory_mb"] = self._peak_memory_mb
 
-        # If configuration wasn't set by builder, extract from runner models
-        if not self.configuration.get("populations") and self.runner.get("models"):
-            populations = [model["population"] for model in self.runner["models"]]
-            self.configuration["populations"] = populations
-            self.configuration["n_populations"] = len(populations)
-
-            # Extract calibration metadata from first calibration model if present
-            for model in self.runner["models"]:
-                if "calibration" in model:
-                    cal = model["calibration"]
-                    if "distance_function" in cal:
-                        self.configuration["distance_function"] = cal["distance_function"]
-                    break
-
         # Finalize telemetry for runner stage
         self.status = "completed"
         self._finalize_resources()
