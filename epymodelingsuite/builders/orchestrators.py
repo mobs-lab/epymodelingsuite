@@ -157,7 +157,6 @@ def setup_vaccination_schedules(
             start_date=sampled_start_timespan.start_date,
             end_date=sampled_start_timespan.end_date,
             target_age_groups=basemodel.population.age_groups,
-            delta_t=sampled_start_timespan.delta_t,
             states=population_names,
         )
         return models, earliest_vax
