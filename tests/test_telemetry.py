@@ -960,3 +960,260 @@ class TestStrategyInfoCapture:
         assert "strategy" not in model["calibration"]
         assert "num_particles" not in model["calibration"]
         assert "num_generations" not in model["calibration"]
+
+
+class TestTelemetryCsv:
+    """Tests for CSV export functionality."""
+
+    def test_csv_with_simulation_workflow(self):
+        """Test CSV export with simulation workflow."""
+        telemetry = ExecutionTelemetry()
+        telemetry.enter_builder("simulation")
+        telemetry.exit_builder(
+            n_models=2,
+            populations=["US-CA", "US-NY"],
+            start_date="2024-01-01",
+            end_date="2024-12-31",
+            delta_t=1.0,
+            random_seed=42,
+        )
+        telemetry.enter_runner()
+        sim_output_1 = make_mock_simulation_output(0, "US-CA", n_sims=100)
+        telemetry.capture_simulation(sim_output_1, duration=5.0)
+        sim_output_2 = make_mock_simulation_output(1, "US-NY", n_sims=100)
+        telemetry.capture_simulation(sim_output_2, duration=6.0)
+        telemetry.exit_runner()
+        telemetry.enter_output()
+        telemetry.exit_output()
+
+        # Test readable format
+        csv_str = telemetry.to_csv(format="readable")
+        assert csv_str is not None
+        assert "primary_id" in csv_str
+        assert "US-CA" in csv_str
+        assert "US-NY" in csv_str
+        assert "simulation" in csv_str
+        # Calibration/projection columns should be empty or 0 for simulation
+        lines = csv_str.strip().split("\n")
+        assert len(lines) == 3  # Header + 2 data rows
+
+        # Test raw format
+        csv_str = telemetry.to_csv(format="raw")
+        assert csv_str is not None
+        assert "5.0" in csv_str or "6.0" in csv_str  # Raw duration values
+
+    def test_csv_with_calibration_workflow(self):
+        """Test CSV export with calibration workflow."""
+        telemetry = ExecutionTelemetry()
+        telemetry.enter_builder("calibration")
+        telemetry.exit_builder(
+            n_models=1,
+            populations=["US-CA"],
+            start_date="2024-01-01",
+            end_date="2024-12-31",
+            delta_t=1.0,
+            random_seed=42,
+            fitting_window=("2024-03-01", "2024-06-01"),
+        )
+        telemetry.enter_runner()
+        calib_output = make_mock_calibration_output(0, "US-CA", particles_accepted=850)
+        mock_strategy = MagicMock(spec=CalibrationStrategy)
+        mock_strategy.name = "pmc_abc"
+        mock_strategy.options = {"num_particles": 1000, "num_generations": 10}
+        telemetry.capture_calibration(calib_output, duration=150.5, calibration_strategy=mock_strategy)
+        telemetry.exit_runner()
+        telemetry.enter_output()
+        telemetry.exit_output()
+
+        # Test readable format
+        csv_str = telemetry.to_csv(format="readable")
+        assert "US-CA" in csv_str
+        assert "calibration" in csv_str
+        assert "pmc_abc" in csv_str
+        assert "1000" in csv_str  # num_particles
+        assert "850" in csv_str  # particles_accepted
+        assert "2024-03-01" in csv_str  # fitting_window_start
+        assert "2024-06-01" in csv_str  # fitting_window_end
+
+        # Test raw format
+        csv_str = telemetry.to_csv(format="raw")
+        assert "150.5" in csv_str  # Raw calibration duration
+
+    def test_csv_with_calibration_projection_workflow(self):
+        """Test CSV export with calibration+projection workflow."""
+        telemetry = ExecutionTelemetry()
+        telemetry.enter_builder("calibration_projection")
+        telemetry.exit_builder(
+            n_models=1,
+            populations=["US-CA"],
+            start_date="2024-01-01",
+            end_date="2024-12-31",
+            delta_t=1.0,
+            random_seed=42,
+            fitting_window=("2024-03-01", "2024-06-01"),
+        )
+        telemetry.enter_runner()
+        proj_output = make_mock_projection_output(
+            0, "US-CA", particles_accepted=850, successful_trajectories=987, failed_trajectories=13
+        )
+        mock_strategy = MagicMock(spec=CalibrationStrategy)
+        mock_strategy.name = "pmc_abc"
+        mock_strategy.options = {"num_particles": 1000, "num_generations": 10}
+        telemetry.capture_projection(
+            proj_output,
+            calib_duration=150.5,
+            proj_duration=45.2,
+            n_trajectories=1000,
+            calibration_strategy=mock_strategy,
+        )
+        telemetry.exit_runner()
+        telemetry.enter_output()
+        telemetry.exit_output()
+
+        # Test readable format
+        csv_str = telemetry.to_csv(format="readable")
+        assert "calibration_projection" in csv_str
+        assert "pmc_abc" in csv_str
+        assert "987" in csv_str  # successful trajectories
+        assert "13" in csv_str  # failed trajectories
+
+        # Test raw format
+        csv_str = telemetry.to_csv(format="raw")
+        assert "150.5" in csv_str  # Raw calibration duration
+        assert "45.2" in csv_str  # Raw projection duration
+
+    def test_csv_with_multiple_models(self):
+        """Test CSV export with multiple models."""
+        telemetry = ExecutionTelemetry()
+        telemetry.enter_builder("simulation")
+        telemetry.exit_builder(
+            n_models=3,
+            populations=["US-CA", "US-NY", "US-FL"],
+            start_date="2024-01-01",
+            end_date="2024-12-31",
+            delta_t=1.0,
+            random_seed=42,
+        )
+        telemetry.enter_runner()
+        for i, pop in enumerate(["US-CA", "US-NY", "US-FL"]):
+            sim_output = make_mock_simulation_output(i, pop, n_sims=100)
+            telemetry.capture_simulation(sim_output, duration=5.0 + i)
+        telemetry.exit_runner()
+        telemetry.enter_output()
+        telemetry.exit_output()
+
+        csv_str = telemetry.to_csv(format="readable")
+        lines = csv_str.strip().split("\n")
+        assert len(lines) == 4  # Header + 3 data rows
+        assert "US-CA" in csv_str
+        assert "US-NY" in csv_str
+        assert "US-FL" in csv_str
+
+    def test_csv_with_failed_models(self):
+        """Test CSV export with failed models."""
+        telemetry = ExecutionTelemetry()
+        telemetry.enter_builder("simulation")
+        telemetry.exit_builder(
+            n_models=2,
+            populations=["US-CA", "US-FL"],
+            start_date="2024-01-01",
+            end_date="2024-12-31",
+            delta_t=1.0,
+            random_seed=42,
+        )
+        telemetry.enter_runner()
+        # Successful model
+        sim_output = make_mock_simulation_output(0, "US-CA", n_sims=100)
+        telemetry.capture_simulation(sim_output, duration=5.0)
+        # Failed model
+        sim_output_2 = make_mock_simulation_output(1, "US-FL", n_sims=0)
+        telemetry.capture_simulation(sim_output_2, duration=2.0, error="ValueError: Invalid fitting window")
+        telemetry.exit_runner()
+        telemetry.enter_output()
+        telemetry.exit_output()
+
+        csv_str = telemetry.to_csv(format="readable")
+        assert "ValueError: Invalid fitting window" in csv_str
+        lines = csv_str.strip().split("\n")
+        assert len(lines) == 3  # Header + 2 data rows
+
+    def test_csv_file_writing(self):
+        """Test CSV writing to file."""
+        telemetry = ExecutionTelemetry()
+        telemetry.enter_builder("simulation")
+        telemetry.exit_builder(
+            n_models=1,
+            populations=["US-CA"],
+            start_date="2024-01-01",
+            end_date="2024-12-31",
+            delta_t=1.0,
+            random_seed=42,
+        )
+        telemetry.enter_runner()
+        sim_output = make_mock_simulation_output(0, "US-CA", n_sims=100)
+        telemetry.capture_simulation(sim_output, duration=5.0)
+        telemetry.exit_runner()
+        telemetry.enter_output()
+        telemetry.exit_output()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "telemetry.csv"
+            result = telemetry.to_csv(path, format="readable")
+
+            # Should return None when writing to file
+            assert result is None
+            # File should exist
+            assert path.exists()
+            # File content should match string output
+            content = path.read_text()
+            expected = telemetry.to_csv(format="readable")
+            assert content == expected
+
+    def test_csv_string_return(self):
+        """Test CSV string return without file writing."""
+        telemetry = ExecutionTelemetry()
+        telemetry.enter_builder("simulation")
+        telemetry.exit_builder(
+            n_models=1,
+            populations=["US-CA"],
+            start_date="2024-01-01",
+            end_date="2024-12-31",
+            delta_t=1.0,
+            random_seed=42,
+        )
+        telemetry.enter_runner()
+        sim_output = make_mock_simulation_output(0, "US-CA", n_sims=100)
+        telemetry.capture_simulation(sim_output, duration=5.0)
+        telemetry.exit_runner()
+        telemetry.enter_output()
+        telemetry.exit_output()
+
+        csv_str = telemetry.to_csv(format="readable")
+        assert csv_str is not None
+        assert isinstance(csv_str, str)
+        # Verify it's valid CSV format
+        lines = csv_str.strip().split("\n")
+        assert len(lines) >= 2  # At least header + 1 row
+        assert lines[0].startswith("primary_id,")
+
+    def test_csv_invalid_format_parameter(self):
+        """Test CSV with invalid format parameter."""
+        import pytest
+
+        telemetry = ExecutionTelemetry()
+        telemetry.enter_builder("simulation")
+        telemetry.exit_builder(n_models=1, populations=["US-CA"])
+
+        with pytest.raises(ValueError, match="Invalid format.*invalid"):
+            telemetry.to_csv(format="invalid")
+
+    def test_csv_empty_telemetry(self):
+        """Test CSV with empty telemetry (no runner data)."""
+        telemetry = ExecutionTelemetry()
+
+        csv_str = telemetry.to_csv(format="readable")
+        assert csv_str is not None
+        # Should have header row even with no data
+        lines = csv_str.strip().split("\n")
+        assert len(lines) == 1  # Only header
+        assert "primary_id" in lines[0]
