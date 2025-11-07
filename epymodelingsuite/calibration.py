@@ -41,6 +41,7 @@ def resimulate_with_posterior(
     scenario: str,
     vaccine_rate_function: callable,
     n_trajectories: int,
+    rng=None,
 ):
     """
     Resimulate the model with posterior parameter sets by randomly sampling rows.
@@ -65,6 +66,9 @@ def resimulate_with_posterior(
         Function for vaccination rate
     n_trajectories : int
         Number of posterior draws to simulate
+    rng : np.random.Generator | None, optional
+        Random number generator for reproducible simulations.
+        If None, creates a new RNG without a seed.
 
     Returns
     -------
@@ -84,14 +88,18 @@ def resimulate_with_posterior(
     from .utils import convert_location_name_format
     from .vaccinations import add_vaccination_schedule, reaggregate_vaccines
 
+    # Create RNG if not provided
+    if rng is None:
+        rng = np.random.default_rng()
+
     comp_stacked = []
     trans_stacked = []
 
     state_iso = convert_location_name_format(epi_model.population.name, "ISO")
     vax_schedule_state = all_scen.query("location == @state_iso and scenario == @scenario")
 
-    # sample posterior indices with replacement
-    sampled_indices = np.random.choice(posterior.index, size=n_trajectories, replace=True)
+    # Sample posterior indices with replacement
+    sampled_indices = rng.choice(posterior.index, size=n_trajectories, replace=True)
 
     for draw_idx, idx in enumerate(sampled_indices):
         row = posterior.loc[idx]
@@ -159,6 +167,7 @@ def resimulate_with_posterior(
             "initial_conditions_dict": init_cond,
             "end_date": date_stop,
             "resample_frequency": combined_parameters["resample_frequency"],
+            "rng": rng,
         }
 
         results = simulate(**sim_params)

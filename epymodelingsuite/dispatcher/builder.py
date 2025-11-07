@@ -2,10 +2,9 @@
 
 import copy
 import logging
-from pathlib import Path
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 from epydemix.calibration import ABCSampler, ae, mae, mape, rmse, wmape
 from epydemix.model import EpiModel
 
@@ -34,7 +33,7 @@ from ..builders.vaccination import add_vaccination_schedules_from_config
 from ..schema.basemodel import BasemodelConfig, Parameter, Timespan
 from ..schema.calibration import CalibrationConfig
 from ..schema.dispatcher import BuilderOutput, ProjectionArguments, SimulationArguments
-from ..schema.general import validate_modelset_consistency
+from ..schema.general import validate_cross_config_consistency
 from ..schema.sampling import SamplingConfig
 from ..school_closures import make_school_closure_dict
 from ..telemetry import ExecutionTelemetry, extract_builder_metadata
@@ -185,7 +184,7 @@ def build_sampling(
     logger.info("BUILDER: dispatched for sampling.")
 
     # Validate references between basemodel and sampling
-    validate_modelset_consistency(basemodel_config, sampling_config)
+    validate_cross_config_consistency(basemodel_config, sampling_config)
 
     # For compactness
     basemodel = basemodel_config.model
@@ -312,7 +311,7 @@ def build_calibration(
     logger.info("BUILDER: dispatched for calibration.")
 
     # Validate references between basemodel and calibration
-    validate_modelset_consistency(basemodel_config, calibration_config)
+    validate_cross_config_consistency(basemodel_config, calibration_config)
 
     # For compactness
     basemodel = basemodel_config.model

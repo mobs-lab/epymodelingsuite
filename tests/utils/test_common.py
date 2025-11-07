@@ -4,7 +4,8 @@ from datetime import timedelta
 
 import pytest
 
-from flumodelingsuite.utils import parse_timedelta
+from epymodelingsuite.utils import parse_timedelta
+from epymodelingsuite.utils.common import parse_transition_name, strip_agegroup_suffix, to_set
 
 
 class TestParseTimedelta:
@@ -130,3 +131,87 @@ class TestParseTimedelta:
         result = parse_timedelta("1000ns")
         # Note: timedelta precision is microseconds, so 1000ns = 1us
         assert result == timedelta(microseconds=1)
+
+
+class TestToSet:
+    """Tests for to_set function."""
+
+    def test_none_input(self):
+        """Test converting None to empty set."""
+        assert to_set(None) == set()
+
+    def test_list_input(self):
+        """Test converting list to set."""
+        assert to_set([1, 2, 3]) == {1, 2, 3}
+
+    def test_set_input(self):
+        """Test converting set to set."""
+        assert to_set({1, 2}) == {1, 2}
+
+    def test_empty_list(self):
+        """Test converting empty list to empty set."""
+        assert to_set([]) == set()
+
+
+class TestStripAgegroupSuffix:
+    """Tests for strip_agegroup_suffix function."""
+
+    def test_with_total_suffix(self):
+        """Test stripping _total suffix from names (default)."""
+        assert strip_agegroup_suffix("S_total") == "S"
+        assert strip_agegroup_suffix("Hosp_total") == "Hosp"
+
+    def test_without_suffix(self):
+        """Test names without age group suffix."""
+        assert strip_agegroup_suffix("S") == "S"
+        assert strip_agegroup_suffix("Hosp") == "Hosp"
+
+    def test_empty_string(self):
+        """Test empty string."""
+        assert strip_agegroup_suffix("") == ""
+
+    def test_with_numeric_age_group(self):
+        """Test stripping numeric age group suffixes like 0-9."""
+        assert strip_agegroup_suffix("S_0-9", age_group="0-9") == "S"
+        assert strip_agegroup_suffix("I_10-19", age_group="10-19") == "I"
+        assert strip_agegroup_suffix("Hosp_65+", age_group="65+") == "Hosp"
+
+    def test_with_custom_age_group(self):
+        """Test stripping custom age group suffixes."""
+        assert strip_agegroup_suffix("S_child", age_group="child") == "S"
+        assert strip_agegroup_suffix("I_adult", age_group="adult") == "I"
+        assert strip_agegroup_suffix("R_elderly", age_group="elderly") == "R"
+
+
+class TestParseTransitionName:
+    """Tests for parse_transition_name function."""
+
+    def test_valid_format_total(self):
+        """Test parsing valid transition name format with _total."""
+        assert parse_transition_name("S_to_I_total") == ("S", "I")
+        assert parse_transition_name("Home_sev_to_Hosp_total") == ("Home_sev", "Hosp")
+
+    def test_without_suffix(self):
+        """Test parsing transition name without age group suffix."""
+        assert parse_transition_name("S_to_I") == ("S", "I")
+
+    def test_with_numeric_age_group(self):
+        """Test parsing with numeric age group suffixes."""
+        assert parse_transition_name("S_to_I_0-9", age_group="0-9") == ("S", "I")
+        assert parse_transition_name("I_to_R_10-19", age_group="10-19") == ("I", "R")
+        assert parse_transition_name("Hosp_to_Death_65+", age_group="65+") == ("Hosp", "Death")
+
+    def test_with_custom_age_group(self):
+        """Test parsing with custom age group suffixes."""
+        assert parse_transition_name("S_to_I_child", age_group="child") == ("S", "I")
+        assert parse_transition_name("I_to_R_adult", age_group="adult") == ("I", "R")
+
+    def test_invalid_format_no_to(self):
+        """Test invalid format without _to_ separator."""
+        with pytest.raises(ValueError, match="Invalid transition name format"):
+            parse_transition_name("S_I_total")
+
+    def test_invalid_format_multiple_to(self):
+        """Test invalid format with multiple _to_ separators."""
+        with pytest.raises(ValueError, match="Invalid transition name format"):
+            parse_transition_name("S_to_I_to_R_total")

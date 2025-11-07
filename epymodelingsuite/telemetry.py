@@ -1,4 +1,4 @@
-"""Execution telemetry tracking and reporting for flumodelingsuite workflows.
+"""Execution telemetry tracking and reporting for epymodelingsuite workflows.
 
 This module provides tools to track execution metrics throughout the builder,
 runner, and output stages of a workflow. It generates both human-readable text
@@ -26,11 +26,11 @@ except ImportError:
 
 
 def _get_package_version() -> str:
-    """Get flumodelingsuite version."""
+    """Get epymodelingsuite version."""
     try:
-        import flumodelingsuite
+        import epymodelingsuite
 
-        return getattr(flumodelingsuite, "__version__", "unknown")
+        return getattr(epymodelingsuite, "__version__", "unknown")
     except (ImportError, AttributeError):
         return "unknown"
 
@@ -170,7 +170,7 @@ class ExecutionTelemetry:
         self.metadata: dict[str, Any] = {
             "process_id": os.getpid(),
             "python_version": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
-            "flumodelingsuite_version": _get_package_version(),
+            "epymodelingsuite_version": _get_package_version(),
         }
         self.configuration: dict[str, Any] = {}
         self.builder: dict[str, Any] = {}
@@ -530,7 +530,7 @@ class ExecutionTelemetry:
         self.output["duration_seconds"] = (end_time - start_time).total_seconds()
 
         # Calculate total file size
-        if "files" in self.output and self.output["files"]:
+        if self.output.get("files"):
             total_size = sum(f["size_bytes"] for f in self.output["files"])
             self.output["total_size_bytes"] = total_size
 

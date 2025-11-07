@@ -21,7 +21,7 @@ def distribution_to_scipy(distribution: Distribution):
 
     Examples
     --------
-    >>> from flumodelingsuite.schema.common import Distribution
+    >>> from epymodelingsuite.schema.common import Distribution
     >>> dist_config = Distribution(name="norm", args=[0, 1])
     >>> scipy_dist = distribution_to_scipy(dist_config)
     >>> scipy_dist.rvs(5)  # Generate 5 random samples

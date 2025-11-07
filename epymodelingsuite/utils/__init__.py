@@ -1,4 +1,4 @@
-"""Utility functions for flumodelingsuite.
+"""Utility functions for epymodelingsuite.
 
 This package contains utility functions organized by category:
 - expression_eval: Safe expression evaluation for model parameters

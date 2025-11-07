@@ -3,6 +3,7 @@
 import copy
 import io
 import logging
+from collections import defaultdict
 from datetime import date, timedelta
 
 import numpy as np
@@ -197,7 +198,8 @@ def categorize_rate_change_flusightforecast(rate_change: float, count_change: fl
         A string representing the category of the rate-change ("stable", "increase", "large_increase", "decrease", "large_decrease").
     """
     rate_population_scale = 100000
-    assert -rate_population_scale <= rate_change <= rate_population_scale, "Received invalid rate-change."
+    msg = f"Received invalid rate-change {rate_change} for rate per {rate_population_scale} population."
+    assert -rate_population_scale <= rate_change <= rate_population_scale, msg
 
     if horizon == 0:
         stable_thres = 0.3 / rate_population_scale
@@ -502,39 +504,24 @@ def generate_simulation_outputs(*, simulations: list[SimulationOutput], output_c
         if output.model_meta.projection_parameters:
             warnings.add("OUTPUT_GENERATOR: Requested projection parameter metadata in simulation workflow, ignoring.")
 
-        meta_dict = {}
+        meta_dict = defaultdict(list)
         for simulation in simulations:
-            meta_dict.set_default("primary_id", [])
             meta_dict["primary_id"].append(simulation.primary_id)
-
-            meta_dict.set_default("seed", [])
             meta_dict["seed"].append(simulation.seed)
-
-            meta_dict.set_default("delta_t", [])
             meta_dict["delta_t"].append(simulation.delta_t)
-
-            meta_dict.set_default("population", [])
             meta_dict["population"].append(simulation.population)
-
-            meta_dict.set_default("n_sims", [])
             meta_dict["n_sims"].append(simulation.results.Nsim)
-
-            meta_dict.set_default("start_date", [])
             meta_dict["start_date"].append(str(sorted(simulation.results.dates)[0]))
-
-            meta_dict.set_default("end_date", [])
             meta_dict["end_date"].append(str(sorted(simulation.results.dates)[-1]))
 
             # Parameters
             for p, v in simulation.results.parameters.items():
-                meta_dict.set_default(p, [])
                 meta_dict[p].append(str(v))
 
             # Initial conditions
             inits = {k: [int(v[0]) for v in vs] for k, vs in simulation.results.get_stacked_compartments().items()}
             for c, i in inits:
                 colname = f"init_{c}"
-                meta_dict.set_default(colname, [])
                 meta_dict[colname].append(str(i))
 
         model_meta = pd.DataFrame(meta_dict)
@@ -864,8 +851,37 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
 
     ### Model Metadata
     if output.model_meta:
-        # TODO
-        pass
+        meta_dict = defaultdict(list)
+        for calibration in calibrations:
+            meta_dict["primary_id"].append(calibration.primary_id)
+            meta_dict["seed"].append(calibration.seed)
+            meta_dict["delta_t"].append(calibration.delta_t)
+            meta_dict["population"].append(calibration.population)
+            if calibration.results.projections:
+                for scenario_id in calibration.results.projections:
+                    colname = f"n_projections_{scenario_id}"
+                    meta_dict[colname].append(len(calibration.results.projections[scenario_id]))
+
+            # Fitting window
+            trajc = calibration.results.get_calibration_trajectories()
+            meta_dict["fitting_start"].append(str(sorted(trajc["date"][0])[0].date()))
+            meta_dict["fitting_end"].append(str(sorted(trajc["date"][0])[-1].date()))
+
+            # Projection window
+            trajp = calibration.results.get_projection_trajectories()
+            meta_dict["start_date"].append(str(sorted(trajp["date"][0])[0].date()))
+            meta_dict["end_date"].append(str(sorted(trajp["date"][0])[-1].date()))
+
+            # Projection parameters
+            # No calibration parameters, this is covered by posteriors.
+            if output.model_meta.projection_parameters:
+                for scenario_id in calibration.results.projections:
+                    proj_params = calibration.results.projection_parameters[scenario_id]
+                    for p in proj_params:
+                        colname = f"proj_{scenario_id}_{p}"
+                        meta_dict[colname].append(str(proj_params[p]))
+
+        model_meta = pd.DataFrame(meta_dict)
 
     ### Cleanup and return
     for warning in warnings:
