@@ -2,14 +2,16 @@
 
 import json
 import tempfile
+from datetime import date
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from epymodelingsuite.schema.calibration import CalibrationStrategy
+from epymodelingsuite.schema.calibration import CalibrationStrategy, FittingWindow
 from epymodelingsuite.schema.dispatcher import CalibrationOutput, SimulationOutput
 from epymodelingsuite.telemetry import (
     ExecutionTelemetry,
     create_workflow_telemetry,
+    extract_builder_metadata,
 )
 
 
@@ -126,6 +128,24 @@ class TestExecutionTelemetry:
         assert telemetry.configuration["random_seed"] == 42
         assert "duration_seconds" in telemetry.builder
         assert "peak_memory_mb" in telemetry.builder
+
+    def test_builder_stage_with_fitting_window(self):
+        """Test builder stage tracking with fitting window."""
+        telemetry = ExecutionTelemetry()
+        telemetry.enter_builder("calibration")
+
+        telemetry.exit_builder(
+            n_models=1,
+            populations=["US-CA"],
+            start_date="2024-01-01",
+            end_date="2024-12-31",
+            delta_t=1.0,
+            random_seed=42,
+            fitting_window=("2024-03-01", "2024-06-01"),
+        )
+
+        assert telemetry.configuration["fitting_window"]["start_date"] == "2024-03-01"
+        assert telemetry.configuration["fitting_window"]["end_date"] == "2024-06-01"
 
     def test_runner_stage(self):
         """Test runner stage tracking."""
@@ -587,6 +607,123 @@ class TestPartialWorkflows:
         # Should calculate from builder start to builder end
         assert "total_duration_seconds" in telemetry.metadata
         assert telemetry.metadata["total_duration_seconds"] > 0
+
+
+class TestFittingWindow:
+    """Test fitting window tracking in telemetry."""
+
+    def test_extract_builder_metadata_with_fitting_window(self):
+        """Test that fitting window is extracted from calibration config."""
+        # Create mock calibration config with fitting window
+        calibration_config = MagicMock()
+        calibration_config.modelset.calibration.fitting_window = FittingWindow(
+            start_date=date(2024, 3, 1), end_date=date(2024, 6, 1)
+        )
+
+        # Create mock basemodel config
+        basemodel_config = MagicMock()
+        basemodel_config.model.population.name = "US-CA"
+        basemodel_config.model.timespan.start_date = date(2024, 1, 1)
+        basemodel_config.model.timespan.end_date = date(2024, 12, 31)
+        basemodel_config.model.timespan.delta_t = 1.0
+        basemodel_config.model.random_seed = 42
+
+        # Create mock builder output
+        builder_output = MagicMock()
+        builder_output.model = None
+        builder_output.calibrator.parameters = {"epimodel": MagicMock(population=MagicMock(name="US-CA"))}
+
+        # Extract metadata
+        configs = {"basemodel_config": basemodel_config, "calibration_config": calibration_config}
+        metadata = extract_builder_metadata([builder_output], configs)
+
+        # Verify fitting window is present
+        assert "fitting_window" in metadata
+        assert metadata["fitting_window"] == ("2024-03-01", "2024-06-01")
+
+    def test_extract_builder_metadata_without_calibration_config(self):
+        """Test that fitting window is not present for simulation workflow."""
+        # Create mock basemodel config only (no calibration config)
+        basemodel_config = MagicMock()
+        basemodel_config.model.population.name = "US-CA"
+        basemodel_config.model.timespan.start_date = date(2024, 1, 1)
+        basemodel_config.model.timespan.end_date = date(2024, 12, 31)
+        basemodel_config.model.timespan.delta_t = 1.0
+        basemodel_config.model.random_seed = 42
+
+        # Create mock builder output
+        builder_output = MagicMock()
+        builder_output.model.population.name = "US-CA"
+
+        # Extract metadata (no calibration config)
+        configs = {"basemodel_config": basemodel_config}
+        metadata = extract_builder_metadata(builder_output, configs)
+
+        # Verify fitting window is NOT present
+        assert "fitting_window" not in metadata
+
+    def test_fitting_window_in_text_output(self):
+        """Test that fitting window appears in text output."""
+        telemetry = ExecutionTelemetry()
+        telemetry.enter_builder("calibration")
+        telemetry.exit_builder(
+            n_models=1,
+            populations=["US-CA"],
+            start_date="2024-01-01",
+            end_date="2024-12-31",
+            delta_t=1.0,
+            random_seed=42,
+            fitting_window=("2024-03-01", "2024-06-01"),
+        )
+
+        text_output = telemetry.to_text()
+
+        # Verify fitting window appears in text output
+        assert "CONFIGURATION" in text_output
+        assert "Fitting window: 2024-03-01 to 2024-06-01" in text_output
+        # Verify it appears after timespan
+        assert text_output.index("Timespan:") < text_output.index("Fitting window:")
+
+    def test_fitting_window_in_json_output(self):
+        """Test that fitting window appears in JSON output."""
+        telemetry = ExecutionTelemetry()
+        telemetry.enter_builder("calibration")
+        telemetry.exit_builder(
+            n_models=1,
+            populations=["US-CA"],
+            start_date="2024-01-01",
+            end_date="2024-12-31",
+            delta_t=1.0,
+            random_seed=42,
+            fitting_window=("2024-03-01", "2024-06-01"),
+        )
+
+        json_data = telemetry.to_dict()
+
+        # Verify fitting window is in configuration
+        assert "fitting_window" in json_data["configuration"]
+        assert json_data["configuration"]["fitting_window"]["start_date"] == "2024-03-01"
+        assert json_data["configuration"]["fitting_window"]["end_date"] == "2024-06-01"
+
+    def test_no_fitting_window_for_simulation(self):
+        """Test that fitting window is not present for simulation workflow."""
+        telemetry = ExecutionTelemetry()
+        telemetry.enter_builder("simulation")
+        telemetry.exit_builder(
+            n_models=1,
+            populations=["US-CA"],
+            start_date="2024-01-01",
+            end_date="2024-12-31",
+            delta_t=1.0,
+            random_seed=42,
+        )
+
+        text_output = telemetry.to_text()
+        json_data = telemetry.to_dict()
+
+        # Verify fitting window is NOT present
+        assert "Fitting window:" not in text_output
+        assert "fitting_window" not in json_data["configuration"]
 
 
 class TestStrategyInfoCapture:

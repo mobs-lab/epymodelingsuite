@@ -75,7 +75,7 @@ def extract_builder_metadata(
         populations = [basemodel.population.name]
         n_models = 1
 
-    return {
+    metadata = {
         "n_models": n_models,
         "populations": populations,
         "start_date": str(basemodel.timespan.start_date),
@@ -83,6 +83,17 @@ def extract_builder_metadata(
         "delta_t": basemodel.timespan.delta_t,
         "random_seed": basemodel.random_seed,
     }
+
+    # Extract fitting window if calibration config is present
+    calibration_config = configs.get("calibration_config")
+    if calibration_config:
+        fitting_window = calibration_config.modelset.calibration.fitting_window
+        metadata["fitting_window"] = (
+            str(fitting_window.start_date),
+            str(fitting_window.end_date),
+        )
+
+    return metadata
 
 
 class ExecutionTelemetry:
@@ -216,6 +227,7 @@ class ExecutionTelemetry:
         end_date: str | None = None,
         delta_t: float | None = None,
         random_seed: int | None = None,
+        fitting_window: tuple[str, str] | None = None,
     ) -> None:
         """Exit the builder stage and record metrics.
 
@@ -233,6 +245,8 @@ class ExecutionTelemetry:
             Simulation time step
         random_seed : int | None, optional
             Random seed used
+        fitting_window : tuple[str, str] | None, optional
+            Fitting window for calibration (start_date, end_date)
         """
         end_time = datetime.now()
         self.builder["end_time"] = end_time.isoformat()
@@ -254,6 +268,11 @@ class ExecutionTelemetry:
             self.configuration["delta_t"] = delta_t
         if random_seed is not None:
             self.configuration["random_seed"] = random_seed
+        if fitting_window is not None:
+            self.configuration["fitting_window"] = {
+                "start_date": fitting_window[0],
+                "end_date": fitting_window[1],
+            }
 
         # Finalize telemetry for builder stage
         self.status = "completed"
@@ -669,6 +688,9 @@ class ExecutionTelemetry:
             if "start_date" in config and "end_date" in config:
                 delta_t = config.get("delta_t", "unknown")
                 lines.append(f"Timespan: {config['start_date']} to {config['end_date']} (dt={delta_t})")
+            if "fitting_window" in config:
+                fw = config["fitting_window"]
+                lines.append(f"Fitting window: {fw['start_date']} to {fw['end_date']}")
             if "random_seed" in config:
                 lines.append(f"Random seed: {config['random_seed']}")
             lines.append("")
