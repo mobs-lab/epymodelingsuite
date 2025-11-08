@@ -12,23 +12,38 @@ def reproduce_trajectory(
     end_date: date,
 ) -> dict:
     """
-    Reproduce a specific trajectory using the a provided simulation function.
+    Reproduce a specific trajectory using a user provided simulation function.
+    If the provided simulation function is the same as the one used during calibration
+    (stored in the ABCSampler) an identical trajectory will be created. If the simulation
+    function is different, the result will be a "paired" trajectory which uses the 
+    same sequence of random numbers.
 
     Parameters
     ----------
     calibrator : ABCSampler
-        The ABCSampler instance that contains the simulation function.
+        The ABCSampler instance that provides the fixed model parameters.
     calibration_results : CalibrationResults
-        Calibration results containing trajectories and parameters.
-    generation : int
-        Generation number to reproduce from.
+        Results from the calibration process, containing posterior parameter samples
+        and stored trajectory metadata (including random states).
     particle_index : int
-        Index of the particle/trajectory to reproduce.
+        Index of the particle (trajectory) to reproduce within the specified generation.
+    generation : int
+        Generation number in the ABC process from which to reproduce the trajectory.
+    simulation_function : Callable
+        A user-provided function that runs the model simulation. It must accept a 
+        dictionary of parameters and return a simulation output dictionary.
+    end_date : date
+        The end date for the reproduced simulation, appended to the parameter set.
 
     Returns
     -------
     dict
-        Reproduced simulation results.
+        The reproduced simulation output, as returned by `simulation_function`.
+
+    Raises
+    ------
+    ValueError
+        If the specified generation or particle index is out of range.
     """
     # Validate generation index
     num_generations = len(calibration_results.posterior_distributions)
@@ -62,7 +77,7 @@ def reproduce_trajectory(
     all_params["projection"] = True
     all_params["end_date"] = end_date
 
-    # Call the stored simulate_wrapper
+    # Simulation function used here is user-provided, which may be different from the one embedded in the calibrator (ABCSampler)
     result = simulation_function(all_params)
 
     return result
