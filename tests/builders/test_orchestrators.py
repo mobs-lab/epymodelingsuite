@@ -634,7 +634,7 @@ class TestApplyVaccinationForSampledStart:
 
         with (
             patch("epymodelingsuite.builders.orchestrators.reaggregate_vaccines") as mock_reagg,
-            patch("epymodelingsuite.builders.orchestrators.resample_dataframe") as mock_resample,
+            patch("epymodelingsuite.builders.orchestrators.resample_vaccination_schedule") as mock_resample,
             patch("epymodelingsuite.builders.orchestrators.add_vaccination_schedules_from_config") as mock_add,
         ):
             mock_reagg.return_value = {"reaggregated": "data"}

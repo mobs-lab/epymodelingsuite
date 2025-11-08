@@ -57,7 +57,6 @@ def add_vaccination_schedules_from_config(
                 start_date=timespan.start_date,
                 end_date=timespan.end_date,
                 target_age_groups=model.population.Nk_names,
-                delta_t=timespan.delta_t,
                 states=[model.population.name],
             )
             logger.info(f"Created vaccination schedule from scenario data at {vaccination.scenario_data_path}")
