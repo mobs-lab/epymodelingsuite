@@ -126,35 +126,34 @@ def get_age_groups_from_data(data: pd.DataFrame) -> dict[str, str]:
     return age_group_map_data
 
 
-def resample_dataframe(df: pd.DataFrame, delta_t: float) -> pd.DataFrame:
+def resample_vaccination_schedule(df: pd.DataFrame, delta_t: float) -> pd.DataFrame:
     """
-    Resample a vaccination coverage DataFrame to match epydemix simulation time steps
-    by repeating values (step interpolation).
+    Resample daily vaccination schedule to match simulation timesteps.
 
-    This function preserves the step-wise nature of vaccination schedules,
-    where values should remain constant within each day/period rather than
-    being smoothly interpolated between periods.
-
-    Uses epydemix's compute_simulation_dates() to ensure exact alignment with simulation steps.
+    Adjusts the temporal resolution of a daily vaccination schedule to match the simulation's
+    delta_t by forward-filling values to maintain step-wise constant vaccination rates.
 
     Parameters
     ----------
     df : pd.DataFrame
-        Input DataFrame with at least the following columns:
-        - 'dates': datetime-like index column
-        - 'location': location identifier
-        - numeric coverage columns to be resampled
+        Daily vaccination schedule with 'dates' column, 'location' column, and numeric columns
+        for each age group containing daily vaccination counts.
     delta_t : float
-        Fraction of a day representing the new time step size. For example,
-        `delta_t=0.5` corresponds to 12-hour intervals, `delta_t=0.25` to 6-hour intervals.
+        Simulation time step in days. For example:
+        - delta_t=0.5: 12-hour intervals (values repeated twice per day)
+        - delta_t=1.0: daily intervals (no resampling, returns copy)
+        - delta_t=7.0: weekly intervals (aggregates 7 days into 1 timestep)
 
     Returns
     -------
     pd.DataFrame
-        Resampled DataFrame with:
-        - 'dates' as the new index column matching simulation time steps
-        - 'location' carried forward
-        - numeric columns repeated (not interpolated)
+        Vaccination schedule resampled to match simulation timesteps, with same columns as input.
+
+    Notes
+    -----
+    - Uses forward-fill (step interpolation) to preserve step-wise constant vaccination rates
+    - Does NOT multiply values by dt - values are repeated/aggregated as-is
+    - The vaccination rate function in epydemix handles dt conversion internally
     """
     import numpy as np
     from epydemix.utils import compute_simulation_dates
@@ -307,7 +306,6 @@ def scenario_to_epydemix(
     start_date: str | pd.Timestamp,
     end_date: str | pd.Timestamp,
     target_age_groups: list[str] = ["0-4", "5-17", "18-49", "50-64", "65+"],
-    delta_t: float = 1.0,
     output_filepath: str | None = None,
     states: list[str] | None = None,
 ) -> pd.DataFrame:
@@ -330,8 +328,6 @@ def scenario_to_epydemix(
         End date for the vaccination schedule (inclusive).
     target_age_groups : list of str, default ["0-4", "5-17", "18-49", "50-64", "65+"]
         Age groups to map the data to for the output schedule.
-    delta_t : float, default 1.0
-        Time step for resampling the daily vaccination data. Default 1.0 means daily.
     output_filepath : str, optional
         If provided, the processed daily vaccination DataFrame will be saved as a CSV at this path.
     states : list[str], optional
@@ -342,6 +338,7 @@ def scenario_to_epydemix(
     pd.DataFrame
         A DataFrame containing daily vaccination doses for each age group and location. Columns include:
         "dates", "location", and one column per target age group.
+        Returns daily vaccination schedules (dt=1.0).
 
     Raises
     ------
@@ -353,6 +350,7 @@ def scenario_to_epydemix(
     - The function aggregates weekly coverage into daily doses, distributes them evenly across days,
       and maps input age groups to the target model age groups using population reweighting.
     - Location names are converted to ISO codes for compatibility with Epydemix.
+    - Always returns daily schedules. Use resample_dataframe() to adjust temporal resolution for simulation timesteps.
     """
     import numpy as np
     from epydemix.utils import compute_simulation_dates
@@ -365,8 +363,8 @@ def scenario_to_epydemix(
         states = [convert_location_name_format(s, "name") for s in states]
 
     # ========== COMPUTE SIMULATION DATES ==========
-    # Use epydemix's date calculation to ensure alignment with simulation time steps
-    simulation_dates_array = compute_simulation_dates(start_date, end_date, dt=delta_t)
+    # Always generate daily schedules (dt=1.0)
+    simulation_dates_array = compute_simulation_dates(start_date, end_date, dt=1.0)
     simulation_dates_index = pd.DatetimeIndex(simulation_dates_array)
 
     # ========== LOAD AND FILTER DATA ==========
@@ -565,7 +563,6 @@ def smh_data_to_epydemix(
     start_date: str | pd.Timestamp,
     end_date: str | pd.Timestamp,
     target_age_groups: list[str] = ["0-4", "5-17", "18-49", "50-64", "65+"],
-    delta_t: float = 1.0,
     output_filepath: str | None = None,
     states: list[str] | None = None,
 ) -> pd.DataFrame:
@@ -582,7 +579,6 @@ def smh_data_to_epydemix(
         start_date (str or Timestamp): Start date of the simulation period.
         end_date (str or Timestamp): End date of the simulation period.
         target_age_groups (list[str]): Age groups to map the data to for the output schedule.
-        delta_t (float): Time step for resampling the daily vaccination data. Default 1.0 means daily.
         output_filepath (str, optional): If provided, the output DataFrame will be saved as a CSV.
         states (list[str], optional): If provided, only data for these specific states/locations will be processed.
 
@@ -590,6 +586,7 @@ def smh_data_to_epydemix(
     -------
         pd.DataFrame: DataFrame with columns ['dates', 'scenario', 'location', <age groups>] giving the
                       daily vaccination counts per age group for each scenario across all geographies.
+                      Returns daily vaccination schedules (dt=1.0).
     """
     import os
     import tempfile
@@ -639,7 +636,6 @@ def smh_data_to_epydemix(
                 start_date=start_date,
                 end_date=end_date,
                 target_age_groups=target_age_groups,
-                delta_t=delta_t,
                 output_filepath=None,  # Don't write individual scenario files
                 states=states,
             )
