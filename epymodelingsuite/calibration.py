@@ -3,6 +3,7 @@ from typing import Callable
 from epydemix.calibration import ABCSampler, CalibrationResults
 from datetime import date
 
+
 def reproduce_trajectory(
     calibrator: ABCSampler,
     calibration_results: CalibrationResults,
@@ -15,7 +16,7 @@ def reproduce_trajectory(
     Reproduce a specific trajectory using a user provided simulation function.
     If the provided simulation function is the same as the one used during calibration
     (stored in the ABCSampler) an identical trajectory will be created. If the simulation
-    function is different, the result will be a "paired" trajectory which uses the 
+    function is different, the result will be a "paired" trajectory which uses the
     same sequence of random numbers.
 
     Parameters
@@ -30,7 +31,7 @@ def reproduce_trajectory(
     generation : int
         Generation number in the ABC process from which to reproduce the trajectory.
     simulation_function : Callable
-        A user-provided function that runs the model simulation. It must accept a 
+        A user-provided function that runs the model simulation. It must accept a
         dictionary of parameters and return a simulation output dictionary.
     end_date : date
         The end date for the reproduced simulation, appended to the parameter set.
@@ -157,6 +158,7 @@ def reproduce_all_trajectories(
         )
 
     return results
+
 
 def calc_beta(model_pop, Rt, mu, p_asymptomatic, r_beta_asymp):
     """

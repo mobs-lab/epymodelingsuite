@@ -885,27 +885,28 @@ def make_simulate_wrapper(
 
     return simulate_wrapper
 
+
 def make_scenario_projection_simulate_wrappers(
-    basemodel_config: BasemodelConfig, 
+    basemodel_config: BasemodelConfig,
     calibration_config: CalibrationConfig,
     overrides: dict | None = None,
 ) -> list[Callable]:
     """
-    Construct a list of simulate_wrappers from basemodel and calibration config, which differ only 
-    in the overrides 
+    Construct a list of simulate_wrappers from basemodel and calibration config, which differ only
+    in the overrides
 
     Parameters
     ----------
         basemodel_config: BasemodelConfig
             Base model configuration parsed from YAML
-        calibration_config: CalibrationConfig 
+        calibration_config: CalibrationConfig
             Calibration configuration parsed from YAML
         overrides : dict | None, optional
             Optional dictionary of configuration overrides to apply to the copied
             basemodel before building models. Supported keys (all optional):
-            - "vaccination": {"scenario_data_path": str}  
+            - "vaccination": {"scenario_data_path": str}
                 Replace the vaccination CSV path.
-            - "seasonality": {"min_value": float}       
+            - "seasonality": {"min_value": float}
                 Override the seasonality `min_value`.
             - "interventions": Any
                 Replace the entire `interventions` block on the base model.
