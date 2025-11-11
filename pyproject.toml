@@ -21,6 +21,8 @@ dependencies = [
     "pydantic",
     "pyyaml",
     "sphinx",
+    "sphinx-pyproject",
+    "autodoc_pydantic",
     "psutil",
 ]
 
@@ -39,6 +41,8 @@ dev = [
     "pytest",
     "pytest-cov",
     "sphinx",
+    "sphinx-pyproject",
+    "autodoc_pydantic",
 ]
 
 [project.urls]
@@ -54,6 +58,19 @@ packages = [
     "epymodelingsuite.data",
 ]
 include-package-data = true
+
+[tool.sphinx-pyproject]
+project = "epymodelingsuite"
+package_root = "epymodelingsuite"
+extensions = [
+    "sphinx.ext.apidoc",
+    "sphinx.ext.autodoc",
+    "sphinx.ext.autosummary",
+]
+apidoc_modules = [
+    {"path" = "../epymodelingsuite", "destination"= "source/", "max_depth" = 10, "separate_modules" = true},
+]
+autosummary_generate = true
 
 [tool.ruff]
 exclude = [
