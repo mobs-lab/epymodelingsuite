@@ -20,7 +20,8 @@ dependencies = [
     "matplotlib",
     "pydantic",
     "pyyaml",
-    "psutil"
+    "sphinx",
+    "psutil",
 ]
 
 readme = "README.md"
@@ -37,6 +38,7 @@ dev = [
     "ruff",
     "pytest",
     "pytest-cov",
+    "sphinx",
 ]
 
 [project.urls]

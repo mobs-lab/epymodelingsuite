@@ -6,6 +6,7 @@ holidays
 matplotlib
 pydantic
 pyyaml
+sphinx
 ruff
 pytest
 pytest-cov
