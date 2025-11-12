@@ -66,6 +66,7 @@ extensions = [
     "sphinx.ext.apidoc",
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
+    "sphinx.ext.napoleon",
 ]
 apidoc_modules = [
     {"path" = "../epymodelingsuite", "destination"= "source/", "max_depth" = 10, "separate_modules" = true},
