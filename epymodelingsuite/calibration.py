@@ -1,7 +1,7 @@
-import pandas as pd
-from typing import Callable
-from epydemix.calibration import ABCSampler, CalibrationResults
+from collections.abc import Callable
 from datetime import date
+
+from epydemix.calibration import ABCSampler, CalibrationResults
 
 
 def reproduce_trajectory(
@@ -100,6 +100,8 @@ def reproduce_trajectories_in_generation(
         The ABCSampler instance that contains the simulation function.
     calibration_results : CalibrationResults
         Calibration results containing trajectories and parameters.
+    end_date : date
+        End date for the simulations.
     generation : int, optional
         Generation number to reproduce. Defaults to the last generation.
 
