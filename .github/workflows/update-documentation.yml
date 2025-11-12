@@ -1,0 +1,32 @@
+name: Update Documentation
+
+on:
+  push:
+    paths:
+      - "docs/build/**"
+    branches:
+      - main
+      - dev-stable
+      - dev
+      
+jobs:
+  update_docs:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout docs build directory
+        uses: actions/checkout@v4
+        sparse-checkout: "docs/build"
+        
+      - name: Push to docs repo
+        uses: tech-thinker/push-to-repo@main
+        env:
+          API_TOKEN_GITHUB: ${{ secrets.GIT_PAT_TOKEN }}
+        with:
+          user-name: "github-actions[bot]"
+          user-email: "github-actions[bot]@users.noreply.github.com
+          source-directory: "docs/build"
+          destination-github-username: "mobs-lab"
+          destination-repository-name: "epymodelingsuite-docs"
+          target-branch: ${{ github.ref_name }}
+          
