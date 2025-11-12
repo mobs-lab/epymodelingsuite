@@ -100,6 +100,8 @@ def reproduce_trajectories_in_generation(
         The ABCSampler instance that contains the simulation function.
     calibration_results : CalibrationResults
         Calibration results containing trajectories and parameters.
+    simulation_function : Callable
+        User-provided simulation function that overrides the original one in the calibrator (ABCSampler).
     end_date : date
         End date for the simulations.
     generation : int, optional
