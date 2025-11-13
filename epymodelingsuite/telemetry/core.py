@@ -8,19 +8,17 @@ summaries and structured JSON data for automated analysis.
 import json
 import os
 import sys
-import warnings
 from contextvars import ContextVar
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from ..utils.formatting import format_data_size, format_duration
-from .extractors import extract_builder_metadata, extract_calibration_info, extract_projection_info
+from ..utils.formatting import format_duration
+from .extractors import extract_calibration_info, extract_projection_info
 from .formatters import CsvFormatter, JsonFormatter, TextFormatter
 from .resource_tracker import ResourceTracker
 
 if TYPE_CHECKING:
-    from ..schema.calibration import CalibrationStrategy
     from ..schema.dispatcher import BuilderOutput, CalibrationOutput, SimulationOutput
 
 
