@@ -1,0 +1,25 @@
+.. epymodelingsuite documentation master file, created by
+   sphinx-quickstart on Tue Nov 11 15:45:06 2025.
+   You can adapt this file completely to your liking, but it should at least
+   contain the root `toctree` directive.
+
+epymodelingsuite documentation
+==============================
+
+Add your content using ``reStructuredText`` syntax. See the
+`reStructuredText <https://www.sphinx-doc.org/en/master/usage/restructuredtext/index.html>`_
+documentation for details.
+
+
+.. toctree::
+   :caption: Contents:
+
+   source/modules
+   
+   
+Indices
+=======
+
+ :ref:`genindex`
+ :ref:`py-modindex`
+ :ref:`search`
