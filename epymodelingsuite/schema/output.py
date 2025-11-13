@@ -48,8 +48,10 @@ class OutputObject(BaseModel):
     Representation for objects returned as final outputs. For internal use in dispatcher.
     """
 
-    type: TabularOutputTypeEnum | FigureOutputTypeEnum = Field(description="Type of output object.")
-    filename: str | None = Field(None, description="Filename for saving object, if applicable.")
+    output_type: TabularOutputTypeEnum | FigureOutputTypeEnum = Field(description="Type of output object.")
+    name: str = Field(
+        description="Filename with extension for saving object (when applicable), or name without extension."
+    )
     data: Any = Field(description="Actual data, such as Bytes, pd.DataFrame, mpl.Figure, etc.")
 
 
