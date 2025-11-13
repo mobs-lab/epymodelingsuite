@@ -2,8 +2,7 @@
 
 import copy
 import logging
-from pathlib import Path
-from typing import Callable
+from importlib import import_module
 
 import numpy as np
 import pandas as pd
@@ -33,7 +32,7 @@ from ..builders.seasonality import add_seasonality_from_config
 from ..builders.utils import get_data_in_location, get_data_in_window
 from ..builders.vaccination import add_vaccination_schedules_from_config
 from ..schema.basemodel import BasemodelConfig, Parameter, Timespan
-from ..schema.calibration import CalibrationConfig
+from ..schema.calibration import CalibrationConfig, UserDefinedFunction
 from ..schema.dispatcher import BuilderOutput, ProjectionArguments, SimulationArguments
 from ..schema.general import validate_cross_config_consistency
 from ..schema.sampling import SamplingConfig
@@ -354,6 +353,15 @@ def build_calibration(
     observed_in_window = get_data_in_window(observed_raw, calibration)
     calibrators = []
     for model in models:
+        # Collect user-defined post-hoc transformation function
+        if calibration.post_hoc_transformation:
+            post_hoc_func = import_module(
+                calibration.post_hoc_transformation.user_function_name,
+                calibration.post_hoc_transformation.user_script_path,
+            )
+        else:
+            post_hoc_func = None
+
         # TODO: Make location column name configurable instead of hardcoded "geo_value"
         # Should be added to ComparisonSpec schema (e.g., observed_location_column)
         observed_data = get_data_in_location(observed_in_window, model, "geo_value")
@@ -366,6 +374,7 @@ def build_calibration(
             intervention_types=intervention_types,
             sampled_start_timespan=sampled_start_timespan,
             earliest_vax=vax_state,
+            post_hoc_transformation=post_hoc_func,
             rng=rng,
         )
 
@@ -381,13 +390,21 @@ def build_calibration(
             {"end_date": calibration.fitting_window.end_date, "projection": False, "epimodel": model}
         )
 
+        # Collect user-defined distance function
+        if isinstance(calibration.distance_function, UserDefinedFunction):
+            dist_func = import_module(
+                calibration.distance_function.user_function_name, calibration.distance_function.user_script_path
+            )
+        else:
+            dist_func = dist_func_dict[calibration.distance_function]
+
         # ABCSamplers are the main outputs
         abc_sampler = ABCSampler(
             simulation_function=simulate_wrapper,
             priors=priors,
             parameters=fixed_parameters,
             observed_data=observed_data[calibration.comparison[0].observed_value_column].values,
-            distance_function=dist_func_dict[calibration.distance_function],
+            distance_function=dist_func,
         )
 
         calibrators.append(abc_sampler)
