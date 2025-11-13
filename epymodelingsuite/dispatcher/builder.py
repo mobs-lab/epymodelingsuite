@@ -354,13 +354,14 @@ def build_calibration(
     calibrators = []
     for model in models:
         # Collect user-defined post-hoc transformation function
-        if calibration.post_hoc_transformation:
-            post_hoc_func = import_module(
+        post_hoc_func = (
+            import_module(
                 calibration.post_hoc_transformation.user_function_name,
                 calibration.post_hoc_transformation.user_script_path,
             )
-        else:
-            post_hoc_func = None
+            if calibration.post_hoc_transformation
+            else None
+        )
 
         # TODO: Make location column name configurable instead of hardcoded "geo_value"
         # Should be added to ComparisonSpec schema (e.g., observed_location_column)
