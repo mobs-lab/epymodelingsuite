@@ -176,7 +176,9 @@ def compare_thresholds_flusightforecast(
     raise ValueError(msg)
 
 
-def categorize_rate_change_flusightforecast(rate_change: float, count_change: float, horizon: int) -> str:
+def categorize_rate_change_flusightforecast(
+    rate_change: float, count_change: float, horizon: int, rate_population_scale: int
+) -> str:
     """
     Categorize the simulated rate-change using the appropriate thresholds for the horizon.
 
@@ -191,13 +193,14 @@ def categorize_rate_change_flusightforecast(rate_change: float, count_change: fl
         The difference between the last observed count and the simulated count (diff = simulated - observed).
     horizon : int
         The horizon on which the simulated changes are calculated.
+    rate_population_scale: int
+        Rates will be calculated per {rate_population_scale} population.
 
     Returns
     -------
     str
         A string representing the category of the rate-change ("stable", "increase", "large_increase", "decrease", "large_decrease").
     """
-    rate_population_scale = 100000
     msg = f"Received invalid rate-change {rate_change} for rate per {rate_population_scale} population."
     assert -rate_population_scale <= rate_change <= rate_population_scale, msg
 
@@ -289,7 +292,7 @@ def make_rate_trends_flusightforecast(
     from collections import Counter
 
     # Horizons required for rate-trend outputs, denominator for rates (i.e. /100k pop)
-    flusight_horizons = range(4)
+    flusight_horizons = range(4)  # horizons 0-3
     rate_population_scale = 100000
 
     # Date of observation for comparison (equivalent to horizon -1)
@@ -319,7 +322,7 @@ def make_rate_trends_flusightforecast(
         # Counter containing the categorization for each projection trajectory
         trajectory_categories = Counter(
             [
-                categorize_rate_change_flusightforecast(rate_change, count_change, horizon)
+                categorize_rate_change_flusightforecast(rate_change, count_change, horizon, rate_population_scale)
                 for rate_change, count_change in zip(rate_changes, count_changes, strict=True)
             ]
         )
