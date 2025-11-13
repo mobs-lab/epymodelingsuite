@@ -6,8 +6,8 @@ from .json import JsonFormatter
 from .text import TextFormatter
 
 __all__ = [
+    "CsvFormatter",
+    "JsonFormatter",
     "TelemetryFormatter",
     "TextFormatter",
-    "JsonFormatter",
-    "CsvFormatter",
 ]
