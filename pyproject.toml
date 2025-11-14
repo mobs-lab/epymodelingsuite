@@ -25,6 +25,8 @@ dependencies = [
     "autodoc_pydantic",
     "myst-parser",
     "psutil",
+    "sodapy",
+    "epiweeks",
 ]
 
 readme = "README.md"
