@@ -12,11 +12,12 @@ from epydemix import simulate
 from epydemix.model import EpiModel
 from numpy.random import Generator
 
-from ..schema.basemodel import BaseEpiModel, Parameter, Timespan
+from ..builders.utils import get_data_in_location, get_data_in_window
+from ..schema.basemodel import BaseEpiModel, BasemodelConfig, Parameter, Timespan
 from ..schema.calibration import CalibrationConfig, ComparisonSpec
 from ..school_closures import make_school_closure_dict
 from ..utils import get_location_codebook, make_dummy_population
-from ..vaccinations import reaggregate_vaccines, resample_dataframe, scenario_to_epydemix
+from ..vaccinations import reaggregate_vaccines, resample_vaccination_schedule, scenario_to_epydemix
 from .base import (
     add_model_compartments_from_config,
     add_model_parameters_from_config,
@@ -157,7 +158,6 @@ def setup_vaccination_schedules(
             start_date=sampled_start_timespan.start_date,
             end_date=sampled_start_timespan.end_date,
             target_age_groups=basemodel.population.age_groups,
-            delta_t=sampled_start_timespan.delta_t,
             states=population_names,
         )
         return models, earliest_vax
@@ -592,7 +592,7 @@ def apply_vaccination_for_sampled_start(
 
     # Start_date is sampled, need to reaggregate and resample
     reaggregated_vax = reaggregate_vaccines(earliest_vax, timespan.start_date)
-    reaggregated_resampled_vax = resample_dataframe(reaggregated_vax, timespan.delta_t)
+    reaggregated_resampled_vax = resample_vaccination_schedule(reaggregated_vax, timespan.delta_t)
     add_vaccination_schedules_from_config(
         model, basemodel.transitions, basemodel.vaccination, timespan, use_schedule=reaggregated_resampled_vax
     )
@@ -884,3 +884,104 @@ def make_simulate_wrapper(
         )
 
     return simulate_wrapper
+
+
+def make_scenario_projection_simulate_wrappers(
+    basemodel_config: BasemodelConfig,
+    calibration_config: CalibrationConfig,
+    overrides: dict | None = None,
+) -> list[Callable]:
+    """
+    Construct a list of simulate_wrappers from basemodel and calibration config, which differ only
+    in the overrides
+
+    Parameters
+    ----------
+        basemodel_config: BasemodelConfig
+            Base model configuration parsed from YAML
+        calibration_config: CalibrationConfig
+            Calibration configuration parsed from YAML
+        overrides : dict | None, optional
+            Optional dictionary of configuration overrides to apply to the copied
+            basemodel before building models. Supported keys (all optional):
+            - "vaccination": {"scenario_data_path": str}
+                Replace the vaccination CSV path.
+            - "seasonality": {"min_value": float}
+                Override the seasonality `min_value`.
+            - "interventions": Any
+                Replace the entire `interventions` block on the base model.
+
+    Returns
+    -------
+        list[Callable]
+            A list of simulate-wrapper callables (one per location).
+    """
+    basemodel = copy.deepcopy(basemodel_config.model)
+    modelset = calibration_config.modelset
+    calibration = modelset.calibration
+
+    if overrides:
+        # Vaccination overrides
+        if "vaccination" in overrides and basemodel.vaccination:
+            vaccination_override = overrides["vaccination"] or {}
+            if vaccination_override.get("scenario_data_path"):
+                basemodel.vaccination.scenario_data_path = vaccination_override["scenario_data_path"]
+
+        # Seasonality overrides
+        if "seasonality" in overrides and basemodel.seasonality:
+            seasonality_override = overrides["seasonality"] or {}
+            if "min_value" in seasonality_override and seasonality_override["min_value"] is not None:
+                basemodel.seasonality.min_value = seasonality_override["min_value"]
+
+        # Interventions overrides (replace entire block if provided)
+        if "interventions" in overrides and overrides["interventions"] is not None:
+            basemodel.interventions = overrides["interventions"]
+
+    # Create random number generator
+    rng = np.random.default_rng(basemodel.random_seed)
+
+    # Build a collection of EpiModels
+    models, population_names = create_model_collection(basemodel, modelset.population_names)
+
+    # Extract intervention types
+    intervention_types = []
+    if basemodel.interventions:
+        intervention_types = [i.type for i in basemodel.interventions]
+
+    # If start_date is sampled, make earliest timespan
+    if calibration.start_date:
+        sampled_start_timespan = Timespan(
+            start_date=calibration.start_date.reference_date,
+            end_date=basemodel.timespan.end_date,
+            delta_t=basemodel.timespan.delta_t,
+        )
+    else:  # case where start_date is not sampled
+        sampled_start_timespan = None
+
+    # Vaccination is sensitive to location and start_date but not to model parameters.
+    models, earliest_vax = setup_vaccination_schedules(basemodel, models, sampled_start_timespan, population_names)
+
+    # These interventions are sensitive to location but not to model parameters and can be applied
+    # using the earliest start_date before creating ABCSamplers.
+    models = setup_interventions(models, basemodel, intervention_types, sampled_start_timespan)
+    observed_raw = pd.read_csv(calibration.observed_data_path)
+    observed_in_window = get_data_in_window(observed_raw, calibration)
+    simulation_functions = []
+    for model in models:
+        # TODO: Make location column name configurable instead of hardcoded "geo_value"
+        # Should be added to ComparisonSpec schema (e.g., observed_location_column)
+        observed_data = get_data_in_location(observed_in_window, model, "geo_value")
+        vax_state = get_data_in_location(earliest_vax, model, "location") if earliest_vax is not None else None
+        # Create simulate_wrapper
+        simulate_wrapper = make_simulate_wrapper(
+            basemodel=basemodel,
+            calibration=calibration,
+            observed_data=observed_data,
+            intervention_types=intervention_types,
+            sampled_start_timespan=sampled_start_timespan,
+            earliest_vax=vax_state,
+            rng=rng,
+        )
+        simulation_functions.append(simulate_wrapper)
+
+    return simulation_functions
