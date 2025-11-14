@@ -11,7 +11,12 @@ import pandas as pd
 from epydemix.calibration import CalibrationResults
 
 from ..schema.dispatcher import CalibrationOutput, SimulationOutput
-from ..schema.output import OutputConfig, get_flusight_quantiles
+from ..schema.output import (
+    OutputConfig,
+    OutputObject,
+    TabularOutputTypeEnum,
+    get_flusight_quantiles,
+)
 from ..telemetry import ExecutionTelemetry
 from ..utils.location import convert_location_name_format, get_flusight_population
 
@@ -176,7 +181,9 @@ def compare_thresholds_flusightforecast(
     raise ValueError(msg)
 
 
-def categorize_rate_change_flusightforecast(rate_change: float, count_change: float, horizon: int) -> str:
+def categorize_rate_change_flusightforecast(
+    rate_change: float, count_change: float, horizon: int, rate_population_scale: int
+) -> str:
     """
     Categorize the simulated rate-change using the appropriate thresholds for the horizon.
 
@@ -191,13 +198,14 @@ def categorize_rate_change_flusightforecast(rate_change: float, count_change: fl
         The difference between the last observed count and the simulated count (diff = simulated - observed).
     horizon : int
         The horizon on which the simulated changes are calculated.
+    rate_population_scale: int
+        Rates will be calculated per {rate_population_scale} population.
 
     Returns
     -------
     str
         A string representing the category of the rate-change ("stable", "increase", "large_increase", "decrease", "large_decrease").
     """
-    rate_population_scale = 100000
     msg = f"Received invalid rate-change {rate_change} for rate per {rate_population_scale} population."
     assert -rate_population_scale <= rate_change <= rate_population_scale, msg
 
@@ -289,7 +297,7 @@ def make_rate_trends_flusightforecast(
     from collections import Counter
 
     # Horizons required for rate-trend outputs, denominator for rates (i.e. /100k pop)
-    flusight_horizons = range(4)
+    flusight_horizons = range(4)  # horizons 0-3
     rate_population_scale = 100000
 
     # Date of observation for comparison (equivalent to horizon -1)
@@ -319,7 +327,7 @@ def make_rate_trends_flusightforecast(
         # Counter containing the categorization for each projection trajectory
         trajectory_categories = Counter(
             [
-                categorize_rate_change_flusightforecast(rate_change, count_change, horizon)
+                categorize_rate_change_flusightforecast(rate_change, count_change, horizon, rate_population_scale)
                 for rate_change, count_change in zip(rate_changes, count_changes, strict=True)
             ]
         )
@@ -358,6 +366,41 @@ def format_quantiles_covid19forecast(quantiles_df: pd.DataFrame) -> pd.DataFrame
     return pd.DataFrame()
 
 
+def format_tabular_object(df: pd.DataFrame, name: str, output_type: TabularOutputTypeEnum) -> OutputObject:
+    """
+    Create an OutputObject containing tabular data as the requested type.
+
+    Parameters
+    ----------
+    df: pd.DataFrame
+        DataFrame containing tabular data.
+    name: str
+        Name for identifying tabular data.
+    output_type: TabularOutputTypeEnum
+        Requested output type, e.g. CSVBytes or DataFrame.
+
+    Returns
+    -------
+    OutputObject
+        Object containing tabular data as requested type.
+    """
+    match output_type:
+        case TabularOutputTypeEnum.CSVBytes:
+            return OutputObject(
+                output_type=output_type,
+                name=f"{name}.csv.gz",
+                data=dataframe_to_gzipped_csv(df, header=True, index=False),
+            )
+        case TabularOutputTypeEnum.DataFrame:
+            return OutputObject(output_type=output_type, name=name, data=df)
+        case TabularOutputTypeEnum.Parquet:
+            msg = "Parquet output not yet implemented."
+            logger.warning(msg)
+        case _:
+            msg = f"Requested undefined tabular object format {output_format}."
+            logger.warning(msg)
+
+
 # ===== Output Generator Registry and Functions =====
 
 
@@ -375,7 +418,9 @@ def register_output_generator(kind_set):
 
 
 @register_output_generator({"simulations", "output_config"})
-def generate_simulation_outputs(*, simulations: list[SimulationOutput], output_config: OutputConfig, **_) -> dict:
+def generate_simulation_outputs(
+    *, simulations: list[SimulationOutput], output_config: OutputConfig, **_
+) -> dict[str, list[OutputObject]]:
     """
     Create a dictionary of outputs specified in an OutputConfig for a simulation workflow.
 
@@ -532,26 +577,38 @@ def generate_simulation_outputs(*, simulations: list[SimulationOutput], output_c
 
     out_dict = {}
     if not quantiles_compartments.empty:
-        out_dict["quantiles_compartments.csv.gz"] = dataframe_to_gzipped_csv(
-            quantiles_compartments, header=True, index=False
-        )
+        qc_name = "quantiles_compartments"
+        qc_objects = [
+            format_tabular_object(quantiles_compartments, qc_name, _type) for _type in output.tabular_output_types
+        ]
+        out_dict[qc_name] = qc_objects
     if not quantiles_transitions.empty:
-        out_dict["quantiles_transitions.csv.gz"] = dataframe_to_gzipped_csv(
-            quantiles_transitions, header=True, index=False
-        )
+        qt_name = "quantiles_transitions"
+        qt_objects = [
+            format_tabular_object(quantiles_transitions, qt_name, _type) for _type in output.tabular_output_types
+        ]
+        out_dict[qt_name] = qt_objects
     if not trajectories_compartments.empty:
-        out_dict["trajectories_compartments.csv.gz"] = dataframe_to_gzipped_csv(
-            trajectories_compartments, header=True, index=False
-        )
+        tc_name = "trajectories_compartments"
+        tc_objects = [
+            format_tabular_object(trajectories_compartments, tc_name, _type) for _type in output.tabular_output_types
+        ]
+        out_dict[tc_name] = tc_objects
     if not trajectories_transitions.empty:
-        out_dict["trajectories_transitions.csv.gz"] = dataframe_to_gzipped_csv(
-            trajectories_transitions, header=True, index=False
-        )
+        tt_name = "trajectories_transitions"
+        tt_objects = [
+            format_tabular_object(trajectories_transitions, tt_name, _type) for _type in output.tabular_output_types
+        ]
+        out_dict[tt_name] = tt_objects
     if not hub_format_output.empty:
         # will want to build filename to be something better, like to fit hub standards
-        out_dict["output_hub_formatted.csv.gz"] = dataframe_to_gzipped_csv(hub_format_output, header=True, index=False)
+        hf_name = "output_hub_formatted"
+        hf_objects = [format_tabular_object(hub_format_output, hf_name, _type) for _type in output.tabular_output_types]
+        out_dict[hf_name] = hf_objects
     if not model_meta.empty:
-        out_dict["model_metadata.csv.gz"] = dataframe_to_gzipped_csv(model_meta, header=True, index=False)
+        mm_name = "model_metadata"
+        mm_objects = [format_tabular_object(model_meta, mm_name, _type) for _type in output.tabular_output_types]
+        out_dict[mm_name] = mm_objects
 
     logger.info("OUTPUT GENERATOR: completed for simulation")
 
@@ -559,7 +616,9 @@ def generate_simulation_outputs(*, simulations: list[SimulationOutput], output_c
 
 
 @register_output_generator({"calibrations", "output_config"})
-def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], output_config: OutputConfig, **_) -> dict:
+def generate_calibration_outputs(
+    *, calibrations: list[CalibrationOutput], output_config: OutputConfig, **_
+) -> dict[str, list[OutputObject]]:
     """
     Create a dictionary of outputs specified in an OutputConfig for a calibration workflow.
 
@@ -920,28 +979,42 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
 
     out_dict = {}
     if not quantiles_compartments.empty:
-        out_dict["quantiles_compartments.csv.gz"] = dataframe_to_gzipped_csv(
-            quantiles_compartments, header=True, index=False
-        )
+        qc_name = "quantiles_compartments"
+        qc_objects = [
+            format_tabular_object(quantiles_compartments, qc_name, _type) for _type in output.tabular_output_types
+        ]
+        out_dict[qc_name] = qc_objects
     if not quantiles_transitions.empty:
-        out_dict["quantiles_transitions.csv.gz"] = dataframe_to_gzipped_csv(
-            quantiles_transitions, header=True, index=False
-        )
+        qt_name = "quantiles_transitions"
+        qt_objects = [
+            format_tabular_object(quantiles_transitions, qt_name, _type) for _type in output.tabular_output_types
+        ]
+        out_dict[qt_name] = qt_objects
     if not trajectories_compartments.empty:
-        out_dict["trajectories_compartments.csv.gz"] = dataframe_to_gzipped_csv(
-            trajectories_compartments, header=True, index=False
-        )
+        tc_name = "trajectories_compartments"
+        tc_objects = [
+            format_tabular_object(trajectories_compartments, tc_name, _type) for _type in output.tabular_output_types
+        ]
+        out_dict[tc_name] = tc_objects
     if not trajectories_transitions.empty:
-        out_dict["trajectories_transitions.csv.gz"] = dataframe_to_gzipped_csv(
-            trajectories_transitions, header=True, index=False
-        )
+        tt_name = "trajectories_transitions"
+        tt_objects = [
+            format_tabular_object(trajectories_transitions, tt_name, _type) for _type in output.tabular_output_types
+        ]
+        out_dict[tt_name] = tt_objects
     if not posteriors.empty:
-        out_dict["posteriors.csv.gz"] = dataframe_to_gzipped_csv(posteriors, header=True, index=False)
+        p_name = "posteriors"
+        p_objects = [format_tabular_object(posteriors, p_name, _type) for _type in output.tabular_output_types]
+        out_dict[p_name] = p_objects
     if not hub_format_output.empty:
         # will want to build filename to be something better, like to fit hub standards
-        out_dict["output_hub_formatted.csv.gz"] = dataframe_to_gzipped_csv(hub_format_output, header=True, index=False)
+        hf_name = "output_hub_formatted"
+        hf_objects = [format_tabular_object(hub_format_output, hf_name, _type) for _type in output.tabular_output_types]
+        out_dict[hf_name] = hf_objects
     if not model_meta.empty:
-        out_dict["model_metadata.csv.gz"] = dataframe_to_gzipped_csv(model_meta, header=True, index=False)
+        mm_name = "model_metadata"
+        mm_objects = [format_tabular_object(model_meta, mm_name, _type) for _type in output.tabular_output_types]
+        out_dict[mm_name] = mm_objects
 
     return out_dict
 
@@ -977,9 +1050,10 @@ def dispatch_output_generator(**configs) -> dict[str, bytes]:
 
         # Track output files in telemetry
         if telemetry:
-            for filename, data in output_data.items():
-                file_size = len(data)
-                telemetry.capture_file(filename, file_size)
+            for output_objects in output_data.values():
+                for output_object in output_objects:
+                    file_size = len(output_object.data)
+                    telemetry.capture_file(output_object.name, file_size)
 
         # Exit output stage
         if telemetry:

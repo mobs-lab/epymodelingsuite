@@ -12,11 +12,11 @@ from epydemix import simulate
 from epydemix.model import EpiModel
 from numpy.random import Generator
 
-from ..schema.basemodel import BaseEpiModel, Parameter, Timespan, BasemodelConfig
+from ..builders.utils import get_data_in_location, get_data_in_window
+from ..schema.basemodel import BaseEpiModel, BasemodelConfig, Parameter, Timespan
 from ..schema.calibration import CalibrationConfig, ComparisonSpec
 from ..school_closures import make_school_closure_dict
 from ..utils import get_location_codebook, make_dummy_population
-from ..builders.utils import get_data_in_location, get_data_in_window
 from ..vaccinations import reaggregate_vaccines, resample_vaccination_schedule, scenario_to_epydemix
 from .base import (
     add_model_compartments_from_config,
@@ -916,7 +916,6 @@ def make_scenario_projection_simulate_wrappers(
         list[Callable]
             A list of simulate-wrapper callables (one per location).
     """
-
     basemodel = copy.deepcopy(basemodel_config.model)
     modelset = calibration_config.modelset
     calibration = modelset.calibration
@@ -925,7 +924,7 @@ def make_scenario_projection_simulate_wrappers(
         # Vaccination overrides
         if "vaccination" in overrides and basemodel.vaccination:
             vaccination_override = overrides["vaccination"] or {}
-            if "scenario_data_path" in vaccination_override and vaccination_override["scenario_data_path"]:
+            if vaccination_override.get("scenario_data_path"):
                 basemodel.vaccination.scenario_data_path = vaccination_override["scenario_data_path"]
 
         # Seasonality overrides
