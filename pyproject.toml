@@ -24,6 +24,8 @@ dependencies = [
     "sphinx-pyproject",
     "autodoc_pydantic",
     "psutil",
+    "sodapy",
+    "epiweeks",
 ]
 
 readme = "README.md"
