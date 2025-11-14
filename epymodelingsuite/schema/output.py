@@ -10,7 +10,7 @@ from .common import Meta
 logger = logging.getLogger(__name__)
 
 
-class TabularOutputTypeEnum(Enum):
+class TabularOutputTypeEnum(str, Enum):
     """
     Types of output objects for tabular data.
     """
@@ -20,7 +20,7 @@ class TabularOutputTypeEnum(Enum):
     Parquet = "Parquet"
 
 
-class FigureOutputTypeEnum(Enum):
+class FigureOutputTypeEnum(str, Enum):
     """
     Types of output objects for figures.
     """
