@@ -647,31 +647,38 @@ def generate_calibration_outputs(
 
     ### Quantiles
     if output.quantiles:
-        for calibration in calibrations:# Calibration quantiles (only for calibration comparison target)
-
+        for calibration in calibrations:  # Calibration quantiles (only for calibration comparison target)
             # Calibration quantiles
             if output.quantiles.calibration:
                 if hasattr(output.quantiles.calibration, "__len__"):
                     for generation in output.quantiles.calibration:
                         try:
-                            quancal_df = calibration.results.get_calibration_quantiles(quantiles=output.quantiles.selections, generation=generation)
+                            quancal_df = calibration.results.get_calibration_quantiles(
+                                quantiles=output.quantiles.selections, generation=generation
+                            )
                             quancal_df.insert(0, "primary_id", calibration.primary_id)
                             quancal_df.insert(1, "seed", calibration.seed)
                             quancal_df.insert(2, "population", calibration.population)
                             quancal_df.insert(3, "generation", generation)
                             quantiles_calibration_list.append(quancal_df)
                         except Exception as e:
-                            warnings.add(f"OUTPUT GENERATOR: Exception occured obtaining calibration quantiles for model with primary_id={calibration.primary_id}, generation {generation}, continuing to next generation. Message: {e}")
+                            warnings.add(
+                                f"OUTPUT GENERATOR: Exception occured obtaining calibration quantiles for model with primary_id={calibration.primary_id}, generation {generation}, continuing to next generation. Message: {e}"
+                            )
                 else:
                     try:
-                        quancal_df = calibration.results.get_calibration_quantiles(quantiles=output.quantiles.selections)
+                        quancal_df = calibration.results.get_calibration_quantiles(
+                            quantiles=output.quantiles.selections
+                        )
                         quancal_df.insert(0, "primary_id", calibration.primary_id)
                         quancal_df.insert(1, "seed", calibration.seed)
                         quancal_df.insert(2, "population", calibration.population)
                         quantiles_calibration_list.append(quancal_df)
                     except Exception as e:
-                        warnings.add(f"OUTPUT GENERATOR: Exception occured obtaining calibration quantiles for model with primary_id={calibration.primary_id}, continuing. Message: {e}")
-                        
+                        warnings.add(
+                            f"OUTPUT GENERATOR: Exception occured obtaining calibration quantiles for model with primary_id={calibration.primary_id}, continuing. Message: {e}"
+                        )
+
             # Projection quantiles
             try:
                 quan_df = calibration.results.get_projection_quantiles(quantiles=output.quantiles.selections)
@@ -737,9 +744,6 @@ def generate_calibration_outputs(
                 quant_df.insert(1, "seed", calibration.seed)
                 quant_df.insert(2, "population", calibration.population)
                 quantiles_transitions_list.append(quant_df)
-
-            
-                    
 
     quantiles_compartments = (
         pd.concat(quantiles_compartments_list, ignore_index=True) if quantiles_compartments_list else pd.DataFrame()
@@ -990,6 +994,12 @@ def generate_calibration_outputs(
             format_tabular_object(quantiles_transitions, qt_name, _type) for _type in output.tabular_output_types
         ]
         out_dict[qt_name] = qt_objects
+    if not quantiles_calibration.empty:
+        qcal_name = "quantiles_calibration"
+        qcal_objects = [
+            format_tabular_object(quantiles_calibration, qcal_name, _type) for _type in output.tabular_output_types
+        ]
+        out_dict[qcal_name] = qcal_objects
     if not trajectories_compartments.empty:
         tc_name = "trajectories_compartments"
         tc_objects = [

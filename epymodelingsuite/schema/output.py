@@ -113,7 +113,10 @@ class QuantilesOutput(BaseModel):
         False,
         description="Return projection quantiles for transitions. Set `True` to get all transitions, or provide a list of identifiers (e.g. 'I_to_R_total') to select transitions.",
     )
-    calibration: list[int] | bool = Field(False, description="Return quantiles from calibration. Only calibration comparison target is available. Set `True` to get last generation, or provide a list of integers to select generations.")
+    calibration: list[int] | bool = Field(
+        False,
+        description="Return quantiles from calibration. Only calibration comparison target is available. Set `True` to get last generation, or provide a list of integers to select generations.",
+    )
 
     @field_validator("selections")
     @classmethod
@@ -135,7 +138,10 @@ class TrajectoriesOutput(BaseModel):
         False,
         description="Return projection trajectories for transitions. Set `True` to get all transitions, or provide a list of identifiers (e.g. 'I_to_R_total') to select transitions.",
     )
-    calibration: list[int] | bool = Field(False, description="Return trajectories from calibration. Only calibration comparison target is available. Set `True` to get last generation, or provide a list of integers to select generations.")
+    calibration: list[int] | bool = Field(
+        False,
+        description="Return trajectories from calibration. Only calibration comparison target is available. Set `True` to get last generation, or provide a list of integers to select generations.",
+    )
 
 
 class PosteriorsOutput(BaseModel):
