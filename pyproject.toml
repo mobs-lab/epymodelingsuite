@@ -23,6 +23,7 @@ dependencies = [
     "sphinx",
     "sphinx-pyproject",
     "autodoc_pydantic",
+    "myst-parser",
     "psutil",
     "sodapy",
     "epiweeks",
@@ -45,6 +46,7 @@ dev = [
     "sphinx",
     "sphinx-pyproject",
     "autodoc_pydantic",
+    "myst-parser",
 ]
 
 [project.urls]
@@ -69,6 +71,7 @@ extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",
+    "myst_parser",
 ]
 apidoc_modules = [
     {"path" = "../epymodelingsuite", "destination"= "source/", "max_depth" = 10, "separate_modules" = true},
