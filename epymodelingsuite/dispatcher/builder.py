@@ -2,8 +2,6 @@
 
 import copy
 import logging
-from pathlib import Path
-from typing import Callable
 
 import numpy as np
 import pandas as pd
@@ -225,7 +223,7 @@ def build_sampling(
     models = setup_interventions(models, basemodel, intervention_types, sampled_start_timespan)
 
     logger.info("BUILDER: using sampled values to modify EpiModels")
-    
+
     # Create models with sampled/calculated parameters, apply vaccination and interventions
     simulation_args = []
     final_models = []

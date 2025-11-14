@@ -281,9 +281,11 @@ def validate_cross_config_consistency(
 
     # End validation if no variables are sampled (modelset is used only for population)
     if sampling == "populations":
-        logger.info("Sampling modelset received without sampled variables (only populations). Ensure your modelset does not contain any 'sampled' keywords")
-        return None
-    
+        logger.info(
+            "Sampling modelset received without sampled variables (only populations). Ensure your modelset does not contain any 'sampled' keywords"
+        )
+        return
+
     # Parameter consistency checks
     # - Get sets of parameters for basemodel and modelset
     # - Ensure all modelset parameters exist in basemodel

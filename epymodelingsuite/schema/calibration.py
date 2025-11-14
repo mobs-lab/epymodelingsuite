@@ -1,13 +1,12 @@
 import logging
 from datetime import date, timedelta
 from enum import Enum
-from typing import Any, Callable
+from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from ..utils import parse_timedelta, validate_iso3166
 from .common import DateParameter, Distribution, Meta
-
 
 logger = logging.getLogger(__name__)
 
