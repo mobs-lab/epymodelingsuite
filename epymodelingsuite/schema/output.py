@@ -1,13 +1,66 @@
 import logging
 from datetime import date
+from enum import Enum
+from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from .common import Meta
 
-# from ..workflow_dispatcher import get_flusight_quantiles
-
 logger = logging.getLogger(__name__)
+
+
+class TabularOutputTypeEnum(str, Enum):
+    """
+    Types of output objects for tabular data.
+    """
+
+    CSVBytes = "CSVBytes"
+    DataFrame = "DataFrame"
+    Parquet = "Parquet"
+
+
+class FigureOutputTypeEnum(str, Enum):
+    """
+    Types of output objects for figures.
+    """
+
+    MPLFigure = "MPLFigure"
+    PNG = "PNG"
+
+
+def get_default_tabular_output() -> list[TabularOutputTypeEnum]:
+    """
+    Return list containing DataFrame as default tabular output.
+    """
+    return [TabularOutputTypeEnum.DataFrame]
+
+
+def get_default_figure_output() -> list[FigureOutputTypeEnum]:
+    """
+    Return list containing MPLFigure as default figure output.
+    """
+    return [FigureOutputTypeEnum.MPLFigure]
+
+
+class OutputObject(BaseModel):
+    """
+    Representation for objects returned as final outputs. For internal use in dispatcher.
+    """
+
+    output_type: TabularOutputTypeEnum | FigureOutputTypeEnum = Field(description="Type of output object.")
+    name: str = Field(
+        description="Filename with extension for saving object (when applicable), or name without extension."
+    )
+    data: Any = Field(description="Actual data, such as Bytes, pd.DataFrame, mpl.Figure, etc.")
+
+
+class FluScenariosOutput(BaseModel):
+    """Specifications for quantile outputs in Flu Scenario Modeling Hub format."""
+
+
+class Covid19ForecastOutput(BaseModel):
+    """Specifications for quantile outputs in Covid 19 Forecast Hub format."""
 
 
 def get_flusight_quantiles() -> list[float]:
@@ -21,14 +74,6 @@ def get_flusight_quantiles() -> list[float]:
     quantiles = np.append(np.append([0.01, 0.025], np.arange(0.05, 0.95 + 0.05, 0.05)), [0.975, 0.99])
     return [round(_, 2) for _ in quantiles]
     # 0.01, 0.025, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 0.975, and 0.99
-
-
-class FluScenariosOutput(BaseModel):
-    """Specifications for quantile outputs in Flu Scenario Modeling Hub format."""
-
-
-class Covid19ForecastOutput(BaseModel):
-    """Specifications for quantile outputs in Covid 19 Forecast Hub format."""
 
 
 class FlusightRateTrends(BaseModel):
@@ -110,6 +155,17 @@ class OutputConfiguration(BaseModel):
     """Output configuration."""
 
     meta: Meta | None = Field(None, description="General metadata.")
+
+    tabular_output_types: list[TabularOutputTypeEnum] | None = Field(
+        default_factory=get_default_tabular_output,
+        description="Output formats to create for all requested tabular outputs.",
+    )
+    figure_output_types: list[FigureOutputTypeEnum] | None = Field(
+        default_factory=get_default_figure_output,
+        description="Output formats to create for all requested figure outputs.",
+    )
+
+    # Tabular outputs
     quantiles: QuantilesOutput | None = Field(None, description="Specifications for default format quantile outputs.")
     trajectories: TrajectoriesOutput | None = Field(
         None, description="Specifications for default format trajectory outputs."

@@ -2,6 +2,7 @@
 
 import logging
 import time
+
 import numpy as np
 
 from ..schema.dispatcher import BuilderOutput, CalibrationOutput, SimulationOutput
@@ -119,7 +120,7 @@ def run_calibration(configs: BuilderOutput, rng: np.random.Generator | None = No
         # Track metrics if telemetry is available in context
         telemetry = ExecutionTelemetry.get_current()
         if telemetry:
-            telemetry.capture_calibration(output, duration, calibration_strategy=configs.calibration)
+            telemetry.capture_calibration(output, duration, builder_output=configs)
 
         return output
     except Exception as e:
@@ -134,7 +135,7 @@ def run_calibration(configs: BuilderOutput, rng: np.random.Generator | None = No
         telemetry = ExecutionTelemetry.get_current()
         if telemetry:
             duration = time.time() - start_time
-            telemetry.capture_calibration(output, duration, error=str(e), calibration_strategy=configs.calibration)
+            telemetry.capture_calibration(output, duration, error=str(e), builder_output=configs)
         raise RuntimeError(f"Error during calibration: {e}")
 
 
@@ -222,7 +223,7 @@ def run_calibration_with_projection(
                 calibration_duration,
                 projection_duration,
                 configs.projection.n_trajectories,
-                calibration_strategy=configs.calibration,
+                builder_output=configs,
             )
 
         return output
@@ -251,7 +252,7 @@ def run_calibration_with_projection(
                 projection_duration,
                 configs.projection.n_trajectories,
                 error=f"Projection error: {e}",
-                calibration_strategy=configs.calibration,
+                builder_output=configs,
             )
 
         return output

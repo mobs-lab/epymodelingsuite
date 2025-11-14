@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "epymodelingsuite"
-version = "0.1.0"
+version = "0.1.1"
 authors = [
   { name="Remy LeWinter", email="lewinter.r@northeastern.edu" },
   { name="Nima Moghaddas", email="moghaddas.n@northeastern.edu" },
@@ -20,7 +20,12 @@ dependencies = [
     "matplotlib",
     "pydantic",
     "pyyaml",
-    "psutil"
+    "sphinx",
+    "sphinx-pyproject",
+    "autodoc_pydantic",
+    "psutil",
+    "sodapy",
+    "epiweeks",
 ]
 
 readme = "README.md"
@@ -37,6 +42,9 @@ dev = [
     "ruff",
     "pytest",
     "pytest-cov",
+    "sphinx",
+    "sphinx-pyproject",
+    "autodoc_pydantic",
 ]
 
 [project.urls]
@@ -52,6 +60,20 @@ packages = [
     "epymodelingsuite.data",
 ]
 include-package-data = true
+
+[tool.sphinx-pyproject]
+project = "epymodelingsuite"
+package_root = "epymodelingsuite"
+extensions = [
+    "sphinx.ext.apidoc",
+    "sphinx.ext.autodoc",
+    "sphinx.ext.autosummary",
+    "sphinx.ext.napoleon",
+]
+apidoc_modules = [
+    {"path" = "../epymodelingsuite", "destination"= "source/", "max_depth" = 10, "separate_modules" = true},
+]
+autosummary_generate = true
 
 [tool.ruff]
 exclude = [
