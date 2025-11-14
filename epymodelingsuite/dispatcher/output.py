@@ -579,6 +579,7 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
     # Initialize lists for efficient DataFrame concatenation (converted to DataFrames after loops)
     quantiles_compartments_list = []
     quantiles_transitions_list = []
+    quantiles_calibration_list = []
     trajectories_compartments_list = []
     trajectories_transitions_list = []
     posteriors_list = []
@@ -587,8 +588,32 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
 
     ### Quantiles
     if output.quantiles:
-        for calibration in calibrations:
-            # Obtain quantiles
+        for calibration in calibrations:# Calibration quantiles (only for calibration comparison target)
+
+            # Calibration quantiles
+            if output.quantiles.calibration:
+                if hasattr(output.quantiles.calibration, "__len__"):
+                    for generation in output.quantiles.calibration:
+                        try:
+                            quancal_df = calibration.results.get_calibration_quantiles(quantiles=output.quantiles.selections, generation=generation)
+                            quancal_df.insert(0, "primary_id", calibration.primary_id)
+                            quancal_df.insert(1, "seed", calibration.seed)
+                            quancal_df.insert(2, "population", calibration.population)
+                            quancal_df.insert(3, "generation", generation)
+                            quantiles_calibration_list.append(quancal_df)
+                        except Exception as e:
+                            warnings.add(f"OUTPUT GENERATOR: Exception occured obtaining calibration quantiles for model with primary_id={calibration.primary_id}, generation {generation}, continuing to next generation. Message: {e}")
+                else:
+                    try:
+                        quancal_df = calibration.results.get_calibration_quantiles(quantiles=output.quantiles.selections)
+                        quancal_df.insert(0, "primary_id", calibration.primary_id)
+                        quancal_df.insert(1, "seed", calibration.seed)
+                        quancal_df.insert(2, "population", calibration.population)
+                        quantiles_calibration_list.append(quancal_df)
+                    except Exception as e:
+                        warnings.add(f"OUTPUT GENERATOR: Exception occured obtaining calibration quantiles for model with primary_id={calibration.primary_id}, continuing. Message: {e}")
+                        
+            # Projection quantiles
             try:
                 quan_df = calibration.results.get_projection_quantiles(quantiles=output.quantiles.selections)
             except ValueError:
@@ -654,11 +679,17 @@ def generate_calibration_outputs(*, calibrations: list[CalibrationOutput], outpu
                 quant_df.insert(2, "population", calibration.population)
                 quantiles_transitions_list.append(quant_df)
 
+            
+                    
+
     quantiles_compartments = (
         pd.concat(quantiles_compartments_list, ignore_index=True) if quantiles_compartments_list else pd.DataFrame()
     )
     quantiles_transitions = (
         pd.concat(quantiles_transitions_list, ignore_index=True) if quantiles_transitions_list else pd.DataFrame()
+    )
+    quantiles_calibration = (
+        pd.concat(quantiles_calibration_list, ignore_index=True) if quantiles_calibration_list else pd.DataFrame()
     )
 
     ### Trajectories

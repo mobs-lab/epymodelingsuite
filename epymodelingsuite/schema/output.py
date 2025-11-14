@@ -62,12 +62,13 @@ class QuantilesOutput(BaseModel):
     )
     compartments: list[str] | bool = Field(
         False,
-        description="Return quantiles for compartments. Set `True` to get all compartments, or provide a list of identifiers (e.g. 'I_total') to select compartments.",
+        description="Return projection quantiles for compartments. Set `True` to get all compartments, or provide a list of identifiers (e.g. 'I_total') to select compartments.",
     )
     transitions: list[str] | bool = Field(
         False,
-        description="Return quantiles for transitions. Set `True` to get all transitions, or provide a list of identifiers (e.g. 'I_to_R_total') to select transitions.",
+        description="Return projection quantiles for transitions. Set `True` to get all transitions, or provide a list of identifiers (e.g. 'I_to_R_total') to select transitions.",
     )
+    calibration: list[int] | bool = Field(False, description="Return quantiles from calibration. Only calibration comparison target is available. Set `True` to get last generation, or provide a list of integers to select generations.")
 
     @field_validator("selections")
     @classmethod
@@ -83,12 +84,13 @@ class TrajectoriesOutput(BaseModel):
 
     compartments: list[str] | bool = Field(
         False,
-        description="Return trajectories for compartments. Set `True` to get all compartments, or provide a list of identifiers (e.g. 'I_total') to select compartments.",
+        description="Return projection trajectories for compartments. Set `True` to get all compartments, or provide a list of identifiers (e.g. 'I_total') to select compartments.",
     )
     transitions: list[str] | bool = Field(
         False,
-        description="Return trajectories for transitions. Set `True` to get all transitions, or provide a list of identifiers (e.g. 'I_to_R_total') to select transitions.",
+        description="Return projection trajectories for transitions. Set `True` to get all transitions, or provide a list of identifiers (e.g. 'I_to_R_total') to select transitions.",
     )
+    calibration: list[int] | bool = Field(False, description="Return trajectories from calibration. Only calibration comparison target is available. Set `True` to get last generation, or provide a list of integers to select generations.")
 
 
 class PosteriorsOutput(BaseModel):
