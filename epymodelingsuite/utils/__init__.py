@@ -8,11 +8,13 @@ This package contains utility functions organized by category:
 - distributions: Distribution conversion utilities
 - formatting: Formatting utilities for human-readable output
 - common: Common utility functions
+- data: External data fetching utilities
 """
 
 # Import all public functions from submodules
 from .common import parse_timedelta
 from .config import identify_config_type
+from .data import fetch_hhs_hospitalizations
 from .distributions import distribution_to_scipy
 from .expression_eval import RetrieveName, SafeEvalVisitor, safe_eval
 from .formatting import format_data_size, format_duration
@@ -24,6 +26,8 @@ __all__ = [
     "parse_timedelta",
     # Config utilities
     "identify_config_type",
+    # Data utilities
+    "fetch_hhs_hospitalizations",
     # Distribution utilities
     "distribution_to_scipy",
     # Expression evaluation
