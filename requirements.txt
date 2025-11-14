@@ -8,6 +8,7 @@ pydantic
 pyyaml
 sphinx
 sphinx-pyproject
+myst-parser
 ruff
 pytest
 pytest-cov
