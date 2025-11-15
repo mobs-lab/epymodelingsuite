@@ -112,9 +112,16 @@ class SamplingConfiguration(BaseModel):
 class SamplingModelset(BaseModel):
     """Modelset configuration for sampling."""
 
+    class SamplingDefaultEnum(str, Enum):
+        """Default value for when only using modelset for multiple populations."""
+
+        populations = "populations"
+
     meta: Meta | None = Field(None, description="General metadata")
     population_names: list[str] = Field(description="List of population names")
-    sampling: SamplingConfiguration = Field(description="Sampling configuration")
+    sampling: SamplingConfiguration | SamplingDefaultEnum = Field(
+        SamplingDefaultEnum.populations, description="Sampling configuration"
+    )
 
     @field_validator("population_names")
     @classmethod

@@ -194,8 +194,12 @@ def build_sampling(
     models, population_names = create_model_collection(basemodel, sampling.population_names)
 
     # Output of this is a list of dicts containing start_date, initial conditions, and parameter value
-    # combinations where parameters is in the same format as basemodel.parameters
-    sampled_vars = generate_samples(sampling_config, basemodel.random_seed)
+    # combinations where parameters is in the same format as basemodel.parameters.
+    # Create empty structure when only using modelset for multiple populations.
+    if sampling.sampling == "populations":
+        sampled_vars = [{}]
+    else:
+        sampled_vars = generate_samples(sampling_config, basemodel.random_seed)
 
     # Extract intervention types
     if basemodel.interventions:
