@@ -694,6 +694,7 @@ def make_simulate_wrapper(
     intervention_types: list[str],
     sampled_start_timespan: Timespan | None = None,
     earliest_vax: pd.DataFrame | None = None,
+    post_hoc_transformation: Callable | None = None,
     rng: Generator | None = None,
 ) -> Callable[[dict], dict]:
     """
@@ -721,6 +722,9 @@ def make_simulate_wrapper(
             (e.g., "0-4", "5-17", "18-49", "50-64", "65+").
             Typically created by `setup_vaccination_schedules()` which calls
             `scenario_to_epydemix()` with the earliest start date.
+    post_hoc_transformation: Callable | None, optional
+            Transform simulation results with a post-hoc transformation function
+            before returning in simulate wrapper.
     rng : np.random.Generator | None, optional
             Random number generator for reproducible simulations.
             If None, a default generator will be created.
@@ -863,7 +867,15 @@ def make_simulate_wrapper(
             # Calibration: return zero-filled array
             return {"data": np.full(len(data_dates), 0)}
 
-        # 12. Format output based on mode
+        # 12. Apply post-hoc transformation
+        if post_hoc_transformation:
+            try:
+                results = post_hoc_transformation(results)
+            except Exception as e:
+                msg = f"Post-hoc transformation failed with transformation function {post_hoc_transformation}, returning non-transformed results. Error: {e}"
+                logger.warning(msg)
+
+        # 13. Format output based on mode
         # Projection: return full trajectories (flattened + padded)
         if params["projection"]:
             return format_projection_trajectories(

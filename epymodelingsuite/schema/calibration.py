@@ -116,13 +116,26 @@ class FittingWindow(BaseModel):
         return self
 
 
+class UserDefinedFunction(BaseModel):
+    """
+    Specifications for user-defined functions (i.e. custom distance function, or post-hoc transformation function).
+    Functions will be imported from the specified script and applied within the simulate wrapper.
+    """
+
+    user_script_path: str = Field(description="Path to script containing user-defined functions.")
+    user_function_name: str = Field(description="Name of function to import from the supplied script.")
+
+
 class CalibrationConfiguration(BaseModel):
     """Calibration configuration section."""
 
     strategy: CalibrationStrategy = Field(description="Calibration strategy configuration")
+    post_hoc_transformation: UserDefinedFunction | None = Field(
+        None, description="Transformation function to apply to simulation results."
+    )
 
     # Sampler options, passed directly when initializing ABCSampler
-    distance_function: str = Field("rmse", description="Distance function for comparing data")
+    distance_function: str | UserDefinedFunction = Field("rmse", description="Distance function for comparing data")
     observed_data_path: str = Field(description="Path to observed data CSV file")
     comparison: list[ComparisonSpec] = Field(description="Specifications for data comparison")
 
