@@ -355,6 +355,7 @@ def build_calibration(
     for model in models:
         # Collect user-defined post-hoc transformation function
         post_hoc_func = (
+            # FIXME: this almost surely won't work, need to find proper solution
             import_module(
                 calibration.post_hoc_transformation.user_function_name,
                 calibration.post_hoc_transformation.user_script_path,
@@ -393,6 +394,7 @@ def build_calibration(
 
         # Collect user-defined distance function
         if isinstance(calibration.distance_function, UserDefinedFunction):
+            # FIXME: this almost surely won't work, need to find proper solution
             dist_func = import_module(
                 calibration.distance_function.user_function_name, calibration.distance_function.user_script_path
             )
