@@ -85,8 +85,8 @@ class TestFetchHHSHospitalizations:
         # Verify Socrata client initialization
         mock_socrata_class.assert_called_once_with("data.cdc.gov", None)
 
-        # Verify get was called without where clause
-        mock_client.get.assert_called_once_with("mpgq-jmmr", limit=100000)
+        # Verify get was called without where clause (default uses ua7e-t2fy)
+        mock_client.get.assert_called_once_with("ua7e-t2fy", limit=100000)
 
         # Verify result structure
         assert isinstance(result, pd.DataFrame)
@@ -138,9 +138,9 @@ class TestFetchHHSHospitalizations:
         # Call function with date filter
         result = fetch_hhs_hospitalizations(query_start_date="2024-10-01")
 
-        # Verify get was called with where clause
+        # Verify get was called with where clause (default uses ua7e-t2fy)
         mock_client.get.assert_called_once_with(
-            "mpgq-jmmr",
+            "ua7e-t2fy",
             where="weekendingdate >= '2024-10-01'",
             limit=100000,
         )
@@ -288,3 +288,64 @@ class TestFetchHHSHospitalizations:
         tx_data = result[result["location_code"] == "48"]
         tx_dates = tx_data["target_end_date"].tolist()
         assert tx_dates[0] < tx_dates[1], "TX dates should be in ascending order"
+
+    @patch("epymodelingsuite.utils.data.Socrata")
+    @patch("epymodelingsuite.utils.data.get_flusight_locations")
+    def test_data_type_default(self, mock_get_locations, mock_socrata_class, mock_socrata_data, mock_locations_data):
+        """Test that default data_type uses non-preliminary dataset."""
+        # Setup mocks
+        mock_client = MagicMock()
+        mock_client.get.return_value = mock_socrata_data
+        mock_socrata_class.return_value = mock_client
+        mock_get_locations.return_value = mock_locations_data
+
+        # Call function with explicit default data_type
+        fetch_hhs_hospitalizations(data_type="default")
+
+        # Verify non-preliminary dataset ID is used
+        mock_client.get.assert_called_once_with("ua7e-t2fy", limit=100000)
+
+    @patch("epymodelingsuite.utils.data.Socrata")
+    @patch("epymodelingsuite.utils.data.get_flusight_locations")
+    def test_data_type_preliminary(
+        self, mock_get_locations, mock_socrata_class, mock_socrata_data, mock_locations_data
+    ):
+        """Test that preliminary data_type uses preliminary dataset."""
+        # Setup mocks
+        mock_client = MagicMock()
+        mock_client.get.return_value = mock_socrata_data
+        mock_socrata_class.return_value = mock_client
+        mock_get_locations.return_value = mock_locations_data
+
+        # Call function with preliminary data_type
+        fetch_hhs_hospitalizations(data_type="preliminary")
+
+        # Verify preliminary dataset ID is used
+        mock_client.get.assert_called_once_with("mpgq-jmmr", limit=100000)
+
+    @patch("epymodelingsuite.utils.data.Socrata")
+    @patch("epymodelingsuite.utils.data.get_flusight_locations")
+    def test_data_type_preliminary_with_date_filter(
+        self, mock_get_locations, mock_socrata_class, mock_socrata_data, mock_locations_data
+    ):
+        """Test preliminary data_type with date filter."""
+        # Setup mocks
+        mock_client = MagicMock()
+        mock_client.get.return_value = mock_socrata_data
+        mock_socrata_class.return_value = mock_client
+        mock_get_locations.return_value = mock_locations_data
+
+        # Call function with date filter and preliminary data_type
+        fetch_hhs_hospitalizations(query_start_date="2024-10-01", data_type="preliminary")
+
+        # Verify preliminary dataset ID is used with where clause
+        mock_client.get.assert_called_once_with(
+            "mpgq-jmmr",
+            where="weekendingdate >= '2024-10-01'",
+            limit=100000,
+        )
+
+    def test_invalid_data_type(self):
+        """Test that invalid data_type raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid data_type"):
+            fetch_hhs_hospitalizations(data_type="invalid")
