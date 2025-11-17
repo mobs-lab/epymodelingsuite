@@ -496,7 +496,7 @@ def format_calibration_data(
     dict[str, Any]
             Dictionary containing:
             - "data": np.ndarray of aggregated simulation values aligned to observation dates.
-                Padded with zeros at the beginning if simulation starts after first observation.
+                Padded with nan at the beginning if simulation starts after first observation.
             - "date": list of observation dates from observed data.
             - "random_state": dict containing RNG state for reproducibility.
     """
@@ -513,9 +513,9 @@ def format_calibration_data(
 
     # Step 3: Pad to align with full observation grid
     # When start_date is sampled, simulation may start later than first observation.
-    # Pad with zeros at beginning to align arrays for distance calculation.
+    # Pad with nan at beginning to align arrays for distance calculation.
     pad_len = calculate_padding_for_date_alignment(results.dates, data_dates)
-    aligned_data = pad_array_with_zeros(filtered_data, pad_len)
+    aligned_data = pad_array_with_nan(filtered_data, pad_len)
 
     return {"data": aligned_data, "date": data_dates, "random_state": random_state}
 
