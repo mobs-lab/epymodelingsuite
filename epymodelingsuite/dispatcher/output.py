@@ -636,11 +636,11 @@ def generate_calibration_outputs(
     warnings = set()
 
     # Initialize lists for efficient DataFrame concatenation (converted to DataFrames after loops)
-    quantiles_compartments_list = []
-    quantiles_transitions_list = []
+    quantiles_projection_compartments_list = []
+    quantiles_projection_transitions_list = []
     quantiles_calibration_list = []
-    trajectories_compartments_list = []
-    trajectories_transitions_list = []
+    trajectories_projection_compartments_list = []
+    trajectories_projection_transitions_list = []
     posteriors_list = []
     hub_format_output_list = []
     model_meta = pd.DataFrame()
@@ -715,7 +715,7 @@ def generate_calibration_outputs(
                 quanc_df.insert(0, "primary_id", calibration.primary_id)
                 quanc_df.insert(1, "seed", calibration.seed)
                 quanc_df.insert(2, "population", calibration.population)
-                quantiles_compartments_list.append(quanc_df)
+                quantiles_projection_compartments_list.append(quanc_df)
 
             # Transitions
             if output.quantiles.transitions:
@@ -743,13 +743,17 @@ def generate_calibration_outputs(
                 quant_df.insert(0, "primary_id", calibration.primary_id)
                 quant_df.insert(1, "seed", calibration.seed)
                 quant_df.insert(2, "population", calibration.population)
-                quantiles_transitions_list.append(quant_df)
+                quantiles_projection_transitions_list.append(quant_df)
 
-    quantiles_compartments = (
-        pd.concat(quantiles_compartments_list, ignore_index=True) if quantiles_compartments_list else pd.DataFrame()
+    quantiles_projection_compartments = (
+        pd.concat(quantiles_projection_compartments_list, ignore_index=True)
+        if quantiles_projection_compartments_list
+        else pd.DataFrame()
     )
-    quantiles_transitions = (
-        pd.concat(quantiles_transitions_list, ignore_index=True) if quantiles_transitions_list else pd.DataFrame()
+    quantiles_projection_transitions = (
+        pd.concat(quantiles_projection_transitions_list, ignore_index=True)
+        if quantiles_projection_transitions_list
+        else pd.DataFrame()
     )
     quantiles_calibration = (
         pd.concat(quantiles_calibration_list, ignore_index=True) if quantiles_calibration_list else pd.DataFrame()
@@ -802,7 +806,7 @@ def generate_calibration_outputs(
                 traj_c.insert(0, "primary_id", calibration.primary_id)
                 traj_c.insert(2, "seed", calibration.seed)
                 traj_c.insert(3, "population", calibration.population)
-                trajectories_compartments_list.append(traj_c)
+                trajectories_projection_compartments_list.append(traj_c)
 
             # Transitions
             if output.trajectories.transitions:
@@ -829,15 +833,17 @@ def generate_calibration_outputs(
                 traj_t.insert(0, "primary_id", calibration.primary_id)
                 traj_t.insert(2, "seed", calibration.seed)
                 traj_t.insert(3, "population", calibration.population)
-                trajectories_transitions_list.append(traj_t)
+                trajectories_projection_transitions_list.append(traj_t)
 
-    trajectories_compartments = (
-        pd.concat(trajectories_compartments_list, ignore_index=True)
-        if trajectories_compartments_list
+    trajectories_projection_compartments = (
+        pd.concat(trajectories_projection_compartments_list, ignore_index=True)
+        if trajectories_projection_compartments_list
         else pd.DataFrame()
     )
-    trajectories_transitions = (
-        pd.concat(trajectories_transitions_list, ignore_index=True) if trajectories_transitions_list else pd.DataFrame()
+    trajectories_projection_transitions = (
+        pd.concat(trajectories_projection_transitions_list, ignore_index=True)
+        if trajectories_projection_transitions_list
+        else pd.DataFrame()
     )
 
     ### Posteriors
@@ -982,16 +988,18 @@ def generate_calibration_outputs(
         logger.warning(warning)
 
     out_dict = {}
-    if not quantiles_compartments.empty:
-        qc_name = "quantiles_compartments"
+    if not quantiles_projection_compartments.empty:
+        qc_name = "quantiles_projection_compartments"
         qc_objects = [
-            format_tabular_object(quantiles_compartments, qc_name, _type) for _type in output.tabular_output_types
+            format_tabular_object(quantiles_projection_compartments, qc_name, _type)
+            for _type in output.tabular_output_types
         ]
         out_dict[qc_name] = qc_objects
-    if not quantiles_transitions.empty:
-        qt_name = "quantiles_transitions"
+    if not quantiles_projection_transitions.empty:
+        qt_name = "quantiles_projection_transitions"
         qt_objects = [
-            format_tabular_object(quantiles_transitions, qt_name, _type) for _type in output.tabular_output_types
+            format_tabular_object(quantiles_projection_transitions, qt_name, _type)
+            for _type in output.tabular_output_types
         ]
         out_dict[qt_name] = qt_objects
     if not quantiles_calibration.empty:
@@ -1000,16 +1008,18 @@ def generate_calibration_outputs(
             format_tabular_object(quantiles_calibration, qcal_name, _type) for _type in output.tabular_output_types
         ]
         out_dict[qcal_name] = qcal_objects
-    if not trajectories_compartments.empty:
-        tc_name = "trajectories_compartments"
+    if not trajectories_projection_compartments.empty:
+        tc_name = "trajectories_projection_compartments"
         tc_objects = [
-            format_tabular_object(trajectories_compartments, tc_name, _type) for _type in output.tabular_output_types
+            format_tabular_object(trajectories_projection_compartments, tc_name, _type)
+            for _type in output.tabular_output_types
         ]
         out_dict[tc_name] = tc_objects
-    if not trajectories_transitions.empty:
-        tt_name = "trajectories_transitions"
+    if not trajectories_projection_transitions.empty:
+        tt_name = "trajectories_projection_transitions"
         tt_objects = [
-            format_tabular_object(trajectories_transitions, tt_name, _type) for _type in output.tabular_output_types
+            format_tabular_object(trajectories_projection_transitions, tt_name, _type)
+            for _type in output.tabular_output_types
         ]
         out_dict[tt_name] = tt_objects
     if not posteriors.empty:
