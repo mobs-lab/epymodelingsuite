@@ -10,6 +10,7 @@ from epymodelingsuite.utils.location import get_flusight_locations
 def fetch_hhs_hospitalizations(
     query_start_date: str | None = None,
     save_path: str | None = None,
+    data_type: str = "default",
 ) -> pd.DataFrame:
     """
     Fetch HHS flu hospitalization data from CDC's Socrata API.
@@ -23,6 +24,11 @@ def fetch_hhs_hospitalizations(
     save_path : str, optional
         Path to save the resulting CSV file.
         If provided, the DataFrame will be saved to this path before returning.
+    data_type : str, optional
+        Type of data to fetch. Options are:
+        - "default": Non-preliminary data (dataset ID: ua7e-t2fy)
+        - "preliminary": Preliminary data (dataset ID: mpgq-jmmr)
+        Default is "default".
 
     Returns
     -------
@@ -64,9 +70,12 @@ def fetch_hhs_hospitalizations(
     -----
     Data Source
         Weekly Hospital Respiratory Data (HRD) Metrics by Jurisdiction from CDC's
-        National Healthcare Safety Network (NHSN). See full documentation from the URL below.
-        URL: https://data.cdc.gov/Public-Health-Surveillance/Weekly-Hospital-Respiratory-Data-HRD-Metrics-by-Ju/mpgq-jmmr
-        Dataset ID: mpgq-jmmr.
+        National Healthcare Safety Network (NHSN). Two datasets are available:
+
+        - Default (non-preliminary): ua7e-t2fy
+          https://data.cdc.gov/Public-Health-Surveillance/Weekly-Hospital-Respiratory-Data-HRD-Metrics-by-Ju/ua7e-t2fy
+        - Preliminary: mpgq-jmmr
+          https://data.cdc.gov/Public-Health-Surveillance/Weekly-Hospital-Respiratory-Data-HRD-Metrics-by-Ju/mpgq-jmmr
 
     Data Field
         Uses `totalconfflunewadm`: total number of new hospital admissions of patients
@@ -77,15 +86,27 @@ def fetch_hhs_hospitalizations(
         aggregates. Territories (AS, GU, MP, PR, VI) and HHS regions are excluded from the output.
 
     """
+    # Map data_type to dataset IDs
+    dataset_ids = {
+        "default": "ua7e-t2fy",  # Non-preliminary data
+        "preliminary": "mpgq-jmmr",  # Preliminary data
+    }
+
+    if data_type not in dataset_ids:
+        msg = f"Invalid data_type: {data_type}. Must be 'default' or 'preliminary'"
+        raise ValueError(msg)
+
+    dataset_id = dataset_ids[data_type]
+
     # Initialize Socrata client
     client = Socrata("data.cdc.gov", None)
 
     # Build query
     if query_start_date:
         where_clause = f"weekendingdate >= '{query_start_date}'"
-        results = client.get("mpgq-jmmr", where=where_clause, limit=100000)
+        results = client.get(dataset_id, where=where_clause, limit=100000)
     else:
-        results = client.get("mpgq-jmmr", limit=100000)
+        results = client.get(dataset_id, limit=100000)
 
     # Convert to pandas DataFrame
     data = pd.DataFrame.from_records(results)
