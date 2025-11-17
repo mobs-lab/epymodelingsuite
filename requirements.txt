@@ -5,6 +5,7 @@ pandas
 holidays
 matplotlib
 pydantic
+sodapy
 pyyaml
 sphinx
 sphinx-pyproject
