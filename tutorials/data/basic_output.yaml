@@ -14,15 +14,11 @@ output:
     # Output all compartments if 'true', or supply list
     compartments: true
     # Output selected transitions
-    transitions:
-      - Home_sev_to_Hosp_total
-      - Home_sev_vax_to_Hosp_vax_total
+    transitions: true
 
   # Optional: specify which trajectories to output
   trajectories:
-    compartments:
-      - Hosp_total
-      - Hosp_vax_total
+    compartments: true
     transitions: true
 
   # Set true for default behavior or use subfield 'generations'
@@ -44,6 +40,10 @@ output:
 
   # Visualization plots
   plots:
+    figure_output_types:
+      - PNG
+    dpi: 150                # DPI for raster formats (png)
+    
     reference_date: "2025-04-05"  # Forecast reference date for vertical line
 
     # Posterior distribution plots
@@ -83,5 +83,3 @@ output:
       reference_line:
         show: true
 
-    format: "png"           # Output format: png, pdf, or svg
-    dpi: 150                # DPI for raster formats (png)
