@@ -275,12 +275,12 @@ def validate_cross_config_consistency(
     # Modelset must contain either sampling or calibration section
     sampling = getattr(modelset, "sampling", None)
     calibration = getattr(modelset, "calibration", None)
-    if not sampling and not calibration:
-        err_msg = "Modelset must provide a 'sampling' or 'calibration' section."
+    if isinstance(modelset_config, CalibrationConfig) and not calibration:
+        err_msg = "Calibration modelset must provide a 'calibration' section."
         raise ValueError(err_msg)
 
     # End validation if no variables are sampled (modelset is used only for population)
-    if sampling == "populations":
+    if sampling is None:
         logger.info(
             "Sampling modelset received without sampled variables (only populations). Ensure your modelset does not contain any 'sampled' keywords"
         )
