@@ -776,13 +776,13 @@ def generate_calibration_outputs(
                         # TODO: add target prediction data column name below
                         columns_to_select = ["date", "quantile"]
                         columns_to_select.extend(transition_columns)
-                        quant_df = quant_df[columns_to_select].copy()
+                        quant_df = quan_df[columns_to_select].copy()
                 else:
                     # Use all transitions, filter out compartments
                     # TODO: add target prediction data column name below
                     columns_to_select = ["date", "quantile"]
                     columns_to_select.extend(transition_columns)
-                    quant_df = quant_df[columns_to_select].copy()
+                    quant_df = quan_df[columns_to_select].copy()
                 quant_df.insert(0, "primary_id", calibration.primary_id)
                 quant_df.insert(1, "seed", calibration.seed)
                 quant_df.insert(2, "population", calibration.population)
