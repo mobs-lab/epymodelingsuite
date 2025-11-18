@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from .schema.output import FigureOutputTypeEnum, OutputObject
+from ..schema.output import FigureOutputTypeEnum, OutputObject
 
 # Constants
 MEDIAN_QUANTILE = 0.5
