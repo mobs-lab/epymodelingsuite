@@ -7,7 +7,12 @@ from epydemix.model import EpiModel
 from pandas import DataFrame
 
 from ..schema.basemodel import Timespan, Transition, Vaccination
-from ..vaccinations import add_vaccination_schedule, make_vaccination_rate_function, scenario_to_epydemix
+from ..vaccinations import (
+    add_vaccination_schedule,
+    make_vaccination_rate_function,
+    resample_vaccination_schedule,
+    scenario_to_epydemix,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +67,10 @@ def add_vaccination_schedules_from_config(
             logger.info(f"Created vaccination schedule from scenario data at {vaccination.scenario_data_path}")
         except Exception as e:
             raise ValueError(f"Error creating vaccination schedule from scenario data:\n{e}")
+
+    # Resample vaccination schedule to match simulation timestep (delta_t)
+    # This ensures the vaccination array has the correct size for the simulation
+    vaccination_schedule = resample_vaccination_schedule(vaccination_schedule, timespan.delta_t)
 
     # Add vaccine transitions to the model
     for transition in vaccination_transitions:
