@@ -5,6 +5,10 @@ output:
     version: "0.0.1"
     date: "2038-01-19"
 
+  # Output formats for tabular data (CSVBytes saves as .csv.gz files)
+  tabular_output_types:
+    - CSVBytes
+
   # Default format outputs quantiles of compartments and transitions
   quantiles:
     # Output all compartments if 'true', or supply list
