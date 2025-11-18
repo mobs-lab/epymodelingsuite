@@ -94,7 +94,7 @@ def create_model_collection(
     # Create models with populations set
     if population_names:
         if "all" in population_names:
-            resolved_names = get_location_codebook()["location_name_epydemix"]
+            resolved_names = get_location_codebook()["location_name_epydemix"].tolist()
         else:
             resolved_names = population_names
         for name in resolved_names:
