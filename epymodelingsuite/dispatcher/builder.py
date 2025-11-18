@@ -340,7 +340,7 @@ def build_calibration(
         sampled_start_timespan = None
 
     # Vaccination is sensitive to location and start_date but not to model parameters.
-    models, earliest_vax = setup_vaccination_schedules(basemodel, models, sampled_start_timespan, population_names)
+    models, earliest_vax = setup_vaccination_schedules(basemodel, models, sampled_start_timespan, population_names.tolist())
 
     # These interventions are sensitive to location but not to model parameters and can be applied
     # using the earliest start_date before creating ABCSamplers.
