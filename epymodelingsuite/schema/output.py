@@ -266,16 +266,6 @@ class PlotsConfig(BaseModel):
         description="Quantile ribbon plot settings.",
     )
 
-    @field_validator("format")
-    @classmethod
-    def check_format_valid(cls, v: str) -> str:
-        """Ensure format is valid."""
-        valid_formats = {"png", "pdf", "svg"}
-        if v.lower() not in valid_formats:
-            msg = f"Format must be one of {valid_formats}, got {v}"
-            raise ValueError(msg)
-        return v.lower()
-
 
 class OutputConfiguration(BaseModel):
     """Output configuration."""
