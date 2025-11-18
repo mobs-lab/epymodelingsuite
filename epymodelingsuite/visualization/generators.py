@@ -7,6 +7,7 @@ outputs as OutputObject instances.
 
 import logging
 import math
+from datetime import date as Date
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -139,6 +140,19 @@ def generate_single_quantile_plots(
         df_surv = None
         if surveillance is not None and plots_config.quantiles.surveillance.location_column:
             surv = get_data_in_location(surveillance, location, plots_config.quantiles.surveillance.location_column)
+
+            # Filter surveillance data to start from timespan start (inferred from projection or calibration quantiles)
+            if not surv.empty:
+                # Use projection quantiles to get full timespan, fall back to calibration if not available
+                quantiles_for_timespan = proj_quant if proj_quant is not None else cal_quant
+                if quantiles_for_timespan is not None and "date" in quantiles_for_timespan.columns:
+                    # Infer timespan start from the earliest date in quantiles
+                    timespan_start = pd.to_datetime(quantiles_for_timespan["date"]).min().date()
+                    # Filter surveillance data to start from timespan start
+                    date_col = pd.to_datetime(surv[plots_config.quantiles.surveillance.date_column]).dt.date
+                    mask = date_col >= timespan_start
+                    surv = surv.loc[mask]
+
             if (
                 not surv.empty
                 and plots_config.quantiles.surveillance.date_column
@@ -270,6 +284,24 @@ def generate_quantile_grid_plot(
         # Filter surveillance data for this location
         if surveillance is not None and plots_config.quantiles.surveillance.location_column:
             surv = get_data_in_location(surveillance, loc, plots_config.quantiles.surveillance.location_column)
+
+            # Filter surveillance data to start from timespan start (inferred from projection or calibration quantiles)
+            if not surv.empty:
+                # Use projection quantiles to get full timespan, fall back to calibration if not available
+                quantiles_for_timespan = None
+                if loc in location_proj_quants:
+                    quantiles_for_timespan = location_proj_quants[loc]
+                elif loc in location_cal_quants:
+                    quantiles_for_timespan = location_cal_quants[loc]
+
+                if quantiles_for_timespan is not None and "date" in quantiles_for_timespan.columns:
+                    # Infer timespan start from the earliest date in quantiles
+                    timespan_start = pd.to_datetime(quantiles_for_timespan["date"]).min().date()
+                    # Filter surveillance data to start from timespan start
+                    date_col = pd.to_datetime(surv[plots_config.quantiles.surveillance.date_column]).dt.date
+                    mask = date_col >= timespan_start
+                    surv = surv.loc[mask]
+
             if (
                 not surv.empty
                 and plots_config.quantiles.surveillance.date_column
