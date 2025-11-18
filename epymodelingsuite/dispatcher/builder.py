@@ -37,7 +37,7 @@ from ..schema.dispatcher import BuilderOutput, ProjectionArguments, SimulationAr
 from ..schema.general import validate_cross_config_consistency
 from ..schema.sampling import SamplingConfig
 from ..school_closures import make_school_closure_dict
-from ..telemetry import ExecutionTelemetry
+from ..telemetry import ExecutionTelemetry, extract_builder_metadata
 from ..utils.config import get_workflow_type_from_configs
 from ..vaccinations import reaggregate_vaccines
 
