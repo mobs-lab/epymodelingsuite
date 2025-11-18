@@ -27,6 +27,8 @@ class FigureOutputTypeEnum(str, Enum):
 
     MPLFigure = "MPLFigure"
     PNG = "PNG"
+    PDF = "PDF"
+    SVG = "SVG"
 
 
 def get_default_tabular_output() -> list[TabularOutputTypeEnum]:
