@@ -79,4 +79,5 @@ output:
       reference_line:
         show: true
 
-    format: "pdf"           # Output format: png, pdf, or svg
+    format: "png"           # Output format: png, pdf, or svg
+    dpi: 150                # DPI for raster formats (png)
