@@ -2,6 +2,7 @@
 
 import copy
 import logging
+from collections.abc import Callable
 
 import numpy as np
 import pandas as pd
@@ -53,6 +54,84 @@ dist_func_dict = {
     "mae": mae,
     "mape": mape,
 }
+
+
+def count_nans_at_start(arr: np.ndarray) -> int:
+    """
+    Count the number of NaN values prepended to the input array, if any.
+
+    Parameters
+    ----------
+    arr: np.ndarray
+        The array to count NaNs from.
+
+    Returns
+    -------
+    int
+        The number of NaNs found prepended to the array.
+    """
+    # Create a boolean mask for NaN values
+    mask = np.isnan(arr)
+
+    # Find the index of the first non-NaN value
+    first_non_nan_index = np.argmax(~mask)
+
+    # If no values are NaN, return 0
+    # If all, return len(arr)
+    if mask.all():
+        return len(arr)
+    if mask.any():
+        return first_non_nan_index
+    return 0
+
+
+def dist_func_date_alignment_wrapper(dist_func: Callable) -> Callable:
+    """
+    Create a wrapped version of an epydemix distance function which truncates observed and simulated
+    trajectories to exclude prepended NaNs before applying the distance calculation.
+
+    Parameters
+    ----------
+    dist_func: Callable
+        An epydemix distance function.
+
+    Returns
+    -------
+    Callable
+        The wrapped distance function for handling prepended NaNs.
+    """
+
+    def wrapped_dist_func(data: dict, simulation: dict) -> float | np.ndarray:
+        """
+        A wrapped epydemix distance function which truncates observed and simulated
+        trajectories to exclude prepended NaNs before applying the distance calculation.
+
+        Parameters
+        ----------
+        data: dict
+            A dictionary containing the observed data with a key "data" pointing to an array of observations.
+        simulation: dict
+            A dictionary containing the simulated data with a key "data" pointing to an array of simulated values.
+
+        Returns
+        -------
+        float | np.ndarray
+            The result of calling dist_func on the truncated data, which is np.ndarray if
+            dist_func is Absolute Error and float otherwise.
+        """
+        observed = np.array(data["data"])
+        simulated = np.array(simulation["data"])
+
+        num_nans = count_nans_at_start(simulated)
+
+        trunc_data = copy.deepcopy(data)
+        trunc_simulation = copy.deepcopy(simulation)
+        trunc_data["data"] = observed[num_nans:]
+        trunc_simulation["data"] = simulated[num_nans:]
+
+        return dist_func(trunc_data, trunc_simulation)
+
+    return wrapped_dist_func
 
 
 # ===== Builder Registry and Functions =====
@@ -385,7 +464,7 @@ def build_calibration(
             priors=priors,
             parameters=fixed_parameters,
             observed_data=observed_data[calibration.comparison[0].observed_value_column].values,
-            distance_function=dist_func_dict[calibration.distance_function],
+            distance_function=dist_func_date_alignment_wrapper(dist_func_dict[calibration.distance_function]),
         )
 
         calibrators.append(abc_sampler)
