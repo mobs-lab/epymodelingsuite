@@ -33,7 +33,7 @@ def get_data_in_window(data: pd.DataFrame, calibration: CalibrationConfig) -> pd
     return data.loc[mask]
 
 
-def get_data_in_location(data: pd.DataFrame, model: EpiModel, location_key: str) -> pd.DataFrame:
+def get_data_in_location(data: pd.DataFrame, population_name: str, location_key: str) -> pd.DataFrame:
     """
     Get data for a specific location.
 
@@ -41,15 +41,15 @@ def get_data_in_location(data: pd.DataFrame, model: EpiModel, location_key: str)
     ----------
     data : pd.DataFrame
         The full dataset to filter.
-    model : EpiModel
-        The model whose population name will be used to filter data.
+    population_name : str
+        Name of the population/location.
     location_key : str
         The column name containing location identifiers.
 
     Returns
     -------
     pd.DataFrame
-        Filtered data for the model's location.
+        Filtered data for the location.
     """
-    location_iso = convert_location_name_format(model.population.name, "ISO")
+    location_iso = convert_location_name_format(population_name, "ISO")
     return data[data[location_key] == location_iso]
