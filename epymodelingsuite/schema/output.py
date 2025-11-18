@@ -27,6 +27,8 @@ class FigureOutputTypeEnum(str, Enum):
 
     MPLFigure = "MPLFigure"
     PNG = "PNG"
+    PDF = "PDF"
+    SVG = "SVG"
 
 
 def get_default_tabular_output() -> list[TabularOutputTypeEnum]:
@@ -120,10 +122,11 @@ class QuantilesOutput(BaseModel):
 
     @field_validator("selections")
     @classmethod
-    def check_selections(cls, v):
+    def check_selections(cls, v: list[float]) -> list[float]:
         """Ensure quantiles are in (0, 1)."""
-        if not all([0.0 < q < 1.0 for q in v]):
-            raise ValueError("Received quantile not in (0, 1).")
+        if not all(0.0 < q < 1.0 for q in v):
+            msg = "Received quantile not in (0, 1)."
+            raise ValueError(msg)
         return v
 
 
@@ -155,6 +158,119 @@ class ModelMetaOutput(BaseModel):
     )
 
 
+class PosteriorPlotConfig(BaseModel):
+    """Configuration for posterior distribution plots."""
+
+    single: bool | list[str] = Field(
+        False,
+        description="Create single plot per location. True for all locations, or list of specific locations.",
+    )
+    grid: bool = Field(False, description="Create grid plot with all locations.")
+    bins: int = Field(30, description="Number of histogram bins.")
+
+
+class QuantilesGridConfig(BaseModel):
+    """Configuration for quantiles grid plot."""
+
+    enabled: bool = Field(False, description="Create grid plot.")
+    panels_per_row: int = Field(4, description="Number of panels per row in grid.")
+
+
+class QuantilesCalibrationConfig(BaseModel):
+    """Configuration for calibration period visualization."""
+
+    show: bool = Field(True, description="Show calibration period quantiles.")
+    color: str = Field("C0", description="Color for calibration ribbons.")
+
+
+class QuantilesProjectionConfig(BaseModel):
+    """Configuration for projection period visualization."""
+
+    show: bool = Field(True, description="Show projection period quantiles.")
+    color: str = Field("C1", description="Color for projection ribbons.")
+
+
+class QuantilesSurveillanceConfig(BaseModel):
+    """Configuration for surveillance data overlay."""
+
+    show: bool = Field(True, description="Overlay surveillance observations.")
+    data_path: str | None = Field(None, description="Path to surveillance data file.")
+    value_column: str | None = Field(None, description="Column containing observed values.")
+    date_column: str | None = Field(None, description="Column containing dates.")
+    location_column: str | None = Field(None, description="Column containing location identifiers.")
+
+
+class QuantilesReferenceLineConfig(BaseModel):
+    """Configuration for reference date line."""
+
+    show: bool = Field(True, description="Show vertical line at reference date.")
+
+
+class QuantilesPlotConfig(BaseModel):
+    """Configuration for quantile ribbon plots."""
+
+    single: bool | list[str] = Field(
+        False,
+        description="Create single plot per location. True for all locations, or list of specific locations.",
+    )
+    grid: QuantilesGridConfig = Field(
+        default_factory=QuantilesGridConfig,
+        description="Grid plot configuration.",
+    )
+    quantiles: list[float] = Field(
+        [0.025, 0.5, 0.975],
+        description="Quantile levels for ribbons (95% CrI + median).",
+    )
+
+    calibration: QuantilesCalibrationConfig = Field(
+        default_factory=QuantilesCalibrationConfig,
+        description="Calibration period settings.",
+    )
+    projection: QuantilesProjectionConfig = Field(
+        default_factory=QuantilesProjectionConfig,
+        description="Projection period settings.",
+    )
+    surveillance: QuantilesSurveillanceConfig = Field(
+        default_factory=QuantilesSurveillanceConfig,
+        description="Surveillance data overlay settings.",
+    )
+    reference_line: QuantilesReferenceLineConfig = Field(
+        default_factory=QuantilesReferenceLineConfig,
+        description="Reference date line settings.",
+    )
+
+    @field_validator("quantiles")
+    @classmethod
+    def check_quantiles_valid(cls, v: list[float]) -> list[float]:
+        """Ensure quantiles are in [0, 1]."""
+        for q in v:
+            if not 0.0 <= q <= 1.0:
+                msg = f"Quantile {q} must be between 0 and 1"
+                raise ValueError(msg)
+        return v
+
+
+class PlotsConfig(BaseModel):
+    """Configuration for visualization plots."""
+
+    figure_output_types: list[FigureOutputTypeEnum] = Field(
+        default_factory=get_default_figure_output,
+        description="Output formats to create for all requested figure outputs.",
+    )
+    dpi: int | None = Field(150, description="DPI for raster formats.")
+
+    reference_date: date = Field(description="Forecast reference date for vertical line.")
+
+    posterior: PosteriorPlotConfig = Field(
+        default_factory=PosteriorPlotConfig,
+        description="Posterior distribution plot settings.",
+    )
+    quantiles: QuantilesPlotConfig = Field(
+        default_factory=QuantilesPlotConfig,
+        description="Quantile ribbon plot settings.",
+    )
+
+
 class OutputConfiguration(BaseModel):
     """Output configuration."""
 
@@ -163,10 +279,6 @@ class OutputConfiguration(BaseModel):
     tabular_output_types: list[TabularOutputTypeEnum] | None = Field(
         default_factory=get_default_tabular_output,
         description="Output formats to create for all requested tabular outputs.",
-    )
-    figure_output_types: list[FigureOutputTypeEnum] | None = Field(
-        default_factory=get_default_figure_output,
-        description="Output formats to create for all requested figure outputs.",
     )
 
     # Tabular outputs
@@ -188,6 +300,11 @@ class OutputConfiguration(BaseModel):
 
     model_meta: ModelMetaOutput = Field(
         default_factory=ModelMetaOutput, description="Specifications for parameter tracking / model metadata outputs."
+    )
+
+    plots: PlotsConfig | None = Field(
+        None,
+        description="Visualization plot settings. Requires modelset config for inference.",
     )
 
     @model_validator(mode="after")
