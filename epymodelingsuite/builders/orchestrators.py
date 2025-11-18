@@ -91,10 +91,14 @@ def create_model_collection(
     add_model_transitions_from_config(init_model, basemodel.transitions)
     add_model_parameters_from_config(init_model, basemodel.parameters)
 
+    # Convert to list if it's a pandas Series (defensive check to avoid boolean ambiguity errors)
+    if population_names is not None and hasattr(population_names, "tolist"):
+        population_names = population_names.tolist()
+
     # Create models with populations set
     if population_names:
         if "all" in population_names:
-            resolved_names = get_location_codebook()["location_name_epydemix"]
+            resolved_names = get_location_codebook()["location_name_epydemix"].tolist()
         else:
             resolved_names = population_names
         for name in resolved_names:
@@ -970,8 +974,10 @@ def make_scenario_projection_simulate_wrappers(
     for model in models:
         # TODO: Make location column name configurable instead of hardcoded "geo_value"
         # Should be added to ComparisonSpec schema (e.g., observed_location_column)
-        observed_data = get_data_in_location(observed_in_window, model, "geo_value")
-        vax_state = get_data_in_location(earliest_vax, model, "location") if earliest_vax is not None else None
+        observed_data = get_data_in_location(observed_in_window, model.population.name, "geo_value")
+        vax_state = (
+            get_data_in_location(earliest_vax, model.population.name, "location") if earliest_vax is not None else None
+        )
         # Create simulate_wrapper
         simulate_wrapper = make_simulate_wrapper(
             basemodel=basemodel,
