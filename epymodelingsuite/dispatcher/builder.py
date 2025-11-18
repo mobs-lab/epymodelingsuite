@@ -351,10 +351,9 @@ def build_calibration(
     observed_raw = pd.read_csv(calibration.observed_data_path)
     observed_in_window = get_data_in_window(observed_raw, calibration)
     calibrators = []
+    location_column = calibration.comparison[0].observed_location_column
     for model in models:
-        # TODO: Make location column name configurable instead of hardcoded "geo_value"
-        # Should be added to ComparisonSpec schema (e.g., observed_location_column)
-        observed_data = get_data_in_location(observed_in_window, model.population.name, "geo_value")
+        observed_data = get_data_in_location(observed_in_window, model.population.name, location_column)
         vax_state = (
             get_data_in_location(earliest_vax, model.population.name, "location") if earliest_vax is not None else None
         )
