@@ -797,7 +797,7 @@ def plot_posterior_histogram_grid(
 def figure_to_output_object(
     fig: plt.Figure,
     name: str,
-    output_format: str = "png",
+    output_type: str | FigureOutputTypeEnum = FigureOutputTypeEnum.MPLFigure,
     dpi: int = 150,
 ) -> OutputObject:
     """
@@ -809,8 +809,8 @@ def figure_to_output_object(
         Matplotlib figure to convert.
     name : str
         Base name for the output (without extension).
-    output_format : str
-        Output format: "png", "pdf", or "svg".
+    output_type : str | FigureOutputTypeEnum
+        Output type: "MPLFigure", "PNG", "PDF", or "SVG". Default "MPLFigure".
     dpi : int
         DPI for raster formats.
 
@@ -826,19 +826,25 @@ def figure_to_output_object(
     >>> # Dispatcher can then save this to disk
 
     """
-    buffer = io.BytesIO()
-    fig.savefig(buffer, format=output_format, bbox_inches="tight", dpi=dpi)
-    buffer.seek(0)
+    # Convert types
+    if isinstance(output_type, str):
+        output_type = FigureOutputTypeEnum(output_type)
 
-    format_to_enum = {
-        "png": FigureOutputTypeEnum.PNG,
-        "pdf": FigureOutputTypeEnum.PDF,
-        "svg": FigureOutputTypeEnum.SVG,
-    }
-    output_type = format_to_enum.get(output_format.lower(), FigureOutputTypeEnum.PNG)
+    # Return bare figure if requested
+    if output_type == FigureOutputTypeEnum.MPLFigure:
+        return OutputObject(
+            output_type=output_type,
+            name=f"{name}.{output_type.name.lower()}",
+            data=fig,
+        )
+
+    # Otherwise, return image binary in requested format
+    buffer = io.BytesIO()
+    fig.savefig(buffer, format=output_type.name.lower(), bbox_inches="tight", dpi=dpi)
+    buffer.seek(0)
 
     return OutputObject(
         output_type=output_type,
-        name=f"{name}.{output_format}",
+        name=f"{name}.{output_type.name.lower()}",
         data=buffer.getvalue(),
     )

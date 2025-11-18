@@ -7,7 +7,6 @@ outputs as OutputObject instances.
 
 import logging
 import math
-from datetime import date as Date
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -188,8 +187,10 @@ def generate_single_quantile_plots(
             )
 
             # Package output
-            output_obj = figure_to_output_object(fig, f"quantiles_{location}", plots_config.format, plots_config.dpi)
-            out_dict[f"quantiles_{location}"] = [output_obj]
+            output_objs = []
+            for output_type in plots_config.figure_output_types:
+                output_objs.append(figure_to_output_object(fig, f"quantiles_{location}", output_type, plots_config.dpi))
+            out_dict[f"quantiles_{location}"] = output_objs
             plt.close(fig)
         except Exception as e:
             logger.warning("Failed to create quantile plot for %s: %s", location, e)
@@ -339,8 +340,11 @@ def generate_quantile_grid_plot(
                 panels_per_row=plots_config.quantiles.grid.panels_per_row,
             )
 
-            output_obj = figure_to_output_object(fig, "quantiles_grid", plots_config.format, plots_config.dpi)
-            out_dict["quantiles_grid"] = [output_obj]
+            # Package output
+            output_objs = []
+            for output_type in plots_config.figure_output_types:
+                output_objs.append(figure_to_output_object(fig, "quantiles_grid", output_type, plots_config.dpi))
+            out_dict["quantiles_grid"] = output_objs
             plt.close(fig)
         except Exception as e:
             logger.warning("Failed to create quantile grid plot: %s", e)
@@ -427,8 +431,11 @@ def generate_single_location_posterior_plots(
             fig.suptitle(f"Posterior Distributions - {location}", fontsize=14, y=0.995)
             fig.tight_layout()
 
-            output_obj = figure_to_output_object(fig, f"posterior_{location}", plots_config.format, plots_config.dpi)
-            out_dict[f"posterior_{location}"] = [output_obj]
+            # Package output
+            output_objs = []
+            for output_type in plots_config.figure_output_types:
+                output_objs.append(figure_to_output_object(fig, f"posterior_{location}", output_type, plots_config.dpi))
+            out_dict[f"posterior_{location}"] = output_objs
             plt.close(fig)
 
         except (ValueError, AttributeError) as e:
@@ -488,8 +495,11 @@ def generate_posterior_grid_plot(
                 bins=plots_config.posterior.bins,
             )
 
-            output_obj = figure_to_output_object(fig, "posterior_grid", plots_config.format, plots_config.dpi)
-            out_dict["posterior_grid"] = [output_obj]
+            # Package output
+            output_objs = []
+            for output_type in plots_config.figure_output_types:
+                output_objs.append(figure_to_output_object(fig, "posterior_grid", output_type, plots_config.dpi))
+            out_dict["posterior_grid"] = output_objs
             plt.close(fig)
         except Exception as e:
             logger.warning("Failed to create posterior grid plot: %s", e)
