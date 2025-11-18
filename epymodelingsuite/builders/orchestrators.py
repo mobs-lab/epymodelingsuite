@@ -91,6 +91,10 @@ def create_model_collection(
     add_model_transitions_from_config(init_model, basemodel.transitions)
     add_model_parameters_from_config(init_model, basemodel.parameters)
 
+    # Convert to list if it's a pandas Series (defensive check to avoid boolean ambiguity errors)
+    if population_names is not None and hasattr(population_names, "tolist"):
+        population_names = population_names.tolist()
+
     # Create models with populations set
     if population_names:
         if "all" in population_names:
