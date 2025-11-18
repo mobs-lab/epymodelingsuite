@@ -9,4 +9,5 @@ modelset:
     - US-MA
     - US-NY # or 'all'
 
-
+  # Sampling section can be omitted if we are only duplicating the basemodel for different populations
+  #  sampling:
