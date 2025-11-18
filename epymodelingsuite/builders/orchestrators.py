@@ -17,7 +17,7 @@ from ..schema.basemodel import BaseEpiModel, BasemodelConfig, Parameter, Timespa
 from ..schema.calibration import CalibrationConfig, ComparisonSpec
 from ..school_closures import make_school_closure_dict
 from ..utils import get_location_codebook, make_dummy_population
-from ..vaccinations import reaggregate_vaccines, resample_vaccination_schedule, scenario_to_epydemix
+from ..vaccinations import reaggregate_vaccines, scenario_to_epydemix
 from .base import (
     add_model_compartments_from_config,
     add_model_parameters_from_config,
