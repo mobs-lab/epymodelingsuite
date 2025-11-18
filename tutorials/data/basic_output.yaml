@@ -37,3 +37,47 @@ output:
   # Use the model_meta field to record projection parameters.
   model_meta:
     projection_parameters: true
+
+  # Visualization plots
+  plots:
+    reference_date: "2025-04-05"  # Forecast reference date for vertical line
+
+    # Posterior distribution plots
+    posterior:
+      single: false          # One plot per location (uses all locations from calibrations). Boolean or list of locations.
+      grid: true            # Grid plot with all locations
+      bins: 30              # Number of histogram bins
+
+    # Quantile ribbon plots
+    quantiles:
+      single: false          # One plot per location
+      grid:
+        enabled: true       # Create multi-location grid
+        panels_per_row: 4   # Number of panels per row in grid
+
+      quantiles: [0.025, 0.5, 0.975]  # 95% CrI + median
+
+      # Calibration period settings
+      calibration:
+        show: true
+        color: "C0"
+
+      # Projection period settings
+      projection:
+        show: true
+        color: "C1"
+
+      # Surveillance data overlay settings
+      surveillance:
+        show: true
+        data_path: data/flu_hosp_24.csv
+        value_column: hospitalizations
+        date_column: target_end_date
+        location_column: geo_value
+
+      # Reference date line settings
+      reference_line:
+        show: true
+
+    format: "png"           # Output format: png, pdf, or svg
+    dpi: 150                # DPI for raster formats (png)
