@@ -19,6 +19,12 @@ from ..schema.output import (
 )
 from ..telemetry import ExecutionTelemetry
 from ..utils.location import convert_location_name_format, get_flusight_population
+from ..visualization.generators import (
+    generate_posterior_grid_plot,
+    generate_quantile_grid_plot,
+    generate_single_location_posterior_plots,
+    generate_single_quantile_plots,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +80,75 @@ def filter_failed_projections(calibration_results: CalibrationResults) -> Calibr
 
     # Store filtered count on results object
     calibration_results._filtered_count = total_filtered
+
+    return calibration_results
+
+
+def filter_failed_calibration_trajectories(calibration_results: CalibrationResults) -> CalibrationResults:
+    """
+    Filter out failed calibration trajectories from calibration results.
+
+    When calibration simulations fail, the simulation wrapper returns {}. This function
+    removes failed trajectories before quantile/trajectory calculations.
+
+    A valid trajectory dict must contain 'data' and 'date' keys with array-like values.
+    Other keys like 'random_state' (which is a dict) are allowed and expected.
+
+    Modifies the calibration_results object in-place by filtering the selected_trajectories dict.
+
+    Parameters
+    ----------
+    calibration_results : CalibrationResults
+        Calibration results with selected_trajectories attribute (dict mapping generation to list of trajectory dicts).
+        Failed trajectories are empty dicts {} or missing required keys.
+
+    Returns
+    -------
+    CalibrationResults
+        The same object (modified in-place) with failed trajectories filtered out.
+    """
+    if hasattr(calibration_results, "selected_trajectories") and calibration_results.selected_trajectories:
+        total_filtered = 0
+        # Filter each generation's trajectories
+        for generation in calibration_results.selected_trajectories:
+            trajectories = calibration_results.selected_trajectories[generation]
+            if trajectories:
+                original_count = len(trajectories)
+                # Filter out failed trajectories
+                valid_trajectories = []
+                for traj in trajectories:
+                    # Check if trajectory is empty dict
+                    if not traj:
+                        continue
+
+                    # Check if trajectory has required keys with valid data
+                    is_valid = True
+
+                    # Must have 'data' key with array-like value
+                    if "data" not in traj or not isinstance(traj["data"], (list, tuple, np.ndarray)):
+                        is_valid = False
+
+                    # Must have 'date' key with array-like value
+                    if (is_valid and "date" not in traj) or (
+                        is_valid and not isinstance(traj["date"], (list, tuple, np.ndarray))
+                    ):
+                        is_valid = False
+
+                    if is_valid:
+                        valid_trajectories.append(traj)
+
+                calibration_results.selected_trajectories[generation] = valid_trajectories
+
+                filtered_count = original_count - len(valid_trajectories)
+                total_filtered += filtered_count
+                if filtered_count > 0:
+                    logger.warning(
+                        "Filtered out %d failed calibration trajectory/trajectories in generation %d (kept %d/%d)",
+                        filtered_count,
+                        generation,
+                        len(valid_trajectories),
+                        original_count,
+                    )
 
     return calibration_results
 
@@ -636,18 +711,50 @@ def generate_calibration_outputs(
     warnings = set()
 
     # Initialize lists for efficient DataFrame concatenation (converted to DataFrames after loops)
-    quantiles_compartments_list = []
-    quantiles_transitions_list = []
-    trajectories_compartments_list = []
-    trajectories_transitions_list = []
+    quantiles_projection_compartments_list = []
+    quantiles_projection_transitions_list = []
+    quantiles_calibration_list = []
+    trajectories_projection_compartments_list = []
+    trajectories_projection_transitions_list = []
     posteriors_list = []
     hub_format_output_list = []
     model_meta = pd.DataFrame()
 
     ### Quantiles
     if output.quantiles:
-        for calibration in calibrations:
-            # Obtain quantiles
+        for calibration in calibrations:  # Calibration quantiles (only for calibration comparison target)
+            # Calibration quantiles
+            if output.quantiles.calibration:
+                if hasattr(output.quantiles.calibration, "__len__"):
+                    for generation in output.quantiles.calibration:
+                        try:
+                            quancal_df = calibration.results.get_calibration_quantiles(
+                                quantiles=output.quantiles.selections, generation=generation
+                            )
+                            quancal_df.insert(0, "primary_id", calibration.primary_id)
+                            quancal_df.insert(1, "seed", calibration.seed)
+                            quancal_df.insert(2, "population", calibration.population)
+                            quancal_df.insert(3, "generation", generation)
+                            quantiles_calibration_list.append(quancal_df)
+                        except Exception as e:
+                            warnings.add(
+                                f"OUTPUT GENERATOR: Exception occured obtaining calibration quantiles for model with primary_id={calibration.primary_id}, generation {generation}, continuing to next generation. Message: {e}"
+                            )
+                else:
+                    try:
+                        quancal_df = calibration.results.get_calibration_quantiles(
+                            quantiles=output.quantiles.selections
+                        )
+                        quancal_df.insert(0, "primary_id", calibration.primary_id)
+                        quancal_df.insert(1, "seed", calibration.seed)
+                        quancal_df.insert(2, "population", calibration.population)
+                        quantiles_calibration_list.append(quancal_df)
+                    except Exception as e:
+                        warnings.add(
+                            f"OUTPUT GENERATOR: Exception occured obtaining calibration quantiles for model with primary_id={calibration.primary_id}, continuing. Message: {e}"
+                        )
+
+            # Projection quantiles
             try:
                 quan_df = calibration.results.get_projection_quantiles(quantiles=output.quantiles.selections)
             except ValueError:
@@ -683,7 +790,7 @@ def generate_calibration_outputs(
                 quanc_df.insert(0, "primary_id", calibration.primary_id)
                 quanc_df.insert(1, "seed", calibration.seed)
                 quanc_df.insert(2, "population", calibration.population)
-                quantiles_compartments_list.append(quanc_df)
+                quantiles_projection_compartments_list.append(quanc_df)
 
             # Transitions
             if output.quantiles.transitions:
@@ -701,23 +808,30 @@ def generate_calibration_outputs(
                         # TODO: add target prediction data column name below
                         columns_to_select = ["date", "quantile"]
                         columns_to_select.extend(transition_columns)
-                        quant_df = quant_df[columns_to_select].copy()
+                        quant_df = quan_df[columns_to_select].copy()
                 else:
                     # Use all transitions, filter out compartments
                     # TODO: add target prediction data column name below
                     columns_to_select = ["date", "quantile"]
                     columns_to_select.extend(transition_columns)
-                    quant_df = quant_df[columns_to_select].copy()
+                    quant_df = quan_df[columns_to_select].copy()
                 quant_df.insert(0, "primary_id", calibration.primary_id)
                 quant_df.insert(1, "seed", calibration.seed)
                 quant_df.insert(2, "population", calibration.population)
-                quantiles_transitions_list.append(quant_df)
+                quantiles_projection_transitions_list.append(quant_df)
 
-    quantiles_compartments = (
-        pd.concat(quantiles_compartments_list, ignore_index=True) if quantiles_compartments_list else pd.DataFrame()
+    quantiles_projection_compartments = (
+        pd.concat(quantiles_projection_compartments_list, ignore_index=True)
+        if quantiles_projection_compartments_list
+        else pd.DataFrame()
     )
-    quantiles_transitions = (
-        pd.concat(quantiles_transitions_list, ignore_index=True) if quantiles_transitions_list else pd.DataFrame()
+    quantiles_projection_transitions = (
+        pd.concat(quantiles_projection_transitions_list, ignore_index=True)
+        if quantiles_projection_transitions_list
+        else pd.DataFrame()
+    )
+    quantiles_calibration = (
+        pd.concat(quantiles_calibration_list, ignore_index=True) if quantiles_calibration_list else pd.DataFrame()
     )
 
     ### Trajectories
@@ -767,7 +881,7 @@ def generate_calibration_outputs(
                 traj_c.insert(0, "primary_id", calibration.primary_id)
                 traj_c.insert(2, "seed", calibration.seed)
                 traj_c.insert(3, "population", calibration.population)
-                trajectories_compartments_list.append(traj_c)
+                trajectories_projection_compartments_list.append(traj_c)
 
             # Transitions
             if output.trajectories.transitions:
@@ -794,15 +908,17 @@ def generate_calibration_outputs(
                 traj_t.insert(0, "primary_id", calibration.primary_id)
                 traj_t.insert(2, "seed", calibration.seed)
                 traj_t.insert(3, "population", calibration.population)
-                trajectories_transitions_list.append(traj_t)
+                trajectories_projection_transitions_list.append(traj_t)
 
-    trajectories_compartments = (
-        pd.concat(trajectories_compartments_list, ignore_index=True)
-        if trajectories_compartments_list
+    trajectories_projection_compartments = (
+        pd.concat(trajectories_projection_compartments_list, ignore_index=True)
+        if trajectories_projection_compartments_list
         else pd.DataFrame()
     )
-    trajectories_transitions = (
-        pd.concat(trajectories_transitions_list, ignore_index=True) if trajectories_transitions_list else pd.DataFrame()
+    trajectories_projection_transitions = (
+        pd.concat(trajectories_projection_transitions_list, ignore_index=True)
+        if trajectories_projection_transitions_list
+        else pd.DataFrame()
     )
 
     ### Posteriors
@@ -922,14 +1038,32 @@ def generate_calibration_outputs(
                     meta_dict[colname].append(len(calibration.results.projections[scenario_id]))
 
             # Fitting window
-            trajc = calibration.results.get_calibration_trajectories()
-            meta_dict["fitting_start"].append(str(sorted(trajc["date"][0])[0].date()))
-            meta_dict["fitting_end"].append(str(sorted(trajc["date"][0])[-1].date()))
+            try:
+                trajc = calibration.results.get_calibration_trajectories()
+                if trajc and "date" in trajc and len(trajc["date"]) > 0:
+                    meta_dict["fitting_start"].append(str(sorted(trajc["date"][0])[0].date()))
+                    meta_dict["fitting_end"].append(str(sorted(trajc["date"][0])[-1].date()))
+                else:
+                    meta_dict["fitting_start"].append(None)
+                    meta_dict["fitting_end"].append(None)
+            except (KeyError, IndexError, AttributeError, TypeError) as e:
+                logger.warning("Failed to extract fitting window dates: %s", e)
+                meta_dict["fitting_start"].append(None)
+                meta_dict["fitting_end"].append(None)
 
             # Projection window
-            trajp = calibration.results.get_projection_trajectories()
-            meta_dict["start_date"].append(str(sorted(trajp["date"][0])[0].date()))
-            meta_dict["end_date"].append(str(sorted(trajp["date"][0])[-1].date()))
+            try:
+                trajp = calibration.results.get_projection_trajectories()
+                if trajp and "date" in trajp and len(trajp["date"]) > 0:
+                    meta_dict["start_date"].append(str(sorted(trajp["date"][0])[0].date()))
+                    meta_dict["end_date"].append(str(sorted(trajp["date"][0])[-1].date()))
+                else:
+                    meta_dict["start_date"].append(None)
+                    meta_dict["end_date"].append(None)
+            except (KeyError, IndexError, AttributeError, TypeError) as e:
+                logger.warning("Failed to extract projection window dates: %s", e)
+                meta_dict["start_date"].append(None)
+                meta_dict["end_date"].append(None)
 
             # Projection parameters
             # No calibration parameters, this is covered by posteriors.
@@ -947,28 +1081,38 @@ def generate_calibration_outputs(
         logger.warning(warning)
 
     out_dict = {}
-    if not quantiles_compartments.empty:
-        qc_name = "quantiles_compartments"
+    if not quantiles_projection_compartments.empty:
+        qc_name = "quantiles_projection_compartments"
         qc_objects = [
-            format_tabular_object(quantiles_compartments, qc_name, _type) for _type in output.tabular_output_types
+            format_tabular_object(quantiles_projection_compartments, qc_name, _type)
+            for _type in output.tabular_output_types
         ]
         out_dict[qc_name] = qc_objects
-    if not quantiles_transitions.empty:
-        qt_name = "quantiles_transitions"
+    if not quantiles_projection_transitions.empty:
+        qt_name = "quantiles_projection_transitions"
         qt_objects = [
-            format_tabular_object(quantiles_transitions, qt_name, _type) for _type in output.tabular_output_types
+            format_tabular_object(quantiles_projection_transitions, qt_name, _type)
+            for _type in output.tabular_output_types
         ]
         out_dict[qt_name] = qt_objects
-    if not trajectories_compartments.empty:
-        tc_name = "trajectories_compartments"
+    if not quantiles_calibration.empty:
+        qcal_name = "quantiles_calibration"
+        qcal_objects = [
+            format_tabular_object(quantiles_calibration, qcal_name, _type) for _type in output.tabular_output_types
+        ]
+        out_dict[qcal_name] = qcal_objects
+    if not trajectories_projection_compartments.empty:
+        tc_name = "trajectories_projection_compartments"
         tc_objects = [
-            format_tabular_object(trajectories_compartments, tc_name, _type) for _type in output.tabular_output_types
+            format_tabular_object(trajectories_projection_compartments, tc_name, _type)
+            for _type in output.tabular_output_types
         ]
         out_dict[tc_name] = tc_objects
-    if not trajectories_transitions.empty:
-        tt_name = "trajectories_transitions"
+    if not trajectories_projection_transitions.empty:
+        tt_name = "trajectories_projection_transitions"
         tt_objects = [
-            format_tabular_object(trajectories_transitions, tt_name, _type) for _type in output.tabular_output_types
+            format_tabular_object(trajectories_projection_transitions, tt_name, _type)
+            for _type in output.tabular_output_types
         ]
         out_dict[tt_name] = tt_objects
     if not posteriors.empty:
@@ -984,6 +1128,16 @@ def generate_calibration_outputs(
         mm_name = "model_metadata"
         mm_objects = [format_tabular_object(model_meta, mm_name, _type) for _type in output.tabular_output_types]
         out_dict[mm_name] = mm_objects
+
+    ### Visualization plots
+    if output.plots:
+        logger.info("Generating visualization plots")
+        plots_config = output.plots
+
+        generate_single_quantile_plots(calibrations, plots_config, out_dict)
+        generate_quantile_grid_plot(calibrations, plots_config, out_dict)
+        generate_single_location_posterior_plots(calibrations, plots_config, out_dict)
+        generate_posterior_grid_plot(calibrations, plots_config, out_dict)
 
     return out_dict
 

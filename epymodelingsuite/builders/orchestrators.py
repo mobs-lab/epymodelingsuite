@@ -17,7 +17,7 @@ from ..schema.basemodel import BaseEpiModel, BasemodelConfig, Parameter, Timespa
 from ..schema.calibration import CalibrationConfig, ComparisonSpec
 from ..school_closures import make_school_closure_dict
 from ..utils import get_location_codebook, make_dummy_population
-from ..vaccinations import reaggregate_vaccines, resample_vaccination_schedule, scenario_to_epydemix
+from ..vaccinations import reaggregate_vaccines, scenario_to_epydemix
 from .base import (
     add_model_compartments_from_config,
     add_model_parameters_from_config,
@@ -91,10 +91,14 @@ def create_model_collection(
     add_model_transitions_from_config(init_model, basemodel.transitions)
     add_model_parameters_from_config(init_model, basemodel.parameters)
 
+    # Convert to list if it's a pandas Series (defensive check to avoid boolean ambiguity errors)
+    if population_names is not None and hasattr(population_names, "tolist"):
+        population_names = population_names.tolist()
+
     # Create models with populations set
     if population_names:
         if "all" in population_names:
-            resolved_names = get_location_codebook()["location_name_epydemix"]
+            resolved_names = get_location_codebook()["location_name_epydemix"].tolist()
         else:
             resolved_names = population_names
         for name in resolved_names:
@@ -592,9 +596,8 @@ def apply_vaccination_for_sampled_start(
 
     # Start_date is sampled, need to reaggregate and resample
     reaggregated_vax = reaggregate_vaccines(earliest_vax, timespan.start_date)
-    reaggregated_resampled_vax = resample_vaccination_schedule(reaggregated_vax, timespan.delta_t)
     add_vaccination_schedules_from_config(
-        model, basemodel.transitions, basemodel.vaccination, timespan, use_schedule=reaggregated_resampled_vax
+        model, basemodel.transitions, basemodel.vaccination, timespan, use_schedule=reaggregated_vax
     )
 
 
@@ -982,8 +985,10 @@ def make_scenario_projection_simulate_wrappers(
     for model in models:
         # TODO: Make location column name configurable instead of hardcoded "geo_value"
         # Should be added to ComparisonSpec schema (e.g., observed_location_column)
-        observed_data = get_data_in_location(observed_in_window, model, "geo_value")
-        vax_state = get_data_in_location(earliest_vax, model, "location") if earliest_vax is not None else None
+        observed_data = get_data_in_location(observed_in_window, model.population.name, "geo_value")
+        vax_state = (
+            get_data_in_location(earliest_vax, model.population.name, "location") if earliest_vax is not None else None
+        )
         # Create simulate_wrapper
         simulate_wrapper = make_simulate_wrapper(
             basemodel=basemodel,

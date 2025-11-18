@@ -56,6 +56,8 @@ packages = [
     "epymodelingsuite.dispatcher",
     "epymodelingsuite.utils",
     "epymodelingsuite.data",
+    "epymodelingsuite.visualization",
+    "epymodelingsuite.telemetry",
 ]
 include-package-data = true
 

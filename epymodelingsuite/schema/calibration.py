@@ -91,6 +91,9 @@ class ComparisonSpec(BaseModel):
 
     observed_value_column: str = Field(description="Name of column containing observed values in observed data CSV")
     observed_date_column: str = Field(description="Name of column containing target dates in observed data CSV")
+    observed_location_column: str = Field(
+        default="geo_value", description="Name of column containing location identifiers in observed data CSV"
+    )
     simulation: list[str] = Field(description="List of transition names to sum for comparison (e.g. I_to_R)")
 
 

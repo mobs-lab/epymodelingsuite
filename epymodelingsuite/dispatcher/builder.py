@@ -38,7 +38,7 @@ from ..schema.dispatcher import BuilderOutput, ProjectionArguments, SimulationAr
 from ..schema.general import validate_cross_config_consistency
 from ..schema.sampling import SamplingConfig
 from ..school_closures import make_school_closure_dict
-from ..telemetry import ExecutionTelemetry
+from ..telemetry import ExecutionTelemetry, extract_builder_metadata
 from ..utils.config import get_workflow_type_from_configs
 from ..vaccinations import reaggregate_vaccines
 
@@ -274,8 +274,12 @@ def build_sampling(
     models, population_names = create_model_collection(basemodel, sampling.population_names)
 
     # Output of this is a list of dicts containing start_date, initial conditions, and parameter value
-    # combinations where parameters is in the same format as basemodel.parameters
-    sampled_vars = generate_samples(sampling_config, basemodel.random_seed)
+    # combinations where parameters is in the same format as basemodel.parameters.
+    # Create empty structure when only using modelset for multiple populations.
+    if sampling.sampling is None:
+        sampled_vars = [{}]
+    else:
+        sampled_vars = generate_samples(sampling_config, basemodel.random_seed)
 
     # Extract intervention types
     if basemodel.interventions:
@@ -431,6 +435,7 @@ def build_calibration(
     observed_raw = pd.read_csv(calibration.observed_data_path)
     observed_in_window = get_data_in_window(observed_raw, calibration)
     calibrators = []
+    location_column = calibration.comparison[0].observed_location_column
     for model in models:
         # Collect user-defined post-hoc transformation function
         post_hoc_func = (
@@ -443,10 +448,11 @@ def build_calibration(
             else None
         )
 
-        # TODO: Make location column name configurable instead of hardcoded "geo_value"
-        # Should be added to ComparisonSpec schema (e.g., observed_location_column)
-        observed_data = get_data_in_location(observed_in_window, model, "geo_value")
-        vax_state = get_data_in_location(earliest_vax, model, "location") if earliest_vax is not None else None
+        observed_data = get_data_in_location(observed_in_window, model.population.name, location_column)
+        vax_state = (
+            get_data_in_location(earliest_vax, model.population.name, "location") if earliest_vax is not None else None
+        )
+
         # Create simulate_wrapper
         simulate_wrapper = make_simulate_wrapper(
             basemodel=basemodel,

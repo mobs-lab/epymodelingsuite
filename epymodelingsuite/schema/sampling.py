@@ -114,7 +114,7 @@ class SamplingModelset(BaseModel):
 
     meta: Meta | None = Field(None, description="General metadata")
     population_names: list[str] = Field(description="List of population names")
-    sampling: SamplingConfiguration = Field(description="Sampling configuration")
+    sampling: SamplingConfiguration | None = Field(None, description="Sampling configuration")
 
     @field_validator("population_names")
     @classmethod
