@@ -249,6 +249,12 @@ class QuantilesPlotConfig(BaseModel):
 class PlotsConfig(BaseModel):
     """Configuration for visualization plots."""
 
+    figure_output_types: list[FigureOutputTypeEnum] = Field(
+        default_factory=get_default_figure_output,
+        description="Output formats to create for all requested figure outputs.",
+    )
+    dpi: int | None = Field(150, description="DPI for raster formats.")
+
     reference_date: date = Field(description="Forecast reference date for vertical line.")
 
     posterior: PosteriorPlotConfig = Field(
@@ -259,9 +265,6 @@ class PlotsConfig(BaseModel):
         default_factory=QuantilesPlotConfig,
         description="Quantile ribbon plot settings.",
     )
-
-    format: str = Field("pdf", description="Output format: png, pdf, svg.")
-    dpi: int = Field(150, description="DPI for raster formats.")
 
     @field_validator("format")
     @classmethod
@@ -282,10 +285,6 @@ class OutputConfiguration(BaseModel):
     tabular_output_types: list[TabularOutputTypeEnum] | None = Field(
         default_factory=get_default_tabular_output,
         description="Output formats to create for all requested tabular outputs.",
-    )
-    figure_output_types: list[FigureOutputTypeEnum] | None = Field(
-        default_factory=get_default_figure_output,
-        description="Output formats to create for all requested figure outputs.",
     )
 
     # Tabular outputs
