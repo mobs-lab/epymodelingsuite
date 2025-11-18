@@ -10,12 +10,10 @@ import numpy as np
 import pandas as pd
 from epydemix.calibration import CalibrationResults
 
-from ..builders.utils import get_data_in_location
 from ..schema.dispatcher import CalibrationOutput, SimulationOutput
 from ..schema.output import (
     OutputConfig,
     OutputObject,
-    PlotsConfig,
     TabularOutputTypeEnum,
     get_flusight_quantiles,
 )

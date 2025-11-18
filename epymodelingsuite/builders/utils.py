@@ -1,7 +1,6 @@
 """Helper utilities for filtering and processing calibration data."""
 
 import pandas as pd
-from epydemix.model import EpiModel
 
 from ..schema.calibration import CalibrationConfig
 from ..utils import convert_location_name_format
