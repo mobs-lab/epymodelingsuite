@@ -118,10 +118,11 @@ class QuantilesOutput(BaseModel):
 
     @field_validator("selections")
     @classmethod
-    def check_selections(cls, v):
+    def check_selections(cls, v: list[float]) -> list[float]:
         """Ensure quantiles are in (0, 1)."""
-        if not all([0.0 < q < 1.0 for q in v]):
-            raise ValueError("Received quantile not in (0, 1).")
+        if not all(0.0 < q < 1.0 for q in v):
+            msg = "Received quantile not in (0, 1)."
+            raise ValueError(msg)
         return v
 
 
