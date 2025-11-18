@@ -12,7 +12,8 @@ from epydemix import simulate
 from epydemix.model import EpiModel
 from numpy.random import Generator
 
-from ..schema.basemodel import BaseEpiModel, Parameter, Timespan
+from ..builders.utils import get_data_in_location, get_data_in_window
+from ..schema.basemodel import BaseEpiModel, BasemodelConfig, Parameter, Timespan
 from ..schema.calibration import CalibrationConfig, ComparisonSpec
 from ..school_closures import make_school_closure_dict
 from ..utils import get_location_codebook, make_dummy_population
@@ -229,19 +230,19 @@ def setup_interventions(
     return models
 
 
-def pad_array_with_zeros(
+def pad_array_with_nan(
     array: np.ndarray,
     pad_length: int,
 ) -> np.ndarray:
     """
-    Pad a numpy array with zeros at the beginning.
+    Pad a numpy array with nan at the beginning.
 
     Parameters
     ----------
     array : np.ndarray
             Array to pad.
     pad_length : int
-            Number of zeros to add at the beginning.
+            Number of nan to add at the beginning.
 
     Returns
     -------
@@ -251,7 +252,7 @@ def pad_array_with_zeros(
     if pad_length <= 0:
         return array
 
-    return np.pad(array, (pad_length, 0), constant_values=0)
+    return np.pad(array, (pad_length, 0), constant_values=np.nan)
 
 
 def pad_trajectory_arrays(
@@ -259,14 +260,14 @@ def pad_trajectory_arrays(
     pad_length: int,
 ) -> dict[str, np.ndarray]:
     """
-    Pad all arrays in a dictionary with zeros at the beginning.
+    Pad all arrays in a dictionary with nan at the beginning.
 
     Parameters
     ----------
     arrays_dict : dict[str, np.ndarray]
             Dictionary of arrays to pad.
     pad_length : int
-            Number of zeros to add at the beginning of each array.
+            Number of nan to add at the beginning of each array.
 
     Returns
     -------
@@ -276,7 +277,7 @@ def pad_trajectory_arrays(
     if pad_length <= 0:
         return arrays_dict
 
-    return {key: pad_array_with_zeros(value, pad_length) for key, value in arrays_dict.items()}
+    return {key: pad_array_with_nan(value, pad_length) for key, value in arrays_dict.items()}
 
 
 def calculate_padding_for_date_alignment(
@@ -306,7 +307,7 @@ def calculate_padding_for_date_alignment(
     >>> actual = [date(2024, 1, 10), date(2024, 1, 11)]
     >>> target = [date(2024, 1, 5), date(2024, 1, 6), ..., date(2024, 1, 11)]
     >>> calculate_padding_for_date_alignment(actual, target)
-    5  # Need 5 zeros for dates Jan 5-9
+    5  # Need 5 nan for dates Jan 5-9
     """
     # Find which target dates are covered by actual dates
     mask = np.isin(target_dates, actual_dates)
@@ -495,7 +496,7 @@ def format_calibration_data(
     dict[str, Any]
             Dictionary containing:
             - "data": np.ndarray of aggregated simulation values aligned to observation dates.
-                Padded with zeros at the beginning if simulation starts after first observation.
+                Padded with nan at the beginning if simulation starts after first observation.
             - "date": list of observation dates from observed data.
             - "random_state": dict containing RNG state for reproducibility.
     """
@@ -512,9 +513,9 @@ def format_calibration_data(
 
     # Step 3: Pad to align with full observation grid
     # When start_date is sampled, simulation may start later than first observation.
-    # Pad with zeros at beginning to align arrays for distance calculation.
+    # Pad with nan at beginning to align arrays for distance calculation.
     pad_len = calculate_padding_for_date_alignment(results.dates, data_dates)
-    aligned_data = pad_array_with_zeros(filtered_data, pad_len)
+    aligned_data = pad_array_with_nan(filtered_data, pad_len)
 
     return {"data": aligned_data, "date": data_dates, "random_state": random_state}
 
@@ -883,3 +884,104 @@ def make_simulate_wrapper(
         )
 
     return simulate_wrapper
+
+
+def make_scenario_projection_simulate_wrappers(
+    basemodel_config: BasemodelConfig,
+    calibration_config: CalibrationConfig,
+    overrides: dict | None = None,
+) -> list[Callable]:
+    """
+    Construct a list of simulate_wrappers from basemodel and calibration config, which differ only
+    in the overrides
+
+    Parameters
+    ----------
+        basemodel_config: BasemodelConfig
+            Base model configuration parsed from YAML
+        calibration_config: CalibrationConfig
+            Calibration configuration parsed from YAML
+        overrides : dict | None, optional
+            Optional dictionary of configuration overrides to apply to the copied
+            basemodel before building models. Supported keys (all optional):
+            - "vaccination": {"scenario_data_path": str}
+                Replace the vaccination CSV path.
+            - "seasonality": {"min_value": float}
+                Override the seasonality `min_value`.
+            - "interventions": Any
+                Replace the entire `interventions` block on the base model.
+
+    Returns
+    -------
+        list[Callable]
+            A list of simulate-wrapper callables (one per location).
+    """
+    basemodel = copy.deepcopy(basemodel_config.model)
+    modelset = calibration_config.modelset
+    calibration = modelset.calibration
+
+    if overrides:
+        # Vaccination overrides
+        if "vaccination" in overrides and basemodel.vaccination:
+            vaccination_override = overrides["vaccination"] or {}
+            if vaccination_override.get("scenario_data_path"):
+                basemodel.vaccination.scenario_data_path = vaccination_override["scenario_data_path"]
+
+        # Seasonality overrides
+        if "seasonality" in overrides and basemodel.seasonality:
+            seasonality_override = overrides["seasonality"] or {}
+            if "min_value" in seasonality_override and seasonality_override["min_value"] is not None:
+                basemodel.seasonality.min_value = seasonality_override["min_value"]
+
+        # Interventions overrides (replace entire block if provided)
+        if "interventions" in overrides and overrides["interventions"] is not None:
+            basemodel.interventions = overrides["interventions"]
+
+    # Create random number generator
+    rng = np.random.default_rng(basemodel.random_seed)
+
+    # Build a collection of EpiModels
+    models, population_names = create_model_collection(basemodel, modelset.population_names)
+
+    # Extract intervention types
+    intervention_types = []
+    if basemodel.interventions:
+        intervention_types = [i.type for i in basemodel.interventions]
+
+    # If start_date is sampled, make earliest timespan
+    if calibration.start_date:
+        sampled_start_timespan = Timespan(
+            start_date=calibration.start_date.reference_date,
+            end_date=basemodel.timespan.end_date,
+            delta_t=basemodel.timespan.delta_t,
+        )
+    else:  # case where start_date is not sampled
+        sampled_start_timespan = None
+
+    # Vaccination is sensitive to location and start_date but not to model parameters.
+    models, earliest_vax = setup_vaccination_schedules(basemodel, models, sampled_start_timespan, population_names)
+
+    # These interventions are sensitive to location but not to model parameters and can be applied
+    # using the earliest start_date before creating ABCSamplers.
+    models = setup_interventions(models, basemodel, intervention_types, sampled_start_timespan)
+    observed_raw = pd.read_csv(calibration.observed_data_path)
+    observed_in_window = get_data_in_window(observed_raw, calibration)
+    simulation_functions = []
+    for model in models:
+        # TODO: Make location column name configurable instead of hardcoded "geo_value"
+        # Should be added to ComparisonSpec schema (e.g., observed_location_column)
+        observed_data = get_data_in_location(observed_in_window, model, "geo_value")
+        vax_state = get_data_in_location(earliest_vax, model, "location") if earliest_vax is not None else None
+        # Create simulate_wrapper
+        simulate_wrapper = make_simulate_wrapper(
+            basemodel=basemodel,
+            calibration=calibration,
+            observed_data=observed_data,
+            intervention_types=intervention_types,
+            sampled_start_timespan=sampled_start_timespan,
+            earliest_vax=vax_state,
+            rng=rng,
+        )
+        simulation_functions.append(simulate_wrapper)
+
+    return simulation_functions

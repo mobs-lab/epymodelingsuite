@@ -7,4 +7,4 @@
 cov_annotate/
 .coverage
 *,cover
-build/
+docs/build/

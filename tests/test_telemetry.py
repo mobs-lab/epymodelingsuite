@@ -2,14 +2,16 @@
 
 import json
 import tempfile
+from datetime import date
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from epymodelingsuite.schema.calibration import CalibrationStrategy
-from epymodelingsuite.schema.dispatcher import CalibrationOutput, SimulationOutput
+from epymodelingsuite.schema.calibration import CalibrationStrategy, FittingWindow
+from epymodelingsuite.schema.dispatcher import BuilderOutput, CalibrationOutput, SimulationOutput
 from epymodelingsuite.telemetry import (
     ExecutionTelemetry,
     create_workflow_telemetry,
+    extract_builder_metadata,
 )
 
 
@@ -51,6 +53,20 @@ def make_mock_calibration_output(
         delta_t=1.0,
         population=population,
         results=mock_results,
+    )
+
+
+def make_mock_builder_output(calibration_strategy: CalibrationStrategy | None = None):
+    """Create a mock BuilderOutput for testing."""
+    mock_model = MagicMock()
+    mock_model.population.name = "US-CA"
+
+    return BuilderOutput.model_construct(
+        primary_id=0,
+        seed=42,
+        delta_t=1.0,
+        model=mock_model,
+        calibration=calibration_strategy,
     )
 
 
@@ -127,6 +143,24 @@ class TestExecutionTelemetry:
         assert "duration_seconds" in telemetry.builder
         assert "peak_memory_mb" in telemetry.builder
 
+    def test_builder_stage_with_fitting_window(self):
+        """Test builder stage tracking with fitting window."""
+        telemetry = ExecutionTelemetry()
+        telemetry.enter_builder("calibration")
+
+        telemetry.exit_builder(
+            n_models=1,
+            populations=["US-CA"],
+            start_date="2024-01-01",
+            end_date="2024-12-31",
+            delta_t=1.0,
+            random_seed=42,
+            fitting_window=("2024-03-01", "2024-06-01"),
+        )
+
+        assert telemetry.configuration["fitting_window"]["start_date"] == "2024-03-01"
+        assert telemetry.configuration["fitting_window"]["end_date"] == "2024-06-01"
+
     def test_runner_stage(self):
         """Test runner stage tracking."""
         telemetry = ExecutionTelemetry()
@@ -142,8 +176,8 @@ class TestExecutionTelemetry:
         model = telemetry.runner["models"][0]
         assert model["primary_id"] == 0
         assert model["population"] == "US-CA"
-        assert model["calibration"]["duration_seconds"] == 10.5
-        assert model["calibration"]["n_sims"] == 100
+        assert model["simulation"]["duration_seconds"] == 10.5
+        assert model["simulation"]["n_sims"] == 100
 
         # Add calibration with projection metrics
         proj_output = make_mock_projection_output(
@@ -589,6 +623,299 @@ class TestPartialWorkflows:
         assert telemetry.metadata["total_duration_seconds"] > 0
 
 
+class TestFittingWindow:
+    """Test fitting window tracking in telemetry."""
+
+    def test_extract_builder_metadata_with_fitting_window(self):
+        """Test that fitting window is extracted from calibration config."""
+        # Create mock calibration config with fitting window
+        calibration_config = MagicMock()
+        calibration_config.modelset.calibration.fitting_window = FittingWindow(
+            start_date=date(2024, 3, 1), end_date=date(2024, 6, 1)
+        )
+
+        # Create mock basemodel config
+        basemodel_config = MagicMock()
+        basemodel_config.model.population.name = "US-CA"
+        basemodel_config.model.timespan.start_date = date(2024, 1, 1)
+        basemodel_config.model.timespan.end_date = date(2024, 12, 31)
+        basemodel_config.model.timespan.delta_t = 1.0
+        basemodel_config.model.random_seed = 42
+
+        # Create mock builder output
+        builder_output = MagicMock()
+        builder_output.model = None
+        builder_output.calibrator.parameters = {"epimodel": MagicMock(population=MagicMock(name="US-CA"))}
+
+        # Extract metadata
+        configs = {"basemodel_config": basemodel_config, "calibration_config": calibration_config}
+        metadata = extract_builder_metadata([builder_output], configs)
+
+        # Verify fitting window is present
+        assert "fitting_window" in metadata
+        assert metadata["fitting_window"] == ("2024-03-01", "2024-06-01")
+
+    def test_extract_builder_metadata_without_calibration_config(self):
+        """Test that fitting window is not present for simulation workflow."""
+        # Create mock basemodel config only (no calibration config)
+        basemodel_config = MagicMock()
+        basemodel_config.model.population.name = "US-CA"
+        basemodel_config.model.timespan.start_date = date(2024, 1, 1)
+        basemodel_config.model.timespan.end_date = date(2024, 12, 31)
+        basemodel_config.model.timespan.delta_t = 1.0
+        basemodel_config.model.random_seed = 42
+
+        # Create mock builder output
+        builder_output = MagicMock()
+        builder_output.model.population.name = "US-CA"
+
+        # Extract metadata (no calibration config)
+        configs = {"basemodel_config": basemodel_config}
+        metadata = extract_builder_metadata(builder_output, configs)
+
+        # Verify fitting window is NOT present
+        assert "fitting_window" not in metadata
+
+    def test_fitting_window_in_text_output(self):
+        """Test that fitting window appears in text output."""
+        telemetry = ExecutionTelemetry()
+        telemetry.enter_builder("calibration")
+        telemetry.exit_builder(
+            n_models=1,
+            populations=["US-CA"],
+            start_date="2024-01-01",
+            end_date="2024-12-31",
+            delta_t=1.0,
+            random_seed=42,
+            fitting_window=("2024-03-01", "2024-06-01"),
+        )
+
+        text_output = telemetry.to_text()
+
+        # Verify fitting window appears in text output
+        assert "CONFIGURATION" in text_output
+        assert "Fitting window: 2024-03-01 to 2024-06-01" in text_output
+        # Verify it appears after timespan
+        assert text_output.index("Timespan:") < text_output.index("Fitting window:")
+
+    def test_fitting_window_in_json_output(self):
+        """Test that fitting window appears in JSON output."""
+        telemetry = ExecutionTelemetry()
+        telemetry.enter_builder("calibration")
+        telemetry.exit_builder(
+            n_models=1,
+            populations=["US-CA"],
+            start_date="2024-01-01",
+            end_date="2024-12-31",
+            delta_t=1.0,
+            random_seed=42,
+            fitting_window=("2024-03-01", "2024-06-01"),
+        )
+
+        json_data = telemetry.to_dict()
+
+        # Verify fitting window is in configuration
+        assert "fitting_window" in json_data["configuration"]
+        assert json_data["configuration"]["fitting_window"]["start_date"] == "2024-03-01"
+        assert json_data["configuration"]["fitting_window"]["end_date"] == "2024-06-01"
+
+    def test_no_fitting_window_for_simulation(self):
+        """Test that fitting window is not present for simulation workflow."""
+        telemetry = ExecutionTelemetry()
+        telemetry.enter_builder("simulation")
+        telemetry.exit_builder(
+            n_models=1,
+            populations=["US-CA"],
+            start_date="2024-01-01",
+            end_date="2024-12-31",
+            delta_t=1.0,
+            random_seed=42,
+        )
+
+        text_output = telemetry.to_text()
+        json_data = telemetry.to_dict()
+
+        # Verify fitting window is NOT present
+        assert "Fitting window:" not in text_output
+        assert "fitting_window" not in json_data["configuration"]
+
+
+class TestCalibrationSubsection:
+    """Test calibration subsection and age groups in telemetry."""
+
+    def test_age_groups_display(self):
+        """Test that age groups appear inline with populations."""
+        telemetry = ExecutionTelemetry()
+        telemetry.enter_builder("simulation")
+        telemetry.exit_builder(
+            n_models=1,
+            populations=["US-CA"],
+            start_date="2024-01-01",
+            end_date="2024-12-31",
+            delta_t=1.0,
+            random_seed=42,
+            age_groups=["0-4", "5-17", "18-49", "50-64", "65+"],
+        )
+
+        text_output = telemetry.to_text()
+        json_data = telemetry.to_dict()
+
+        # Verify age groups appear in text
+        assert "Age groups: 5 (0-4, 5-17, 18-49, 50-64, 65+)" in text_output
+        # Verify it appears after populations line
+        assert text_output.index("Populations:") < text_output.index("Age groups:")
+
+        # Verify in JSON
+        assert "age_groups" in json_data["configuration"]
+        assert json_data["configuration"]["age_groups"] == ["0-4", "5-17", "18-49", "50-64", "65+"]
+
+    def test_calibration_subsection_with_all_fields(self):
+        """Test calibration subsection with fitting window and distance function."""
+        telemetry = ExecutionTelemetry()
+        telemetry.enter_builder("calibration")
+        telemetry.exit_builder(
+            n_models=1,
+            populations=["US-CA"],
+            start_date="2024-01-01",
+            end_date="2024-12-31",
+            delta_t=1.0,
+            random_seed=42,
+            fitting_window=("2024-03-01", "2024-06-01"),
+            distance_function="rmse",
+        )
+
+        text_output = telemetry.to_text()
+        json_data = telemetry.to_dict()
+
+        # Verify calibration subsection appears
+        assert "Calibration:" in text_output
+        assert "  Fitting window: 2024-03-01 to 2024-06-01" in text_output
+        assert "  Distance function: rmse" in text_output
+
+        # Verify ordering: Calibration subsection after main config items
+        assert text_output.index("Random seed:") < text_output.index("Calibration:")
+        assert text_output.index("Calibration:") < text_output.index("Fitting window:")
+        assert text_output.index("Fitting window:") < text_output.index("Distance function:")
+
+        # Verify in JSON
+        assert json_data["configuration"]["distance_function"] == "rmse"
+        assert json_data["configuration"]["fitting_window"]["start_date"] == "2024-03-01"
+
+    def test_calibration_subsection_fitting_window_only(self):
+        """Test calibration subsection with only fitting window."""
+        telemetry = ExecutionTelemetry()
+        telemetry.enter_builder("calibration")
+        telemetry.exit_builder(
+            n_models=1,
+            populations=["US-CA"],
+            fitting_window=("2024-03-01", "2024-06-01"),
+        )
+
+        text_output = telemetry.to_text()
+
+        # Verify calibration subsection appears with only fitting window
+        assert "Calibration:" in text_output
+        assert "  Fitting window: 2024-03-01 to 2024-06-01" in text_output
+        assert "Distance function:" not in text_output
+
+    def test_calibration_subsection_distance_only(self):
+        """Test calibration subsection with only distance function."""
+        telemetry = ExecutionTelemetry()
+        telemetry.enter_builder("calibration")
+        telemetry.exit_builder(
+            n_models=1,
+            populations=["US-CA"],
+            distance_function="mae",
+        )
+
+        text_output = telemetry.to_text()
+
+        # Verify calibration subsection appears with only distance function
+        assert "Calibration:" in text_output
+        assert "  Distance function: mae" in text_output
+        assert "Fitting window:" not in text_output
+
+    def test_no_calibration_subsection_for_simulation(self):
+        """Test that calibration subsection doesn't appear for simulation workflow."""
+        telemetry = ExecutionTelemetry()
+        telemetry.enter_builder("simulation")
+        telemetry.exit_builder(
+            n_models=1,
+            populations=["US-CA"],
+            start_date="2024-01-01",
+            end_date="2024-12-31",
+        )
+
+        text_output = telemetry.to_text()
+
+        # Verify no calibration subsection
+        assert "Calibration:" not in text_output
+        assert "Fitting window:" not in text_output
+        assert "Distance function:" not in text_output
+
+    def test_extract_builder_metadata_with_age_groups_and_distance(self):
+        """Test extraction of age groups and distance function from configs."""
+        # Create mock calibration config
+        calibration_config = MagicMock()
+        calibration_config.modelset.calibration.fitting_window = FittingWindow(
+            start_date=date(2024, 3, 1), end_date=date(2024, 6, 1)
+        )
+        calibration_config.modelset.calibration.distance_function = "rmse"
+
+        # Create mock basemodel config
+        basemodel_config = MagicMock()
+        basemodel_config.model.population.name = "US-CA"
+        basemodel_config.model.population.age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
+        basemodel_config.model.timespan.start_date = date(2024, 1, 1)
+        basemodel_config.model.timespan.end_date = date(2024, 12, 31)
+        basemodel_config.model.timespan.delta_t = 1.0
+        basemodel_config.model.random_seed = 42
+
+        # Create mock builder output
+        builder_output = MagicMock()
+        builder_output.model = None
+        builder_output.calibrator.parameters = {"epimodel": MagicMock(population=MagicMock(name="US-CA"))}
+
+        # Extract metadata
+        configs = {"basemodel_config": basemodel_config, "calibration_config": calibration_config}
+        metadata = extract_builder_metadata([builder_output], configs)
+
+        # Verify all fields extracted
+        assert "age_groups" in metadata
+        assert metadata["age_groups"] == ["0-4", "5-17", "18-49", "50-64", "65+"]
+        assert "distance_function" in metadata
+        assert metadata["distance_function"] == "rmse"
+        assert "fitting_window" in metadata
+        assert metadata["fitting_window"] == ("2024-03-01", "2024-06-01")
+
+    def test_distance_function_not_in_runner_output(self):
+        """Test that distance function no longer appears in runner stage."""
+        telemetry = ExecutionTelemetry()
+        telemetry.enter_builder("calibration")
+        telemetry.exit_builder(
+            n_models=1,
+            populations=["US-CA"],
+            distance_function="rmse",
+        )
+
+        telemetry.enter_runner()
+        calib_output = make_mock_calibration_output(0, "US-CA", particles_accepted=50)
+        strategy = CalibrationStrategy(name="SMC", options={"num_particles": 100, "distance_function": "rmse"})
+        builder_output = make_mock_builder_output(calibration_strategy=strategy)
+        telemetry.capture_calibration(calib_output, duration=120.0, builder_output=builder_output)
+        telemetry.exit_runner()
+
+        text_output = telemetry.to_text()
+
+        # Distance function should be in CONFIGURATION, not in runner
+        config_section = text_output[: text_output.index("BUILDER STAGE")]
+        runner_section = text_output[text_output.index("RUNNER STAGE") :]
+
+        assert "Distance function: rmse" in config_section
+        assert "Distance:" not in runner_section
+        assert "Distance function:" not in runner_section
+
+
 class TestStrategyInfoCapture:
     """Test capturing ABC strategy information in telemetry."""
 
@@ -601,8 +928,9 @@ class TestStrategyInfoCapture:
         strategy = CalibrationStrategy(
             name="SMC", options={"num_particles": 100, "num_generations": 5, "max_time": "30m"}
         )
+        builder_output = make_mock_builder_output(calibration_strategy=strategy)
 
-        telemetry.capture_calibration(calib_output, duration=120.0, calibration_strategy=strategy)
+        telemetry.capture_calibration(calib_output, duration=120.0, builder_output=builder_output)
 
         assert len(telemetry.runner["models"]) == 1
         model = telemetry.runner["models"][0]
@@ -619,13 +947,14 @@ class TestStrategyInfoCapture:
 
         proj_output = make_mock_projection_output(0, "US-CA", particles_accepted=50, successful_trajectories=95)
         strategy = CalibrationStrategy(name="SMC", options={"num_particles": 100, "num_generations": 5})
+        builder_output = make_mock_builder_output(calibration_strategy=strategy)
 
         telemetry.capture_projection(
             proj_output,
             calib_duration=120.0,
             proj_duration=30.0,
             n_trajectories=100,
-            calibration_strategy=strategy,
+            builder_output=builder_output,
         )
 
         assert len(telemetry.runner["models"]) == 1
@@ -648,3 +977,262 @@ class TestStrategyInfoCapture:
         assert "strategy" not in model["calibration"]
         assert "num_particles" not in model["calibration"]
         assert "num_generations" not in model["calibration"]
+
+
+class TestTelemetryCsv:
+    """Tests for CSV export functionality."""
+
+    def test_csv_with_simulation_workflow(self):
+        """Test CSV export with simulation workflow."""
+        telemetry = ExecutionTelemetry()
+        telemetry.enter_builder("simulation")
+        telemetry.exit_builder(
+            n_models=2,
+            populations=["US-CA", "US-NY"],
+            start_date="2024-01-01",
+            end_date="2024-12-31",
+            delta_t=1.0,
+            random_seed=42,
+        )
+        telemetry.enter_runner()
+        sim_output_1 = make_mock_simulation_output(0, "US-CA", n_sims=100)
+        telemetry.capture_simulation(sim_output_1, duration=5.0)
+        sim_output_2 = make_mock_simulation_output(1, "US-NY", n_sims=100)
+        telemetry.capture_simulation(sim_output_2, duration=6.0)
+        telemetry.exit_runner()
+        telemetry.enter_output()
+        telemetry.exit_output()
+
+        # Test readable format
+        csv_str = telemetry.to_csv(format="readable")
+        assert csv_str is not None
+        assert "primary_id" in csv_str
+        assert "US-CA" in csv_str
+        assert "US-NY" in csv_str
+        assert "simulation" in csv_str
+        # Calibration/projection columns should be empty or 0 for simulation
+        lines = csv_str.strip().split("\n")
+        assert len(lines) == 3  # Header + 2 data rows
+
+        # Test raw format
+        csv_str = telemetry.to_csv(format="raw")
+        assert csv_str is not None
+        assert "5.0" in csv_str or "6.0" in csv_str  # Raw duration values
+
+    def test_csv_with_calibration_workflow(self):
+        """Test CSV export with calibration workflow."""
+        telemetry = ExecutionTelemetry()
+        telemetry.enter_builder("calibration")
+        telemetry.exit_builder(
+            n_models=1,
+            populations=["US-CA"],
+            start_date="2024-01-01",
+            end_date="2024-12-31",
+            delta_t=1.0,
+            random_seed=42,
+            fitting_window=("2024-03-01", "2024-06-01"),
+        )
+        telemetry.enter_runner()
+        calib_output = make_mock_calibration_output(0, "US-CA", particles_accepted=850)
+        mock_strategy = MagicMock(spec=CalibrationStrategy)
+        mock_strategy.name = "smc"
+        mock_strategy.options = {"num_particles": 1000, "num_generations": 10}
+        builder_output = make_mock_builder_output(calibration_strategy=mock_strategy)
+        telemetry.capture_calibration(calib_output, duration=150.5, builder_output=builder_output)
+        telemetry.exit_runner()
+        telemetry.enter_output()
+        telemetry.exit_output()
+
+        # Test readable format
+        csv_str = telemetry.to_csv(format="readable")
+        assert "US-CA" in csv_str
+        assert "calibration" in csv_str
+        assert "smc" in csv_str
+        assert "1000" in csv_str  # num_particles
+        assert "850" in csv_str  # particles_accepted
+        assert "2024-03-01" in csv_str  # fitting_window_start
+        assert "2024-06-01" in csv_str  # fitting_window_end
+
+        # Test raw format
+        csv_str = telemetry.to_csv(format="raw")
+        assert "150.5" in csv_str  # Raw calibration duration
+
+    def test_csv_with_calibration_projection_workflow(self):
+        """Test CSV export with calibration+projection workflow."""
+        telemetry = ExecutionTelemetry()
+        telemetry.enter_builder("calibration_projection")
+        telemetry.exit_builder(
+            n_models=1,
+            populations=["US-CA"],
+            start_date="2024-01-01",
+            end_date="2024-12-31",
+            delta_t=1.0,
+            random_seed=42,
+            fitting_window=("2024-03-01", "2024-06-01"),
+        )
+        telemetry.enter_runner()
+        proj_output = make_mock_projection_output(
+            0, "US-CA", particles_accepted=850, successful_trajectories=987, failed_trajectories=13
+        )
+        mock_strategy = MagicMock(spec=CalibrationStrategy)
+        mock_strategy.name = "smc"
+        mock_strategy.options = {"num_particles": 1000, "num_generations": 10}
+        builder_output = make_mock_builder_output(calibration_strategy=mock_strategy)
+        telemetry.capture_projection(
+            proj_output,
+            calib_duration=150.5,
+            proj_duration=45.2,
+            n_trajectories=1000,
+            builder_output=builder_output,
+        )
+        telemetry.exit_runner()
+        telemetry.enter_output()
+        telemetry.exit_output()
+
+        # Test readable format
+        csv_str = telemetry.to_csv(format="readable")
+        assert "calibration_projection" in csv_str
+        assert "smc" in csv_str
+        assert "987" in csv_str  # successful trajectories
+        assert "13" in csv_str  # failed trajectories
+
+        # Test raw format
+        csv_str = telemetry.to_csv(format="raw")
+        assert "150.5" in csv_str  # Raw calibration duration
+        assert "45.2" in csv_str  # Raw projection duration
+
+    def test_csv_with_multiple_models(self):
+        """Test CSV export with multiple models."""
+        telemetry = ExecutionTelemetry()
+        telemetry.enter_builder("simulation")
+        telemetry.exit_builder(
+            n_models=3,
+            populations=["US-CA", "US-NY", "US-FL"],
+            start_date="2024-01-01",
+            end_date="2024-12-31",
+            delta_t=1.0,
+            random_seed=42,
+        )
+        telemetry.enter_runner()
+        for i, pop in enumerate(["US-CA", "US-NY", "US-FL"]):
+            sim_output = make_mock_simulation_output(i, pop, n_sims=100)
+            telemetry.capture_simulation(sim_output, duration=5.0 + i)
+        telemetry.exit_runner()
+        telemetry.enter_output()
+        telemetry.exit_output()
+
+        csv_str = telemetry.to_csv(format="readable")
+        lines = csv_str.strip().split("\n")
+        assert len(lines) == 4  # Header + 3 data rows
+        assert "US-CA" in csv_str
+        assert "US-NY" in csv_str
+        assert "US-FL" in csv_str
+
+    def test_csv_with_failed_models(self):
+        """Test CSV export with failed models."""
+        telemetry = ExecutionTelemetry()
+        telemetry.enter_builder("simulation")
+        telemetry.exit_builder(
+            n_models=2,
+            populations=["US-CA", "US-FL"],
+            start_date="2024-01-01",
+            end_date="2024-12-31",
+            delta_t=1.0,
+            random_seed=42,
+        )
+        telemetry.enter_runner()
+        # Successful model
+        sim_output = make_mock_simulation_output(0, "US-CA", n_sims=100)
+        telemetry.capture_simulation(sim_output, duration=5.0)
+        # Failed model
+        sim_output_2 = make_mock_simulation_output(1, "US-FL", n_sims=0)
+        telemetry.capture_simulation(sim_output_2, duration=2.0, error="ValueError: Invalid fitting window")
+        telemetry.exit_runner()
+        telemetry.enter_output()
+        telemetry.exit_output()
+
+        csv_str = telemetry.to_csv(format="readable")
+        assert "ValueError: Invalid fitting window" in csv_str
+        lines = csv_str.strip().split("\n")
+        assert len(lines) == 3  # Header + 2 data rows
+
+    def test_csv_file_writing(self):
+        """Test CSV writing to file."""
+        telemetry = ExecutionTelemetry()
+        telemetry.enter_builder("simulation")
+        telemetry.exit_builder(
+            n_models=1,
+            populations=["US-CA"],
+            start_date="2024-01-01",
+            end_date="2024-12-31",
+            delta_t=1.0,
+            random_seed=42,
+        )
+        telemetry.enter_runner()
+        sim_output = make_mock_simulation_output(0, "US-CA", n_sims=100)
+        telemetry.capture_simulation(sim_output, duration=5.0)
+        telemetry.exit_runner()
+        telemetry.enter_output()
+        telemetry.exit_output()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "telemetry.csv"
+            result = telemetry.to_csv(path, format="readable")
+
+            # Should return None when writing to file
+            assert result is None
+            # File should exist
+            assert path.exists()
+            # File content should match string output
+            content = path.read_text()
+            expected = telemetry.to_csv(format="readable")
+            assert content == expected
+
+    def test_csv_string_return(self):
+        """Test CSV string return without file writing."""
+        telemetry = ExecutionTelemetry()
+        telemetry.enter_builder("simulation")
+        telemetry.exit_builder(
+            n_models=1,
+            populations=["US-CA"],
+            start_date="2024-01-01",
+            end_date="2024-12-31",
+            delta_t=1.0,
+            random_seed=42,
+        )
+        telemetry.enter_runner()
+        sim_output = make_mock_simulation_output(0, "US-CA", n_sims=100)
+        telemetry.capture_simulation(sim_output, duration=5.0)
+        telemetry.exit_runner()
+        telemetry.enter_output()
+        telemetry.exit_output()
+
+        csv_str = telemetry.to_csv(format="readable")
+        assert csv_str is not None
+        assert isinstance(csv_str, str)
+        # Verify it's valid CSV format
+        lines = csv_str.strip().split("\n")
+        assert len(lines) >= 2  # At least header + 1 row
+        assert lines[0].startswith("primary_id,")
+
+    def test_csv_invalid_format_parameter(self):
+        """Test CSV with invalid format parameter."""
+        import pytest
+
+        telemetry = ExecutionTelemetry()
+        telemetry.enter_builder("simulation")
+        telemetry.exit_builder(n_models=1, populations=["US-CA"])
+
+        with pytest.raises(ValueError, match="Invalid format.*invalid"):
+            telemetry.to_csv(format="invalid")
+
+    def test_csv_empty_telemetry(self):
+        """Test CSV with empty telemetry (no runner data)."""
+        telemetry = ExecutionTelemetry()
+
+        csv_str = telemetry.to_csv(format="readable")
+        assert csv_str is not None
+        # Should have header row even with no data
+        lines = csv_str.strip().split("\n")
+        assert len(lines) == 1  # Only header
+        assert "primary_id" in lines[0]
