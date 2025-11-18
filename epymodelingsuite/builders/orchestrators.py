@@ -592,9 +592,8 @@ def apply_vaccination_for_sampled_start(
 
     # Start_date is sampled, need to reaggregate and resample
     reaggregated_vax = reaggregate_vaccines(earliest_vax, timespan.start_date)
-    reaggregated_resampled_vax = resample_vaccination_schedule(reaggregated_vax, timespan.delta_t)
     add_vaccination_schedules_from_config(
-        model, basemodel.transitions, basemodel.vaccination, timespan, use_schedule=reaggregated_resampled_vax
+        model, basemodel.transitions, basemodel.vaccination, timespan, use_schedule=reaggregated_vax
     )
 
 
