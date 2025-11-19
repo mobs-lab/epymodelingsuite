@@ -198,12 +198,15 @@ class QuantilesSurveillanceConfig(BaseModel):
     value_column: str | None = Field(None, description="Column containing observed values.")
     date_column: str | None = Field(None, description="Column containing dates.")
     location_column: str | None = Field(None, description="Column containing location identifiers.")
+    surveillance_points: int | None = Field(
+        8, description="Number of most recent surveillance points to display. If None, show all points."
+    )
 
 
-class QuantilesReferenceLineConfig(BaseModel):
-    """Configuration for reference date line."""
+class QuantilesFittingWindowLineConfig(BaseModel):
+    """Configuration for fitting window end vertical line."""
 
-    show: bool = Field(True, description="Show vertical line at reference date.")
+    show: bool = Field(True, description="Show vertical line at end of calibration/fitting window.")
 
 
 class QuantilesPlotConfig(BaseModel):
@@ -218,8 +221,11 @@ class QuantilesPlotConfig(BaseModel):
         description="Grid plot configuration.",
     )
     quantiles: list[float] = Field(
-        [0.025, 0.5, 0.975],
-        description="Quantile levels for ribbons (95% CrI + median).",
+        [0.025, 0.25, 0.5, 0.75, 0.975],
+        description="Quantile levels for ribbons (95% CrI + IQR + median).",
+    )
+    horizon_max: int | None = Field(
+        3, description="Maximum forecast horizon (weeks ahead) to display. If None, show all horizons."
     )
 
     calibration: QuantilesCalibrationConfig = Field(
@@ -234,9 +240,9 @@ class QuantilesPlotConfig(BaseModel):
         default_factory=QuantilesSurveillanceConfig,
         description="Surveillance data overlay settings.",
     )
-    reference_line: QuantilesReferenceLineConfig = Field(
-        default_factory=QuantilesReferenceLineConfig,
-        description="Reference date line settings.",
+    fitting_window_line: QuantilesFittingWindowLineConfig = Field(
+        default_factory=QuantilesFittingWindowLineConfig,
+        description="Fitting window end line settings.",
     )
 
     @field_validator("quantiles")

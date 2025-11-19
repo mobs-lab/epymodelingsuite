@@ -127,7 +127,7 @@ class TestSurveillanceDataFiltering:
     def test_surveillance_filtering_when_no_calibration_quantiles(
         self, surveillance_csv_data, plots_config_with_surveillance
     ):
-        """Test that surveillance is not date-filtered when calibration quantiles are not available."""
+        """Test that surveillance is filtered by surveillance_points even when calibration quantiles are not available."""
         # Create calibration output with no calibration quantiles
         calibration = MagicMock(spec=CalibrationOutput)
         calibration.population = "US-CA"
@@ -154,12 +154,12 @@ class TestSurveillanceDataFiltering:
             df_surv = call_kwargs["df_surveillance"]
 
             # When no calibration quantiles, surveillance should still be loaded
-            # but not date-filtered
+            # and filtered to the 8 most recent points (default surveillance_points value)
             assert df_surv is not None
-            # Should include all original dates from 2023-12-01 to 2024-02-15
-            min_date = pd.to_datetime(df_surv["date"]).min()
+            # Should have exactly 8 points (the most recent ones)
+            assert len(df_surv) == 8
+            # Check that we have the most recent dates
             max_date = pd.to_datetime(df_surv["date"]).max()
-            assert min_date.date() == date(2023, 12, 1)
             assert max_date.date() == date(2024, 2, 15)
 
     def test_surveillance_filtering_falls_back_to_calibration_quantiles(

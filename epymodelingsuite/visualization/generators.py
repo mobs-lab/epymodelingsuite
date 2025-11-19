@@ -15,6 +15,7 @@ from ..builders.utils import get_data_in_location
 from ..schema.dispatcher import CalibrationOutput
 from ..schema.output import OutputObject, PlotsConfig
 from .core import (
+    _format_location_name,
     figure_to_output_object,
     plot_calibration_projection,
     plot_calibration_projection_grid,
@@ -120,6 +121,30 @@ def generate_single_quantile_plots(
                     e,
                 )
 
+        # Calculate fitting window start and end from calibration quantiles
+        fitting_window_start = None
+        fitting_window_end = None
+        if plots_config.quantiles.fitting_window_line.show:
+            # Fetch calibration quantiles for fitting window calculation even if not displaying them
+            cal_quant_for_fitting = cal_quant
+            if cal_quant_for_fitting is None:
+                try:
+                    cal_quant_for_fitting = calibration.results.get_calibration_quantiles(
+                        quantiles=[0.5],  # Only need one quantile to get dates
+                        variables=["date", "data"],
+                    )
+                except (ValueError, AttributeError, TypeError) as e:
+                    logger.warning(
+                        "Failed to get calibration quantiles for fitting window for %s: %s",
+                        location,
+                        e,
+                    )
+
+            if cal_quant_for_fitting is not None and "date" in cal_quant_for_fitting.columns:
+                dates = pd.to_datetime(cal_quant_for_fitting["date"]).dt.date
+                fitting_window_start = dates.min()
+                fitting_window_end = dates.max()
+
         # Projection quantiles
         # TODO: "hospitalizations" column is hardcoded in projection quantiles
         proj_quant = None
@@ -137,6 +162,7 @@ def generate_single_quantile_plots(
 
         # Filter surveillance data for this location
         df_surv = None
+        surveillance_start_date = None
         if surveillance is not None and plots_config.quantiles.surveillance.location_column:
             surv = get_data_in_location(surveillance, location, plots_config.quantiles.surveillance.location_column)
 
@@ -148,9 +174,9 @@ def generate_single_quantile_plots(
                     # Infer timespan start from the earliest date in quantiles
                     timespan_start = pd.to_datetime(quantiles_for_timespan["date"]).min().date()
                     # Filter surveillance data to start from timespan start
-                    date_col = pd.to_datetime(surv[plots_config.quantiles.surveillance.date_column]).dt.date
-                    mask = date_col >= timespan_start
-                    surv = surv.loc[mask]
+                    surv = surv[
+                        pd.to_datetime(surv[plots_config.quantiles.surveillance.date_column]).dt.date >= timespan_start
+                    ]
 
             if (
                 not surv.empty
@@ -163,6 +189,33 @@ def generate_single_quantile_plots(
                         plots_config.quantiles.surveillance.value_column: "value",
                     }
                 )[["date", "value"]]
+
+                # Filter to most recent N points if surveillance_points is set
+                if plots_config.quantiles.surveillance.surveillance_points is not None:
+                    df_surv = df_surv.sort_values("date").tail(plots_config.quantiles.surveillance.surveillance_points)
+
+                # Get first surveillance date for projection filtering
+                if not df_surv.empty:
+                    surveillance_start_date = pd.to_datetime(df_surv["date"]).min().date()
+
+        # Filter projection quantiles
+        if proj_quant is not None:
+            from datetime import timedelta
+
+            proj_dates = pd.to_datetime(proj_quant["date"]).dt.date
+
+            # Start at first surveillance point if there's projection data before it
+            if surveillance_start_date is not None:
+                proj_start = proj_dates.min()
+                # Only filter if projection starts before first surveillance point
+                if proj_start < surveillance_start_date:
+                    proj_quant = proj_quant[proj_dates.values >= surveillance_start_date]
+
+            # End at horizon_max if specified
+            if plots_config.quantiles.horizon_max is not None:
+                horizon_end = plots_config.reference_date + timedelta(weeks=plots_config.quantiles.horizon_max)
+                proj_dates = pd.to_datetime(proj_quant["date"]).dt.date
+                proj_quant = proj_quant[proj_dates.values <= horizon_end]
 
         # Rename columns to have consistent naming for plotting
         # TODO: Calibration uses "data", projection uses "hospitalizations" - make this configurable
@@ -182,8 +235,11 @@ def generate_single_quantile_plots(
                 calibration_color=plots_config.quantiles.calibration.color,
                 projection_color=plots_config.quantiles.projection.color,
                 df_surveillance=df_surv,
-                reference_date=(plots_config.reference_date if plots_config.quantiles.reference_line.show else None),
-                title=location,
+                fitting_window_start=(
+                    fitting_window_start if plots_config.quantiles.fitting_window_line.show else None
+                ),
+                fitting_window_end=(fitting_window_end if plots_config.quantiles.fitting_window_line.show else None),
+                title=_format_location_name(location),
             )
 
             # Package output
@@ -243,6 +299,8 @@ def generate_quantile_grid_plot(
     location_cal_quants = {}
     location_proj_quants = {}
     location_surveillance = {}
+    location_fitting_window_starts = {}
+    location_fitting_window_ends = {}
 
     # Collect quantiles for each location
     for calibration in calibrations:
@@ -268,6 +326,28 @@ def generate_quantile_grid_plot(
                     e,
                 )
 
+        # Calculate fitting window start and end from calibration quantiles
+        if plots_config.quantiles.fitting_window_line.show:
+            # Fetch calibration quantiles for fitting window calculation even if not displaying them
+            cal_quant_for_fitting = location_cal_quants.get(loc)
+            if cal_quant_for_fitting is None:
+                try:
+                    cal_quant_for_fitting = calibration.results.get_calibration_quantiles(
+                        quantiles=[0.5],  # Only need one quantile to get dates
+                        variables=["date", "data"],
+                    )
+                except (ValueError, AttributeError, TypeError, IndexError) as e:
+                    logger.warning(
+                        "Failed to get calibration quantiles for fitting window for %s: %s",
+                        loc,
+                        e,
+                    )
+
+            if cal_quant_for_fitting is not None and "date" in cal_quant_for_fitting.columns:
+                dates = pd.to_datetime(cal_quant_for_fitting["date"]).dt.date
+                location_fitting_window_starts[loc] = dates.min()
+                location_fitting_window_ends[loc] = dates.max()
+
         # Projection quantiles
         # TODO: "hospitalizations" column is hardcoded in projection quantiles
         if plots_config.quantiles.projection.show:
@@ -283,6 +363,7 @@ def generate_quantile_grid_plot(
                 )
 
         # Filter surveillance data for this location
+        surveillance_start_date = None
         if surveillance is not None and plots_config.quantiles.surveillance.location_column:
             surv = get_data_in_location(surveillance, loc, plots_config.quantiles.surveillance.location_column)
 
@@ -299,9 +380,9 @@ def generate_quantile_grid_plot(
                     # Infer timespan start from the earliest date in quantiles
                     timespan_start = pd.to_datetime(quantiles_for_timespan["date"]).min().date()
                     # Filter surveillance data to start from timespan start
-                    date_col = pd.to_datetime(surv[plots_config.quantiles.surveillance.date_column]).dt.date
-                    mask = date_col >= timespan_start
-                    surv = surv.loc[mask]
+                    surv = surv[
+                        pd.to_datetime(surv[plots_config.quantiles.surveillance.date_column]).dt.date >= timespan_start
+                    ]
 
             if (
                 not surv.empty
@@ -314,6 +395,37 @@ def generate_quantile_grid_plot(
                         plots_config.quantiles.surveillance.value_column: "value",
                     }
                 )[["date", "value"]]
+
+                # Filter to most recent N points if surveillance_points is set
+                if plots_config.quantiles.surveillance.surveillance_points is not None:
+                    location_surveillance[loc] = (
+                        location_surveillance[loc]
+                        .sort_values("date")
+                        .tail(plots_config.quantiles.surveillance.surveillance_points)
+                    )
+
+                # Get first surveillance date for projection filtering
+                if not location_surveillance[loc].empty:
+                    surveillance_start_date = pd.to_datetime(location_surveillance[loc]["date"]).min().date()
+
+        # Filter projection quantiles
+        if loc in location_proj_quants:
+            from datetime import timedelta
+
+            proj_dates = pd.to_datetime(location_proj_quants[loc]["date"]).dt.date
+
+            # Start at first surveillance point if there's projection data before it
+            if surveillance_start_date is not None:
+                proj_start = proj_dates.min()
+                # Only filter if projection starts before first surveillance point
+                if proj_start < surveillance_start_date:
+                    location_proj_quants[loc] = location_proj_quants[loc][proj_dates.values >= surveillance_start_date]
+
+            # End at horizon_max if specified
+            if plots_config.quantiles.horizon_max is not None:
+                horizon_end = plots_config.reference_date + timedelta(weeks=plots_config.quantiles.horizon_max)
+                proj_dates = pd.to_datetime(location_proj_quants[loc]["date"]).dt.date
+                location_proj_quants[loc] = location_proj_quants[loc][proj_dates.values <= horizon_end]
 
     # Go over collected data, plot grid, and add to output dict
     if location_cal_quants or location_proj_quants:
@@ -336,7 +448,12 @@ def generate_quantile_grid_plot(
                 calibration_color=plots_config.quantiles.calibration.color,
                 projection_color=plots_config.quantiles.projection.color,
                 location_surveillance=location_surveillance if location_surveillance else None,
-                reference_date=(plots_config.reference_date if plots_config.quantiles.reference_line.show else None),
+                location_fitting_window_starts=(
+                    location_fitting_window_starts if plots_config.quantiles.fitting_window_line.show else None
+                ),
+                location_fitting_window_ends=(
+                    location_fitting_window_ends if plots_config.quantiles.fitting_window_line.show else None
+                ),
                 panels_per_row=plots_config.quantiles.grid.panels_per_row,
             )
 
@@ -354,6 +471,7 @@ def generate_single_location_posterior_plots(
     calibrations: list[CalibrationOutput],
     plots_config: PlotsConfig,
     out_dict: dict[str, list[OutputObject]],
+    start_date_reference: str | None = None,
 ) -> None:
     """
     Generate individual posterior histogram plots for each location.
@@ -371,6 +489,9 @@ def generate_single_location_posterior_plots(
     out_dict : dict[str, list[OutputObject]]
         Dictionary to store generated plot outputs. Modified in-place by adding entries with keys
         like "posterior_{location}" mapping to lists of OutputObject instances.
+    start_date_reference : str or None, optional
+        Reference date for converting start_date parameter offsets to actual dates.
+        If None, start_date parameters will be plotted as integer offsets.
 
     Returns
     -------
@@ -418,6 +539,7 @@ def generate_single_location_posterior_plots(
                         parameter=param,
                         bins=plots_config.posterior.bins,
                         ax=axes[idx],
+                        start_date_reference=start_date_reference,
                     )
                     axes[idx].set_title(param)
                 except Exception as e:
@@ -446,6 +568,7 @@ def generate_posterior_grid_plot(
     calibrations: list[CalibrationOutput],
     plots_config: PlotsConfig,
     out_dict: dict[str, list[OutputObject]],
+    start_date_reference: str | None = None,
 ) -> None:
     """
     Generate multi-location posterior histogram grid plot.
@@ -463,6 +586,9 @@ def generate_posterior_grid_plot(
     out_dict : dict[str, list[OutputObject]]
         Dictionary to store generated plot outputs. Modified in-place by adding an entry with key
         "posterior_grid" mapping to a list containing the grid plot OutputObject.
+    start_date_reference : str or None, optional
+        Reference date for converting start_date parameter offsets to actual dates.
+        If None, start_date parameters will be plotted as integer offsets.
 
     Returns
     -------
@@ -493,6 +619,7 @@ def generate_posterior_grid_plot(
                 location_posteriors=location_posteriors,
                 parameters=parameters,
                 bins=plots_config.posterior.bins,
+                start_date_reference=start_date_reference,
             )
 
             # Package output
