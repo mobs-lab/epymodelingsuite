@@ -2,8 +2,9 @@
 
 import copy
 import logging
-from importlib import import_module
+import sys
 from collections.abc import Callable
+from importlib import import_module
 
 import numpy as np
 import pandas as pd
@@ -374,6 +375,25 @@ def build_sampling(
     ]
 
 
+def load_user_function(config: UserDefinedFunction) -> Callable:
+    """Import the user defined function and populate a computed field in the schema model."""
+    import importlib.machinery
+    import types
+
+    try:
+        module_name = "user_defined_module"
+        loader = importlib.machinery.SourceFileLoader(module_name, config.user_script_path)
+        code = loader.get_code(module_name)
+        new_module = types.ModuleType(loader.name)
+        exec(code, new_module.__dict__)
+        sys.modules[module_name] = new_module
+        module = import_module(module_name)
+        user_func = getattr(module, config.user_function_name)
+    except Exception as e:
+        raise RuntimeError(f"Error loading user-defined function {data['user_function_name']}: {e}")
+    return user_func
+
+
 @register_builder({"basemodel_config", "calibration_config"})
 def build_calibration(
     *, basemodel_config: BasemodelConfig, calibration_config: CalibrationConfig, **_
@@ -431,17 +451,23 @@ def build_calibration(
     models = setup_interventions(models, basemodel, intervention_types, sampled_start_timespan)
 
     # Collect user-defined post-hoc transformation function
-    post_hoc_func = None
-    if calibration.post_hoc_transformation:
-        with import_module(calibration.post_hoc_transformation.user_script_path) as module:
-            post_hoc_func = getattr(module, calibration.post_hoc_transformation.user_function_name)
+    post_hoc_func = (
+        load_user_function(calibration.post_hoc_transformation) if calibration.post_hoc_transformation else None
+    )
+
+    # Collect user-defined distance function
+    if isinstance(calibration.distance_function, str):
+        dist_func = dist_func_dict[calibration.distance_function]
+    else:
+        dist_func = load_user_function(calibration.distance_function)
 
     logger.info("BUILDER: setting up ABCSamplers...")
-    
+
     observed_raw = pd.read_csv(calibration.observed_data_path)
     observed_in_window = get_data_in_window(observed_raw, calibration)
     calibrators = []
     location_column = calibration.comparison[0].observed_location_column
+
     for model in models:
         observed_data = get_data_in_location(observed_in_window, model.population.name, location_column)
         vax_state = (
@@ -471,15 +497,6 @@ def build_calibration(
         fixed_parameters.update(
             {"end_date": calibration.fitting_window.end_date, "projection": False, "epimodel": model}
         )
-
-        # Collect user-defined distance function
-        if isinstance(calibration.distance_function, UserDefinedFunction):
-            # FIXME: this almost surely won't work, need to find proper solution
-            dist_func = import_module(
-                calibration.distance_function.user_function_name, calibration.distance_function.user_script_path
-            )
-        else:
-            dist_func = dist_func_dict[calibration.distance_function]
 
         # ABCSamplers are the main outputs
         abc_sampler = ABCSampler(
