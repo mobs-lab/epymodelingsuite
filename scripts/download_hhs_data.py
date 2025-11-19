@@ -60,7 +60,7 @@ def main():
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    print(f"Downloading HHS hospitalization data...")
+    print("Downloading HHS hospitalization data...")
     print(f"  Start date: {args.start_date}")
     print(f"  Data type: {args.data_type}")
     print(f"  Output file: {args.output}")
@@ -72,7 +72,7 @@ def main():
         data_type=args.data_type,
     )
 
-    print(f"\nDownload complete!")
+    print("\nDownload complete!")
     print(f"  Total records: {len(df)}")
     print(f"  Date range: {df['target_end_date'].min()} to {df['target_end_date'].max()}")
     print(f"  Locations: {df['location_iso'].nunique()}")
