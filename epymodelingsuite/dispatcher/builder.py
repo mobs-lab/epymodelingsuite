@@ -430,24 +430,19 @@ def build_calibration(
     # using the earliest start_date before creating ABCSamplers.
     models = setup_interventions(models, basemodel, intervention_types, sampled_start_timespan)
 
-    logger.info("BUILDER: setting up ABCSamplers...")
+    # Collect user-defined post-hoc transformation function
+    post_hoc_func = None
+    if calibration.post_hoc_transformation:
+        with import_module(calibration.post_hoc_transformation.user_script_path) as module:
+            post_hoc_func = getattr(module, calibration.post_hoc_transformation.user_function_name)
 
+    logger.info("BUILDER: setting up ABCSamplers...")
+    
     observed_raw = pd.read_csv(calibration.observed_data_path)
     observed_in_window = get_data_in_window(observed_raw, calibration)
     calibrators = []
     location_column = calibration.comparison[0].observed_location_column
     for model in models:
-        # Collect user-defined post-hoc transformation function
-        post_hoc_func = (
-            # FIXME: this almost surely won't work, need to find proper solution
-            import_module(
-                calibration.post_hoc_transformation.user_function_name,
-                calibration.post_hoc_transformation.user_script_path,
-            )
-            if calibration.post_hoc_transformation
-            else None
-        )
-
         observed_data = get_data_in_location(observed_in_window, model.population.name, location_column)
         vax_state = (
             get_data_in_location(earliest_vax, model.population.name, "location") if earliest_vax is not None else None
