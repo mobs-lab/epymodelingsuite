@@ -225,11 +225,12 @@ def generate_single_quantile_plots(
         if proj_quant is not None:
             from datetime import timedelta
 
-            # Full version: filter up to horizon 9
+            # Full version: apply horizon_max only (no surveillance_start_date filtering)
             proj_quant_full = proj_quant.copy()
-            proj_dates_full = pd.to_datetime(proj_quant_full["date"]).dt.date
-            horizon_end_full = plots_config.reference_date + timedelta(weeks=9)
-            proj_quant_full = proj_quant_full[proj_dates_full.values <= horizon_end_full]
+            if plots_config.quantiles.horizon_max is not None:
+                proj_dates_full = pd.to_datetime(proj_quant_full["date"]).dt.date
+                horizon_end_full = plots_config.reference_date + timedelta(weeks=plots_config.quantiles.horizon_max)
+                proj_quant_full = proj_quant_full[proj_dates_full.values <= horizon_end_full]
 
             # Filtered version: apply standard filtering
             proj_quant_filtered = proj_quant.copy()
@@ -490,11 +491,14 @@ def generate_quantile_grid_plot(
         if proj_quant_raw is not None:
             from datetime import timedelta
 
-            # Full version: filter up to horizon 9
+            # Full version: apply horizon_max only (no surveillance_start_date filtering)
             location_proj_quants_full[loc] = proj_quant_raw.copy()
-            proj_dates_full = pd.to_datetime(location_proj_quants_full[loc]["date"]).dt.date
-            horizon_end_full = plots_config.reference_date + timedelta(weeks=9)
-            location_proj_quants_full[loc] = location_proj_quants_full[loc][proj_dates_full.values <= horizon_end_full]
+            if plots_config.quantiles.horizon_max is not None:
+                proj_dates_full = pd.to_datetime(location_proj_quants_full[loc]["date"]).dt.date
+                horizon_end_full = plots_config.reference_date + timedelta(weeks=plots_config.quantiles.horizon_max)
+                location_proj_quants_full[loc] = location_proj_quants_full[loc][
+                    proj_dates_full.values <= horizon_end_full
+                ]
 
             # Filtered version: apply standard filtering
             location_proj_quants_filtered[loc] = proj_quant_raw.copy()
