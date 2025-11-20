@@ -128,7 +128,9 @@ def _validate_compartment_list(names: list[str], base_compartments: set, context
         raise ValueError(err_msg)
 
 
-def _validate_transition_list(names: list[str], base_transitions: set, context: str) -> None:
+def _validate_transition_list(
+    names: list[str], base_transitions: set, context: str, *, warn_only: bool = False
+) -> None:
     """
     Validate transition names exist in basemodel.
 
@@ -140,11 +142,14 @@ def _validate_transition_list(names: list[str], base_transitions: set, context: 
         Transition identifiers defined in base model (format: {source}_to_{target}).
     context : str
         Description of where these transitions are referenced (for error messages).
+    warn_only : bool, optional
+        If True, log a warning instead of raising an error for invalid transitions.
+        Defaults to False (raise error).
 
     Raises
     ------
     ValueError
-        If any transition names are not defined in base model.
+        If any transition names are not defined in base model (unless warn_only=True).
     """
     invalid = set()
     for name in names:
@@ -157,8 +162,11 @@ def _validate_transition_list(names: list[str], base_transitions: set, context: 
             invalid.add(name)
 
     if invalid:
-        err_msg = f"Transitions in {context} not defined in basemodel: {sorted(invalid)}"
-        raise ValueError(err_msg)
+        msg = f"Transitions in {context} not defined in basemodel: {sorted(invalid)}"
+        if warn_only:
+            logger.warning(msg)
+        else:
+            raise ValueError(msg)
 
 
 def _ensure_output_references_valid(
@@ -166,6 +174,9 @@ def _ensure_output_references_valid(
 ) -> None:
     """
     Validate that output config references exist in basemodel.
+
+    Compartment references are strictly validated (errors raised).
+    Transition references are loosely validated (warnings only) to allow aggregated transitions.
 
     Parameters
     ----------
@@ -179,7 +190,7 @@ def _ensure_output_references_valid(
     Raises
     ------
     ValueError
-        If any referenced compartments or transitions are not defined in base model.
+        If any referenced compartments are not defined in base model.
     """
     output = output_config.output
 
@@ -189,9 +200,9 @@ def _ensure_output_references_valid(
         # Validate compartments if it's a list (skip if boolean)
         if isinstance(quantiles.compartments, list):
             _validate_compartment_list(quantiles.compartments, base_compartments, "quantiles.compartments")
-        # Validate transitions if it's a list (skip if boolean)
+        # Validate transitions if it's a list (skip if boolean) - warn only for aggregated transitions
         if isinstance(quantiles.transitions, list):
-            _validate_transition_list(quantiles.transitions, base_transitions, "quantiles.transitions")
+            _validate_transition_list(quantiles.transitions, base_transitions, "quantiles.transitions", warn_only=True)
 
     # Validate trajectories section
     if output.trajectories is not None:
@@ -199,9 +210,11 @@ def _ensure_output_references_valid(
         # Validate compartments if it's a list (skip if boolean)
         if isinstance(trajectories.compartments, list):
             _validate_compartment_list(trajectories.compartments, base_compartments, "trajectories.compartments")
-        # Validate transitions if it's a list (skip if boolean)
+        # Validate transitions if it's a list (skip if boolean) - warn only for aggregated transitions
         if isinstance(trajectories.transitions, list):
-            _validate_transition_list(trajectories.transitions, base_transitions, "trajectories.transitions")
+            _validate_transition_list(
+                trajectories.transitions, base_transitions, "trajectories.transitions", warn_only=True
+            )
 
 
 def _warn_mismatched_observed_data_paths(
