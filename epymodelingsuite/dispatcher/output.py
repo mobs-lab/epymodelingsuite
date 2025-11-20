@@ -153,27 +153,6 @@ def filter_failed_calibration_trajectories(calibration_results: CalibrationResul
     return calibration_results
 
 
-def dataframe_to_gzipped_csv(df: pd.DataFrame, **csv_kwargs) -> bytes:
-    """
-    Convert a DataFrame to gzip-compressed CSV bytes.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        The DataFrame to convert
-    **csv_kwargs
-        Additional keyword arguments to pass to DataFrame.to_csv()
-
-    Returns
-    -------
-    bytes
-        Gzip-compressed CSV data as bytes
-    """
-    buffer = io.BytesIO()
-    df.to_csv(buffer, date_format="%Y-%m-%d", compression="gzip", **csv_kwargs)
-    return buffer.getvalue()
-
-
 def format_quantiles_flusightforecast(quantiles_df: pd.DataFrame, reference_date: date) -> pd.DataFrame:
     """
     Create FluSight forecast formatted quantile outputs for a single model. Rate-trends are handled separately.
@@ -425,6 +404,11 @@ def make_rate_trends_flusightforecast(
     return pd.DataFrame.from_records(rows)
 
 
+def make_prop_ed_flusightforecast():
+    """"""
+    return
+
+
 def format_quantiles_flusmh(quantiles_df: pd.DataFrame) -> pd.DataFrame:
     """"""
 
@@ -474,6 +458,27 @@ def format_tabular_object(df: pd.DataFrame, name: str, output_type: TabularOutpu
         case _:
             msg = f"Requested undefined tabular object format {output_format}."
             logger.warning(msg)
+
+
+def dataframe_to_gzipped_csv(df: pd.DataFrame, **csv_kwargs) -> bytes:
+    """
+    Convert a DataFrame to gzip-compressed CSV bytes.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The DataFrame to convert
+    **csv_kwargs
+        Additional keyword arguments to pass to DataFrame.to_csv()
+
+    Returns
+    -------
+    bytes
+        Gzip-compressed CSV data as bytes
+    """
+    buffer = io.BytesIO()
+    df.to_csv(buffer, date_format="%Y-%m-%d", compression="gzip", **csv_kwargs)
+    return buffer.getvalue()
 
 
 # ===== Output Generator Registry and Functions =====
