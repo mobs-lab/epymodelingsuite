@@ -384,11 +384,8 @@ def generate_single_quantile_plots(
                     }
                 )[["date", "value"]]
 
-                # Filter to most recent N points if surveillance_points is set
-                if plots_config.quantiles.surveillance.surveillance_points is not None:
-                    df_surv_filtered = df_surv_filtered.sort_values("date").tail(
-                        plots_config.quantiles.surveillance.surveillance_points
-                    )
+                # Note: Per-output surveillance_points filtering will be applied later
+                # when generating each output, not here
 
                 # Get first surveillance date for projection filtering
                 if not df_surv_filtered.empty:
@@ -443,12 +440,39 @@ def generate_single_quantile_plots(
             output_name = f"quantiles_{location}_{output_config.type.value}"
 
             try:
+                # Determine which data to use and apply per-output filtering
+                if output_config.type == QuantilesOutputTypeEnum.FILTERED:
+                    proj_to_use = proj_quant_filtered
+                    surv_to_use = df_surv_filtered
+                elif output_config.type == QuantilesOutputTypeEnum.FULL:
+                    proj_to_use = proj_quant_full
+                    surv_to_use = df_surv_full
+                elif output_config.type == QuantilesOutputTypeEnum.SIDE_BY_SIDE:
+                    # Side-by-side handled separately below
+                    proj_to_use = None
+                    surv_to_use = None
+                else:
+                    logger.warning("Unknown output type %s for %s", output_config.type, location)
+                    continue
+
+                # Apply per-output surveillance_points filtering if needed (for filtered/full types)
+                if surv_to_use is not None and output_config.surveillance_points is not None:
+                    surv_to_use = surv_to_use.sort_values("date").tail(output_config.surveillance_points)
+
+                # Apply per-output horizon_max if specified (overrides base config)
+                if proj_to_use is not None and output_config.horizon_max is not None:
+                    from datetime import timedelta
+                    proj_dates = pd.to_datetime(proj_to_use["date"]).dt.date
+                    horizon_end = plots_config.reference_date + timedelta(weeks=output_config.horizon_max)
+                    proj_to_use = proj_to_use[proj_dates.values <= horizon_end]
+
+                # Create the plot
                 if output_config.type == QuantilesOutputTypeEnum.FILTERED:
                     fig, ax = _create_filtered_plot(
                         location,
                         cal_quant,
-                        proj_quant_filtered,
-                        df_surv_filtered,
+                        proj_to_use,
+                        surv_to_use,
                         fitting_window_start,
                         fitting_window_end,
                         plots_config,
@@ -459,8 +483,8 @@ def generate_single_quantile_plots(
                     fig, ax = _create_full_plot(
                         location,
                         cal_quant,
-                        proj_quant_full,
-                        df_surv_full,
+                        proj_to_use,
+                        surv_to_use,
                         fitting_window_start,
                         fitting_window_end,
                         plots_config,
@@ -661,13 +685,8 @@ def generate_quantile_grid_plot(
                     }
                 )[["date", "value"]]
 
-                # Filter to most recent N points if surveillance_points is set
-                if plots_config.quantiles.surveillance.surveillance_points is not None:
-                    location_surveillance_filtered[loc] = (
-                        location_surveillance_filtered[loc]
-                        .sort_values("date")
-                        .tail(plots_config.quantiles.surveillance.surveillance_points)
-                    )
+                # Note: Per-output surveillance_points filtering will be applied later
+                # when generating each output, not here
 
                 # Get first surveillance date for projection filtering
                 if not location_surveillance_filtered[loc].empty:
@@ -727,171 +746,184 @@ def generate_quantile_grid_plot(
 
         value_col = "value"
 
-        # Create filtered grid plot
-        try:
-            fig, axes = plot_calibration_projection_grid(
-                location_calibration_quantiles=location_cal_quants if location_cal_quants else None,
-                location_projection_quantiles=location_proj_quants_filtered if location_proj_quants_filtered else None,
-                value_col=value_col,
-                calibration_color=plots_config.quantiles.calibration.color,
-                projection_color=plots_config.quantiles.projection.color,
-                location_surveillance=location_surveillance_filtered if location_surveillance_filtered else None,
-                location_fitting_window_starts=(
-                    location_fitting_window_starts if plots_config.quantiles.fitting_window_line.show else None
-                ),
-                location_fitting_window_ends=(
-                    location_fitting_window_ends if plots_config.quantiles.fitting_window_line.show else None
-                ),
-                panels_per_row=plots_config.quantiles.grid.panels_per_row,
-            )
+        # Loop over configured outputs and generate plots
+        for output_config in plots_config.quantiles.outputs:
+            output_type_name = output_config.type.value  # "filtered", "full", or "side_by_side"
 
-            # Package output
-            output_objs = []
-            for output_type in plots_config.figure_output_types:
-                output_objs.append(
-                    figure_to_output_object(fig, "quantiles_grid_filtered", output_type, plots_config.dpi)
-                )
-            out_dict["quantiles_grid_filtered"] = output_objs
-            plt.close(fig)
-        except Exception as e:
-            logger.warning("Failed to create filtered quantile grid plot: %s", e)
+            # Determine which projection data to use based on output type
+            if output_type_name == "filtered":
+                proj_quants_to_use = location_proj_quants_filtered
+                surv_data_to_use = location_surveillance_filtered
+            elif output_type_name == "full":
+                proj_quants_to_use = location_proj_quants_full
+                surv_data_to_use = location_surveillance_full
+            elif output_type_name == "side_by_side":
+                # Side-by-side uses both, handled separately below
+                proj_quants_to_use = None
+                surv_data_to_use = None
+            else:
+                logger.warning(f"Unknown output type: {output_type_name}")
+                continue
 
-        # Create full grid plot
-        try:
-            fig, axes = plot_calibration_projection_grid(
-                location_calibration_quantiles=location_cal_quants if location_cal_quants else None,
-                location_projection_quantiles=location_proj_quants_full if location_proj_quants_full else None,
-                value_col=value_col,
-                calibration_color=plots_config.quantiles.calibration.color,
-                projection_color=plots_config.quantiles.projection.color,
-                location_surveillance=location_surveillance_full if location_surveillance_full else None,
-                location_fitting_window_starts=(
-                    location_fitting_window_starts if plots_config.quantiles.fitting_window_line.show else None
-                ),
-                location_fitting_window_ends=(
-                    location_fitting_window_ends if plots_config.quantiles.fitting_window_line.show else None
-                ),
-                panels_per_row=plots_config.quantiles.grid.panels_per_row,
-            )
-
-            # Package output
-            output_objs = []
-            for output_type in plots_config.figure_output_types:
-                output_objs.append(figure_to_output_object(fig, "quantiles_grid_full", output_type, plots_config.dpi))
-            out_dict["quantiles_grid_full"] = output_objs
-            plt.close(fig)
-        except Exception as e:
-            logger.warning("Failed to create full quantile grid plot: %s", e)
-
-        # Create side-by-side grid plot
-        # Grid layout: each location gets 2 panels (full + filtered)
-        # If panels_per_row=4, that's 2 location-pairs per row
-        try:
-            # Get all locations
-            locations = set()
-            if location_cal_quants:
-                locations.update(location_cal_quants.keys())
-            if location_proj_quants_full:
-                locations.update(location_proj_quants_full.keys())
-            if location_proj_quants_filtered:
-                locations.update(location_proj_quants_filtered.keys())
-            locations = sorted(locations)
-
-            if locations:
-                n_locations = len(locations)
-                panels_per_row = plots_config.quantiles.grid.panels_per_row
-                pairs_per_row = panels_per_row // 2  # Each location needs 2 panels
-                nrows = math.ceil(n_locations / pairs_per_row)
-                ncols = panels_per_row
-
-                figsize = (4 * ncols, 3.6 * nrows)
-                fig, axes = plt.subplots(nrows, ncols, figsize=figsize, squeeze=False)
-
-                for i, location in enumerate(locations):
-                    pair_idx = i  # Which location-pair (0, 1, 2, ...)
-                    row = pair_idx // pairs_per_row
-                    col_start = (pair_idx % pairs_per_row) * 2  # 0, 2, 4, ...
-
-                    ax_full = axes[row, col_start]  # Left panel of pair
-                    ax_filtered = axes[row, col_start + 1]  # Right panel of pair
-
-                    cal_quant = location_cal_quants.get(location) if location_cal_quants else None
-                    proj_quant_full = location_proj_quants_full.get(location) if location_proj_quants_full else None
-                    proj_quant_filtered = (
-                        location_proj_quants_filtered.get(location) if location_proj_quants_filtered else None
+            # Apply per-output surveillance_points filtering if needed
+            if surv_data_to_use and output_config.surveillance_points is not None:
+                surv_data_filtered_by_output = {}
+                for loc, surv_df in surv_data_to_use.items():
+                    surv_data_filtered_by_output[loc] = (
+                        surv_df.sort_values("date").tail(output_config.surveillance_points)
                     )
-                    surv_full = location_surveillance_full.get(location) if location_surveillance_full else None
-                    surv_filtered = (
-                        location_surveillance_filtered.get(location) if location_surveillance_filtered else None
-                    )
-                    fitting_window_start = (
-                        location_fitting_window_starts.get(location) if location_fitting_window_starts else None
-                    )
-                    fitting_window_end = (
-                        location_fitting_window_ends.get(location) if location_fitting_window_ends else None
-                    )
+                surv_data_to_use = surv_data_filtered_by_output
 
-                    # Left panel: Full
-                    plot_calibration_projection(
-                        calibration_quantiles=cal_quant,
-                        projection_quantiles=proj_quant_full,
+            # Apply per-output horizon_max if specified (overrides base config)
+            if proj_quants_to_use and output_config.horizon_max is not None:
+                from datetime import timedelta
+                proj_quants_horizon_filtered = {}
+                for loc, proj_df in proj_quants_to_use.items():
+                    proj_df_copy = proj_df.copy()
+                    proj_dates = pd.to_datetime(proj_df_copy["date"]).dt.date
+                    horizon_end = plots_config.reference_date + timedelta(weeks=output_config.horizon_max)
+                    proj_quants_horizon_filtered[loc] = proj_df_copy[proj_dates.values <= horizon_end]
+                proj_quants_to_use = proj_quants_horizon_filtered
+
+            # Generate grid plot based on output type
+            if output_type_name in ["filtered", "full"]:
+                try:
+                    fig, axes = plot_calibration_projection_grid(
+                        location_calibration_quantiles=(
+                            location_cal_quants if output_config.show_calibration and location_cal_quants else None
+                        ),
+                        location_projection_quantiles=(
+                            proj_quants_to_use if output_config.show_projection and proj_quants_to_use else None
+                        ),
                         value_col=value_col,
                         calibration_color=plots_config.quantiles.calibration.color,
                         projection_color=plots_config.quantiles.projection.color,
-                        df_surveillance=surv_full,
-                        fitting_window_start=(
-                            fitting_window_start if plots_config.quantiles.fitting_window_line.show else None
+                        location_surveillance=(
+                            surv_data_to_use if output_config.show_surveillance and surv_data_to_use else None
                         ),
-                        fitting_window_end=(
-                            fitting_window_end if plots_config.quantiles.fitting_window_line.show else None
+                        location_fitting_window_starts=(
+                            location_fitting_window_starts if output_config.show_fitting_window_line else None
                         ),
-                        title=f"{_format_location_name(location)} - Full",
-                        ax=ax_full,
+                        location_fitting_window_ends=(
+                            location_fitting_window_ends if output_config.show_fitting_window_line else None
+                        ),
+                        panels_per_row=plots_config.quantiles.grid.panels_per_row,
                     )
 
-                    # Right panel: Filtered
-                    plot_calibration_projection(
-                        calibration_quantiles=cal_quant,
-                        projection_quantiles=proj_quant_filtered,
-                        value_col=value_col,
-                        calibration_color=plots_config.quantiles.calibration.color,
-                        projection_color=plots_config.quantiles.projection.color,
-                        df_surveillance=surv_filtered,
-                        fitting_window_start=(
-                            fitting_window_start if plots_config.quantiles.fitting_window_line.show else None
-                        ),
-                        fitting_window_end=(
-                            fitting_window_end if plots_config.quantiles.fitting_window_line.show else None
-                        ),
-                        title=f"{_format_location_name(location)} - Filtered",
-                        ax=ax_filtered,
-                    )
+                    # Package output
+                    output_objs = []
+                    for fig_output_type in plots_config.figure_output_types:
+                        output_objs.append(
+                            figure_to_output_object(
+                                fig, f"quantiles_grid_{output_type_name}", fig_output_type, plots_config.dpi
+                            )
+                        )
+                    out_dict[f"quantiles_grid_{output_type_name}"] = output_objs
+                    plt.close(fig)
+                except Exception as e:
+                    logger.warning(f"Failed to create {output_type_name} quantile grid plot: %s", e)
 
-                    # Hide legends except for first pair
-                    if i != 0:
-                        for ax in [ax_full, ax_filtered]:
-                            legend = ax.get_legend()
-                            if legend is not None:
-                                legend.remove()
+            elif output_type_name == "side_by_side":
+                # Side-by-side grid plot
+                # Grid layout: each location gets 2 panels (full + filtered)
+                try:
+                    # Get all locations
+                    locations = set()
+                    if location_cal_quants:
+                        locations.update(location_cal_quants.keys())
+                    if location_proj_quants_full:
+                        locations.update(location_proj_quants_full.keys())
+                    if location_proj_quants_filtered:
+                        locations.update(location_proj_quants_filtered.keys())
+                    locations = sorted(locations)
 
-                # Remove unused axes
-                for idx in range(n_locations * 2, nrows * ncols):
-                    r = idx // ncols
-                    c = idx % ncols
-                    axes[r, c].axis("off")
+                    if locations:
+                        n_locations = len(locations)
+                        panels_per_row = output_config.columns if hasattr(output_config, 'columns') else plots_config.quantiles.grid.panels_per_row
+                        pairs_per_row = panels_per_row // 2  # Each location needs 2 panels
+                        nrows = math.ceil(n_locations / pairs_per_row)
+                        ncols = panels_per_row
 
-                plt.tight_layout()
+                        figsize = output_config.figsize if output_config.figsize else (4 * ncols, 3.6 * nrows)
+                        fig, axes = plt.subplots(nrows, ncols, figsize=figsize, squeeze=False)
 
-                # Package output
-                output_objs = []
-                for output_type in plots_config.figure_output_types:
-                    output_objs.append(
-                        figure_to_output_object(fig, "quantiles_grid_sidebyside", output_type, plots_config.dpi)
-                    )
-                out_dict["quantiles_grid_sidebyside"] = output_objs
-                plt.close(fig)
-        except Exception as e:
-            logger.warning("Failed to create sidebyside quantile grid plot: %s", e)
+                        for i, location in enumerate(locations):
+                            pair_idx = i  # Which location-pair (0, 1, 2, ...)
+                            row = pair_idx // pairs_per_row
+                            col_start = (pair_idx % pairs_per_row) * 2  # 0, 2, 4, ...
+
+                            ax_full = axes[row, col_start]  # Left panel of pair
+                            ax_filtered = axes[row, col_start + 1]  # Right panel of pair
+
+                            cal_quant = location_cal_quants.get(location) if output_config.show_calibration and location_cal_quants else None
+                            proj_quant_full = location_proj_quants_full.get(location) if output_config.show_projection and location_proj_quants_full else None
+                            proj_quant_filtered = (
+                                location_proj_quants_filtered.get(location) if output_config.show_projection and location_proj_quants_filtered else None
+                            )
+                            surv_full = location_surveillance_full.get(location) if output_config.show_surveillance and location_surveillance_full else None
+                            surv_filtered = (
+                                location_surveillance_filtered.get(location) if output_config.show_surveillance and location_surveillance_filtered else None
+                            )
+                            fitting_window_start = (
+                                location_fitting_window_starts.get(location) if output_config.show_fitting_window_line and location_fitting_window_starts else None
+                            )
+                            fitting_window_end = (
+                                location_fitting_window_ends.get(location) if output_config.show_fitting_window_line and location_fitting_window_ends else None
+                            )
+
+                            # Left panel: Full
+                            plot_calibration_projection(
+                                calibration_quantiles=cal_quant,
+                                projection_quantiles=proj_quant_full,
+                                value_col=value_col,
+                                calibration_color=plots_config.quantiles.calibration.color,
+                                projection_color=plots_config.quantiles.projection.color,
+                                df_surveillance=surv_full,
+                                fitting_window_start=fitting_window_start,
+                                fitting_window_end=fitting_window_end,
+                                title=f"{_format_location_name(location)} - Full",
+                                ax=ax_full,
+                            )
+
+                            # Right panel: Filtered
+                            plot_calibration_projection(
+                                calibration_quantiles=cal_quant,
+                                projection_quantiles=proj_quant_filtered,
+                                value_col=value_col,
+                                calibration_color=plots_config.quantiles.calibration.color,
+                                projection_color=plots_config.quantiles.projection.color,
+                                df_surveillance=surv_filtered,
+                                fitting_window_start=fitting_window_start,
+                                fitting_window_end=fitting_window_end,
+                                title=f"{_format_location_name(location)} - Filtered",
+                                ax=ax_filtered,
+                            )
+
+                            # Hide legends except for first pair
+                            if i != 0:
+                                for ax in [ax_full, ax_filtered]:
+                                    legend = ax.get_legend()
+                                    if legend is not None:
+                                        legend.remove()
+
+                        # Remove unused axes
+                        for idx in range(n_locations * 2, nrows * ncols):
+                            r = idx // ncols
+                            c = idx % ncols
+                            axes[r, c].axis("off")
+
+                        plt.tight_layout()
+
+                        # Package output
+                        output_objs = []
+                        for fig_output_type in plots_config.figure_output_types:
+                            output_objs.append(
+                                figure_to_output_object(fig, "quantiles_grid_sidebyside", fig_output_type, plots_config.dpi)
+                            )
+                        out_dict["quantiles_grid_sidebyside"] = output_objs
+                        plt.close(fig)
+                except Exception as e:
+                    logger.warning(f"Failed to create sidebyside quantile grid plot: {e}")
 
 
 def generate_single_location_posterior_plots(
