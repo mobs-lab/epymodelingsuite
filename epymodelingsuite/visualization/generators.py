@@ -19,6 +19,7 @@ from .core import (
     figure_to_output_object,
     plot_calibration_projection,
     plot_calibration_projection_grid,
+    plot_calibration_projection_sidebyside,
     plot_posterior_histogram,
     plot_posterior_histogram_grid,
 )
@@ -120,6 +121,64 @@ def _create_full_plot(
         calibration_color=plots_config.quantiles.calibration.color,
         projection_color=plots_config.quantiles.projection.color,
         df_surveillance=df_surv,
+        fitting_window_start=fitting_window_start if plots_config.quantiles.fitting_window_line.show else None,
+        fitting_window_end=fitting_window_end if plots_config.quantiles.fitting_window_line.show else None,
+        title=_format_location_name(location),
+    )
+
+
+def _create_sidebyside_plot(
+    location: str,
+    cal_quant: pd.DataFrame | None,
+    proj_quant_full: pd.DataFrame | None,
+    proj_quant_filtered: pd.DataFrame | None,
+    df_surv_full: pd.DataFrame | None,
+    df_surv_filtered: pd.DataFrame | None,
+    fitting_window_start: pd.Timestamp | None,
+    fitting_window_end: pd.Timestamp | None,
+    plots_config: PlotsConfig,
+    value_col: str,
+) -> tuple:
+    """
+    Create side-by-side (full | filtered) quantile plot for a location.
+
+    Parameters
+    ----------
+    location : str
+        Location name
+    cal_quant : pd.DataFrame or None
+        Calibration quantiles (shown in both panels)
+    proj_quant_full : pd.DataFrame or None
+        Projection quantiles for left panel (full version)
+    proj_quant_filtered : pd.DataFrame or None
+        Projection quantiles for right panel (filtered version)
+    df_surv_full : pd.DataFrame or None
+        Surveillance data for left panel (full version)
+    df_surv_filtered : pd.DataFrame or None
+        Surveillance data for right panel (filtered version)
+    fitting_window_start : pd.Timestamp or None
+        Start of fitting window
+    fitting_window_end : pd.Timestamp or None
+        End of fitting window
+    plots_config : PlotsConfig
+        Plot configuration
+    value_col : str
+        Name of value column
+
+    Returns
+    -------
+    tuple
+        (fig, (ax_full, ax_filtered)) matplotlib figure and tuple of axes
+    """
+    return plot_calibration_projection_sidebyside(
+        calibration_quantiles=cal_quant,
+        projection_quantiles_full=proj_quant_full,
+        projection_quantiles_filtered=proj_quant_filtered,
+        surveillance_full=df_surv_full,
+        surveillance_filtered=df_surv_filtered,
+        value_col=value_col,
+        calibration_color=plots_config.quantiles.calibration.color,
+        projection_color=plots_config.quantiles.projection.color,
         fitting_window_start=fitting_window_start if plots_config.quantiles.fitting_window_line.show else None,
         fitting_window_end=fitting_window_end if plots_config.quantiles.fitting_window_line.show else None,
         title=_format_location_name(location),
@@ -408,6 +467,32 @@ def generate_single_quantile_plots(
         except Exception as e:
             logger.warning("Failed to create full quantile plot for %s: %s", location, e)
 
+        # Create side-by-side plot
+        try:
+            fig, (ax_full, ax_filtered) = _create_sidebyside_plot(
+                location,
+                cal_quant,
+                proj_quant_full,
+                proj_quant_filtered,
+                df_surv_full,
+                df_surv_filtered,
+                fitting_window_start,
+                fitting_window_end,
+                plots_config,
+                value_col,
+            )
+
+            # Package output
+            output_objs = []
+            for output_type in plots_config.figure_output_types:
+                output_objs.append(
+                    figure_to_output_object(fig, f"quantiles_{location}_sidebyside", output_type, plots_config.dpi)
+                )
+            out_dict[f"quantiles_{location}_sidebyside"] = output_objs
+            plt.close(fig)
+        except Exception as e:
+            logger.warning("Failed to create sidebyside quantile plot for %s: %s", location, e)
+
 
 def generate_quantile_grid_plot(
     calibrations: list[CalibrationOutput],
@@ -690,6 +775,116 @@ def generate_quantile_grid_plot(
             plt.close(fig)
         except Exception as e:
             logger.warning("Failed to create full quantile grid plot: %s", e)
+
+        # Create side-by-side grid plot
+        # Grid layout: each location gets 2 panels (full + filtered)
+        # If panels_per_row=4, that's 2 location-pairs per row
+        try:
+            # Get all locations
+            locations = set()
+            if location_cal_quants:
+                locations.update(location_cal_quants.keys())
+            if location_proj_quants_full:
+                locations.update(location_proj_quants_full.keys())
+            if location_proj_quants_filtered:
+                locations.update(location_proj_quants_filtered.keys())
+            locations = sorted(locations)
+
+            if locations:
+                n_locations = len(locations)
+                panels_per_row = plots_config.quantiles.grid.panels_per_row
+                pairs_per_row = panels_per_row // 2  # Each location needs 2 panels
+                nrows = math.ceil(n_locations / pairs_per_row)
+                ncols = panels_per_row
+
+                figsize = (4 * ncols, 3.6 * nrows)
+                fig, axes = plt.subplots(nrows, ncols, figsize=figsize, squeeze=False)
+
+                for i, location in enumerate(locations):
+                    pair_idx = i  # Which location-pair (0, 1, 2, ...)
+                    row = pair_idx // pairs_per_row
+                    col_start = (pair_idx % pairs_per_row) * 2  # 0, 2, 4, ...
+
+                    ax_full = axes[row, col_start]  # Left panel of pair
+                    ax_filtered = axes[row, col_start + 1]  # Right panel of pair
+
+                    cal_quant = location_cal_quants.get(location) if location_cal_quants else None
+                    proj_quant_full = location_proj_quants_full.get(location) if location_proj_quants_full else None
+                    proj_quant_filtered = (
+                        location_proj_quants_filtered.get(location) if location_proj_quants_filtered else None
+                    )
+                    surv_full = location_surveillance_full.get(location) if location_surveillance_full else None
+                    surv_filtered = (
+                        location_surveillance_filtered.get(location) if location_surveillance_filtered else None
+                    )
+                    fitting_window_start = (
+                        location_fitting_window_starts.get(location) if location_fitting_window_starts else None
+                    )
+                    fitting_window_end = (
+                        location_fitting_window_ends.get(location) if location_fitting_window_ends else None
+                    )
+
+                    # Left panel: Full
+                    plot_calibration_projection(
+                        calibration_quantiles=cal_quant,
+                        projection_quantiles=proj_quant_full,
+                        value_col=value_col,
+                        calibration_color=plots_config.quantiles.calibration.color,
+                        projection_color=plots_config.quantiles.projection.color,
+                        df_surveillance=surv_full,
+                        fitting_window_start=(
+                            fitting_window_start if plots_config.quantiles.fitting_window_line.show else None
+                        ),
+                        fitting_window_end=(
+                            fitting_window_end if plots_config.quantiles.fitting_window_line.show else None
+                        ),
+                        title=f"{_format_location_name(location)} - Full",
+                        ax=ax_full,
+                    )
+
+                    # Right panel: Filtered
+                    plot_calibration_projection(
+                        calibration_quantiles=cal_quant,
+                        projection_quantiles=proj_quant_filtered,
+                        value_col=value_col,
+                        calibration_color=plots_config.quantiles.calibration.color,
+                        projection_color=plots_config.quantiles.projection.color,
+                        df_surveillance=surv_filtered,
+                        fitting_window_start=(
+                            fitting_window_start if plots_config.quantiles.fitting_window_line.show else None
+                        ),
+                        fitting_window_end=(
+                            fitting_window_end if plots_config.quantiles.fitting_window_line.show else None
+                        ),
+                        title=f"{_format_location_name(location)} - Filtered",
+                        ax=ax_filtered,
+                    )
+
+                    # Hide legends except for first pair
+                    if i != 0:
+                        for ax in [ax_full, ax_filtered]:
+                            legend = ax.get_legend()
+                            if legend is not None:
+                                legend.remove()
+
+                # Remove unused axes
+                for idx in range(n_locations * 2, nrows * ncols):
+                    r = idx // ncols
+                    c = idx % ncols
+                    axes[r, c].axis("off")
+
+                plt.tight_layout()
+
+                # Package output
+                output_objs = []
+                for output_type in plots_config.figure_output_types:
+                    output_objs.append(
+                        figure_to_output_object(fig, "quantiles_grid_sidebyside", output_type, plots_config.dpi)
+                    )
+                out_dict["quantiles_grid_sidebyside"] = output_objs
+                plt.close(fig)
+        except Exception as e:
+            logger.warning("Failed to create sidebyside quantile grid plot: %s", e)
 
 
 def generate_single_location_posterior_plots(
