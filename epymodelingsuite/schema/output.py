@@ -5,6 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from ..utils import validate_iso3166
 from .common import Meta
 
 logger = logging.getLogger(__name__)
@@ -67,7 +68,7 @@ class Covid19ForecastOutput(BaseModel):
 
 def get_flusight_quantiles() -> list[float]:
     """
-    Return an array containing the quantiles needed for FluSight submissions.
+    Return a list containing the quantiles needed for FluSight submissions.
     The set of quantiles is defined at https://github.com/cdcepi/FluSight-forecast-hub/tree/main/model-output#quantile-output
     """
     import numpy as np
@@ -78,13 +79,24 @@ def get_flusight_quantiles() -> list[float]:
     # 0.01, 0.025, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 0.975, and 0.99
 
 
-class FlusightRateTrends(BaseModel):
-    """Specifications for FluSight rate-trends."""
+def get_quantile_ribbon_default() -> list[float]:
+    """Return a list containing default quantiles for plotting ribbons."""
+    return [0.025, 0.5, 0.975]
+
+
+class ObservedValuesConfig(BaseModel):
+    """Specifications for selecting observed values."""
 
     observed_data_path: str = Field(description="Path to observed data CSV file")
     observed_value_column: str = Field(description="Name of column containing observed values in observed data CSV")
     observed_date_column: str = Field(description="Name of column containing target dates in observed data CSV")
     observed_location_column: str = Field(description="Name of column containing location in observed data CSV")
+
+
+class FlusightPropED(BaseModel):
+    """"""
+
+    observed_data_path: str = Field(description="Path to observed data CSV file")
 
 
 class FlusightForecastOutput(BaseModel):
@@ -93,7 +105,7 @@ class FlusightForecastOutput(BaseModel):
     reference_date: date = Field(
         description="'YYYY-MM-DD' date to treat as reference date when creating horizons and target dates for submission file."
     )
-    rate_trends: FlusightRateTrends | None = Field(
+    rate_trends: ObservedValuesConfig | None = Field(
         None,
         description="Add rate-trend forecasts to submission file.",
     )
@@ -172,72 +184,74 @@ class PosteriorPlotConfig(BaseModel):
 class QuantilesGridConfig(BaseModel):
     """Configuration for quantiles grid plot."""
 
-    enabled: bool = Field(False, description="Create grid plot.")
     panels_per_row: int = Field(4, description="Number of panels per row in grid.")
 
 
 class QuantilesCalibrationConfig(BaseModel):
     """Configuration for calibration period visualization."""
 
-    show: bool = Field(True, description="Show calibration period quantiles.")
     color: str = Field("C0", description="Color for calibration ribbons.")
 
 
 class QuantilesProjectionConfig(BaseModel):
     """Configuration for projection period visualization."""
 
-    show: bool = Field(True, description="Show projection period quantiles.")
     color: str = Field("C1", description="Color for projection ribbons.")
-
-
-class QuantilesSurveillanceConfig(BaseModel):
-    """Configuration for surveillance data overlay."""
-
-    show: bool = Field(True, description="Overlay surveillance observations.")
-    data_path: str | None = Field(None, description="Path to surveillance data file.")
-    value_column: str | None = Field(None, description="Column containing observed values.")
-    date_column: str | None = Field(None, description="Column containing dates.")
-    location_column: str | None = Field(None, description="Column containing location identifiers.")
-
-
-class QuantilesReferenceLineConfig(BaseModel):
-    """Configuration for reference date line."""
-
-    show: bool = Field(True, description="Show vertical line at reference date.")
 
 
 class QuantilesPlotConfig(BaseModel):
     """Configuration for quantile ribbon plots."""
 
-    single: bool | list[str] = Field(
+    single: list[str] | bool = Field(
         False,
         description="Create single plot per location. True for all locations, or list of specific locations.",
     )
-    grid: QuantilesGridConfig = Field(
+    grid: QuantilesGridConfig | bool = Field(
         default_factory=QuantilesGridConfig,
         description="Grid plot configuration.",
     )
     quantiles: list[float] = Field(
-        [0.025, 0.5, 0.975],
-        description="Quantile levels for ribbons (95% CrI + median).",
+        default_factory=get_quantile_ribbon_default,
+        description="Quantile levels for ribbons (default 95% CrI + median).",
+        validate_default=True,
     )
-
-    calibration: QuantilesCalibrationConfig = Field(
+    show_calibration: QuantilesCalibrationConfig | bool = Field(
         default_factory=QuantilesCalibrationConfig,
-        description="Calibration period settings.",
+        description="Calibration period quantile ribbons.",
     )
-    projection: QuantilesProjectionConfig = Field(
+    show_projection: QuantilesProjectionConfig | bool = Field(
         default_factory=QuantilesProjectionConfig,
-        description="Projection period settings.",
+        description="Projection period quantile ribbons.",
     )
-    surveillance: QuantilesSurveillanceConfig = Field(
-        default_factory=QuantilesSurveillanceConfig,
-        description="Surveillance data overlay settings.",
+    show_surveillance: ObservedValuesConfig | None = Field(
+        None,
+        description="Surveillance data overlay.",
     )
-    reference_line: QuantilesReferenceLineConfig = Field(
-        default_factory=QuantilesReferenceLineConfig,
-        description="Reference date line settings.",
-    )
+    reference_line: bool = Field(True, description="Vertical line at reference date.")
+
+    @field_validator("grid")
+    @classmethod
+    def validate_grid(cls, v: bool) -> QuantilesGridConfig | bool:
+        """If passed True, use default factory."""
+        if v is True:
+            return QuantilesGridConfig()
+        return v
+
+    @field_validator("show_calibration")
+    @classmethod
+    def validate_calibration(cls, v: bool) -> QuantilesCalibrationConfig | bool:
+        """If passed True, use default factory."""
+        if v is True:
+            return QuantilesCalibrationConfig()
+        return v
+
+    @field_validator("show_projection")
+    @classmethod
+    def validate_projection(cls, v: bool) -> QuantilesProjectionConfig | bool:
+        """If passed True, use default factory."""
+        if v is True:
+            return QuantilesProjectionConfig()
+        return v
 
     @field_validator("quantiles")
     @classmethod
@@ -248,6 +262,13 @@ class QuantilesPlotConfig(BaseModel):
                 msg = f"Quantile {q} must be between 0 and 1"
                 raise ValueError(msg)
         return v
+
+    @field_validator("single")
+    @classmethod
+    def validate_single_plot_locations(cls, v: list[str]):
+        """Validate each population name in the list."""
+        validated_populations = [validate_iso3166(population) for population in v]
+        return validated_populations
 
 
 class PlotsConfig(BaseModel):
