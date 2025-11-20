@@ -59,29 +59,51 @@ output:
         enabled: true       # Create multi-location grid
         panels_per_row: 4   # Number of panels per row in grid
 
-      quantiles: [0.025, 0.25, 0.5, 0.75, 0.975]  # 95% CrI + IQR + median
-      horizon_max: 3        # Maximum forecast horizon (weeks ahead) to display. Set to null to show all horizons.
+      # Output configurations - specify which plot types to generate
+      outputs:
+        # Filtered output: limited surveillance points for forecast focus
+        - type: filtered
+          show_calibration: false
+          show_projection: true
+          show_surveillance: true
+          show_fitting_window_line: true
+          surveillance_points: 8    # Show most recent 8 points
+          horizon_max: null         # Use base config value
 
-      # Calibration period settings
+        # Full output: all surveillance points for full context
+        - type: full
+          show_calibration: false
+          show_projection: true
+          show_surveillance: true
+          show_fitting_window_line: true
+          surveillance_points: null  # Show all points
+          horizon_max: null          # Use base config value
+
+        # Side-by-side output: filtered and full combined
+        - type: side_by_side
+          show_calibration: false
+          show_projection: true
+          show_surveillance: true
+          show_fitting_window_line: true
+          columns: 4                 # For grid: 2 location-pairs per row
+          spacing: 0.3
+          figsize: null              # Auto-size
+
+      # Shared settings
+      quantiles: [0.025, 0.25, 0.5, 0.75, 0.975]  # 95% CrI + IQR + median
+      horizon_max: 3        # Base maximum forecast horizon (weeks ahead). Can be overridden per output.
+
+      # Shared styling (colors only, show flags moved to outputs)
       calibration:
-        show: true
         color: "C0"
 
-      # Projection period settings
       projection:
-        show: true
         color: "C1"
 
-      # Surveillance data overlay settings
+      # Surveillance data source (show flag moved to outputs)
       surveillance:
-        show: true
         data_path: data/flu_hosp_24.csv
         value_column: hospitalizations
         date_column: target_end_date
         location_column: geo_value
-        surveillance_points: 8  # Number of most recent surveillance points to display. Set to null to show all points.
-
-      # Fitting window end line settings
-      fitting_window_line:
-        show: true          # Show vertical line at end of calibration/fitting window
 

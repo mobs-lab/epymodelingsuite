@@ -169,6 +169,38 @@ class PosteriorPlotConfig(BaseModel):
     bins: int = Field(30, description="Number of histogram bins.")
 
 
+class QuantilesOutputTypeEnum(str, Enum):
+    """Types of quantile plot outputs."""
+
+    FILTERED = "filtered"
+    FULL = "full"
+    SIDE_BY_SIDE = "side_by_side"
+
+
+class QuantilesOutputConfig(BaseModel):
+    """Configuration for a single quantile plot output."""
+
+    type: QuantilesOutputTypeEnum = Field(description="Type of output to generate.")
+
+    # Display options (for all output types)
+    show_calibration: bool = Field(False, description="Show calibration period quantiles.")
+    show_projection: bool = Field(True, description="Show projection period quantiles.")
+    show_surveillance: bool = Field(True, description="Overlay surveillance observations.")
+    show_fitting_window_line: bool = Field(True, description="Show fitting window vertical lines.")
+
+    # Filter settings (only for FILTERED and FULL types)
+    # IGNORED for SIDE_BY_SIDE type (uses hardcoded filters)
+    surveillance_points: int | None = Field(
+        None, description="Number of most recent surveillance points to display. None = all points."
+    )
+    horizon_max: int | None = Field(None, description="Override base horizon_max. None = use base config value.")
+
+    # Layout settings (only for SIDE_BY_SIDE type)
+    columns: int = Field(4, description="For grid side-by-side: number of subplot columns (2 location-pairs per row).")
+    spacing: float = Field(0.3, description="For side-by-side: horizontal spacing between panels.")
+    figsize: tuple[float, float] | None = Field(None, description="For side-by-side: figure size (width, height).")
+
+
 class QuantilesGridConfig(BaseModel):
     """Configuration for quantiles grid plot."""
 
@@ -177,36 +209,24 @@ class QuantilesGridConfig(BaseModel):
 
 
 class QuantilesCalibrationConfig(BaseModel):
-    """Configuration for calibration period visualization."""
+    """Configuration for calibration period visualization styling."""
 
-    show: bool = Field(True, description="Show calibration period quantiles.")
     color: str = Field("C0", description="Color for calibration ribbons.")
 
 
 class QuantilesProjectionConfig(BaseModel):
-    """Configuration for projection period visualization."""
+    """Configuration for projection period visualization styling."""
 
-    show: bool = Field(True, description="Show projection period quantiles.")
     color: str = Field("C1", description="Color for projection ribbons.")
 
 
 class QuantilesSurveillanceConfig(BaseModel):
-    """Configuration for surveillance data overlay."""
+    """Configuration for surveillance data source."""
 
-    show: bool = Field(True, description="Overlay surveillance observations.")
     data_path: str | None = Field(None, description="Path to surveillance data file.")
     value_column: str | None = Field(None, description="Column containing observed values.")
     date_column: str | None = Field(None, description="Column containing dates.")
     location_column: str | None = Field(None, description="Column containing location identifiers.")
-    surveillance_points: int | None = Field(
-        8, description="Number of most recent surveillance points to display. If None, show all points."
-    )
-
-
-class QuantilesFittingWindowLineConfig(BaseModel):
-    """Configuration for fitting window end vertical line."""
-
-    show: bool = Field(True, description="Show vertical line at end of calibration/fitting window.")
 
 
 class QuantilesPlotConfig(BaseModel):
@@ -220,29 +240,60 @@ class QuantilesPlotConfig(BaseModel):
         default_factory=QuantilesGridConfig,
         description="Grid plot configuration.",
     )
+
+    # Output configuration
+    outputs: list[QuantilesOutputConfig] = Field(
+        default_factory=lambda: [
+            QuantilesOutputConfig(
+                type=QuantilesOutputTypeEnum.FILTERED,
+                surveillance_points=8,
+                show_calibration=False,
+                show_projection=True,
+                show_surveillance=True,
+                show_fitting_window_line=True,
+            ),
+            QuantilesOutputConfig(
+                type=QuantilesOutputTypeEnum.FULL,
+                surveillance_points=None,
+                show_calibration=False,
+                show_projection=True,
+                show_surveillance=True,
+                show_fitting_window_line=True,
+            ),
+            QuantilesOutputConfig(
+                type=QuantilesOutputTypeEnum.SIDE_BY_SIDE,
+                show_calibration=False,
+                show_projection=True,
+                show_surveillance=True,
+                show_fitting_window_line=True,
+                columns=4,
+                spacing=0.3,
+            ),
+        ],
+        description="List of output configurations to generate.",
+    )
+
+    # Shared settings
     quantiles: list[float] = Field(
         [0.025, 0.25, 0.5, 0.75, 0.975],
         description="Quantile levels for ribbons (95% CrI + IQR + median).",
     )
     horizon_max: int | None = Field(
-        3, description="Maximum forecast horizon (weeks ahead) to display. If None, show all horizons."
+        3, description="Base maximum forecast horizon (weeks ahead). Can be overridden per output."
     )
 
+    # Shared styling (data source and colors)
     calibration: QuantilesCalibrationConfig = Field(
         default_factory=QuantilesCalibrationConfig,
-        description="Calibration period settings.",
+        description="Calibration period styling.",
     )
     projection: QuantilesProjectionConfig = Field(
         default_factory=QuantilesProjectionConfig,
-        description="Projection period settings.",
+        description="Projection period styling.",
     )
     surveillance: QuantilesSurveillanceConfig = Field(
-        default_factory=QuantilesSurveillanceConfig,
-        description="Surveillance data overlay settings.",
-    )
-    fitting_window_line: QuantilesFittingWindowLineConfig = Field(
-        default_factory=QuantilesFittingWindowLineConfig,
-        description="Fitting window end line settings.",
+        ...,
+        description="Surveillance data source configuration.",
     )
 
     @field_validator("quantiles")
@@ -308,6 +359,7 @@ class OutputConfiguration(BaseModel):
         default_factory=ModelMetaOutput, description="Specifications for parameter tracking / model metadata outputs."
     )
 
+    # Plots
     plots: PlotsConfig | None = Field(
         None,
         description="Visualization plot settings. Requires modelset config for inference.",

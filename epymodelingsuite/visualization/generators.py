@@ -36,6 +36,7 @@ def _create_filtered_plot(
     fitting_window_end: pd.Timestamp | None,
     plots_config: PlotsConfig,
     value_col: str,
+    output_config,
 ) -> tuple:
     """
     Create filtered quantile plot for a location.
@@ -58,6 +59,8 @@ def _create_filtered_plot(
         Plot configuration
     value_col : str
         Name of value column
+    output_config : QuantilesOutputConfig
+        Output configuration with show flags
 
     Returns
     -------
@@ -65,14 +68,14 @@ def _create_filtered_plot(
         (fig, ax) matplotlib figure and axes
     """
     return plot_calibration_projection(
-        calibration_quantiles=cal_quant,
-        projection_quantiles=proj_quant,
+        calibration_quantiles=cal_quant if output_config.show_calibration else None,
+        projection_quantiles=proj_quant if output_config.show_projection else None,
         value_col=value_col,
         calibration_color=plots_config.quantiles.calibration.color,
         projection_color=plots_config.quantiles.projection.color,
-        df_surveillance=df_surv,
-        fitting_window_start=fitting_window_start if plots_config.quantiles.fitting_window_line.show else None,
-        fitting_window_end=fitting_window_end if plots_config.quantiles.fitting_window_line.show else None,
+        df_surveillance=df_surv if output_config.show_surveillance else None,
+        fitting_window_start=fitting_window_start if output_config.show_fitting_window_line else None,
+        fitting_window_end=fitting_window_end if output_config.show_fitting_window_line else None,
         title=_format_location_name(location),
     )
 
@@ -86,6 +89,7 @@ def _create_full_plot(
     fitting_window_end: pd.Timestamp | None,
     plots_config: PlotsConfig,
     value_col: str,
+    output_config,
 ) -> tuple:
     """
     Create full quantile plot for a location.
@@ -108,6 +112,8 @@ def _create_full_plot(
         Plot configuration
     value_col : str
         Name of value column
+    output_config : QuantilesOutputConfig
+        Output configuration with show flags
 
     Returns
     -------
@@ -115,14 +121,14 @@ def _create_full_plot(
         (fig, ax) matplotlib figure and axes
     """
     return plot_calibration_projection(
-        calibration_quantiles=cal_quant,
-        projection_quantiles=proj_quant,
+        calibration_quantiles=cal_quant if output_config.show_calibration else None,
+        projection_quantiles=proj_quant if output_config.show_projection else None,
         value_col=value_col,
         calibration_color=plots_config.quantiles.calibration.color,
         projection_color=plots_config.quantiles.projection.color,
-        df_surveillance=df_surv,
-        fitting_window_start=fitting_window_start if plots_config.quantiles.fitting_window_line.show else None,
-        fitting_window_end=fitting_window_end if plots_config.quantiles.fitting_window_line.show else None,
+        df_surveillance=df_surv if output_config.show_surveillance else None,
+        fitting_window_start=fitting_window_start if output_config.show_fitting_window_line else None,
+        fitting_window_end=fitting_window_end if output_config.show_fitting_window_line else None,
         title=_format_location_name(location),
     )
 
@@ -138,6 +144,7 @@ def _create_sidebyside_plot(
     fitting_window_end: pd.Timestamp | None,
     plots_config: PlotsConfig,
     value_col: str,
+    output_config,
 ) -> tuple:
     """
     Create side-by-side (full | filtered) quantile plot for a location.
@@ -164,6 +171,8 @@ def _create_sidebyside_plot(
         Plot configuration
     value_col : str
         Name of value column
+    output_config : QuantilesOutputConfig
+        Output configuration with show flags
 
     Returns
     -------
@@ -171,17 +180,19 @@ def _create_sidebyside_plot(
         (fig, (ax_full, ax_filtered)) matplotlib figure and tuple of axes
     """
     return plot_calibration_projection_sidebyside(
-        calibration_quantiles=cal_quant,
-        projection_quantiles_full=proj_quant_full,
-        projection_quantiles_filtered=proj_quant_filtered,
-        surveillance_full=df_surv_full,
-        surveillance_filtered=df_surv_filtered,
+        calibration_quantiles=cal_quant if output_config.show_calibration else None,
+        projection_quantiles_full=proj_quant_full if output_config.show_projection else None,
+        projection_quantiles_filtered=proj_quant_filtered if output_config.show_projection else None,
+        surveillance_full=df_surv_full if output_config.show_surveillance else None,
+        surveillance_filtered=df_surv_filtered if output_config.show_surveillance else None,
         value_col=value_col,
         calibration_color=plots_config.quantiles.calibration.color,
         projection_color=plots_config.quantiles.projection.color,
-        fitting_window_start=fitting_window_start if plots_config.quantiles.fitting_window_line.show else None,
-        fitting_window_end=fitting_window_end if plots_config.quantiles.fitting_window_line.show else None,
+        fitting_window_start=fitting_window_start if output_config.show_fitting_window_line else None,
+        fitting_window_end=fitting_window_end if output_config.show_fitting_window_line else None,
         title=_format_location_name(location),
+        figsize=output_config.figsize,
+        spacing=output_config.spacing,
     )
 
 
@@ -242,9 +253,10 @@ def generate_single_quantile_plots(
 
     locations = get_locations_to_plot(calibrations, plots_config.quantiles.single)
 
-    # Load surveillance data once before loop
+    # Load surveillance data once before loop if any output needs it
     surveillance = None
-    if plots_config.quantiles.surveillance.show and plots_config.quantiles.surveillance.data_path:
+    needs_surveillance = any(output.show_surveillance for output in plots_config.quantiles.outputs)
+    if needs_surveillance and plots_config.quantiles.surveillance.data_path:
         try:
             surveillance = pd.read_csv(plots_config.quantiles.surveillance.data_path)
         except Exception as e:
@@ -265,9 +277,14 @@ def generate_single_quantile_plots(
 
         # Get pre-computed quantiles
 
+        # Check if any output needs calibration/projection/fitting window
+        needs_calibration = any(output.show_calibration for output in plots_config.quantiles.outputs)
+        needs_projection = any(output.show_projection for output in plots_config.quantiles.outputs)
+        needs_fitting_window = any(output.show_fitting_window_line for output in plots_config.quantiles.outputs)
+
         # Calibration quantiles
         cal_quant = None
-        if plots_config.quantiles.calibration.show:
+        if needs_calibration:
             try:
                 cal_quant = calibration.results.get_calibration_quantiles(
                     quantiles=plots_config.quantiles.quantiles,
@@ -283,7 +300,7 @@ def generate_single_quantile_plots(
         # Calculate fitting window start and end from calibration quantiles
         fitting_window_start = None
         fitting_window_end = None
-        if plots_config.quantiles.fitting_window_line.show:
+        if needs_fitting_window:
             # Fetch calibration quantiles for fitting window calculation even if not displaying them
             cal_quant_for_fitting = cal_quant
             if cal_quant_for_fitting is None:
@@ -307,7 +324,7 @@ def generate_single_quantile_plots(
         # Projection quantiles
         # TODO: "hospitalizations" column is hardcoded in projection quantiles
         proj_quant = None
-        if plots_config.quantiles.projection.show:
+        if needs_projection:
             try:
                 proj_quant = calibration.results.get_projection_quantiles(
                     quantiles=plots_config.quantiles.quantiles,
@@ -419,79 +436,63 @@ def generate_single_quantile_plots(
 
         value_col = "value"
 
-        # Create filtered plot
-        try:
-            fig, ax = _create_filtered_plot(
-                location,
-                cal_quant,
-                proj_quant_filtered,
-                df_surv_filtered,
-                fitting_window_start,
-                fitting_window_end,
-                plots_config,
-                value_col,
-            )
+        # Create plots for each configured output
+        from ..schema.output import QuantilesOutputTypeEnum
 
-            # Package output
-            output_objs = []
-            for output_type in plots_config.figure_output_types:
-                output_objs.append(
-                    figure_to_output_object(fig, f"quantiles_{location}_filtered", output_type, plots_config.dpi)
-                )
-            out_dict[f"quantiles_{location}_filtered"] = output_objs
-            plt.close(fig)
-        except Exception as e:
-            logger.warning("Failed to create filtered quantile plot for %s: %s", location, e)
+        for output_config in plots_config.quantiles.outputs:
+            output_name = f"quantiles_{location}_{output_config.type.value}"
 
-        # Create full plot
-        try:
-            fig, ax = _create_full_plot(
-                location,
-                cal_quant,
-                proj_quant_full,
-                df_surv_full,
-                fitting_window_start,
-                fitting_window_end,
-                plots_config,
-                value_col,
-            )
+            try:
+                if output_config.type == QuantilesOutputTypeEnum.FILTERED:
+                    fig, ax = _create_filtered_plot(
+                        location,
+                        cal_quant,
+                        proj_quant_filtered,
+                        df_surv_filtered,
+                        fitting_window_start,
+                        fitting_window_end,
+                        plots_config,
+                        value_col,
+                        output_config,
+                    )
+                elif output_config.type == QuantilesOutputTypeEnum.FULL:
+                    fig, ax = _create_full_plot(
+                        location,
+                        cal_quant,
+                        proj_quant_full,
+                        df_surv_full,
+                        fitting_window_start,
+                        fitting_window_end,
+                        plots_config,
+                        value_col,
+                        output_config,
+                    )
+                elif output_config.type == QuantilesOutputTypeEnum.SIDE_BY_SIDE:
+                    fig, (ax_full, ax_filtered) = _create_sidebyside_plot(
+                        location,
+                        cal_quant,
+                        proj_quant_full,
+                        proj_quant_filtered,
+                        df_surv_full,
+                        df_surv_filtered,
+                        fitting_window_start,
+                        fitting_window_end,
+                        plots_config,
+                        value_col,
+                        output_config,
+                    )
+                else:
+                    logger.warning("Unknown output type %s for %s", output_config.type, location)
+                    continue
 
-            # Package output
-            output_objs = []
-            for output_type in plots_config.figure_output_types:
-                output_objs.append(
-                    figure_to_output_object(fig, f"quantiles_{location}_full", output_type, plots_config.dpi)
-                )
-            out_dict[f"quantiles_{location}_full"] = output_objs
-            plt.close(fig)
-        except Exception as e:
-            logger.warning("Failed to create full quantile plot for %s: %s", location, e)
-
-        # Create side-by-side plot
-        try:
-            fig, (ax_full, ax_filtered) = _create_sidebyside_plot(
-                location,
-                cal_quant,
-                proj_quant_full,
-                proj_quant_filtered,
-                df_surv_full,
-                df_surv_filtered,
-                fitting_window_start,
-                fitting_window_end,
-                plots_config,
-                value_col,
-            )
-
-            # Package output
-            output_objs = []
-            for output_type in plots_config.figure_output_types:
-                output_objs.append(
-                    figure_to_output_object(fig, f"quantiles_{location}_sidebyside", output_type, plots_config.dpi)
-                )
-            out_dict[f"quantiles_{location}_sidebyside"] = output_objs
-            plt.close(fig)
-        except Exception as e:
-            logger.warning("Failed to create sidebyside quantile plot for %s: %s", location, e)
+                # Package output
+                output_objs = []
+                for figure_output_type in plots_config.figure_output_types:
+                    output_objs.append(figure_to_output_object(fig, output_name, figure_output_type, plots_config.dpi))
+                out_dict[output_name] = output_objs
+                plt.close(fig)
+            except Exception as e:
+                logger.warning("Failed to create %s quantile plot for %s: %s", output_config.type.value, location, e)
 
 
 def generate_quantile_grid_plot(
@@ -527,9 +528,10 @@ def generate_quantile_grid_plot(
     if not plots_config.quantiles.grid.enabled:
         return
 
-    # Load surveillance data once before loop
+    # Load surveillance data once before loop if any output needs it
     surveillance = None
-    if plots_config.quantiles.surveillance.show and plots_config.quantiles.surveillance.data_path:
+    needs_surveillance = any(output.show_surveillance for output in plots_config.quantiles.outputs)
+    if needs_surveillance and plots_config.quantiles.surveillance.data_path:
         try:
             surveillance = pd.read_csv(plots_config.quantiles.surveillance.data_path)
         except Exception as e:
@@ -556,8 +558,13 @@ def generate_quantile_grid_plot(
 
         # Get pre-computed quantiles
 
+        # Check if any output needs calibration/projection/fitting window
+        needs_calibration = any(output.show_calibration for output in plots_config.quantiles.outputs)
+        needs_projection = any(output.show_projection for output in plots_config.quantiles.outputs)
+        needs_fitting_window = any(output.show_fitting_window_line for output in plots_config.quantiles.outputs)
+
         # Calibration quantiles
-        if plots_config.quantiles.calibration.show:
+        if needs_calibration:
             try:
                 location_cal_quants[loc] = calibration.results.get_calibration_quantiles(
                     quantiles=plots_config.quantiles.quantiles,
@@ -571,7 +578,7 @@ def generate_quantile_grid_plot(
                 )
 
         # Calculate fitting window start and end from calibration quantiles
-        if plots_config.quantiles.fitting_window_line.show:
+        if needs_fitting_window:
             # Fetch calibration quantiles for fitting window calculation even if not displaying them
             cal_quant_for_fitting = location_cal_quants.get(loc)
             if cal_quant_for_fitting is None:
@@ -595,7 +602,7 @@ def generate_quantile_grid_plot(
         # Projection quantiles
         # TODO: "hospitalizations" column is hardcoded in projection quantiles
         proj_quant_raw = None
-        if plots_config.quantiles.projection.show:
+        if needs_projection:
             try:
                 proj_quant_raw = calibration.results.get_projection_quantiles(
                     quantiles=plots_config.quantiles.quantiles,
