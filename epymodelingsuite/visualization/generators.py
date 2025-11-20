@@ -26,6 +26,106 @@ from .core import (
 logger = logging.getLogger(__name__)
 
 
+def _create_filtered_plot(
+    location: str,
+    cal_quant: pd.DataFrame | None,
+    proj_quant: pd.DataFrame | None,
+    df_surv: pd.DataFrame | None,
+    fitting_window_start: pd.Timestamp | None,
+    fitting_window_end: pd.Timestamp | None,
+    plots_config: PlotsConfig,
+    value_col: str,
+) -> tuple:
+    """
+    Create filtered quantile plot for a location.
+
+    Parameters
+    ----------
+    location : str
+        Location name
+    cal_quant : pd.DataFrame or None
+        Calibration quantiles
+    proj_quant : pd.DataFrame or None
+        Projection quantiles (filtered version)
+    df_surv : pd.DataFrame or None
+        Surveillance data (filtered version)
+    fitting_window_start : pd.Timestamp or None
+        Start of fitting window
+    fitting_window_end : pd.Timestamp or None
+        End of fitting window
+    plots_config : PlotsConfig
+        Plot configuration
+    value_col : str
+        Name of value column
+
+    Returns
+    -------
+    tuple
+        (fig, ax) matplotlib figure and axes
+    """
+    return plot_calibration_projection(
+        calibration_quantiles=cal_quant,
+        projection_quantiles=proj_quant,
+        value_col=value_col,
+        calibration_color=plots_config.quantiles.calibration.color,
+        projection_color=plots_config.quantiles.projection.color,
+        df_surveillance=df_surv,
+        fitting_window_start=fitting_window_start if plots_config.quantiles.fitting_window_line.show else None,
+        fitting_window_end=fitting_window_end if plots_config.quantiles.fitting_window_line.show else None,
+        title=_format_location_name(location),
+    )
+
+
+def _create_full_plot(
+    location: str,
+    cal_quant: pd.DataFrame | None,
+    proj_quant: pd.DataFrame | None,
+    df_surv: pd.DataFrame | None,
+    fitting_window_start: pd.Timestamp | None,
+    fitting_window_end: pd.Timestamp | None,
+    plots_config: PlotsConfig,
+    value_col: str,
+) -> tuple:
+    """
+    Create full quantile plot for a location.
+
+    Parameters
+    ----------
+    location : str
+        Location name
+    cal_quant : pd.DataFrame or None
+        Calibration quantiles
+    proj_quant : pd.DataFrame or None
+        Projection quantiles (full version)
+    df_surv : pd.DataFrame or None
+        Surveillance data (full version)
+    fitting_window_start : pd.Timestamp or None
+        Start of fitting window
+    fitting_window_end : pd.Timestamp or None
+        End of fitting window
+    plots_config : PlotsConfig
+        Plot configuration
+    value_col : str
+        Name of value column
+
+    Returns
+    -------
+    tuple
+        (fig, ax) matplotlib figure and axes
+    """
+    return plot_calibration_projection(
+        calibration_quantiles=cal_quant,
+        projection_quantiles=proj_quant,
+        value_col=value_col,
+        calibration_color=plots_config.quantiles.calibration.color,
+        projection_color=plots_config.quantiles.projection.color,
+        df_surveillance=df_surv,
+        fitting_window_start=fitting_window_start if plots_config.quantiles.fitting_window_line.show else None,
+        fitting_window_end=fitting_window_end if plots_config.quantiles.fitting_window_line.show else None,
+        title=_format_location_name(location),
+    )
+
+
 def get_locations_to_plot(calibrations: list[CalibrationOutput], single_config: bool | list[str]) -> set[str]:
     """
     Get set of locations to plot based on config.
@@ -262,18 +362,15 @@ def generate_single_quantile_plots(
 
         # Create filtered plot
         try:
-            fig, ax = plot_calibration_projection(
-                calibration_quantiles=cal_quant,
-                projection_quantiles=proj_quant_filtered,
-                value_col=value_col,
-                calibration_color=plots_config.quantiles.calibration.color,
-                projection_color=plots_config.quantiles.projection.color,
-                df_surveillance=df_surv_filtered,
-                fitting_window_start=(
-                    fitting_window_start if plots_config.quantiles.fitting_window_line.show else None
-                ),
-                fitting_window_end=(fitting_window_end if plots_config.quantiles.fitting_window_line.show else None),
-                title=_format_location_name(location),
+            fig, ax = _create_filtered_plot(
+                location,
+                cal_quant,
+                proj_quant_filtered,
+                df_surv_filtered,
+                fitting_window_start,
+                fitting_window_end,
+                plots_config,
+                value_col,
             )
 
             # Package output
@@ -289,18 +386,15 @@ def generate_single_quantile_plots(
 
         # Create full plot
         try:
-            fig, ax = plot_calibration_projection(
-                calibration_quantiles=cal_quant,
-                projection_quantiles=proj_quant_full,
-                value_col=value_col,
-                calibration_color=plots_config.quantiles.calibration.color,
-                projection_color=plots_config.quantiles.projection.color,
-                df_surveillance=df_surv_full,
-                fitting_window_start=(
-                    fitting_window_start if plots_config.quantiles.fitting_window_line.show else None
-                ),
-                fitting_window_end=(fitting_window_end if plots_config.quantiles.fitting_window_line.show else None),
-                title=_format_location_name(location),
+            fig, ax = _create_full_plot(
+                location,
+                cal_quant,
+                proj_quant_full,
+                df_surv_full,
+                fitting_window_start,
+                fitting_window_end,
+                plots_config,
+                value_col,
             )
 
             # Package output
