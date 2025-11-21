@@ -5,6 +5,16 @@ output:
     version: "0.0.1"
     date: "2038-01-19"
 
+  # Shared options. Surveillance data defined here can be referenced in other sections.
+  # Use the key to reference the surveillance source elsewhere (e.g. rate_trends_source: hosp)
+  options:
+    surveillance:
+      hosp:
+        data_path: data/flu_hosp_24.csv
+        value_column: hospitalizations
+        date_column: target_end_date
+        location_column: geo_value
+
   # Output formats for tabular data (CSVBytes saves as .csv.gz files)
   tabular_output_types:
     - CSVBytes
@@ -23,16 +33,6 @@ output:
 
   # Set true for default behavior or use subfield 'generations'
   posteriors: true
-
-  # Shared options. Surveillance data defined here can be referenced in other sections.
-  # Use the key to reference the surveillance source elsewhere (e.g. rate_trends_source: hosp)
-  options:
-    surveillance:
-      hosp:
-        data_path: data/flu_hosp_24.csv
-        value_column: hospitalizations
-        date_column: target_end_date
-        location_column: geo_value
 
   # Hub format
   flusight_format:
@@ -60,6 +60,12 @@ output:
 
     # Quantile ribbon plots
     quantiles:
+
+      # Shared settings
+      quantiles: [0.025, 0.25, 0.5, 0.75, 0.975]  # 95% CrI + IQR + median
+      horizon_max: 3                              # Base maximum forecast horizon (weeks ahead). Can be overridden per output.
+
+      # Plot layout settings
       single: false         # One plot per location. Boolean or list of locations.
       grid:
         enabled: true       # Create multi-location grid
@@ -100,10 +106,6 @@ output:
             surveillance_points: 8         # Show last 8 points
           spacing: 0.3
           figsize: null                    # Auto-size
-
-      # Shared settings
-      quantiles: [0.025, 0.25, 0.5, 0.75, 0.975]  # 95% CrI + IQR + median
-      horizon_max: 3                              # Base maximum forecast horizon (weeks ahead). Can be overridden per output.
 
       # Shared styling (colors only, show flags moved to outputs)
       calibration:
