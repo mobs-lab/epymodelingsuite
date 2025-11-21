@@ -732,14 +732,18 @@ def generate_quantile_grid_plot(
                 source = surveillance_data[surveillance_source_name]
                 surveillance_df = source["data"]
                 surveillance_config = source["config"]
+                logger.info(f"Loading surveillance from source '{surveillance_source_name}' for {output_type_name} output")
+                logger.debug(f"Surveillance data shape: {surveillance_df.shape}")
 
                 for loc in location_proj_quants_raw.keys():
                     cal_quant = location_cal_quants.get(loc)
                     proj_quant_raw = location_proj_quants_raw.get(loc)
 
+                    logger.debug(f"Preparing surveillance for location: {loc}")
                     df_surv_full, df_surv_filtered, surveillance_start_date = _prepare_surveillance_for_location(
                         surveillance_df, loc, proj_quant_raw, cal_quant, surveillance_config
                     )
+                    logger.debug(f"Location {loc}: surv_full={df_surv_full.shape if df_surv_full is not None else None}, surv_filtered={df_surv_filtered.shape if df_surv_filtered is not None else None}")
 
                     # Use the appropriate surveillance data based on output type
                     if output_type_name == "filtered":
