@@ -61,6 +61,9 @@ class BuilderOutput(BaseModel):
     projection: ProjectionArguments | None = Field(
         None, description="Arguments for a single call to ABCSampler.run_projections"
     )
+    start_date_reference: date | None = Field(
+        None, description="Reference date for start_date parameter in calibration (used for posterior visualization)"
+    )
 
     @model_validator(mode="after")
     def check_fields(self: "BuilderOutput") -> "BuilderOutput":
@@ -106,6 +109,10 @@ class CalibrationOutput(BaseModel):
     seed: int | None = Field(None, description="Random seed.")
     delta_t: float | None = Field(None, description="Timestep.")
     population: str = Field(description="Population name (epydemix).")
+    start_date_reference: date | None = Field(
+        None,
+        description="Reference date for start_date parameter offsets (used for converting posterior distributions to actual dates in visualizations).",
+    )
     results: CalibrationResults | None = Field(
         description="Results of a call to ABCSampler.calibrate() or ABCSampler.run_projections()"
     )

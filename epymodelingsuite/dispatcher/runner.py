@@ -114,6 +114,7 @@ def run_calibration(configs: BuilderOutput, rng: np.random.Generator | None = No
             seed=configs.seed,
             delta_t=configs.delta_t,
             population=configs.model.population.name,
+            start_date_reference=configs.start_date_reference,
             results=results,
         )
 
@@ -130,6 +131,7 @@ def run_calibration(configs: BuilderOutput, rng: np.random.Generator | None = No
             seed=configs.seed,
             delta_t=configs.delta_t,
             population=configs.model.population.name,
+            start_date_reference=configs.start_date_reference,
             results=None,  # type: ignore
         )
         telemetry = ExecutionTelemetry.get_current()
@@ -182,6 +184,7 @@ def run_calibration_with_projection(
             seed=configs.seed,
             delta_t=configs.delta_t,
             population=population,
+            start_date_reference=configs.start_date_reference,
             results=None,  # type: ignore
         )
         telemetry = ExecutionTelemetry.get_current()
@@ -212,6 +215,7 @@ def run_calibration_with_projection(
             seed=configs.seed,
             delta_t=configs.delta_t,
             population=configs.model.population.name,
+            start_date_reference=configs.start_date_reference,
             results=projection_results,
         )
 
@@ -240,6 +244,7 @@ def run_calibration_with_projection(
             seed=configs.seed,
             delta_t=configs.delta_t,
             population=configs.model.population.name,
+            start_date_reference=configs.start_date_reference,
             results=calibration_results,
         )
 

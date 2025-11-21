@@ -43,8 +43,8 @@ output:
     figure_output_types:
       - PNG
     dpi: 150                # DPI for raster formats (png)
-    
-    reference_date: "2025-04-05"  # Forecast reference date for vertical line
+
+    reference_date: "2025-04-05"  # Forecast reference date (horizon 0 for forecast horizon calculation)
 
     # Posterior distribution plots
     posterior:
@@ -59,7 +59,8 @@ output:
         enabled: true       # Create multi-location grid
         panels_per_row: 4   # Number of panels per row in grid
 
-      quantiles: [0.025, 0.5, 0.975]  # 95% CrI + median
+      quantiles: [0.025, 0.25, 0.5, 0.75, 0.975]  # 95% CrI + IQR + median
+      horizon_max: 3        # Maximum forecast horizon (weeks ahead) to display. Set to null to show all horizons.
 
       # Calibration period settings
       calibration:
@@ -78,8 +79,9 @@ output:
         value_column: hospitalizations
         date_column: target_end_date
         location_column: geo_value
+        surveillance_points: 8  # Number of most recent surveillance points to display. Set to null to show all points.
 
-      # Reference date line settings
-      reference_line:
-        show: true
+      # Fitting window end line settings
+      fitting_window_line:
+        show: true          # Show vertical line at end of calibration/fitting window
 
