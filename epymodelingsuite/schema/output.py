@@ -92,24 +92,19 @@ class ObservedValuesConfig(BaseModel):
     location_column: str = Field(description="Name of column containing location in observed data CSV")
 
 
-class FlusightRateTrends(BaseModel):
-    """Specifications for FluSight rate-trends."""
-
-    observed_data_path: str = Field(description="Path to observed data CSV file")
-    observed_value_column: str = Field(description="Name of column containing observed values in observed data CSV")
-    observed_date_column: str = Field(description="Name of column containing target dates in observed data CSV")
-    observed_location_column: str = Field(description="Name of column containing location in observed data CSV")
-
-
 class FlusightForecastOutput(BaseModel):
     """Specifications for outputs in flusight forecast hub format."""
 
     reference_date: date = Field(
         description="'YYYY-MM-DD' date to treat as reference date when creating horizons and target dates for submission file."
     )
-    rate_trends: FlusightRateTrends | None = Field(
+    rate_trends_source: str | None = Field(
         None,
-        description="Add rate-trend forecasts to submission file.",
+        description="Name of surveillance source from output.options.surveillance to use for rate-trend forecasts.",
+    )
+    prop_ed_source: str | None = Field(
+        None,
+        description="Name of surveillance source from output.options.surveillance to use for proportion ED visits forecasts.",
     )
 
 
@@ -449,6 +444,78 @@ class OutputConfiguration(BaseModel):
 
         if len([1 for _ in hub_formats if bool(_)]) > 1:
             raise ValueError("Received specifications for more than one hub format.")
+
+        return self
+
+    @model_validator(mode="after")
+    def validate_surveillance_references(self):
+        """Ensure all surveillance_source references point to valid sources."""
+        # If no surveillance sources defined, check if any are referenced
+        if not self.options or not self.options.surveillance:
+            errors = []
+
+            # Check flusight_format
+            if self.flusight_format:
+                if self.flusight_format.rate_trends_source:
+                    errors.append(
+                        f"flusight_format.rate_trends_source='{self.flusight_format.rate_trends_source}' "
+                        "but no surveillance sources defined in output.options.surveillance"
+                    )
+                if self.flusight_format.prop_ed_source:
+                    errors.append(
+                        f"flusight_format.prop_ed_source='{self.flusight_format.prop_ed_source}' "
+                        "but no surveillance sources defined in output.options.surveillance"
+                    )
+
+            # Check plots.quantiles.outputs
+            if self.plots and self.plots.quantiles:
+                for i, output in enumerate(self.plots.quantiles.outputs):
+                    if output.surveillance_source:
+                        errors.append(
+                            f"plots.quantiles.outputs[{i}].surveillance_source='{output.surveillance_source}' "
+                            "but no surveillance sources defined in output.options.surveillance"
+                        )
+
+            if errors:
+                msg = "Surveillance source references without defined sources:\n" + "\n".join(
+                    f"  - {e}" for e in errors
+                )
+                raise ValueError(msg)
+
+            return self
+
+        # Surveillance sources defined - validate references exist
+        available_sources = set(self.options.surveillance.keys())
+        errors = []
+
+        # Check flusight_format
+        if self.flusight_format:
+            if (
+                self.flusight_format.rate_trends_source
+                and self.flusight_format.rate_trends_source not in available_sources
+            ):
+                errors.append(
+                    f"flusight_format.rate_trends_source='{self.flusight_format.rate_trends_source}' "
+                    f"not found in surveillance sources: {available_sources}"
+                )
+            if self.flusight_format.prop_ed_source and self.flusight_format.prop_ed_source not in available_sources:
+                errors.append(
+                    f"flusight_format.prop_ed_source='{self.flusight_format.prop_ed_source}' "
+                    f"not found in surveillance sources: {available_sources}"
+                )
+
+        # Check plots.quantiles.outputs
+        if self.plots and self.plots.quantiles:
+            for i, output in enumerate(self.plots.quantiles.outputs):
+                if output.surveillance_source and output.surveillance_source not in available_sources:
+                    errors.append(
+                        f"plots.quantiles.outputs[{i}].surveillance_source='{output.surveillance_source}' "
+                        f"not found in surveillance sources: {available_sources}"
+                    )
+
+        if errors:
+            msg = "Invalid surveillance source references:\n" + "\n".join(f"  - {e}" for e in errors)
+            raise ValueError(msg)
 
         return self
 

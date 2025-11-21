@@ -24,21 +24,7 @@ output:
   # Set true for default behavior or use subfield 'generations'
   posteriors: true
 
-  # Hub format
-  flusight_format:
-    reference_date: "2025-04-05"
-    rate_trends:
-        observed_data_path: data/flu_hosp_24.csv
-        observed_value_column: hospitalizations
-        observed_date_column: target_end_date
-        observed_location_column: geo_value
-
-  # Model metadata is always generated, even if the model_meta field is not present.
-  # Use the model_meta field to record projection parameters.
-  model_meta:
-    projection_parameters: true
-
-  # Shared options
+  # Shared options (defined before hub format so it can reference them)
   options:
     surveillance:
       hosp:
@@ -46,6 +32,16 @@ output:
         value_column: hospitalizations
         date_column: target_end_date
         location_column: geo_value
+
+  # Hub format
+  flusight_format:
+    reference_date: "2025-04-05"
+    rate_trends_source: hosp  # References surveillance source from options.surveillance
+
+  # Model metadata is always generated, even if the model_meta field is not present.
+  # Use the model_meta field to record projection parameters.
+  model_meta:
+    projection_parameters: true
 
   # Visualization plots
   plots:

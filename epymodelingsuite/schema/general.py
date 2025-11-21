@@ -235,19 +235,32 @@ def _warn_mismatched_observed_data_paths(
         return
 
     output = output_config.output
-    if output.flusight_format is None or output.flusight_format.rate_trends is None:
+    if output.flusight_format is None or output.flusight_format.rate_trends_source is None:
+        return
+
+    # Get surveillance source configuration
+    if not output.options or not output.options.surveillance:
+        logger.warning(
+            "FluSight rate_trends_source specified but no surveillance sources defined in output.options.surveillance"
+        )
+        return
+
+    source_name = output.flusight_format.rate_trends_source
+    if source_name not in output.options.surveillance:
+        logger.warning("FluSight rate_trends_source '%s' not found in output.options.surveillance", source_name)
         return
 
     calibration_path = calibration.observed_data_path
-    output_path = output.flusight_format.rate_trends.observed_data_path
+    output_path = output.options.surveillance[source_name].data_path
 
     if calibration_path != output_path:
         logger.warning(
             "Observed data paths differ between configs: "
             "calibration='%s', "
-            "output.flusight_format.rate_trends='%s'. "
+            "output.flusight_format.rate_trends_source ('%s')='%s'. "
             "This may lead to inconsistent results if the files contain different data.",
             calibration_path,
+            source_name,
             output_path,
         )
 

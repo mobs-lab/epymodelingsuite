@@ -976,11 +976,23 @@ def generate_calibration_outputs(
             hub_format_output_list.append(quanf_df)
 
         # Rate-trend forecasts
-        if output.flusight_format.rate_trends:
+        if output.flusight_format.rate_trends_source:
+            # Get surveillance source configuration
+            if not output.options or not output.options.surveillance:
+                msg = "rate_trends_source specified but no surveillance sources defined in output.options.surveillance"
+                raise ValueError(msg)
+
+            source_name = output.flusight_format.rate_trends_source
+            if source_name not in output.options.surveillance:
+                msg = f"rate_trends_source '{source_name}' not found in output.options.surveillance"
+                raise ValueError(msg)
+
+            source_config = output.options.surveillance[source_name]
+
             # Read surveillance data
             surveillance = pd.read_csv(
-                output.flusight_format.rate_trends.data_path,
-                parse_dates=["target_end_date"],
+                source_config.data_path,
+                parse_dates=[source_config.date_column],
                 date_format="%Y-%m-%d",
             )
 
@@ -996,13 +1008,13 @@ def generate_calibration_outputs(
 
                 # Filter surveillance for location
                 surv = surveillance[
-                    surveillance[output.flusight_format.rate_trends.location_column]
+                    surveillance[source_config.location_column]
                     == convert_location_name_format(calibration.population, "ISO")
                 ]
-                surv = surv.drop(columns=output.flusight_format.rate_trends.location_column).rename(
+                surv = surv.drop(columns=source_config.location_column).rename(
                     columns={
-                        output.flusight_format.rate_trends.date_column: "date",
-                        output.flusight_format.rate_trends.value_column: "value",
+                        source_config.date_column: "date",
+                        source_config.value_column: "value",
                     }
                 )
 
@@ -1020,6 +1032,24 @@ def generate_calibration_outputs(
                 trends_df.insert(0, "reference_date", output.flusight_format.reference_date)
                 trends_df.insert(0, "location", convert_location_name_format(calibration.population, "FIPS"))
                 hub_format_output_list.append(trends_df)
+
+        # Prop ED visits forecasts
+        if output.flusight_format.prop_ed_source:
+            # Get surveillance source configuration
+            if not output.options or not output.options.surveillance:
+                msg = "prop_ed_source specified but no surveillance sources defined in output.options.surveillance"
+                raise ValueError(msg)
+
+            source_name = output.flusight_format.prop_ed_source
+            if source_name not in output.options.surveillance:
+                msg = f"prop_ed_source '{source_name}' not found in output.options.surveillance"
+                raise ValueError(msg)
+
+            # TODO: Implement prop_ed forecast generation when make_prop_ed_flusightforecast() is implemented
+            # source_config = output.options.surveillance[source_name]
+            # surveillance = pd.read_csv(source_config.data_path, ...)
+            # ... prop_ed generation logic ...
+            logger.warning("prop_ed_source specified but prop_ed forecast generation is not yet implemented")
 
         hub_format_output = (
             pd.concat(hub_format_output_list, ignore_index=True) if hub_format_output_list else pd.DataFrame()
