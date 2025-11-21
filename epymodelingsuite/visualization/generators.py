@@ -14,7 +14,13 @@ import pandas as pd
 
 from ..builders.utils import get_data_in_location
 from ..schema.dispatcher import CalibrationOutput
-from ..schema.output import ObservedValuesConfig, OutputObject, PlotsConfig, QuantilesOutputConfig, QuantilesOutputTypeEnum
+from ..schema.output import (
+    ObservedValuesConfig,
+    OutputObject,
+    PlotsConfig,
+    QuantilesOutputConfig,
+    QuantilesOutputTypeEnum,
+)
 from .core import (
     _format_location_name,
     figure_to_output_object,
@@ -439,6 +445,7 @@ def generate_single_quantile_plots(
         return
 
     locations = get_locations_to_plot(calibrations, plots_config.quantiles.single)
+    logger.info("Generating single-location quantile plots for %d locations", len(locations))
 
     # Load surveillance data once before loop if any output needs it
     surveillance_data = {}
@@ -525,6 +532,7 @@ def generate_single_quantile_plots(
         # Create plots for each configured output
         for output_config in plots_config.quantiles.outputs:
             output_name = f"quantiles_{location}_{output_config.type.value}"
+            logger.info("    Creating %s plot for %s", output_config.type.value, location)
 
             try:
                 # Determine which data to use and apply per-output filtering
@@ -645,6 +653,8 @@ def generate_quantile_grid_plot(
     if not plots_config.quantiles.grid:
         return
 
+    logger.info("Generating grid quantile plots for %d locations", len(calibrations))
+
     # Load surveillance data once before loop if any output needs it
     surveillance_data = {}
     needs_surveillance = any(output.show_surveillance for output in plots_config.quantiles.outputs)
@@ -728,11 +738,17 @@ def generate_quantile_grid_plot(
             # Prepare surveillance data for this output's specified source
             location_surveillance_for_output = {}
             surveillance_start_dates = {}
-            if output_config.show_surveillance and surveillance_source_name and surveillance_source_name in surveillance_data:
+            if (
+                output_config.show_surveillance
+                and surveillance_source_name
+                and surveillance_source_name in surveillance_data
+            ):
                 source = surveillance_data[surveillance_source_name]
                 surveillance_df = source["data"]
                 surveillance_config = source["config"]
-                logger.info(f"Loading surveillance from source '{surveillance_source_name}' for {output_type_name} output")
+                logger.info(
+                    f"Loading surveillance from source '{surveillance_source_name}' for {output_type_name} output"
+                )
                 logger.debug(f"Surveillance data shape: {surveillance_df.shape}")
 
                 for loc in location_proj_quants_raw.keys():
@@ -743,7 +759,9 @@ def generate_quantile_grid_plot(
                     df_surv_full, df_surv_filtered, surveillance_start_date = _prepare_surveillance_for_location(
                         surveillance_df, loc, proj_quant_raw, cal_quant, surveillance_config
                     )
-                    logger.debug(f"Location {loc}: surv_full={df_surv_full.shape if df_surv_full is not None else None}, surv_filtered={df_surv_filtered.shape if df_surv_filtered is not None else None}")
+                    logger.debug(
+                        f"Location {loc}: surv_full={df_surv_full.shape if df_surv_full is not None else None}, surv_filtered={df_surv_filtered.shape if df_surv_filtered is not None else None}"
+                    )
 
                     # Use the appropriate surveillance data based on output type
                     if output_type_name == "filtered":
@@ -767,7 +785,9 @@ def generate_quantile_grid_plot(
                 # Use the appropriate projection data based on output type
                 if output_type_name == "filtered":
                     if proj_quant_filtered is not None:
-                        location_proj_quants_for_output[loc] = _rename_value_column(proj_quant_filtered, "hospitalizations")
+                        location_proj_quants_for_output[loc] = _rename_value_column(
+                            proj_quant_filtered, "hospitalizations"
+                        )
                 elif output_type_name == "full":
                     if proj_quant_full is not None:
                         location_proj_quants_for_output[loc] = _rename_value_column(proj_quant_full, "hospitalizations")
@@ -815,6 +835,7 @@ def generate_quantile_grid_plot(
 
             # Generate grid plot based on output type
             if output_type_name in ["filtered", "full"]:
+                logger.info("    Creating %s grid plot", output_type_name)
                 try:
                     fig, axes = plot_calibration_projection_grid(
                         location_calibration_quantiles=(
@@ -854,6 +875,7 @@ def generate_quantile_grid_plot(
             elif output_type_name == "side_by_side":
                 # Side-by-side grid plot
                 # Grid layout: each location gets 2 panels (full + filtered)
+                logger.info("    Creating side_by_side grid plot")
                 try:
                     # Prepare surveillance and projection data for both full and filtered panels
                     location_surveillance_full_sbs = {}
@@ -871,8 +893,10 @@ def generate_quantile_grid_plot(
                             cal_quant = location_cal_quants.get(loc)
                             proj_quant_raw = location_proj_quants_raw.get(loc)
 
-                            df_surv_full, df_surv_filtered, surveillance_start_date = _prepare_surveillance_for_location(
-                                surveillance_df, loc, proj_quant_raw, cal_quant, surveillance_config
+                            df_surv_full, df_surv_filtered, surveillance_start_date = (
+                                _prepare_surveillance_for_location(
+                                    surveillance_df, loc, proj_quant_raw, cal_quant, surveillance_config
+                                )
                             )
 
                             if df_surv_full is not None:
@@ -889,9 +913,13 @@ def generate_quantile_grid_plot(
                             proj_quant_raw, surveillance_start_date, plots_config
                         )
                         if proj_quant_full is not None:
-                            location_proj_quants_full_sbs[loc] = _rename_value_column(proj_quant_full, "hospitalizations")
+                            location_proj_quants_full_sbs[loc] = _rename_value_column(
+                                proj_quant_full, "hospitalizations"
+                            )
                         if proj_quant_filtered is not None:
-                            location_proj_quants_filtered_sbs[loc] = _rename_value_column(proj_quant_filtered, "hospitalizations")
+                            location_proj_quants_filtered_sbs[loc] = _rename_value_column(
+                                proj_quant_filtered, "hospitalizations"
+                            )
 
                     # Get all locations
                     locations = set()
@@ -1070,6 +1098,7 @@ def generate_single_location_posterior_plots(
         return
 
     locations = get_locations_to_plot(calibrations, plots_config.posterior.single)
+    logger.info("Generating single-location posterior plots for %d locations", len(locations))
 
     # Generate plots for each location
     for calibration in calibrations:
@@ -1077,6 +1106,7 @@ def generate_single_location_posterior_plots(
             continue
 
         location = calibration.population
+        logger.info("    Creating posterior plot for %s", location)
 
         try:
             posterior_df = calibration.results.get_posterior_distribution()
@@ -1165,6 +1195,8 @@ def generate_posterior_grid_plot(
     """
     if not plots_config.posterior.grid:
         return
+
+    logger.info("Generating grid posterior plot for %d locations", len(calibrations))
 
     location_posteriors = {}
     all_params = set()
