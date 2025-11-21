@@ -734,7 +734,7 @@ def generate_calibration_outputs(
                     for generation in output.quantiles.calibration:
                         try:
                             quancal_df = calibration.results.get_calibration_quantiles(
-                                quantiles=output.quantiles.selections, generation=generation
+                                quantiles=output.quantiles.selections, generation=generation, variables="data"
                             )
                             quancal_df.insert(0, "primary_id", calibration.primary_id)
                             quancal_df.insert(1, "seed", calibration.seed)
@@ -748,7 +748,7 @@ def generate_calibration_outputs(
                 else:
                     try:
                         quancal_df = calibration.results.get_calibration_quantiles(
-                            quantiles=output.quantiles.selections
+                            quantiles=output.quantiles.selections, variables="data"
                         )
                         quancal_df.insert(0, "primary_id", calibration.primary_id)
                         quancal_df.insert(1, "seed", calibration.seed)
