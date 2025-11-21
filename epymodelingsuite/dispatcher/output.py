@@ -979,7 +979,7 @@ def generate_calibration_outputs(
         if output.flusight_format.rate_trends:
             # Read surveillance data
             surveillance = pd.read_csv(
-                output.flusight_format.rate_trends.observed_data_path,
+                output.flusight_format.rate_trends.data_path,
                 parse_dates=["target_end_date"],
                 date_format="%Y-%m-%d",
             )
@@ -996,13 +996,13 @@ def generate_calibration_outputs(
 
                 # Filter surveillance for location
                 surv = surveillance[
-                    surveillance[output.flusight_format.rate_trends.observed_location_column]
+                    surveillance[output.flusight_format.rate_trends.location_column]
                     == convert_location_name_format(calibration.population, "ISO")
                 ]
-                surv = surv.drop(columns=output.flusight_format.rate_trends.observed_location_column).rename(
+                surv = surv.drop(columns=output.flusight_format.rate_trends.location_column).rename(
                     columns={
-                        output.flusight_format.rate_trends.observed_date_column: "date",
-                        output.flusight_format.rate_trends.observed_value_column: "value",
+                        output.flusight_format.rate_trends.date_column: "date",
+                        output.flusight_format.rate_trends.value_column: "value",
                     }
                 )
 

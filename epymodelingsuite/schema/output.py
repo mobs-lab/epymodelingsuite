@@ -256,23 +256,23 @@ class QuantilesPlotConfig(BaseModel):
 
     @field_validator("grid")
     @classmethod
-    def validate_grid(cls, v: bool) -> QuantilesGridConfig | bool:
+    def validate_grid(cls, v: QuantilesGridConfig | bool) -> QuantilesGridConfig | bool:
         """If passed True, use default factory."""
         if v is True:
             return QuantilesGridConfig()
         return v
 
-    @field_validator("show_calibration")
+    @field_validator("calibration")
     @classmethod
-    def validate_calibration(cls, v: bool) -> QuantilesCalibrationConfig | bool:
+    def validate_calibration(cls, v: QuantilesCalibrationConfig | bool) -> QuantilesCalibrationConfig | bool:
         """If passed True, use default factory."""
         if v is True:
             return QuantilesCalibrationConfig()
         return v
 
-    @field_validator("show_projection")
+    @field_validator("projection")
     @classmethod
-    def validate_projection(cls, v: bool) -> QuantilesProjectionConfig | bool:
+    def validate_projection(cls, v: QuantilesProjectionConfig | bool) -> QuantilesProjectionConfig | bool:
         """If passed True, use default factory."""
         if v is True:
             return QuantilesProjectionConfig()
@@ -292,6 +292,8 @@ class QuantilesPlotConfig(BaseModel):
     @classmethod
     def validate_single_plot_locations(cls, v: list[str]):
         """Validate each population name in the list."""
+        if isinstance(v, bool):
+            return v
         validated_populations = [validate_iso3166(population) for population in v]
         return validated_populations
 

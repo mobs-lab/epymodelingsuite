@@ -64,8 +64,8 @@ output:
       # Calibration period settings
       # If absent or 'true', uses default values.
       # Set 'false' to omit.
-      calibration:
-        color: "C0"
+      #calibration:
+      #  color: "C0"
 
       # Projection period settings
       # If absent or 'true', uses default values.

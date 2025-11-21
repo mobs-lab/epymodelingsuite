@@ -345,7 +345,7 @@ def generate_quantile_grid_plot(
 
     # Load surveillance data once before loop
     surveillance = None
-    if plots_config.quantiles.show_surveillance:
+    if plots_config.quantiles.surveillance:
         try:
             surveillance = pd.read_csv(plots_config.quantiles.surveillance.source.data_path)
         except Exception as e:
