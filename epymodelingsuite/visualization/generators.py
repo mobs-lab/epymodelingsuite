@@ -881,7 +881,7 @@ def generate_quantile_grid_plot(
                                 df_surveillance=surv_full,
                                 fitting_window_start=fitting_window_start,
                                 fitting_window_end=fitting_window_end,
-                                title=f"{_format_location_name(location)} - Full",
+                                title=_format_location_name(location),
                                 ax=ax_full,
                             )
 
@@ -895,16 +895,20 @@ def generate_quantile_grid_plot(
                                 df_surveillance=surv_filtered,
                                 fitting_window_start=fitting_window_start,
                                 fitting_window_end=fitting_window_end,
-                                title=f"{_format_location_name(location)} - Filtered",
+                                title=_format_location_name(location),
                                 ax=ax_filtered,
                             )
 
-                            # Hide legends except for first pair
-                            if i != 0:
-                                for ax in [ax_full, ax_filtered]:
-                                    legend = ax.get_legend()
-                                    if legend is not None:
-                                        legend.remove()
+                            # Hide legends except for leftmost column
+                            # Only show legend on the left panel (col_start == 0)
+                            if col_start != 0:
+                                legend = ax_full.get_legend()
+                                if legend is not None:
+                                    legend.remove()
+                            # Always hide legend on right panel (filtered)
+                            legend = ax_filtered.get_legend()
+                            if legend is not None:
+                                legend.remove()
 
                         # Remove unused axes
                         for idx in range(n_locations * 2, nrows * ncols):
