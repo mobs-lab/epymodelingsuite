@@ -527,6 +527,7 @@ def generate_simulation_outputs(
 
     ### Quantiles
     if output.quantiles:
+        logger.info("Generating quantile outputs")
         for simulation in simulations:
             # Compartments
             if output.quantiles.compartments:
@@ -571,6 +572,7 @@ def generate_simulation_outputs(
 
     ### Trajectories
     if output.trajectories:
+        logger.info("Generating trajectory outputs")
         for simulation in simulations:
             for i, traj in enumerate(simulation.results.trajectories):
                 # Compartments
@@ -626,6 +628,7 @@ def generate_simulation_outputs(
 
     ### Model Metadata
     if output.model_meta:
+        logger.info("Generating model metadata outputs")
         if output.model_meta.projection_parameters:
             warnings.add("OUTPUT_GENERATOR: Requested projection parameter metadata in simulation workflow, ignoring.")
 
@@ -655,6 +658,7 @@ def generate_simulation_outputs(
     for warning in warnings:
         logger.warning(warning)
 
+    logger.info("Formatting tabular outputs")
     out_dict = {}
     if not quantiles_compartments.empty:
         qc_name = "quantiles_compartments"
@@ -690,6 +694,7 @@ def generate_simulation_outputs(
         mm_objects = [format_tabular_object(model_meta, mm_name, _type) for _type in output.tabular_output_types]
         out_dict[mm_name] = mm_objects
 
+    logger.info("Output generation complete. Generated %d output types", len(out_dict))
     logger.info("OUTPUT GENERATOR: completed for simulation")
 
     return out_dict
@@ -727,6 +732,7 @@ def generate_calibration_outputs(
 
     ### Quantiles
     if output.quantiles:
+        logger.info("Generating quantile outputs")
         for calibration in calibrations:  # Calibration quantiles (only for calibration comparison target)
             # Calibration quantiles
             if output.quantiles.calibration:
@@ -841,6 +847,7 @@ def generate_calibration_outputs(
 
     ### Trajectories
     if output.trajectories:
+        logger.info("Generating trajectory outputs")
         for calibration in calibrations:
             # Filter out failed projections
             calibration.results = filter_failed_projections(calibration.results)
@@ -928,6 +935,7 @@ def generate_calibration_outputs(
 
     ### Posteriors
     if output.posteriors:
+        logger.info("Generating posterior outputs")
         for calibration in calibrations:
             # Output last generation (default)
             if output.posteriors == True:
@@ -958,7 +966,9 @@ def generate_calibration_outputs(
 
     # FluSight Forecast Hub
     if output.flusight_format:
+        logger.info("Generating FluSight forecast hub outputs")
         # Quantile forecasts
+        logger.info("  - Generating FluSight quantile forecasts")
         for calibration in calibrations:
             try:
                 # FRAGILE: the name 'hospitalizations' is user-supplied in the modelset as the column to look for in the surveillance data.
@@ -977,6 +987,7 @@ def generate_calibration_outputs(
 
         # Rate-trend forecasts
         if output.flusight_format.rate_trends_source:
+            logger.info("  - Generating FluSight rate-trend forecasts")
             # Get surveillance source configuration
             if not output.options or not output.options.surveillance:
                 msg = "rate_trends_source specified but no surveillance sources defined in output.options.surveillance"
@@ -1061,6 +1072,7 @@ def generate_calibration_outputs(
 
     ### Model Metadata
     if output.model_meta:
+        logger.info("Generating model metadata outputs")
         meta_dict = defaultdict(list)
         for calibration in calibrations:
             meta_dict["primary_id"].append(calibration.primary_id)
@@ -1115,6 +1127,7 @@ def generate_calibration_outputs(
     for warning in warnings:
         logger.warning(warning)
 
+    logger.info("Formatting tabular outputs")
     out_dict = {}
     if not quantiles_projection_compartments.empty:
         qc_name = "quantiles_projection_compartments"
@@ -1176,11 +1189,14 @@ def generate_calibration_outputs(
                 start_date_reference = str(calibration.start_date_reference)
                 break
 
+        logger.info("  - Generating quantile plots")
         generate_single_quantile_plots(calibrations, plots_config, out_dict)
         generate_quantile_grid_plot(calibrations, plots_config, out_dict)
+        logger.info("  - Generating posterior plots")
         generate_single_location_posterior_plots(calibrations, plots_config, out_dict, start_date_reference)
         generate_posterior_grid_plot(calibrations, plots_config, out_dict, start_date_reference)
 
+    logger.info("Output generation complete. Generated %d output types", len(out_dict))
     return out_dict
 
 
