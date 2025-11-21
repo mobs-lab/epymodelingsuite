@@ -81,22 +81,22 @@ def get_flusight_quantiles() -> list[float]:
 
 def get_quantile_ribbon_default() -> list[float]:
     """Return a list containing default quantiles for plotting ribbons."""
-    return [0.025, 0.5, 0.975]
+    return [0.025, 0.25, 0.5, 0.75, 0.975]
 
 
 class ObservedValuesConfig(BaseModel):
     """Specifications for selecting observed values."""
 
-    observed_data_path: str = Field(description="Path to observed data CSV file")
-    observed_value_column: str = Field(description="Name of column containing observed values in observed data CSV")
-    observed_date_column: str = Field(description="Name of column containing target dates in observed data CSV")
-    observed_location_column: str = Field(description="Name of column containing location in observed data CSV")
+    data_path: str = Field(description="Path to observed data CSV file")
+    value_column: str = Field(description="Name of column containing observed values in observed data CSV")
+    date_column: str = Field(description="Name of column containing target dates in observed data CSV")
+    location_column: str = Field(description="Name of column containing location in observed data CSV")
 
 
 class FlusightPropED(BaseModel):
-    """"""
+    """Specifications for generating the wk_inc_flu_prop_ed_visits target forecasts."""
 
-    observed_data_path: str = Field(description="Path to observed data CSV file")
+    observed: ObservedValuesConfig = Field("wk_inc_flu_prop_ed_visits surveillance data source.")
 
 
 class FlusightForecastOutput(BaseModel):
@@ -108,6 +108,10 @@ class FlusightForecastOutput(BaseModel):
     rate_trends: ObservedValuesConfig | None = Field(
         None,
         description="Add rate-trend forecasts to submission file.",
+    )
+    prop_ed: FlusightPropED | None = Field(
+        None,
+        description="Add wk_inc_flu_prop_ed_visits target to submission file.",
     )
 
 
@@ -199,35 +203,56 @@ class QuantilesProjectionConfig(BaseModel):
     color: str = Field("C1", description="Color for projection ribbons.")
 
 
+class HospSurveillanceConfig(BaseModel):
+    """Configuration for surveillance data overlay."""
+
+    source: ObservedValuesConfig = Field(description="wk_inc_flu_hosp surveillance data source.")
+    surveillance_points: int | None = Field(
+        8, description="Number of most recent surveillance points to display. If None, show all points."
+    )
+
+
+class QuantilesFittingWindowLineConfig(BaseModel):
+    """Configuration for fitting window end vertical line."""
+
+    show: bool = Field(True, description="Show vertical line at end of calibration/fitting window.")
+
+
 class QuantilesPlotConfig(BaseModel):
     """Configuration for quantile ribbon plots."""
 
     single: list[str] | bool = Field(
         False,
-        description="Create single plot per location. True for all locations, or list of specific locations.",
+        description="Create single plot per location (default disabled). Set true for all locations, or provide list of specific locations.",
     )
     grid: QuantilesGridConfig | bool = Field(
         default_factory=QuantilesGridConfig,
-        description="Grid plot configuration.",
+        description="Grid plot with all locations (default enabled). Set true to use default options, or set options in subfields.",
     )
     quantiles: list[float] = Field(
         default_factory=get_quantile_ribbon_default,
-        description="Quantile levels for ribbons (default 95% CrI + median).",
+        description="Quantile levels for ribbons (default enabled: 95% CrI + IQR + median).",
         validate_default=True,
     )
-    show_calibration: QuantilesCalibrationConfig | bool = Field(
+    horizon_max: int | None = Field(
+        3, description="Maximum forecast horizon (weeks ahead) to display. If None, show all horizons."
+    )
+    calibration: QuantilesCalibrationConfig | bool = Field(
         default_factory=QuantilesCalibrationConfig,
-        description="Calibration period quantile ribbons.",
+        description="Calibration period quantile ribbons (default enabled). Set true to use default options, or set options in subfields.",
     )
-    show_projection: QuantilesProjectionConfig | bool = Field(
+    projection: QuantilesProjectionConfig | bool = Field(
         default_factory=QuantilesProjectionConfig,
-        description="Projection period quantile ribbons.",
+        description="Projection period quantile ribbons (default enabled). Set true to use default options, or set options in subfields.",
     )
-    show_surveillance: ObservedValuesConfig | None = Field(
+    surveillance: HospSurveillanceConfig | None = Field(
         None,
         description="Surveillance data overlay.",
     )
-    reference_line: bool = Field(True, description="Vertical line at reference date.")
+    fitting_window_line: QuantilesFittingWindowLineConfig = Field(
+        default_factory=QuantilesFittingWindowLineConfig,
+        description="Fitting window end line settings.",
+    )
 
     @field_validator("grid")
     @classmethod

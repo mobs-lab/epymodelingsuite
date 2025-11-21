@@ -4,14 +4,42 @@ import io
 from datetime import datetime
 from typing import Any
 
+import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
 from ..schema.output import FigureOutputTypeEnum, OutputObject
+from ..utils.location import convert_location_name_format
 
 # Constants
 MEDIAN_QUANTILE = 0.5
+
+
+# == Helper functions ==
+
+
+def _format_location_name(location: str) -> str:
+    """
+    Convert location name from epydemix format to clean readable name.
+
+    Parameters
+    ----------
+    location : str
+        Location name in any format (e.g., "United_States_Texas", "United_States").
+
+    Returns
+    -------
+    str
+        Clean location name (e.g., "Texas", "United States").
+    """
+    try:
+        # Convert from epydemix format to name format
+        return convert_location_name_format(location, "name")
+    except (AssertionError, KeyError, IndexError):
+        # If conversion fails, return original name with underscores replaced
+        return location.replace("_", " ")
+
 
 # == Base plotting functions ==
 
@@ -24,6 +52,8 @@ def plot_quantiles(  # noqa: PLR0913
     color: str = "C0",
     title: str | None = None,
     ax: plt.Axes | None = None,
+    marker: str | None = None,
+    zorder: float = 2,
 ) -> tuple[plt.Figure | None, plt.Axes]:
     """
     Plot quantile ribbons from quantile DataFrame.
@@ -51,11 +81,15 @@ def plot_quantiles(  # noqa: PLR0913
         Plot title, by default None.
     ax : plt.Axes | None, optional
         Matplotlib axes to plot on. If None, creates new figure, by default None.
+    marker : str | None, optional
+        Marker style for median line points (e.g., 'o', 's', '^'). If None, no markers, by default None.
+    zorder : float, optional
+        Z-order for layering (higher values are on top), by default 2.
 
     Returns
     -------
     tuple[plt.Figure | None, plt.Axes]
-        Figure (None if ax was provided) and axes objects.
+        Figure (None if ax was provided) and axes object.
 
     Raises
     ------
@@ -109,11 +143,52 @@ def plot_quantiles(  # noqa: PLR0913
         color=color,
         alpha=0.3,
         linewidth=0,
+        zorder=zorder,
     )
+
+    # Create legend handles for the ribbons
+    legend_handles = []
+    legend_labels = []
+
+    # Add 95% CrI to legend
+    legend_handles.append(mpatches.Patch(color=color, alpha=0.3))
+    legend_labels.append("95% CrI")
+
+    # Plot IQR ribbon (25th-75th percentile) on top if available
+    if 0.25 in df_quantile.columns and 0.75 in df_quantile.columns:
+        ax.fill_between(
+            df_quantile.index,
+            df_quantile[0.25].values,
+            df_quantile[0.75].values,
+            color=color,
+            alpha=0.5,
+            linewidth=0,
+            zorder=zorder + 0.1,
+        )
+        # Add IQR to legend
+        legend_handles.append(mpatches.Patch(color=color, alpha=0.5))
+        legend_labels.append("IQR")
 
     # Plot median line if median quantile exists
     if MEDIAN_QUANTILE in df_quantile.columns:
-        ax.plot(df_quantile.index, df_quantile[MEDIAN_QUANTILE].values, color=color, linewidth=1.5)
+        if marker is not None:
+            ax.plot(
+                df_quantile.index,
+                df_quantile[MEDIAN_QUANTILE].values,
+                color=color,
+                linewidth=1.5,
+                marker=marker,
+                markersize=4,
+                zorder=zorder + 0.2,
+            )
+        else:
+            ax.plot(
+                df_quantile.index,
+                df_quantile[MEDIAN_QUANTILE].values,
+                color=color,
+                linewidth=1.5,
+                zorder=zorder + 0.2,
+            )
 
     # Format axes
     for tick in ax.get_xticklabels():
@@ -125,6 +200,10 @@ def plot_quantiles(  # noqa: PLR0913
     ax.set_xlabel("")
     ax.set_ylabel("")
     ax.grid(visible=True, linestyle="--", alpha=0.3, linewidth=0.5)
+
+    # Add legend
+    if legend_handles:
+        ax.legend(legend_handles, legend_labels, loc="upper left", fontsize=8)
 
     return fig, ax
 
@@ -206,9 +285,15 @@ def plot_quantiles_grid(  # noqa: PLR0913
             date_col=date_col,
             quantile_col=quantile_col,
             color=color,
-            title=location,
+            title=_format_location_name(location),
             ax=ax,
         )
+
+        # Hide legend for non-leftmost columns (c != 0)
+        if c != 0:
+            legend = ax.get_legend()
+            if legend is not None:
+                legend.remove()
 
     # Remove unused axes
     for idx in range(len(locations), nrows * ncols):
@@ -233,7 +318,8 @@ def plot_calibration_projection(  # noqa: PLR0913
     surveillance_date_col: str = "date",
     surveillance_value_col: str = "value",
     surveillance_size: float = 30.0,
-    reference_date: str | pd.Timestamp | None = None,
+    fitting_window_start: str | pd.Timestamp | datetime | None = None,
+    fitting_window_end: str | pd.Timestamp | datetime | None = None,
     title: str | None = None,
     ax: plt.Axes | None = None,
 ) -> tuple[plt.Figure | None, plt.Axes]:
@@ -267,8 +353,11 @@ def plot_calibration_projection(  # noqa: PLR0913
         Value column in surveillance data, by default "value".
     surveillance_size : float, optional
         Marker size for surveillance points, by default 30.0.
-    reference_date : str | pd.Timestamp | None, optional
-        Date for vertical reference line (e.g., calibration/projection boundary),
+    fitting_window_start : str | pd.Timestamp | datetime | None, optional
+        If provided, draw vertical line at start of calibration/fitting window,
+        by default None.
+    fitting_window_end : str | pd.Timestamp | datetime | None, optional
+        If provided, draw vertical line at end of calibration/fitting window,
         by default None.
     title : str | None, optional
         Plot title, by default None.
@@ -278,7 +367,7 @@ def plot_calibration_projection(  # noqa: PLR0913
     Returns
     -------
     tuple[plt.Figure | None, plt.Axes]
-        Figure (None if ax was provided) and axes objects.
+        Figure (None if ax was provided) and axes object.
 
     Raises
     ------
@@ -319,7 +408,24 @@ def plot_calibration_projection(  # noqa: PLR0913
     if ax is None:
         fig, ax = plt.subplots()
 
-    # Plot projection first (so calibration overlays)
+    # Plot fitting window lines FIRST (lowest zorder - most behind)
+    if fitting_window_start is not None:
+        start_date = pd.to_datetime(fitting_window_start)
+        ax.axvline(
+            start_date, color="gray", linestyle="--", linewidth=1.5, alpha=0.7, label="Fitting window start", zorder=1
+        )
+
+    if fitting_window_end is not None:
+        end_date = pd.to_datetime(fitting_window_end)
+        ax.axvline(
+            end_date, color="gray", linestyle="--", linewidth=1.5, alpha=0.7, label="Fitting window end", zorder=1
+        )
+
+    # Plot projection and calibration quantiles with controlled zorder
+    # We'll collect legend info manually since we need to combine calibration + projection
+    projection_legend_info = []
+    calibration_legend_info = []
+
     if projection_quantiles is not None:
         plot_quantiles(
             df_quantiles=projection_quantiles,
@@ -328,7 +434,17 @@ def plot_calibration_projection(  # noqa: PLR0913
             quantile_col=quantile_col,
             color=projection_color,
             ax=ax,
+            marker="o",  # Add markers to projection quantiles
+            zorder=2,  # Projection behind calibration
         )
+        # Remove the legend added by plot_quantiles (we'll recreate it with both cal+proj)
+        legend = ax.get_legend()
+        if legend is not None:
+            # Store legend info before removing
+            projection_legend_info = [
+                (h, l) for h, l in zip(legend.legend_handles, [t.get_text() for t in legend.get_texts()])
+            ]
+            legend.remove()
 
     # Plot calibration
     if calibration_quantiles is not None:
@@ -339,9 +455,18 @@ def plot_calibration_projection(  # noqa: PLR0913
             quantile_col=quantile_col,
             color=calibration_color,
             ax=ax,
+            zorder=3,  # Calibration on top of projection
         )
+        # Remove the legend added by plot_quantiles
+        legend = ax.get_legend()
+        if legend is not None:
+            # Store legend info before removing
+            calibration_legend_info = [
+                (h, l) for h, l in zip(legend.legend_handles, [t.get_text() for t in legend.get_texts()])
+            ]
+            legend.remove()
 
-    # Add surveillance overlay
+    # Add surveillance overlay (on top with high zorder)
     if df_surveillance is not None:
         plot_surveillance_scatter(
             df_surveillance=df_surveillance,
@@ -349,15 +474,28 @@ def plot_calibration_projection(  # noqa: PLR0913
             value_col=surveillance_value_col,
             size=surveillance_size,
             ax=ax,
+            zorder=10,  # Surveillance on top of everything
         )
-
-    # Add reference date line
-    if reference_date is not None:
-        ref_date = pd.to_datetime(reference_date)
-        ax.axvline(ref_date, color="gray", linestyle="--", linewidth=1.5, alpha=0.7)
 
     if title is not None:
         ax.set_title(title)
+
+    # Recreate combined legend with both projection and calibration
+    all_handles = []
+    all_labels = []
+
+    # Add projection legend entries (no prefix)
+    for handle, label in projection_legend_info:
+        all_handles.append(handle)
+        all_labels.append(label)
+
+    # Add calibration legend entries with prefix
+    for handle, label in calibration_legend_info:
+        all_handles.append(handle)
+        all_labels.append(f"Cal. {label}")
+
+    if all_handles:
+        ax.legend(all_handles, all_labels, loc="upper left", fontsize=8)
 
     return fig, ax
 
@@ -374,7 +512,8 @@ def plot_calibration_projection_grid(  # noqa: PLR0913
     surveillance_date_col: str = "date",
     surveillance_value_col: str = "value",
     surveillance_size: float = 30.0,
-    reference_date: str | pd.Timestamp | None = None,
+    location_fitting_window_starts: dict[str, datetime] | None = None,
+    location_fitting_window_ends: dict[str, datetime] | None = None,
     panels_per_row: int = 4,
     figsize: tuple[float, float] | None = None,
 ) -> tuple[plt.Figure, np.ndarray]:
@@ -408,8 +547,12 @@ def plot_calibration_projection_grid(  # noqa: PLR0913
         Value column in surveillance data, by default "value".
     surveillance_size : float, optional
         Marker size for surveillance points, by default 30.0.
-    reference_date : str | pd.Timestamp | None, optional
-        Date for vertical reference line, by default None.
+    location_fitting_window_starts : dict[str, datetime] | None, optional
+        Dictionary mapping location names to fitting window start dates for vertical lines,
+        by default None.
+    location_fitting_window_ends : dict[str, datetime] | None, optional
+        Dictionary mapping location names to fitting window end dates for vertical lines,
+        by default None.
     panels_per_row : int, optional
         Number of panels per row, by default 4.
     figsize : tuple[float, float] | None, optional
@@ -482,6 +625,8 @@ def plot_calibration_projection_grid(  # noqa: PLR0913
         cal_quant = location_calibration_quantiles.get(location) if location_calibration_quantiles else None
         proj_quant = location_projection_quantiles.get(location) if location_projection_quantiles else None
         surv_df = location_surveillance.get(location) if location_surveillance else None
+        fitting_window_start = location_fitting_window_starts.get(location) if location_fitting_window_starts else None
+        fitting_window_end = location_fitting_window_ends.get(location) if location_fitting_window_ends else None
 
         plot_calibration_projection(
             calibration_quantiles=cal_quant,
@@ -495,10 +640,17 @@ def plot_calibration_projection_grid(  # noqa: PLR0913
             surveillance_date_col=surveillance_date_col,
             surveillance_value_col=surveillance_value_col,
             surveillance_size=surveillance_size,
-            reference_date=reference_date,
-            title=location,
+            fitting_window_start=fitting_window_start,
+            fitting_window_end=fitting_window_end,
+            title=_format_location_name(location),
             ax=ax,
         )
+
+        # Hide legend for non-leftmost columns (c != 0)
+        if c != 0:
+            legend = ax.get_legend()
+            if legend is not None:
+                legend.remove()
 
     # Remove unused axes
     for idx in range(len(locations), nrows * ncols):
@@ -519,6 +671,7 @@ def plot_surveillance_scatter(  # noqa: PLR0913
     size: float = 20.0,
     title: str | None = None,
     ax: plt.Axes | None = None,
+    zorder: float = 10,
 ) -> tuple[plt.Figure | None, plt.Axes]:
     """
     Plot surveillance data as scatter points.
@@ -540,6 +693,8 @@ def plot_surveillance_scatter(  # noqa: PLR0913
         Plot title.
     ax : plt.Axes, optional
         Axes to plot into. If None, creates new figure and axes.
+    zorder : float, optional
+        Z-order for layering (higher values are on top), by default 10.
 
     Returns
     -------
@@ -584,7 +739,7 @@ def plot_surveillance_scatter(  # noqa: PLR0913
     if ax is None:
         fig, ax = plt.subplots(figsize=(8, 4))
 
-    ax.scatter(df_surveillance[date_col], df_surveillance[value_col], color=color, s=size)
+    ax.scatter(df_surveillance[date_col], df_surveillance[value_col], color=color, s=size, zorder=zorder)
     ax.set_xlabel("")
 
     if title is not None:

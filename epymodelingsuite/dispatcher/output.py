@@ -1139,10 +1139,17 @@ def generate_calibration_outputs(
         logger.info("Generating visualization plots")
         plots_config = output.plots
 
+        # Extract start_date_reference from first calibration (they should all have the same reference date)
+        start_date_reference = None
+        for calibration in calibrations:
+            if hasattr(calibration, "start_date_reference") and calibration.start_date_reference:
+                start_date_reference = str(calibration.start_date_reference)
+                break
+
         generate_single_quantile_plots(calibrations, plots_config, out_dict)
         generate_quantile_grid_plot(calibrations, plots_config, out_dict)
-        generate_single_location_posterior_plots(calibrations, plots_config, out_dict)
-        generate_posterior_grid_plot(calibrations, plots_config, out_dict)
+        generate_single_location_posterior_plots(calibrations, plots_config, out_dict, start_date_reference)
+        generate_posterior_grid_plot(calibrations, plots_config, out_dict, start_date_reference)
 
     return out_dict
 
