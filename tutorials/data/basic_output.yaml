@@ -71,6 +71,7 @@ output:
           show_calibration: false
           show_projection: true
           show_surveillance: true
+          surveillance_source: hosp  # Reference surveillance source from options.surveillance
           show_fitting_window_line: true
           surveillance_points: 8    # Show most recent 8 points
           horizon_max: null         # Use base config value
@@ -80,6 +81,7 @@ output:
           show_calibration: false
           show_projection: true
           show_surveillance: true
+          surveillance_source: hosp  # Reference surveillance source from options.surveillance
           show_fitting_window_line: true
           surveillance_points: null  # Show all points
           horizon_max: null          # Use base config value
@@ -89,6 +91,7 @@ output:
           show_calibration: false
           show_projection: true
           show_surveillance: true
+          surveillance_source: hosp  # Reference surveillance source from options.surveillance
           show_fitting_window_line: true
           full_panel:
             surveillance_points: null  # Show all points (or use surveillance_start_date: "2024-09-14")
