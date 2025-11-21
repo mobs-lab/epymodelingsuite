@@ -167,7 +167,9 @@ def generate_single_quantile_plots(
         df_surv_filtered = None  # Filtered surveillance data
         surveillance_start_date = None
         if surveillance is not None:
-            surv = get_data_in_location(surveillance, location, plots_config.quantiles.surveillance.source.location_column)
+            surv = get_data_in_location(
+                surveillance, location, plots_config.quantiles.surveillance.source.location_column
+            )
 
             # Create full surveillance dataframe (no filtering)
             if not surv.empty:
