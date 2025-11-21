@@ -46,6 +46,9 @@ output:
 
   # Visualization plots
   plots:
+
+    # Output formats for plots. You can specify multiple formats.
+    # Supported formats: PDF, PNG, SVG
     figure_output_types:
       - PDF
     dpi: 150                # DPI for raster formats (PNG)
