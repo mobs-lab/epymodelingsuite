@@ -632,7 +632,7 @@ def plot_calibration_projection_sidebyside(  # noqa: PLR0913
         surveillance_size=surveillance_size,
         fitting_window_start=fitting_window_start,
         fitting_window_end=fitting_window_end,
-        title=f"{title} - Full Range" if title else "Full Range",
+        title=title,
         ax=ax_full,
     )
 
@@ -651,7 +651,7 @@ def plot_calibration_projection_sidebyside(  # noqa: PLR0913
         surveillance_size=surveillance_size,
         fitting_window_start=fitting_window_start,
         fitting_window_end=fitting_window_end,
-        title=f"{title} - Filtered" if title else "Filtered (Forecast Focus)",
+        title=title,
         ax=ax_filtered,
     )
 
