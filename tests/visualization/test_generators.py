@@ -89,7 +89,7 @@ class TestSurveillanceDataFiltering:
         )
 
     def test_surveillance_filtered_to_timespan_start(self, mock_calibration_output, plots_config_with_surveillance):
-        """Test that surveillance data is filtered to start from projection timespan start."""
+        """Test that surveillance data is filtered to start from projection timespan start in filtered plot."""
         out_dict = {}
 
         # Mock plot_calibration_projection to capture the surveillance data passed to it
@@ -102,32 +102,43 @@ class TestSurveillanceDataFiltering:
                 out_dict=out_dict,
             )
 
-            # Verify plot_calibration_projection was called
-            assert mock_plot.called
+            # Verify plot_calibration_projection was called twice (filtered and full)
+            assert mock_plot.call_count == 2
 
-            # Extract the surveillance data passed to the plot function
-            call_kwargs = mock_plot.call_args.kwargs
-            df_surv = call_kwargs["df_surveillance"]
+            # Extract the surveillance data passed to both plot calls
+            first_call_kwargs = mock_plot.call_args_list[0].kwargs
+            second_call_kwargs = mock_plot.call_args_list[1].kwargs
 
-            # Verify surveillance data was provided
-            assert df_surv is not None
-            assert not df_surv.empty
+            df_surv_filtered = first_call_kwargs["df_surveillance"]
+            df_surv_full = second_call_kwargs["df_surveillance"]
 
-            # Verify dates are filtered correctly
-            # Projection quantiles start from 2024-01-01 (which represents the full timespan)
+            # Verify filtered surveillance data was provided and filtered correctly
+            assert df_surv_filtered is not None
+            assert not df_surv_filtered.empty
+
+            # Filtered version: Projection quantiles start from 2024-01-01 (which represents the full timespan)
             # Surveillance data before this date should be filtered out
-            min_date = pd.to_datetime(df_surv["date"]).min()
-            assert min_date.date() >= date(2024, 1, 1)
+            min_date_filtered = pd.to_datetime(df_surv_filtered["date"]).min()
+            assert min_date_filtered.date() >= date(2024, 1, 1)
 
-            # Verify no upper bound filtering (all dates after start should be included)
+            # Filtered version: Verify no upper bound filtering (all dates after start should be included)
             # Original surveillance data goes until 2024-02-15
-            max_date = pd.to_datetime(df_surv["date"]).max()
-            assert max_date.date() == date(2024, 2, 15)
+            max_date_filtered = pd.to_datetime(df_surv_filtered["date"]).max()
+            assert max_date_filtered.date() == date(2024, 2, 15)
+
+            # Verify full surveillance data shows all data (no filtering)
+            assert df_surv_full is not None
+            assert not df_surv_full.empty
+            min_date_full = pd.to_datetime(df_surv_full["date"]).min()
+            max_date_full = pd.to_datetime(df_surv_full["date"]).max()
+            # Full surveillance should start from the beginning of the CSV data
+            assert min_date_full.date() == date(2023, 12, 1)
+            assert max_date_full.date() == date(2024, 2, 15)
 
     def test_surveillance_filtering_when_no_calibration_quantiles(
         self, surveillance_csv_data, plots_config_with_surveillance
     ):
-        """Test that surveillance is not date-filtered when calibration quantiles are not available."""
+        """Test that surveillance is filtered by surveillance_points even when calibration quantiles are not available."""
         # Create calibration output with no calibration quantiles
         calibration = MagicMock(spec=CalibrationOutput)
         calibration.population = "US-CA"
@@ -146,21 +157,28 @@ class TestSurveillanceDataFiltering:
                 out_dict=out_dict,
             )
 
-            # Verify plot was called
-            assert mock_plot.called
+            # Verify plot was called twice (filtered and full)
+            assert mock_plot.call_count == 2
 
-            # Extract surveillance data
-            call_kwargs = mock_plot.call_args.kwargs
-            df_surv = call_kwargs["df_surveillance"]
+            # Extract surveillance data from both calls
+            first_call_kwargs = mock_plot.call_args_list[0].kwargs
+            second_call_kwargs = mock_plot.call_args_list[1].kwargs
 
-            # When no calibration quantiles, surveillance should still be loaded
-            # but not date-filtered
-            assert df_surv is not None
-            # Should include all original dates from 2023-12-01 to 2024-02-15
-            min_date = pd.to_datetime(df_surv["date"]).min()
-            max_date = pd.to_datetime(df_surv["date"]).max()
-            assert min_date.date() == date(2023, 12, 1)
-            assert max_date.date() == date(2024, 2, 15)
+            df_surv_filtered = first_call_kwargs["df_surveillance"]
+            df_surv_full = second_call_kwargs["df_surveillance"]
+
+            # When no calibration/projection quantiles, filtered surveillance should still be loaded
+            # and filtered to the 8 most recent points (default surveillance_points value)
+            assert df_surv_filtered is not None
+            # Should have exactly 8 points (the most recent ones)
+            assert len(df_surv_filtered) == 8
+            # Check that we have the most recent dates
+            max_date_filtered = pd.to_datetime(df_surv_filtered["date"]).max()
+            assert max_date_filtered.date() == date(2024, 2, 15)
+
+            # Full surveillance should show all data (no filtering)
+            assert df_surv_full is not None
+            assert len(df_surv_full) == 77  # All dates from 2023-12-01 to 2024-02-15
 
     def test_surveillance_filtering_falls_back_to_calibration_quantiles(
         self, calibration_quantiles, surveillance_csv_data, plots_config_with_surveillance
@@ -184,18 +202,26 @@ class TestSurveillanceDataFiltering:
                 out_dict=out_dict,
             )
 
-            # Verify plot was called
-            assert mock_plot.called
+            # Verify plot was called twice (filtered and full)
+            assert mock_plot.call_count == 2
 
-            # Extract surveillance data
-            call_kwargs = mock_plot.call_args.kwargs
-            df_surv = call_kwargs["df_surveillance"]
+            # Extract surveillance data from both calls
+            first_call_kwargs = mock_plot.call_args_list[0].kwargs
+            second_call_kwargs = mock_plot.call_args_list[1].kwargs
 
-            # Surveillance should be filtered based on calibration quantiles
-            assert df_surv is not None
+            df_surv_filtered = first_call_kwargs["df_surveillance"]
+            df_surv_full = second_call_kwargs["df_surveillance"]
+
+            # Filtered surveillance should be filtered based on calibration quantiles
+            assert df_surv_filtered is not None
             # Calibration quantiles start from 2024-01-15
-            min_date = pd.to_datetime(df_surv["date"]).min()
-            assert min_date.date() >= date(2024, 1, 15)
+            min_date_filtered = pd.to_datetime(df_surv_filtered["date"]).min()
+            assert min_date_filtered.date() >= date(2024, 1, 15)
+
+            # Full surveillance should show all data (no filtering)
+            assert df_surv_full is not None
+            min_date_full = pd.to_datetime(df_surv_full["date"]).min()
+            assert min_date_full.date() == date(2023, 12, 1)
 
     def test_surveillance_filtering_with_empty_location_data(
         self, mock_calibration_output, plots_config_with_surveillance
@@ -215,12 +241,16 @@ class TestSurveillanceDataFiltering:
                 out_dict=out_dict,
             )
 
-            # Verify plot was called
-            assert mock_plot.called
+            # Verify plot was called twice (filtered and full)
+            assert mock_plot.call_count == 2
 
-            # Extract surveillance data
-            call_kwargs = mock_plot.call_args.kwargs
-            df_surv = call_kwargs["df_surveillance"]
+            # Extract surveillance data from both calls
+            first_call_kwargs = mock_plot.call_args_list[0].kwargs
+            second_call_kwargs = mock_plot.call_args_list[1].kwargs
 
-            # Surveillance should be None when no matching location
-            assert df_surv is None
+            df_surv_filtered = first_call_kwargs["df_surveillance"]
+            df_surv_full = second_call_kwargs["df_surveillance"]
+
+            # Surveillance should be None when no matching location (for both plots)
+            assert df_surv_filtered is None
+            assert df_surv_full is None

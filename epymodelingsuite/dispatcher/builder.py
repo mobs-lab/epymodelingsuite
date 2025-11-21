@@ -501,6 +501,7 @@ def build_calibration(
             calibrator=t[1],
             calibration=calibration.strategy,
             projection=projection_options,
+            start_date_reference=calibration.start_date.reference_date if calibration.start_date else None,
         )
         for i, t in enumerate(zip(models, calibrators, strict=True))
     ]
