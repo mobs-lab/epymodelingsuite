@@ -177,6 +177,17 @@ class QuantilesOutputTypeEnum(str, Enum):
     SIDE_BY_SIDE = "side_by_side"
 
 
+class SideBySidePanelConfig(BaseModel):
+    """Configuration for a single panel in side-by-side plot."""
+
+    surveillance_points: int | None = Field(
+        None, description="Number of most recent surveillance points to display. None = all points."
+    )
+    surveillance_start_date: str | None = Field(
+        None, description="Filter surveillance to show only points >= this date (YYYY-MM-DD). Overrides surveillance_points if both set."
+    )
+
+
 class QuantilesOutputConfig(BaseModel):
     """Configuration for a single quantile plot output."""
 
@@ -189,14 +200,23 @@ class QuantilesOutputConfig(BaseModel):
     show_fitting_window_line: bool = Field(True, description="Show fitting window vertical lines.")
 
     # Filter settings (only for FILTERED and FULL types)
-    # IGNORED for SIDE_BY_SIDE type (uses hardcoded filters)
     surveillance_points: int | None = Field(
-        None, description="Number of most recent surveillance points to display. None = all points."
+        None, description="Number of most recent surveillance points to display. None = all points. Not used for SIDE_BY_SIDE."
+    )
+    surveillance_start_date: str | None = Field(
+        None, description="Filter surveillance to show only points >= this date (YYYY-MM-DD). Overrides surveillance_points if both set. Not used for SIDE_BY_SIDE."
     )
     horizon_max: int | None = Field(None, description="Override base horizon_max. None = use base config value.")
 
+    # Panel settings (only for SIDE_BY_SIDE type)
+    full_panel: SideBySidePanelConfig | None = Field(
+        None, description="Configuration for full (left) panel in side-by-side plot."
+    )
+    filtered_panel: SideBySidePanelConfig | None = Field(
+        None, description="Configuration for filtered (right) panel in side-by-side plot."
+    )
+
     # Layout settings (only for SIDE_BY_SIDE type)
-    columns: int = Field(4, description="For grid side-by-side: number of subplot columns (2 location-pairs per row).")
     spacing: float = Field(0.3, description="For side-by-side: horizontal spacing between panels.")
     figsize: tuple[float, float] | None = Field(None, description="For side-by-side: figure size (width, height).")
 

@@ -317,11 +317,12 @@ def plot_calibration_projection(  # noqa: PLR0913
     df_surveillance: pd.DataFrame | None = None,
     surveillance_date_col: str = "date",
     surveillance_value_col: str = "value",
-    surveillance_size: float = 30.0,
+    surveillance_size: float = 16.0,
     fitting_window_start: str | pd.Timestamp | datetime | None = None,
     fitting_window_end: str | pd.Timestamp | datetime | None = None,
     title: str | None = None,
     ax: plt.Axes | None = None,
+    weekly_x_labels: bool = False,
 ) -> tuple[plt.Figure | None, plt.Axes]:
     """
     Plot calibration and projection quantiles on top of each other for a single location.
@@ -497,6 +498,14 @@ def plot_calibration_projection(  # noqa: PLR0913
     if all_handles:
         ax.legend(all_handles, all_labels, loc="upper left", fontsize=8)
 
+    # Apply weekly x-axis labels if requested
+    if weekly_x_labels:
+        from matplotlib.dates import WeekdayLocator, DateFormatter
+        ax.xaxis.set_major_locator(WeekdayLocator(byweekday=5))  # Saturday = 5 (epiweek ending)
+        ax.xaxis.set_major_formatter(DateFormatter('%m/%d'))
+        ax.tick_params(axis='x', rotation=45)
+        plt.setp(ax.xaxis.get_majorticklabels(), ha='right')
+
     return fig, ax
 
 
@@ -513,12 +522,14 @@ def plot_calibration_projection_sidebyside(  # noqa: PLR0913
     projection_color: str = "C1",
     surveillance_date_col: str = "date",
     surveillance_value_col: str = "value",
-    surveillance_size: float = 30.0,
+    surveillance_size: float = 16.0,
     fitting_window_start: str | pd.Timestamp | datetime | None = None,
     fitting_window_end: str | pd.Timestamp | datetime | None = None,
     title: str | None = None,
     figsize: tuple[float, float] | None = None,
     spacing: float = 0.3,
+    ax_full: plt.Axes | None = None,
+    ax_filtered: plt.Axes | None = None,
 ) -> tuple[plt.Figure, tuple[plt.Axes, plt.Axes]]:
     """
     Create side-by-side quantile plots: [Full Range | Filtered].
@@ -567,6 +578,10 @@ def plot_calibration_projection_sidebyside(  # noqa: PLR0913
         Figure size. If None, defaults to (16, 6).
     spacing : float, optional
         Horizontal spacing between subplots, by default 0.3.
+    ax_full : plt.Axes | None, optional
+        Optional axes for the full panel. If provided, a new figure is not created.
+    ax_filtered : plt.Axes | None, optional
+        Optional axes for the filtered panel. If provided, a new figure is not created.
 
     Returns
     -------
@@ -593,10 +608,14 @@ def plot_calibration_projection_sidebyside(  # noqa: PLR0913
     >>> plt.close(fig)
 
     """
-    if figsize is None:
-        figsize = (16, 6)
+    fig_provided = ax_full is not None and ax_filtered is not None
 
-    fig, (ax_full, ax_filtered) = plt.subplots(1, 2, figsize=figsize, gridspec_kw={"wspace": spacing})
+    if not fig_provided:
+        if figsize is None:
+            figsize = (16, 6)
+        fig, (ax_full, ax_filtered) = plt.subplots(1, 2, figsize=figsize, gridspec_kw={"wspace": spacing})
+    else:
+        fig = ax_full.figure
 
     # Left panel: Full range
     plot_calibration_projection(
@@ -650,7 +669,7 @@ def plot_calibration_projection_grid(  # noqa: PLR0913
     location_surveillance: dict[str, pd.DataFrame] | None = None,
     surveillance_date_col: str = "date",
     surveillance_value_col: str = "value",
-    surveillance_size: float = 30.0,
+    surveillance_size: float = 16.0,
     location_fitting_window_starts: dict[str, datetime] | None = None,
     location_fitting_window_ends: dict[str, datetime] | None = None,
     panels_per_row: int = 4,

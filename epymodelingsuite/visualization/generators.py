@@ -7,13 +7,14 @@ outputs as OutputObject instances.
 
 import logging
 import math
+from datetime import date, timedelta
 
 import matplotlib.pyplot as plt
 import pandas as pd
 
 from ..builders.utils import get_data_in_location
 from ..schema.dispatcher import CalibrationOutput
-from ..schema.output import OutputObject, PlotsConfig
+from ..schema.output import OutputObject, PlotsConfig, QuantilesOutputConfig, QuantilesOutputTypeEnum
 from .core import (
     _format_location_name,
     figure_to_output_object,
@@ -27,6 +28,184 @@ from .core import (
 logger = logging.getLogger(__name__)
 
 
+def _fetch_quantiles_for_location(
+    calibration: CalibrationOutput,
+    plots_config: PlotsConfig,
+    needs_calibration: bool,
+    needs_projection: bool,
+) -> tuple[pd.DataFrame | None, pd.DataFrame | None]:
+    """
+    Fetch calibration and projection quantiles for a single location.
+
+    Parameters
+    ----------
+    calibration : CalibrationOutput
+        Calibration results for one location.
+    plots_config : PlotsConfig
+        Plot configuration with quantile levels.
+    needs_calibration : bool
+        Whether calibration quantiles are requested.
+    needs_projection : bool
+        Whether projection quantiles are requested.
+
+    Returns
+    -------
+    tuple
+        (cal_quant, proj_quant) where either can be None if not requested or retrieval fails.
+    """
+    cal_quant = None
+    if needs_calibration:
+        try:
+            cal_quant = calibration.results.get_calibration_quantiles(
+                quantiles=plots_config.quantiles.quantiles,
+                variables=["date", "data"],
+            )
+        except (ValueError, AttributeError, TypeError, IndexError) as e:
+            logger.warning("Failed to get calibration quantiles for %s: %s", calibration.population, e)
+
+    proj_quant = None
+    if needs_projection:
+        try:
+            proj_quant = calibration.results.get_projection_quantiles(
+                quantiles=plots_config.quantiles.quantiles,
+            )
+        except (ValueError, AttributeError, TypeError, IndexError) as e:
+            logger.warning("Failed to get projection quantiles for %s: %s", calibration.population, e)
+
+    return cal_quant, proj_quant
+
+
+def _prepare_surveillance_for_location(
+    surveillance: pd.DataFrame | None,
+    location: str,
+    proj_quant: pd.DataFrame | None,
+    cal_quant: pd.DataFrame | None,
+    plots_config: PlotsConfig,
+) -> tuple[pd.DataFrame | None, pd.DataFrame | None, date | None]:
+    """
+    Build full and filtered surveillance dataframes for a location.
+
+    Parameters
+    ----------
+    surveillance : pd.DataFrame or None
+        Raw surveillance data for all locations.
+    location : str
+        Location identifier to filter surveillance.
+    proj_quant : pd.DataFrame or None
+        Projection quantiles for the location (preferred to infer timespan start).
+    cal_quant : pd.DataFrame or None
+        Calibration quantiles for the location (fallback to infer timespan start).
+    plots_config : PlotsConfig
+        Plot configuration for surveillance column names.
+
+    Returns
+    -------
+    tuple
+        (df_surv_full, df_surv_filtered, surveillance_start_date) where start date is the first filtered point.
+    """
+    df_surv_full = None
+    df_surv_filtered = None
+    surveillance_start_date = None
+
+    if surveillance is None or not plots_config.quantiles.surveillance.location_column:
+        return df_surv_full, df_surv_filtered, surveillance_start_date
+
+    surv = get_data_in_location(surveillance, location, plots_config.quantiles.surveillance.location_column)
+    date_col = plots_config.quantiles.surveillance.date_column
+    value_col = plots_config.quantiles.surveillance.value_column
+
+    # Full surveillance (no filtering)
+    if not surv.empty and date_col and value_col:
+        df_surv_full = surv.rename(columns={date_col: "date", value_col: "value"})[["date", "value"]]
+
+    # Filtered surveillance
+    surv_filtered = surv.copy()
+
+    if not surv_filtered.empty and date_col:
+        # Align surveillance window with available quantiles
+        quantiles_for_timespan = proj_quant if proj_quant is not None else cal_quant
+        if quantiles_for_timespan is not None and "date" in quantiles_for_timespan.columns:
+            timespan_start = pd.to_datetime(quantiles_for_timespan["date"]).min().date()
+            surv_filtered = surv_filtered[
+                pd.to_datetime(surv_filtered[date_col]).dt.date >= timespan_start
+            ]
+
+    if not surv_filtered.empty and date_col and value_col:
+        df_surv_filtered = surv_filtered.rename(columns={date_col: "date", value_col: "value"})[["date", "value"]]
+
+        if not df_surv_filtered.empty:
+            surveillance_start_date = pd.to_datetime(df_surv_filtered["date"]).min().date()
+
+    return df_surv_full, df_surv_filtered, surveillance_start_date
+
+
+def _prepare_projection_quantiles(
+    proj_quant: pd.DataFrame | None,
+    surveillance_start_date: date | None,
+    plots_config: PlotsConfig,
+) -> tuple[pd.DataFrame | None, pd.DataFrame | None]:
+    """
+    Create full and filtered projection quantiles for a location.
+
+    Parameters
+    ----------
+    proj_quant : pd.DataFrame or None
+        Projection quantiles for the location.
+    surveillance_start_date : date or None
+        First surveillance date used to cut projections for the filtered version.
+    plots_config : PlotsConfig
+        Plot configuration providing reference_date and base horizon_max.
+
+    Returns
+    -------
+    tuple
+        (proj_quant_full, proj_quant_filtered) using base horizon_max; filtered also cuts before surveillance start.
+    """
+    proj_quant_full = None
+    proj_quant_filtered = None
+
+    if proj_quant is None:
+        return proj_quant_full, proj_quant_filtered
+
+    # Full version: horizon_max only
+    proj_quant_full = proj_quant.copy()
+    if plots_config.quantiles.horizon_max is not None:
+        proj_dates_full = pd.to_datetime(proj_quant_full["date"]).dt.date
+        horizon_end_full = plots_config.reference_date + timedelta(weeks=plots_config.quantiles.horizon_max)
+        proj_quant_full = proj_quant_full[proj_dates_full.values <= horizon_end_full]
+
+    # Filtered version: surveillance start + horizon_max
+    proj_quant_filtered = proj_quant.copy()
+    proj_dates = pd.to_datetime(proj_quant_filtered["date"]).dt.date
+    if surveillance_start_date is not None:
+        proj_start = proj_dates.min()
+        if proj_start < surveillance_start_date:
+            proj_quant_filtered = proj_quant_filtered[proj_dates.values >= surveillance_start_date]
+
+    if plots_config.quantiles.horizon_max is not None:
+        proj_dates = pd.to_datetime(proj_quant_filtered["date"]).dt.date
+        horizon_end = plots_config.reference_date + timedelta(weeks=plots_config.quantiles.horizon_max)
+        proj_quant_filtered = proj_quant_filtered[proj_dates.values <= horizon_end]
+
+    return proj_quant_full, proj_quant_filtered
+
+
+def _rename_value_column(df: pd.DataFrame | None, old_name: str) -> pd.DataFrame | None:
+    """
+    Return a copy with `old_name` renamed to `value` if the column exists; otherwise return df unchanged.
+
+    Parameters
+    ----------
+    df : pd.DataFrame or None
+        Dataframe to inspect and rename.
+    old_name : str
+        Column name to replace with `value`.
+    """
+    if df is not None and old_name in df.columns:
+        return df.rename(columns={old_name: "value"})
+    return df
+
+
 def _create_filtered_plot(
     location: str,
     cal_quant: pd.DataFrame | None,
@@ -36,7 +215,7 @@ def _create_filtered_plot(
     fitting_window_end: pd.Timestamp | None,
     plots_config: PlotsConfig,
     value_col: str,
-    output_config,
+    output_config: QuantilesOutputConfig,
 ) -> tuple:
     """
     Create filtered quantile plot for a location.
@@ -89,7 +268,7 @@ def _create_full_plot(
     fitting_window_end: pd.Timestamp | None,
     plots_config: PlotsConfig,
     value_col: str,
-    output_config,
+    output_config: QuantilesOutputConfig,
 ) -> tuple:
     """
     Create full quantile plot for a location.
@@ -144,7 +323,7 @@ def _create_sidebyside_plot(
     fitting_window_end: pd.Timestamp | None,
     plots_config: PlotsConfig,
     value_col: str,
-    output_config,
+    output_config: QuantilesOutputConfig,
 ) -> tuple:
     """
     Create side-by-side (full | filtered) quantile plot for a location.
@@ -264,6 +443,10 @@ def generate_single_quantile_plots(
                 "Failed to load surveillance data from %s: %s", plots_config.quantiles.surveillance.data_path, e
             )
 
+    needs_calibration = any(output.show_calibration for output in plots_config.quantiles.outputs)
+    needs_projection = any(output.show_projection for output in plots_config.quantiles.outputs)
+    needs_fitting_window = any(output.show_fitting_window_line for output in plots_config.quantiles.outputs)
+
     # Generate plots for each location
     for calibration in calibrations:
         # Skip locations not in config
@@ -275,230 +458,103 @@ def generate_single_quantile_plots(
         # calibration.results = filter_failed_calibration_trajectories(calibration.results)
         calibration.results = filter_failed_projections(calibration.results)
 
-        # Get pre-computed quantiles
-
-        # Check if any output needs calibration/projection/fitting window
-        needs_calibration = any(output.show_calibration for output in plots_config.quantiles.outputs)
-        needs_projection = any(output.show_projection for output in plots_config.quantiles.outputs)
-        needs_fitting_window = any(output.show_fitting_window_line for output in plots_config.quantiles.outputs)
-
-        # Calibration quantiles
-        cal_quant = None
-        if needs_calibration:
-            try:
-                cal_quant = calibration.results.get_calibration_quantiles(
-                    quantiles=plots_config.quantiles.quantiles,
-                    variables=["date", "data"],
-                )
-            except (ValueError, AttributeError, TypeError) as e:
-                logger.warning(
-                    "Failed to get calibration quantiles for %s: %s",
-                    location,
-                    e,
-                )
+        cal_quant, proj_quant = _fetch_quantiles_for_location(
+            calibration, plots_config, needs_calibration, needs_projection
+        )
 
         # Calculate fitting window start and end from calibration quantiles
         fitting_window_start = None
         fitting_window_end = None
-        if needs_fitting_window:
-            # Fetch calibration quantiles for fitting window calculation even if not displaying them
-            cal_quant_for_fitting = cal_quant
-            if cal_quant_for_fitting is None:
-                try:
-                    cal_quant_for_fitting = calibration.results.get_calibration_quantiles(
-                        quantiles=[0.5],  # Only need one quantile to get dates
-                        variables=["date", "data"],
-                    )
-                except (ValueError, AttributeError, TypeError) as e:
-                    logger.warning(
-                        "Failed to get calibration quantiles for fitting window for %s: %s",
-                        location,
-                        e,
-                    )
-
-            if cal_quant_for_fitting is not None and "date" in cal_quant_for_fitting.columns:
-                dates = pd.to_datetime(cal_quant_for_fitting["date"]).dt.date
-                fitting_window_start = dates.min()
-                fitting_window_end = dates.max()
-
-        # Projection quantiles
-        # TODO: "hospitalizations" column is hardcoded in projection quantiles
-        proj_quant = None
-        if needs_projection:
+    if needs_fitting_window:
+        cal_quant_for_fitting = cal_quant
+        if cal_quant_for_fitting is None:
             try:
-                proj_quant = calibration.results.get_projection_quantiles(
-                    quantiles=plots_config.quantiles.quantiles,
+                cal_quant_for_fitting = calibration.results.get_calibration_quantiles(
+                    quantiles=[0.5],  # Only need one quantile to get dates
+                    variables=["date", "data"],
                 )
-            except (ValueError, AttributeError) as e:
+            except (ValueError, AttributeError, TypeError) as e:
                 logger.warning(
-                    "Failed to get projection quantiles for %s: %s",
+                    "Failed to get calibration quantiles for fitting window for %s: %s",
                     location,
                     e,
                 )
 
-        # Prepare surveillance data for this location
-        df_surv_full = None  # Full surveillance data (no filtering)
-        df_surv_filtered = None  # Filtered surveillance data
-        surveillance_start_date = None
-        if surveillance is not None and plots_config.quantiles.surveillance.location_column:
-            surv = get_data_in_location(surveillance, location, plots_config.quantiles.surveillance.location_column)
+        if cal_quant_for_fitting is not None and "date" in cal_quant_for_fitting.columns:
+            # Use calibration dates to mark fitting window on plots
+            dates = pd.to_datetime(cal_quant_for_fitting["date"]).dt.date
+            fitting_window_start = dates.min()
+            fitting_window_end = dates.max()
 
-            # Create full surveillance dataframe (no filtering)
-            if (
-                not surv.empty
-                and plots_config.quantiles.surveillance.date_column
-                and plots_config.quantiles.surveillance.value_column
-            ):
-                df_surv_full = surv.rename(
-                    columns={
-                        plots_config.quantiles.surveillance.date_column: "date",
-                        plots_config.quantiles.surveillance.value_column: "value",
-                    }
-                )[["date", "value"]]
+        df_surv_full, df_surv_filtered, surveillance_start_date = _prepare_surveillance_for_location(
+            surveillance, location, proj_quant, cal_quant, plots_config
+        )
 
-            # Create filtered surveillance dataframe
-            surv_filtered = surv.copy()
-
-            # Filter surveillance data to start from timespan start (inferred from projection or calibration quantiles)
-            if not surv_filtered.empty:
-                # Use projection quantiles to get full timespan, fall back to calibration if not available
-                quantiles_for_timespan = proj_quant if proj_quant is not None else cal_quant
-                if quantiles_for_timespan is not None and "date" in quantiles_for_timespan.columns:
-                    # Infer timespan start from the earliest date in quantiles
-                    timespan_start = pd.to_datetime(quantiles_for_timespan["date"]).min().date()
-                    # Filter surveillance data to start from timespan start
-                    surv_filtered = surv_filtered[
-                        pd.to_datetime(surv_filtered[plots_config.quantiles.surveillance.date_column]).dt.date
-                        >= timespan_start
-                    ]
-
-            if (
-                not surv_filtered.empty
-                and plots_config.quantiles.surveillance.date_column
-                and plots_config.quantiles.surveillance.value_column
-            ):
-                df_surv_filtered = surv_filtered.rename(
-                    columns={
-                        plots_config.quantiles.surveillance.date_column: "date",
-                        plots_config.quantiles.surveillance.value_column: "value",
-                    }
-                )[["date", "value"]]
-
-                # Note: Per-output surveillance_points filtering will be applied later
-                # when generating each output, not here
-
-                # Get first surveillance date for projection filtering
-                if not df_surv_filtered.empty:
-                    surveillance_start_date = pd.to_datetime(df_surv_filtered["date"]).min().date()
-
-        # Prepare projection quantiles - create both filtered and full versions
-        proj_quant_filtered = None
-        proj_quant_full = None
-
-        if proj_quant is not None:
-            from datetime import timedelta
-
-            # Full version: apply horizon_max only (no surveillance_start_date filtering)
-            proj_quant_full = proj_quant.copy()
-            if plots_config.quantiles.horizon_max is not None:
-                proj_dates_full = pd.to_datetime(proj_quant_full["date"]).dt.date
-                horizon_end_full = plots_config.reference_date + timedelta(weeks=plots_config.quantiles.horizon_max)
-                proj_quant_full = proj_quant_full[proj_dates_full.values <= horizon_end_full]
-
-            # Filtered version: apply standard filtering
-            proj_quant_filtered = proj_quant.copy()
-            proj_dates = pd.to_datetime(proj_quant_filtered["date"]).dt.date
-
-            # Start at first surveillance point if there's projection data before it
-            if surveillance_start_date is not None:
-                proj_start = proj_dates.min()
-                # Only filter if projection starts before first surveillance point
-                if proj_start < surveillance_start_date:
-                    proj_quant_filtered = proj_quant_filtered[proj_dates.values >= surveillance_start_date]
-
-            # End at horizon_max if specified
-            if plots_config.quantiles.horizon_max is not None:
-                horizon_end = plots_config.reference_date + timedelta(weeks=plots_config.quantiles.horizon_max)
-                proj_dates = pd.to_datetime(proj_quant_filtered["date"]).dt.date
-                proj_quant_filtered = proj_quant_filtered[proj_dates.values <= horizon_end]
+        proj_quant_full, proj_quant_filtered = _prepare_projection_quantiles(
+            proj_quant, surveillance_start_date, plots_config
+        )
 
         # Rename columns to have consistent naming for plotting
         # TODO: Calibration uses "data", projection uses "hospitalizations" - make this configurable
-        if cal_quant is not None and "data" in cal_quant.columns:
-            cal_quant = cal_quant.rename(columns={"data": "value"})
-        if proj_quant_filtered is not None and "hospitalizations" in proj_quant_filtered.columns:
-            proj_quant_filtered = proj_quant_filtered.rename(columns={"hospitalizations": "value"})
-        if proj_quant_full is not None and "hospitalizations" in proj_quant_full.columns:
-            proj_quant_full = proj_quant_full.rename(columns={"hospitalizations": "value"})
+        # Normalizing to "value" means the plotting primitives don't need to know source-specific names
+        cal_quant = _rename_value_column(cal_quant, "data")
+        proj_quant_filtered = _rename_value_column(proj_quant_filtered, "hospitalizations")
+        proj_quant_full = _rename_value_column(proj_quant_full, "hospitalizations")
 
         value_col = "value"
 
         # Create plots for each configured output
-        from ..schema.output import QuantilesOutputTypeEnum
-
         for output_config in plots_config.quantiles.outputs:
             output_name = f"quantiles_{location}_{output_config.type.value}"
 
             try:
-                # Determine which data to use and apply per-output filtering
-                if output_config.type == QuantilesOutputTypeEnum.FILTERED:
-                    proj_to_use = proj_quant_filtered
-                    surv_to_use = df_surv_filtered
-                elif output_config.type == QuantilesOutputTypeEnum.FULL:
-                    proj_to_use = proj_quant_full
-                    surv_to_use = df_surv_full
-                elif output_config.type == QuantilesOutputTypeEnum.SIDE_BY_SIDE:
-                    # Side-by-side handled separately below
-                    proj_to_use = None
-                    surv_to_use = None
-                else:
-                    logger.warning("Unknown output type %s for %s", output_config.type, location)
-                    continue
-
-                # Apply per-output surveillance_points filtering if needed (for filtered/full types)
-                if surv_to_use is not None and output_config.surveillance_points is not None:
-                    surv_to_use = surv_to_use.sort_values("date").tail(output_config.surveillance_points)
-
-                # Apply per-output horizon_max if specified (overrides base config)
-                if proj_to_use is not None and output_config.horizon_max is not None:
-                    from datetime import timedelta
-                    proj_dates = pd.to_datetime(proj_to_use["date"]).dt.date
-                    horizon_end = plots_config.reference_date + timedelta(weeks=output_config.horizon_max)
-                    proj_to_use = proj_to_use[proj_dates.values <= horizon_end]
-
-                # Create the plot
-                if output_config.type == QuantilesOutputTypeEnum.FILTERED:
-                    fig, ax = _create_filtered_plot(
-                        location,
-                        cal_quant,
-                        proj_to_use,
-                        surv_to_use,
-                        fitting_window_start,
-                        fitting_window_end,
-                        plots_config,
-                        value_col,
-                        output_config,
+                if output_config.type == QuantilesOutputTypeEnum.SIDE_BY_SIDE:
+                    # Side-by-side needs per-panel copies so each panel can apply its own trims
+                    proj_quant_full_for_output = proj_quant_full.copy() if proj_quant_full is not None else None
+                    proj_quant_filtered_for_output = (
+                        proj_quant_filtered.copy() if proj_quant_filtered is not None else None
                     )
-                elif output_config.type == QuantilesOutputTypeEnum.FULL:
-                    fig, ax = _create_full_plot(
-                        location,
-                        cal_quant,
-                        proj_to_use,
-                        surv_to_use,
-                        fitting_window_start,
-                        fitting_window_end,
-                        plots_config,
-                        value_col,
-                        output_config,
-                    )
-                elif output_config.type == QuantilesOutputTypeEnum.SIDE_BY_SIDE:
+
+                    # Apply per-output horizon and surveillance trims on copies so base data stays reusable
+                    if output_config.horizon_max is not None:
+                        horizon_end = plots_config.reference_date + timedelta(weeks=output_config.horizon_max)
+                        if proj_quant_full_for_output is not None:
+                            proj_dates = pd.to_datetime(proj_quant_full_for_output["date"]).dt.date
+                            proj_quant_full_for_output = proj_quant_full_for_output[proj_dates.values <= horizon_end]
+                        if proj_quant_filtered_for_output is not None:
+                            proj_dates = pd.to_datetime(proj_quant_filtered_for_output["date"]).dt.date
+                            proj_quant_filtered_for_output = proj_quant_filtered_for_output[
+                                proj_dates.values <= horizon_end
+                            ]
+
+                    surv_full = df_surv_full.copy() if df_surv_full is not None else None
+                    surv_filtered = df_surv_filtered.copy() if df_surv_filtered is not None else None
+
+                    if output_config.full_panel and surv_full is not None:
+                        if output_config.full_panel.surveillance_start_date is not None:
+                            start_date = pd.to_datetime(output_config.full_panel.surveillance_start_date).date()
+                            surv_dates = pd.to_datetime(surv_full["date"]).dt.date
+                            surv_full = surv_full[surv_dates >= start_date]
+                        elif output_config.full_panel.surveillance_points is not None:
+                            surv_full = surv_full.sort_values("date").tail(output_config.full_panel.surveillance_points)
+
+                    if output_config.filtered_panel and surv_filtered is not None:
+                        if output_config.filtered_panel.surveillance_start_date is not None:
+                            start_date = pd.to_datetime(output_config.filtered_panel.surveillance_start_date).date()
+                            surv_dates = pd.to_datetime(surv_filtered["date"]).dt.date
+                            surv_filtered = surv_filtered[surv_dates >= start_date]
+                        elif output_config.filtered_panel.surveillance_points is not None:
+                            surv_filtered = surv_filtered.sort_values("date").tail(
+                                output_config.filtered_panel.surveillance_points
+                            )
+
                     fig, (ax_full, ax_filtered) = _create_sidebyside_plot(
                         location,
                         cal_quant,
-                        proj_quant_full,
-                        proj_quant_filtered,
-                        df_surv_full,
-                        df_surv_filtered,
+                        proj_quant_full_for_output,
+                        proj_quant_filtered_for_output,
+                        surv_full,
+                        surv_filtered,
                         fitting_window_start,
                         fitting_window_end,
                         plots_config,
@@ -506,8 +562,62 @@ def generate_single_quantile_plots(
                         output_config,
                     )
                 else:
-                    logger.warning("Unknown output type %s for %s", output_config.type, location)
-                    continue
+                    # Determine which data to use and apply per-output filtering
+                    if output_config.type == QuantilesOutputTypeEnum.FILTERED:
+                        proj_to_use = proj_quant_filtered
+                        surv_to_use = df_surv_filtered
+                    elif output_config.type == QuantilesOutputTypeEnum.FULL:
+                        proj_to_use = proj_quant_full
+                        surv_to_use = df_surv_full
+                    else:
+                        logger.warning("Unknown output type %s for %s", output_config.type, location)
+                        continue
+
+                    # Apply per-output surveillance filtering if needed (for filtered/full types)
+                    if surv_to_use is not None:
+                        # Date-based filtering takes precedence over points-based filtering
+                        if output_config.surveillance_start_date is not None:
+                            start_date = pd.to_datetime(output_config.surveillance_start_date).date()
+                            surv_dates = pd.to_datetime(surv_to_use["date"]).dt.date
+                            surv_to_use = surv_to_use[surv_dates >= start_date]
+                        elif output_config.surveillance_points is not None:
+                            surv_to_use = surv_to_use.sort_values("date").tail(output_config.surveillance_points)
+
+                    # Apply per-output horizon_max if specified (overrides base config)
+                    if proj_to_use is not None and output_config.horizon_max is not None:
+                        # Per-output horizon can be tighter than the base config
+                        proj_dates = pd.to_datetime(proj_to_use["date"]).dt.date
+                        horizon_end = plots_config.reference_date + timedelta(weeks=output_config.horizon_max)
+                        proj_to_use = proj_to_use[proj_dates.values <= horizon_end]
+
+                    # Create the plot
+                    if output_config.type == QuantilesOutputTypeEnum.FILTERED:
+                        fig, ax = _create_filtered_plot(
+                            location,
+                            cal_quant,
+                            proj_to_use,
+                            surv_to_use,
+                            fitting_window_start,
+                            fitting_window_end,
+                            plots_config,
+                            value_col,
+                            output_config,
+                        )
+                    elif output_config.type == QuantilesOutputTypeEnum.FULL:
+                        fig, ax = _create_full_plot(
+                            location,
+                            cal_quant,
+                            proj_to_use,
+                            surv_to_use,
+                            fitting_window_start,
+                            fitting_window_end,
+                            plots_config,
+                            value_col,
+                            output_config,
+                        )
+                    else:
+                        logger.warning("Unknown output type %s for %s", output_config.type, location)
+                        continue
 
                 # Package output
                 output_objs = []
@@ -563,6 +673,10 @@ def generate_quantile_grid_plot(
                 "Failed to load surveillance data from %s: %s", plots_config.quantiles.surveillance.data_path, e
             )
 
+    needs_calibration = any(output.show_calibration for output in plots_config.quantiles.outputs)
+    needs_projection = any(output.show_projection for output in plots_config.quantiles.outputs)
+    needs_fitting_window = any(output.show_fitting_window_line for output in plots_config.quantiles.outputs)
+
     # Collect quantiles and surveillance data for each location
     location_cal_quants = {}
     location_proj_quants_filtered = {}
@@ -580,26 +694,11 @@ def generate_quantile_grid_plot(
         # calibration.results = filter_failed_calibration_trajectories(calibration.results)
         calibration.results = filter_failed_projections(calibration.results)
 
-        # Get pre-computed quantiles
-
-        # Check if any output needs calibration/projection/fitting window
-        needs_calibration = any(output.show_calibration for output in plots_config.quantiles.outputs)
-        needs_projection = any(output.show_projection for output in plots_config.quantiles.outputs)
-        needs_fitting_window = any(output.show_fitting_window_line for output in plots_config.quantiles.outputs)
-
-        # Calibration quantiles
-        if needs_calibration:
-            try:
-                location_cal_quants[loc] = calibration.results.get_calibration_quantiles(
-                    quantiles=plots_config.quantiles.quantiles,
-                    variables=["date", "data"],
-                )
-            except (ValueError, AttributeError, TypeError, IndexError) as e:
-                logger.warning(
-                    "Failed to get calibration quantiles for %s: %s",
-                    loc,
-                    e,
-                )
+        cal_quant, proj_quant_raw = _fetch_quantiles_for_location(
+            calibration, plots_config, needs_calibration, needs_projection
+        )
+        if cal_quant is not None:
+            location_cal_quants[loc] = cal_quant
 
         # Calculate fitting window start and end from calibration quantiles
         if needs_fitting_window:
@@ -623,126 +722,34 @@ def generate_quantile_grid_plot(
                 location_fitting_window_starts[loc] = dates.min()
                 location_fitting_window_ends[loc] = dates.max()
 
-        # Projection quantiles
-        # TODO: "hospitalizations" column is hardcoded in projection quantiles
-        proj_quant_raw = None
-        if needs_projection:
-            try:
-                proj_quant_raw = calibration.results.get_projection_quantiles(
-                    quantiles=plots_config.quantiles.quantiles,
-                )
-            except (ValueError, AttributeError, TypeError, IndexError) as e:
-                logger.warning(
-                    "Failed to get projection quantiles for %s: %s",
-                    loc,
-                    e,
-                )
+        df_surv_full, df_surv_filtered, surveillance_start_date = _prepare_surveillance_for_location(
+            surveillance, loc, proj_quant_raw, cal_quant, plots_config
+        )
+        if df_surv_full is not None:
+            location_surveillance_full[loc] = df_surv_full
+        if df_surv_filtered is not None:
+            location_surveillance_filtered[loc] = df_surv_filtered
 
-        # Prepare surveillance data for this location
-        surveillance_start_date = None
-        if surveillance is not None and plots_config.quantiles.surveillance.location_column:
-            surv = get_data_in_location(surveillance, loc, plots_config.quantiles.surveillance.location_column)
-
-            # Create full surveillance dataframe (no filtering)
-            if (
-                not surv.empty
-                and plots_config.quantiles.surveillance.date_column
-                and plots_config.quantiles.surveillance.value_column
-            ):
-                location_surveillance_full[loc] = surv.rename(
-                    columns={
-                        plots_config.quantiles.surveillance.date_column: "date",
-                        plots_config.quantiles.surveillance.value_column: "value",
-                    }
-                )[["date", "value"]]
-
-            # Create filtered surveillance dataframe
-            surv_filtered = surv.copy()
-
-            # Filter surveillance data to start from timespan start (inferred from projection or calibration quantiles)
-            if not surv_filtered.empty:
-                # Use projection quantiles to get full timespan, fall back to calibration if not available
-                quantiles_for_timespan = proj_quant_raw if proj_quant_raw is not None else location_cal_quants.get(loc)
-
-                if quantiles_for_timespan is not None and "date" in quantiles_for_timespan.columns:
-                    # Infer timespan start from the earliest date in quantiles
-                    timespan_start = pd.to_datetime(quantiles_for_timespan["date"]).min().date()
-                    # Filter surveillance data to start from timespan start
-                    surv_filtered = surv_filtered[
-                        pd.to_datetime(surv_filtered[plots_config.quantiles.surveillance.date_column]).dt.date
-                        >= timespan_start
-                    ]
-
-            if (
-                not surv_filtered.empty
-                and plots_config.quantiles.surveillance.date_column
-                and plots_config.quantiles.surveillance.value_column
-            ):
-                location_surveillance_filtered[loc] = surv_filtered.rename(
-                    columns={
-                        plots_config.quantiles.surveillance.date_column: "date",
-                        plots_config.quantiles.surveillance.value_column: "value",
-                    }
-                )[["date", "value"]]
-
-                # Note: Per-output surveillance_points filtering will be applied later
-                # when generating each output, not here
-
-                # Get first surveillance date for projection filtering
-                if not location_surveillance_filtered[loc].empty:
-                    surveillance_start_date = pd.to_datetime(location_surveillance_filtered[loc]["date"]).min().date()
-
-        # Prepare projection quantiles - create both filtered and full versions
-        if proj_quant_raw is not None:
-            from datetime import timedelta
-
-            # Full version: apply horizon_max only (no surveillance_start_date filtering)
-            location_proj_quants_full[loc] = proj_quant_raw.copy()
-            if plots_config.quantiles.horizon_max is not None:
-                proj_dates_full = pd.to_datetime(location_proj_quants_full[loc]["date"]).dt.date
-                horizon_end_full = plots_config.reference_date + timedelta(weeks=plots_config.quantiles.horizon_max)
-                location_proj_quants_full[loc] = location_proj_quants_full[loc][
-                    proj_dates_full.values <= horizon_end_full
-                ]
-
-            # Filtered version: apply standard filtering
-            location_proj_quants_filtered[loc] = proj_quant_raw.copy()
-            proj_dates = pd.to_datetime(location_proj_quants_filtered[loc]["date"]).dt.date
-
-            # Start at first surveillance point if there's projection data before it
-            if surveillance_start_date is not None:
-                proj_start = proj_dates.min()
-                # Only filter if projection starts before first surveillance point
-                if proj_start < surveillance_start_date:
-                    location_proj_quants_filtered[loc] = location_proj_quants_filtered[loc][
-                        proj_dates.values >= surveillance_start_date
-                    ]
-
-            # End at horizon_max if specified
-            if plots_config.quantiles.horizon_max is not None:
-                horizon_end = plots_config.reference_date + timedelta(weeks=plots_config.quantiles.horizon_max)
-                proj_dates = pd.to_datetime(location_proj_quants_filtered[loc]["date"]).dt.date
-                location_proj_quants_filtered[loc] = location_proj_quants_filtered[loc][
-                    proj_dates.values <= horizon_end
-                ]
+        proj_quant_full, proj_quant_filtered = _prepare_projection_quantiles(
+            proj_quant_raw, surveillance_start_date, plots_config
+        )
+        if proj_quant_full is not None:
+            location_proj_quants_full[loc] = proj_quant_full
+        if proj_quant_filtered is not None:
+            location_proj_quants_filtered[loc] = proj_quant_filtered
 
     # Go over collected data, plot grid, and add to output dict
     if location_cal_quants or location_proj_quants_filtered or location_proj_quants_full:
         # Rename columns to have consistent naming for plotting
         # TODO: Calibration uses "data", projection uses "hospitalizations" - make this configurable
         for loc in location_cal_quants:
-            if "data" in location_cal_quants[loc].columns:
-                location_cal_quants[loc] = location_cal_quants[loc].rename(columns={"data": "value"})
+            location_cal_quants[loc] = _rename_value_column(location_cal_quants[loc], "data")
         for loc in location_proj_quants_filtered:
-            if "hospitalizations" in location_proj_quants_filtered[loc].columns:
-                location_proj_quants_filtered[loc] = location_proj_quants_filtered[loc].rename(
-                    columns={"hospitalizations": "value"}
-                )
+            location_proj_quants_filtered[loc] = _rename_value_column(
+                location_proj_quants_filtered[loc], "hospitalizations"
+            )
         for loc in location_proj_quants_full:
-            if "hospitalizations" in location_proj_quants_full[loc].columns:
-                location_proj_quants_full[loc] = location_proj_quants_full[loc].rename(
-                    columns={"hospitalizations": "value"}
-                )
+            location_proj_quants_full[loc] = _rename_value_column(location_proj_quants_full[loc], "hospitalizations")
 
         value_col = "value"
 
@@ -765,18 +772,27 @@ def generate_quantile_grid_plot(
                 logger.warning(f"Unknown output type: {output_type_name}")
                 continue
 
-            # Apply per-output surveillance_points filtering if needed
-            if surv_data_to_use and output_config.surveillance_points is not None:
-                surv_data_filtered_by_output = {}
-                for loc, surv_df in surv_data_to_use.items():
-                    surv_data_filtered_by_output[loc] = (
-                        surv_df.sort_values("date").tail(output_config.surveillance_points)
-                    )
-                surv_data_to_use = surv_data_filtered_by_output
+            # Apply per-output surveillance filtering if needed
+            if surv_data_to_use:
+                # Date-based filtering takes precedence over points-based filtering
+                if output_config.surveillance_start_date is not None:
+                    surv_data_filtered_by_output = {}
+                    start_date = pd.to_datetime(output_config.surveillance_start_date).date()
+                    for loc, surv_df in surv_data_to_use.items():
+                        surv_df_copy = surv_df.copy()
+                        surv_dates = pd.to_datetime(surv_df_copy["date"]).dt.date
+                        surv_data_filtered_by_output[loc] = surv_df_copy[surv_dates >= start_date]
+                    surv_data_to_use = surv_data_filtered_by_output
+                elif output_config.surveillance_points is not None:
+                    surv_data_filtered_by_output = {}
+                    for loc, surv_df in surv_data_to_use.items():
+                        surv_data_filtered_by_output[loc] = surv_df.sort_values("date").tail(
+                            output_config.surveillance_points
+                        )
+                    surv_data_to_use = surv_data_filtered_by_output
 
             # Apply per-output horizon_max if specified (overrides base config)
             if proj_quants_to_use and output_config.horizon_max is not None:
-                from datetime import timedelta
                 proj_quants_horizon_filtered = {}
                 for loc, proj_df in proj_quants_to_use.items():
                     proj_df_copy = proj_df.copy()
@@ -839,10 +855,13 @@ def generate_quantile_grid_plot(
 
                     if locations:
                         n_locations = len(locations)
-                        panels_per_row = output_config.columns if hasattr(output_config, 'columns') else plots_config.quantiles.grid.panels_per_row
-                        pairs_per_row = panels_per_row // 2  # Each location needs 2 panels
+                        configured_panels = plots_config.quantiles.grid.panels_per_row
+                        ncols = configured_panels + (configured_panels % 2)  # keep even count for pairs
+                        if ncols < 2:
+                            logger.warning("panels_per_row must be >= 2 for side_by_side; defaulting to 2 columns")
+                            ncols = 2
+                        pairs_per_row = ncols // 2  # Each location needs 2 panels
                         nrows = math.ceil(n_locations / pairs_per_row)
-                        ncols = panels_per_row
 
                         figsize = output_config.figsize if output_config.figsize else (4 * ncols, 3.6 * nrows)
                         fig, axes = plt.subplots(nrows, ncols, figsize=figsize, squeeze=False)
@@ -855,48 +874,95 @@ def generate_quantile_grid_plot(
                             ax_full = axes[row, col_start]  # Left panel of pair
                             ax_filtered = axes[row, col_start + 1]  # Right panel of pair
 
-                            cal_quant = location_cal_quants.get(location) if output_config.show_calibration and location_cal_quants else None
-                            proj_quant_full = location_proj_quants_full.get(location) if output_config.show_projection and location_proj_quants_full else None
+                            cal_quant = (
+                                location_cal_quants.get(location)
+                                if output_config.show_calibration and location_cal_quants
+                                else None
+                            )
+                            proj_quant_full = (
+                                location_proj_quants_full.get(location)
+                                if output_config.show_projection and location_proj_quants_full
+                                else None
+                            )
                             proj_quant_filtered = (
-                                location_proj_quants_filtered.get(location) if output_config.show_projection and location_proj_quants_filtered else None
+                                location_proj_quants_filtered.get(location)
+                                if output_config.show_projection and location_proj_quants_filtered
+                                else None
                             )
-                            surv_full = location_surveillance_full.get(location) if output_config.show_surveillance and location_surveillance_full else None
-                            surv_filtered = (
-                                location_surveillance_filtered.get(location) if output_config.show_surveillance and location_surveillance_filtered else None
-                            )
+
+                            # Apply per-output horizon override to both panels
+                            if output_config.horizon_max is not None:
+                                horizon_end = plots_config.reference_date + timedelta(weeks=output_config.horizon_max)
+                                if proj_quant_full is not None:
+                                    proj_dates = pd.to_datetime(proj_quant_full["date"]).dt.date
+                                    proj_quant_full = proj_quant_full[proj_dates.values <= horizon_end]
+                                if proj_quant_filtered is not None:
+                                    proj_dates = pd.to_datetime(proj_quant_filtered["date"]).dt.date
+                                    proj_quant_filtered = proj_quant_filtered[proj_dates.values <= horizon_end]
+
+                            surv_full = None
+                            if (
+                                output_config.show_surveillance
+                                and location_surveillance_full
+                                and location in location_surveillance_full
+                            ):
+                                surv_full = location_surveillance_full[location].copy()
+                                if output_config.full_panel:
+                                    if output_config.full_panel.surveillance_start_date is not None:
+                                        start_date = pd.to_datetime(
+                                            output_config.full_panel.surveillance_start_date
+                                        ).date()
+                                        surv_dates = pd.to_datetime(surv_full["date"]).dt.date
+                                        surv_full = surv_full[surv_dates >= start_date]
+                                    elif output_config.full_panel.surveillance_points is not None:
+                                        surv_full = surv_full.sort_values("date").tail(
+                                            output_config.full_panel.surveillance_points
+                                        )
+
+                            surv_filtered = None
+                            if (
+                                output_config.show_surveillance
+                                and location_surveillance_filtered
+                                and location in location_surveillance_filtered
+                            ):
+                                surv_filtered = location_surveillance_filtered[location].copy()
+                                if output_config.filtered_panel:
+                                    if output_config.filtered_panel.surveillance_start_date is not None:
+                                        start_date = pd.to_datetime(
+                                            output_config.filtered_panel.surveillance_start_date
+                                        ).date()
+                                        surv_dates = pd.to_datetime(surv_filtered["date"]).dt.date
+                                        surv_filtered = surv_filtered[surv_dates >= start_date]
+                                    elif output_config.filtered_panel.surveillance_points is not None:
+                                        surv_filtered = surv_filtered.sort_values("date").tail(
+                                            output_config.filtered_panel.surveillance_points
+                                        )
                             fitting_window_start = (
-                                location_fitting_window_starts.get(location) if output_config.show_fitting_window_line and location_fitting_window_starts else None
+                                location_fitting_window_starts.get(location)
+                                if output_config.show_fitting_window_line and location_fitting_window_starts
+                                else None
                             )
                             fitting_window_end = (
-                                location_fitting_window_ends.get(location) if output_config.show_fitting_window_line and location_fitting_window_ends else None
+                                location_fitting_window_ends.get(location)
+                                if output_config.show_fitting_window_line and location_fitting_window_ends
+                                else None
                             )
 
-                            # Left panel: Full
-                            plot_calibration_projection(
+                            # Use core helper to draw both panels on provided axes
+                            plot_calibration_projection_sidebyside(
                                 calibration_quantiles=cal_quant,
-                                projection_quantiles=proj_quant_full,
+                                projection_quantiles_full=proj_quant_full,
+                                projection_quantiles_filtered=proj_quant_filtered,
+                                surveillance_full=surv_full,
+                                surveillance_filtered=surv_filtered,
                                 value_col=value_col,
                                 calibration_color=plots_config.quantiles.calibration.color,
                                 projection_color=plots_config.quantiles.projection.color,
-                                df_surveillance=surv_full,
                                 fitting_window_start=fitting_window_start,
                                 fitting_window_end=fitting_window_end,
                                 title=_format_location_name(location),
-                                ax=ax_full,
-                            )
-
-                            # Right panel: Filtered
-                            plot_calibration_projection(
-                                calibration_quantiles=cal_quant,
-                                projection_quantiles=proj_quant_filtered,
-                                value_col=value_col,
-                                calibration_color=plots_config.quantiles.calibration.color,
-                                projection_color=plots_config.quantiles.projection.color,
-                                df_surveillance=surv_filtered,
-                                fitting_window_start=fitting_window_start,
-                                fitting_window_end=fitting_window_end,
-                                title=_format_location_name(location),
-                                ax=ax_filtered,
+                                ax_full=ax_full,
+                                ax_filtered=ax_filtered,
                             )
 
                             # Hide legends except for leftmost column
@@ -922,7 +988,9 @@ def generate_quantile_grid_plot(
                         output_objs = []
                         for fig_output_type in plots_config.figure_output_types:
                             output_objs.append(
-                                figure_to_output_object(fig, "quantiles_grid_sidebyside", fig_output_type, plots_config.dpi)
+                                figure_to_output_object(
+                                    fig, "quantiles_grid_sidebyside", fig_output_type, plots_config.dpi
+                                )
                             )
                         out_dict["quantiles_grid_sidebyside"] = output_objs
                         plt.close(fig)

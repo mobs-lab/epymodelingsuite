@@ -85,9 +85,12 @@ output:
           show_projection: true
           show_surveillance: true
           show_fitting_window_line: true
-          columns: 4                 # For grid: 2 location-pairs per row
+          full_panel:
+            surveillance_points: null  # Show all points (or use surveillance_start_date: "2024-09-14")
+          filtered_panel:
+            surveillance_points: 8     # Show last 8 points
           spacing: 0.3
-          figsize: null              # Auto-size
+          figsize: null                # Auto-size
 
       # Shared settings
       quantiles: [0.025, 0.25, 0.5, 0.75, 0.975]  # 95% CrI + IQR + median
