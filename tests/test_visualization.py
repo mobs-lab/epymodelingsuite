@@ -128,10 +128,10 @@ class TestPlotQuantilesGrid:
 
         assert fig is not None
         assert axes.shape == (1, 4)  # 1 row, 4 panels per row (default)
-        # First 3 panels should have titles
-        assert axes[0, 0].get_title() == "US-CA"
-        assert axes[0, 1].get_title() == "US-TX"
-        assert axes[0, 2].get_title() == "US-NY"
+        # First 3 panels should have titles (converted to clean names)
+        assert axes[0, 0].get_title() == "California"
+        assert axes[0, 1].get_title() == "Texas"
+        assert axes[0, 2].get_title() == "New York"
         plt.close(fig)
 
     def test_custom_panels_per_row(self, quantile_df):
@@ -201,11 +201,11 @@ class TestPlotCalibrationProjection:
         plt.close(fig)
 
     def test_with_reference_date(self, quantile_df):
-        """Test plot with reference date line."""
+        """Test plot with fitting window end line."""
         fig, ax = plot_calibration_projection(
             calibration_quantiles=quantile_df,
             value_col="hospitalizations",
-            reference_date="2024-01-03",
+            fitting_window_end="2024-01-03",
         )
 
         assert fig is not None
@@ -242,8 +242,8 @@ class TestPlotCalibrationProjectionGrid:
 
         assert fig is not None
         assert axes.shape == (1, 4)  # 1 row, 4 panels per row (default)
-        assert axes[0, 0].get_title() == "US-CA"
-        assert axes[0, 1].get_title() == "US-TX"
+        assert axes[0, 0].get_title() == "California"
+        assert axes[0, 1].get_title() == "Texas"
         plt.close(fig)
 
     def test_calibration_only(self, quantile_df):
@@ -455,7 +455,7 @@ class TestFigureToOutputObject:
             value_col="hospitalizations",
         )
 
-        output_obj = figure_to_output_object(fig, name="test_plot", output_format="png")
+        output_obj = figure_to_output_object(fig, name="test_plot", output_type=FigureOutputTypeEnum.PNG)
 
         assert output_obj.output_type == FigureOutputTypeEnum.PNG
         assert output_obj.data is not None
@@ -469,7 +469,7 @@ class TestFigureToOutputObject:
             value_col="hospitalizations",
         )
 
-        output_obj = figure_to_output_object(fig, name="test_plot", output_format="pdf")
+        output_obj = figure_to_output_object(fig, name="test_plot", output_type=FigureOutputTypeEnum.PDF)
 
         assert output_obj.output_type == FigureOutputTypeEnum.PDF
         assert output_obj.data is not None
@@ -483,7 +483,7 @@ class TestFigureToOutputObject:
             value_col="hospitalizations",
         )
 
-        output_obj = figure_to_output_object(fig, name="test_plot", output_format="svg")
+        output_obj = figure_to_output_object(fig, name="test_plot", output_type=FigureOutputTypeEnum.SVG)
 
         assert output_obj.output_type == FigureOutputTypeEnum.SVG
         assert output_obj.data is not None
@@ -491,7 +491,7 @@ class TestFigureToOutputObject:
         plt.close(fig)
 
     def test_default_png(self, quantile_df):
-        """Test default output type is PNG."""
+        """Test default output type is MPLFigure."""
         fig, _ = plot_quantiles(
             df_quantiles=quantile_df,
             value_col="hospitalizations",
@@ -499,5 +499,5 @@ class TestFigureToOutputObject:
 
         output_obj = figure_to_output_object(fig, name="test_plot")
 
-        assert output_obj.output_type == FigureOutputTypeEnum.PNG
+        assert output_obj.output_type == FigureOutputTypeEnum.MPLFigure
         plt.close(fig)
