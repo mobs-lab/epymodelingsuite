@@ -153,27 +153,6 @@ def filter_failed_calibration_trajectories(calibration_results: CalibrationResul
     return calibration_results
 
 
-def dataframe_to_gzipped_csv(df: pd.DataFrame, **csv_kwargs) -> bytes:
-    """
-    Convert a DataFrame to gzip-compressed CSV bytes.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        The DataFrame to convert
-    **csv_kwargs
-        Additional keyword arguments to pass to DataFrame.to_csv()
-
-    Returns
-    -------
-    bytes
-        Gzip-compressed CSV data as bytes
-    """
-    buffer = io.BytesIO()
-    df.to_csv(buffer, date_format="%Y-%m-%d", compression="gzip", **csv_kwargs)
-    return buffer.getvalue()
-
-
 def format_quantiles_flusightforecast(quantiles_df: pd.DataFrame, reference_date: date) -> pd.DataFrame:
     """
     Create FluSight forecast formatted quantile outputs for a single model. Rate-trends are handled separately.
@@ -425,6 +404,11 @@ def make_rate_trends_flusightforecast(
     return pd.DataFrame.from_records(rows)
 
 
+def make_prop_ed_flusightforecast():
+    """"""
+    return
+
+
 def format_quantiles_flusmh(quantiles_df: pd.DataFrame) -> pd.DataFrame:
     """"""
 
@@ -474,6 +458,27 @@ def format_tabular_object(df: pd.DataFrame, name: str, output_type: TabularOutpu
         case _:
             msg = f"Requested undefined tabular object format {output_format}."
             logger.warning(msg)
+
+
+def dataframe_to_gzipped_csv(df: pd.DataFrame, **csv_kwargs) -> bytes:
+    """
+    Convert a DataFrame to gzip-compressed CSV bytes.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The DataFrame to convert
+    **csv_kwargs
+        Additional keyword arguments to pass to DataFrame.to_csv()
+
+    Returns
+    -------
+    bytes
+        Gzip-compressed CSV data as bytes
+    """
+    buffer = io.BytesIO()
+    df.to_csv(buffer, date_format="%Y-%m-%d", compression="gzip", **csv_kwargs)
+    return buffer.getvalue()
 
 
 # ===== Output Generator Registry and Functions =====
@@ -729,7 +734,7 @@ def generate_calibration_outputs(
                     for generation in output.quantiles.calibration:
                         try:
                             quancal_df = calibration.results.get_calibration_quantiles(
-                                quantiles=output.quantiles.selections, generation=generation
+                                quantiles=output.quantiles.selections, generation=generation, variables="data"
                             )
                             quancal_df.insert(0, "primary_id", calibration.primary_id)
                             quancal_df.insert(1, "seed", calibration.seed)
@@ -743,7 +748,7 @@ def generate_calibration_outputs(
                 else:
                     try:
                         quancal_df = calibration.results.get_calibration_quantiles(
-                            quantiles=output.quantiles.selections
+                            quantiles=output.quantiles.selections, variables="data"
                         )
                         quancal_df.insert(0, "primary_id", calibration.primary_id)
                         quancal_df.insert(1, "seed", calibration.seed)
@@ -974,7 +979,7 @@ def generate_calibration_outputs(
         if output.flusight_format.rate_trends:
             # Read surveillance data
             surveillance = pd.read_csv(
-                output.flusight_format.rate_trends.observed_data_path,
+                output.flusight_format.rate_trends.data_path,
                 parse_dates=["target_end_date"],
                 date_format="%Y-%m-%d",
             )
@@ -991,13 +996,13 @@ def generate_calibration_outputs(
 
                 # Filter surveillance for location
                 surv = surveillance[
-                    surveillance[output.flusight_format.rate_trends.observed_location_column]
+                    surveillance[output.flusight_format.rate_trends.location_column]
                     == convert_location_name_format(calibration.population, "ISO")
                 ]
-                surv = surv.drop(columns=output.flusight_format.rate_trends.observed_location_column).rename(
+                surv = surv.drop(columns=output.flusight_format.rate_trends.location_column).rename(
                     columns={
-                        output.flusight_format.rate_trends.observed_date_column: "date",
-                        output.flusight_format.rate_trends.observed_value_column: "value",
+                        output.flusight_format.rate_trends.date_column: "date",
+                        output.flusight_format.rate_trends.value_column: "value",
                     }
                 )
 

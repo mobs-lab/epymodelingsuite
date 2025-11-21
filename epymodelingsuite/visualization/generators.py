@@ -85,12 +85,14 @@ def generate_single_quantile_plots(
 
     # Load surveillance data once before loop
     surveillance = None
-    if plots_config.quantiles.surveillance.show and plots_config.quantiles.surveillance.data_path:
+    if plots_config.quantiles.surveillance:
         try:
-            surveillance = pd.read_csv(plots_config.quantiles.surveillance.data_path)
+            surveillance = pd.read_csv(plots_config.quantiles.surveillance.source.data_path)
         except Exception as e:
             logger.warning(
-                "Failed to load surveillance data from %s: %s", plots_config.quantiles.surveillance.data_path, e
+                "Failed to load surveillance data from %s: %s",
+                plots_config.quantiles.surveillance.source.data_path,
+                e,
             )
 
     # Generate plots for each location
@@ -108,7 +110,7 @@ def generate_single_quantile_plots(
 
         # Calibration quantiles
         cal_quant = None
-        if plots_config.quantiles.calibration.show:
+        if plots_config.quantiles.calibration:
             try:
                 cal_quant = calibration.results.get_calibration_quantiles(
                     quantiles=plots_config.quantiles.quantiles,
@@ -148,7 +150,7 @@ def generate_single_quantile_plots(
         # Projection quantiles
         # TODO: "hospitalizations" column is hardcoded in projection quantiles
         proj_quant = None
-        if plots_config.quantiles.projection.show:
+        if plots_config.quantiles.projection:
             try:
                 proj_quant = calibration.results.get_projection_quantiles(
                     quantiles=plots_config.quantiles.quantiles,
@@ -164,19 +166,17 @@ def generate_single_quantile_plots(
         df_surv_full = None  # Full surveillance data (no filtering)
         df_surv_filtered = None  # Filtered surveillance data
         surveillance_start_date = None
-        if surveillance is not None and plots_config.quantiles.surveillance.location_column:
-            surv = get_data_in_location(surveillance, location, plots_config.quantiles.surveillance.location_column)
+        if surveillance is not None:
+            surv = get_data_in_location(
+                surveillance, location, plots_config.quantiles.surveillance.source.location_column
+            )
 
             # Create full surveillance dataframe (no filtering)
-            if (
-                not surv.empty
-                and plots_config.quantiles.surveillance.date_column
-                and plots_config.quantiles.surveillance.value_column
-            ):
+            if not surv.empty:
                 df_surv_full = surv.rename(
                     columns={
-                        plots_config.quantiles.surveillance.date_column: "date",
-                        plots_config.quantiles.surveillance.value_column: "value",
+                        plots_config.quantiles.surveillance.source.date_column: "date",
+                        plots_config.quantiles.surveillance.source.value_column: "value",
                     }
                 )[["date", "value"]]
 
@@ -192,19 +192,14 @@ def generate_single_quantile_plots(
                     timespan_start = pd.to_datetime(quantiles_for_timespan["date"]).min().date()
                     # Filter surveillance data to start from timespan start
                     surv_filtered = surv_filtered[
-                        pd.to_datetime(surv_filtered[plots_config.quantiles.surveillance.date_column]).dt.date
+                        pd.to_datetime(surv_filtered[plots_config.quantiles.surveillance.source.date_column]).dt.date
                         >= timespan_start
                     ]
 
-            if (
-                not surv_filtered.empty
-                and plots_config.quantiles.surveillance.date_column
-                and plots_config.quantiles.surveillance.value_column
-            ):
                 df_surv_filtered = surv_filtered.rename(
                     columns={
-                        plots_config.quantiles.surveillance.date_column: "date",
-                        plots_config.quantiles.surveillance.value_column: "value",
+                        plots_config.quantiles.surveillance.source.date_column: "date",
+                        plots_config.quantiles.surveillance.source.value_column: "value",
                     }
                 )[["date", "value"]]
 
@@ -345,17 +340,19 @@ def generate_quantile_grid_plot(
     """
     from ..dispatcher.output import filter_failed_projections
 
-    if not plots_config.quantiles.grid.enabled:
+    if not plots_config.quantiles.grid:
         return
 
     # Load surveillance data once before loop
     surveillance = None
-    if plots_config.quantiles.surveillance.show and plots_config.quantiles.surveillance.data_path:
+    if plots_config.quantiles.surveillance:
         try:
-            surveillance = pd.read_csv(plots_config.quantiles.surveillance.data_path)
+            surveillance = pd.read_csv(plots_config.quantiles.surveillance.source.data_path)
         except Exception as e:
             logger.warning(
-                "Failed to load surveillance data from %s: %s", plots_config.quantiles.surveillance.data_path, e
+                "Failed to load surveillance data from %s: %s",
+                plots_config.quantiles.surveillance.source.data_path,
+                e,
             )
 
     # Collect quantiles and surveillance data for each location
@@ -378,7 +375,7 @@ def generate_quantile_grid_plot(
         # Get pre-computed quantiles
 
         # Calibration quantiles
-        if plots_config.quantiles.calibration.show:
+        if plots_config.quantiles.calibration:
             try:
                 location_cal_quants[loc] = calibration.results.get_calibration_quantiles(
                     quantiles=plots_config.quantiles.quantiles,
@@ -416,7 +413,7 @@ def generate_quantile_grid_plot(
         # Projection quantiles
         # TODO: "hospitalizations" column is hardcoded in projection quantiles
         proj_quant_raw = None
-        if plots_config.quantiles.projection.show:
+        if plots_config.quantiles.projection:
             try:
                 proj_quant_raw = calibration.results.get_projection_quantiles(
                     quantiles=plots_config.quantiles.quantiles,
@@ -430,19 +427,15 @@ def generate_quantile_grid_plot(
 
         # Prepare surveillance data for this location
         surveillance_start_date = None
-        if surveillance is not None and plots_config.quantiles.surveillance.location_column:
-            surv = get_data_in_location(surveillance, loc, plots_config.quantiles.surveillance.location_column)
+        if surveillance is not None:
+            surv = get_data_in_location(surveillance, loc, plots_config.quantiles.surveillance.source.location_column)
 
             # Create full surveillance dataframe (no filtering)
-            if (
-                not surv.empty
-                and plots_config.quantiles.surveillance.date_column
-                and plots_config.quantiles.surveillance.value_column
-            ):
+            if not surv.empty:
                 location_surveillance_full[loc] = surv.rename(
                     columns={
-                        plots_config.quantiles.surveillance.date_column: "date",
-                        plots_config.quantiles.surveillance.value_column: "value",
+                        plots_config.quantiles.surveillance.source.date_column: "date",
+                        plots_config.quantiles.surveillance.source.value_column: "value",
                     }
                 )[["date", "value"]]
 
@@ -459,19 +452,15 @@ def generate_quantile_grid_plot(
                     timespan_start = pd.to_datetime(quantiles_for_timespan["date"]).min().date()
                     # Filter surveillance data to start from timespan start
                     surv_filtered = surv_filtered[
-                        pd.to_datetime(surv_filtered[plots_config.quantiles.surveillance.date_column]).dt.date
+                        pd.to_datetime(surv_filtered[plots_config.quantiles.surveillance.source.date_column]).dt.date
                         >= timespan_start
                     ]
 
-            if (
-                not surv_filtered.empty
-                and plots_config.quantiles.surveillance.date_column
-                and plots_config.quantiles.surveillance.value_column
-            ):
+            if not surv_filtered.empty:
                 location_surveillance_filtered[loc] = surv_filtered.rename(
                     columns={
-                        plots_config.quantiles.surveillance.date_column: "date",
-                        plots_config.quantiles.surveillance.value_column: "value",
+                        plots_config.quantiles.surveillance.source.date_column: "date",
+                        plots_config.quantiles.surveillance.source.value_column: "value",
                     }
                 )[["date", "value"]]
 
