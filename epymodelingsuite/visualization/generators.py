@@ -664,10 +664,7 @@ def generate_quantile_grid_plot(
 
     # Collect quantiles and surveillance data for each location
     location_cal_quants = {}
-    location_proj_quants_filtered = {}
-    location_proj_quants_full = {}
-    location_surveillance_filtered = {}
-    location_surveillance_full = {}
+    location_proj_quants_raw = {}
     location_fitting_window_starts = {}
     location_fitting_window_ends = {}
 
@@ -684,6 +681,8 @@ def generate_quantile_grid_plot(
         )
         if cal_quant is not None:
             location_cal_quants[loc] = cal_quant
+        if proj_quant_raw is not None:
+            location_proj_quants_raw[loc] = proj_quant_raw
 
         # Calculate fitting window start and end from calibration quantiles
         if needs_fitting_window:
@@ -707,46 +706,12 @@ def generate_quantile_grid_plot(
                 location_fitting_window_starts[loc] = dates.min()
                 location_fitting_window_ends[loc] = dates.max()
 
-        # TODO: Determine which surveillance source to use (logic will be added with per-output processing)
-        # For now, use first available source if any
-        surveillance = None
-        surveillance_config = None
-        if surveillance_data:
-            first_source = next(iter(surveillance_data.values()))
-            surveillance = first_source["data"]
-            surveillance_config = first_source["config"]
-
-        if surveillance_config:
-            df_surv_full, df_surv_filtered, surveillance_start_date = _prepare_surveillance_for_location(
-                surveillance, loc, proj_quant_raw, cal_quant, surveillance_config
-            )
-            if df_surv_full is not None:
-                location_surveillance_full[loc] = df_surv_full
-            if df_surv_filtered is not None:
-                location_surveillance_filtered[loc] = df_surv_filtered
-        else:
-            surveillance_start_date = None
-
-        proj_quant_full, proj_quant_filtered = _prepare_projection_quantiles(
-            proj_quant_raw, surveillance_start_date, plots_config
-        )
-        if proj_quant_full is not None:
-            location_proj_quants_full[loc] = proj_quant_full
-        if proj_quant_filtered is not None:
-            location_proj_quants_filtered[loc] = proj_quant_filtered
-
     # Go over collected data, plot grid, and add to output dict
-    if location_cal_quants or location_proj_quants_filtered or location_proj_quants_full:
+    if location_cal_quants or location_proj_quants_raw:
         # Rename columns to have consistent naming for plotting
         # TODO: Calibration uses "data", projection uses "hospitalizations" - make this configurable
         for loc in location_cal_quants:
             location_cal_quants[loc] = _rename_value_column(location_cal_quants[loc], "data")
-        for loc in location_proj_quants_filtered:
-            location_proj_quants_filtered[loc] = _rename_value_column(
-                location_proj_quants_filtered[loc], "hospitalizations"
-            )
-        for loc in location_proj_quants_full:
-            location_proj_quants_full[loc] = _rename_value_column(location_proj_quants_full[loc], "hospitalizations")
 
         value_col = "value"
 
@@ -754,13 +719,59 @@ def generate_quantile_grid_plot(
         for output_config in plots_config.quantiles.outputs:
             output_type_name = output_config.type.value  # "filtered", "full", or "side_by_side"
 
-            # Determine which projection data to use based on output type
-            if output_type_name == "filtered":
-                proj_quants_to_use = location_proj_quants_filtered
-                surv_data_to_use = location_surveillance_filtered
-            elif output_type_name == "full":
-                proj_quants_to_use = location_proj_quants_full
-                surv_data_to_use = location_surveillance_full
+            # Determine which surveillance source to use for this output
+            surveillance_source_name = output_config.surveillance_source
+            if surveillance_source_name is None and surveillance_data and len(surveillance_data) == 1:
+                # If only one source available and none specified, use it
+                surveillance_source_name = next(iter(surveillance_data.keys()))
+
+            # Prepare surveillance data for this output's specified source
+            location_surveillance_for_output = {}
+            surveillance_start_dates = {}
+            if output_config.show_surveillance and surveillance_source_name and surveillance_source_name in surveillance_data:
+                source = surveillance_data[surveillance_source_name]
+                surveillance_df = source["data"]
+                surveillance_config = source["config"]
+
+                for loc in location_proj_quants_raw.keys():
+                    cal_quant = location_cal_quants.get(loc)
+                    proj_quant_raw = location_proj_quants_raw.get(loc)
+
+                    df_surv_full, df_surv_filtered, surveillance_start_date = _prepare_surveillance_for_location(
+                        surveillance_df, loc, proj_quant_raw, cal_quant, surveillance_config
+                    )
+
+                    # Use the appropriate surveillance data based on output type
+                    if output_type_name == "filtered":
+                        if df_surv_filtered is not None:
+                            location_surveillance_for_output[loc] = df_surv_filtered
+                    elif output_type_name == "full":
+                        if df_surv_full is not None:
+                            location_surveillance_for_output[loc] = df_surv_full
+
+                    if surveillance_start_date is not None:
+                        surveillance_start_dates[loc] = surveillance_start_date
+
+            # Prepare projection quantiles for this output (using surveillance start dates if available)
+            location_proj_quants_for_output = {}
+            for loc, proj_quant_raw in location_proj_quants_raw.items():
+                surveillance_start_date = surveillance_start_dates.get(loc)
+                proj_quant_full, proj_quant_filtered = _prepare_projection_quantiles(
+                    proj_quant_raw, surveillance_start_date, plots_config
+                )
+
+                # Use the appropriate projection data based on output type
+                if output_type_name == "filtered":
+                    if proj_quant_filtered is not None:
+                        location_proj_quants_for_output[loc] = _rename_value_column(proj_quant_filtered, "hospitalizations")
+                elif output_type_name == "full":
+                    if proj_quant_full is not None:
+                        location_proj_quants_for_output[loc] = _rename_value_column(proj_quant_full, "hospitalizations")
+
+            # Set data to use for this output
+            if output_type_name in ["filtered", "full"]:
+                proj_quants_to_use = location_proj_quants_for_output
+                surv_data_to_use = location_surveillance_for_output
             elif output_type_name == "side_by_side":
                 # Side-by-side uses both, handled separately below
                 proj_quants_to_use = None
@@ -840,14 +851,52 @@ def generate_quantile_grid_plot(
                 # Side-by-side grid plot
                 # Grid layout: each location gets 2 panels (full + filtered)
                 try:
+                    # Prepare surveillance and projection data for both full and filtered panels
+                    location_surveillance_full_sbs = {}
+                    location_surveillance_filtered_sbs = {}
+                    location_proj_quants_full_sbs = {}
+                    location_proj_quants_filtered_sbs = {}
+                    surveillance_start_dates_sbs = {}
+
+                    if surveillance_source_name and surveillance_source_name in surveillance_data:
+                        source = surveillance_data[surveillance_source_name]
+                        surveillance_df = source["data"]
+                        surveillance_config = source["config"]
+
+                        for loc in location_proj_quants_raw.keys():
+                            cal_quant = location_cal_quants.get(loc)
+                            proj_quant_raw = location_proj_quants_raw.get(loc)
+
+                            df_surv_full, df_surv_filtered, surveillance_start_date = _prepare_surveillance_for_location(
+                                surveillance_df, loc, proj_quant_raw, cal_quant, surveillance_config
+                            )
+
+                            if df_surv_full is not None:
+                                location_surveillance_full_sbs[loc] = df_surv_full
+                            if df_surv_filtered is not None:
+                                location_surveillance_filtered_sbs[loc] = df_surv_filtered
+                            if surveillance_start_date is not None:
+                                surveillance_start_dates_sbs[loc] = surveillance_start_date
+
+                    # Prepare projection quantiles
+                    for loc, proj_quant_raw in location_proj_quants_raw.items():
+                        surveillance_start_date = surveillance_start_dates_sbs.get(loc)
+                        proj_quant_full, proj_quant_filtered = _prepare_projection_quantiles(
+                            proj_quant_raw, surveillance_start_date, plots_config
+                        )
+                        if proj_quant_full is not None:
+                            location_proj_quants_full_sbs[loc] = _rename_value_column(proj_quant_full, "hospitalizations")
+                        if proj_quant_filtered is not None:
+                            location_proj_quants_filtered_sbs[loc] = _rename_value_column(proj_quant_filtered, "hospitalizations")
+
                     # Get all locations
                     locations = set()
                     if location_cal_quants:
                         locations.update(location_cal_quants.keys())
-                    if location_proj_quants_full:
-                        locations.update(location_proj_quants_full.keys())
-                    if location_proj_quants_filtered:
-                        locations.update(location_proj_quants_filtered.keys())
+                    if location_proj_quants_full_sbs:
+                        locations.update(location_proj_quants_full_sbs.keys())
+                    if location_proj_quants_filtered_sbs:
+                        locations.update(location_proj_quants_filtered_sbs.keys())
                     locations = sorted(locations)
 
                     if locations:
@@ -874,23 +923,23 @@ def generate_quantile_grid_plot(
                                 else None
                             )
                             proj_quant_full = (
-                                location_proj_quants_full.get(location)
-                                if output_config.show_projection and location_proj_quants_full
+                                location_proj_quants_full_sbs.get(location)
+                                if output_config.show_projection and location_proj_quants_full_sbs
                                 else None
                             )
                             proj_quant_filtered = (
-                                location_proj_quants_filtered.get(location)
-                                if output_config.show_projection and location_proj_quants_filtered
+                                location_proj_quants_filtered_sbs.get(location)
+                                if output_config.show_projection and location_proj_quants_filtered_sbs
                                 else None
                             )
 
                             surv_full = None
                             if (
                                 output_config.show_surveillance
-                                and location_surveillance_full
-                                and location in location_surveillance_full
+                                and location_surveillance_full_sbs
+                                and location in location_surveillance_full_sbs
                             ):
-                                surv_full = location_surveillance_full[location].copy()
+                                surv_full = location_surveillance_full_sbs[location].copy()
                                 if output_config.full_panel:
                                     if output_config.full_panel.surveillance_start_date is not None:
                                         start_date = pd.to_datetime(
@@ -906,10 +955,10 @@ def generate_quantile_grid_plot(
                             surv_filtered = None
                             if (
                                 output_config.show_surveillance
-                                and location_surveillance_filtered
-                                and location in location_surveillance_filtered
+                                and location_surveillance_filtered_sbs
+                                and location in location_surveillance_filtered_sbs
                             ):
-                                surv_filtered = location_surveillance_filtered[location].copy()
+                                surv_filtered = location_surveillance_filtered_sbs[location].copy()
                                 if output_config.filtered_panel:
                                     if output_config.filtered_panel.surveillance_start_date is not None:
                                         start_date = pd.to_datetime(
