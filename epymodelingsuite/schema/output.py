@@ -78,6 +78,20 @@ def get_flusight_quantiles() -> list[float]:
     # 0.01, 0.025, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 0.975, and 0.99
 
 
+def get_quantile_ribbon_default() -> list[float]:
+    """Return a list containing default quantiles for plotting ribbons."""
+    return [0.025, 0.25, 0.5, 0.75, 0.975]
+
+
+class ObservedValuesConfig(BaseModel):
+    """Specifications for selecting observed values."""
+
+    data_path: str = Field(description="Path to observed data CSV file")
+    value_column: str = Field(description="Name of column containing observed values in observed data CSV")
+    date_column: str = Field(description="Name of column containing target dates in observed data CSV")
+    location_column: str = Field(description="Name of column containing location in observed data CSV")
+
+
 class FlusightRateTrends(BaseModel):
     """Specifications for FluSight rate-trends."""
 
@@ -184,7 +198,8 @@ class SideBySidePanelConfig(BaseModel):
         None, description="Number of most recent surveillance points to display. None = all points."
     )
     surveillance_start_date: str | None = Field(
-        None, description="Filter surveillance to show only points >= this date (YYYY-MM-DD). Overrides surveillance_points if both set."
+        None,
+        description="Filter surveillance to show only points >= this date (YYYY-MM-DD). Overrides surveillance_points if both set.",
     )
 
 
@@ -198,13 +213,19 @@ class QuantilesOutputConfig(BaseModel):
     show_projection: bool = Field(True, description="Show projection period quantiles.")
     show_surveillance: bool = Field(True, description="Overlay surveillance observations.")
     show_fitting_window_line: bool = Field(True, description="Show fitting window vertical lines.")
+    surveillance_source: str | None = Field(
+        None,
+        description="Name of surveillance source from surveillance dict. If None and surveillance dict has one entry, use that entry.",
+    )
 
     # Filter settings (only for FILTERED and FULL types)
     surveillance_points: int | None = Field(
-        None, description="Number of most recent surveillance points to display. None = all points. Not used for SIDE_BY_SIDE."
+        None,
+        description="Number of most recent surveillance points to display. None = all points. Not used for SIDE_BY_SIDE.",
     )
     surveillance_start_date: str | None = Field(
-        None, description="Filter surveillance to show only points >= this date (YYYY-MM-DD). Overrides surveillance_points if both set. Not used for SIDE_BY_SIDE."
+        None,
+        description="Filter surveillance to show only points >= this date (YYYY-MM-DD). Overrides surveillance_points if both set. Not used for SIDE_BY_SIDE.",
     )
     horizon_max: int | None = Field(None, description="Override base horizon_max. None = use base config value.")
 
@@ -240,25 +261,16 @@ class QuantilesProjectionConfig(BaseModel):
     color: str = Field("C1", description="Color for projection ribbons.")
 
 
-class QuantilesSurveillanceConfig(BaseModel):
-    """Configuration for surveillance data source."""
-
-    data_path: str | None = Field(None, description="Path to surveillance data file.")
-    value_column: str | None = Field(None, description="Column containing observed values.")
-    date_column: str | None = Field(None, description="Column containing dates.")
-    location_column: str | None = Field(None, description="Column containing location identifiers.")
-
-
 class QuantilesPlotConfig(BaseModel):
     """Configuration for quantile ribbon plots."""
 
-    single: bool | list[str] = Field(
+    single: list[str] | bool = Field(
         False,
-        description="Create single plot per location. True for all locations, or list of specific locations.",
+        description="Create single plot per location (default disabled). Set true for all locations, or provide list of specific locations.",
     )
-    grid: QuantilesGridConfig = Field(
+    grid: QuantilesGridConfig | bool = Field(
         default_factory=QuantilesGridConfig,
-        description="Grid plot configuration.",
+        description="Grid plot with all locations (default enabled). Set true to use default options, or set options in subfields.",
     )
 
     # Output configuration
@@ -295,26 +307,47 @@ class QuantilesPlotConfig(BaseModel):
 
     # Shared settings
     quantiles: list[float] = Field(
-        [0.025, 0.25, 0.5, 0.75, 0.975],
-        description="Quantile levels for ribbons (95% CrI + IQR + median).",
+        default_factory=get_quantile_ribbon_default,
+        description="Quantile levels for ribbons (default enabled: 95% CrI + IQR + median).",
+        validate_default=True,
     )
     horizon_max: int | None = Field(
         3, description="Base maximum forecast horizon (weeks ahead). Can be overridden per output."
     )
 
     # Shared styling (data source and colors)
-    calibration: QuantilesCalibrationConfig = Field(
+    calibration: QuantilesCalibrationConfig | bool = Field(
         default_factory=QuantilesCalibrationConfig,
-        description="Calibration period styling.",
+        description="Calibration period quantile ribbons (default enabled). Set true to use default options, or set options in subfields.",
     )
-    projection: QuantilesProjectionConfig = Field(
+    projection: QuantilesProjectionConfig | bool = Field(
         default_factory=QuantilesProjectionConfig,
-        description="Projection period styling.",
+        description="Projection period quantile ribbons (default enabled). Set true to use default options, or set options in subfields.",
     )
-    surveillance: QuantilesSurveillanceConfig = Field(
-        ...,
-        description="Surveillance data source configuration.",
-    )
+
+    @field_validator("grid")
+    @classmethod
+    def validate_grid(cls, v: QuantilesGridConfig | bool) -> QuantilesGridConfig | bool:
+        """If passed True, use default factory."""
+        if v is True:
+            return QuantilesGridConfig()
+        return v
+
+    @field_validator("calibration")
+    @classmethod
+    def validate_calibration(cls, v: QuantilesCalibrationConfig | bool) -> QuantilesCalibrationConfig | bool:
+        """If passed True, use default factory."""
+        if v is True:
+            return QuantilesCalibrationConfig()
+        return v
+
+    @field_validator("projection")
+    @classmethod
+    def validate_projection(cls, v: QuantilesProjectionConfig | bool) -> QuantilesProjectionConfig | bool:
+        """If passed True, use default factory."""
+        if v is True:
+            return QuantilesProjectionConfig()
+        return v
 
     @field_validator("quantiles")
     @classmethod
@@ -325,6 +358,15 @@ class QuantilesPlotConfig(BaseModel):
                 msg = f"Quantile {q} must be between 0 and 1"
                 raise ValueError(msg)
         return v
+
+    @field_validator("single")
+    @classmethod
+    def validate_single_plot_locations(cls, v: list[str]):
+        """Validate each population name in the list."""
+        if isinstance(v, bool):
+            return v
+        validated_populations = [validate_iso3166(population) for population in v]
+        return validated_populations
 
 
 class PlotsConfig(BaseModel):
@@ -345,6 +387,15 @@ class PlotsConfig(BaseModel):
     quantiles: QuantilesPlotConfig = Field(
         default_factory=QuantilesPlotConfig,
         description="Quantile ribbon plot settings.",
+    )
+
+
+class OutputOptions(BaseModel):
+    """Shared options for output configuration."""
+
+    surveillance: dict[str, ObservedValuesConfig] | None = Field(
+        None,
+        description="Named surveillance data sources. Keys are source names, values are ObservedValuesConfig.",
     )
 
 
@@ -377,6 +428,12 @@ class OutputConfiguration(BaseModel):
 
     model_meta: ModelMetaOutput = Field(
         default_factory=ModelMetaOutput, description="Specifications for parameter tracking / model metadata outputs."
+    )
+
+    # Shared options
+    options: OutputOptions | None = Field(
+        None,
+        description="Shared options for outputs (e.g., surveillance data sources).",
     )
 
     # Plots

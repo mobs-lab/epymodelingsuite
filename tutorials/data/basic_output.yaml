@@ -38,6 +38,15 @@ output:
   model_meta:
     projection_parameters: true
 
+  # Shared options
+  options:
+    surveillance:
+      hosp:
+        data_path: data/flu_hosp_24.csv
+        value_column: hospitalizations
+        date_column: target_end_date
+        location_column: geo_value
+
   # Visualization plots
   plots:
     figure_output_types:
@@ -102,11 +111,4 @@ output:
 
       projection:
         color: "C1"
-
-      # Surveillance data source (show flag moved to outputs)
-      surveillance:
-        data_path: data/flu_hosp_24.csv
-        value_column: hospitalizations
-        date_column: target_end_date
-        location_column: geo_value
 

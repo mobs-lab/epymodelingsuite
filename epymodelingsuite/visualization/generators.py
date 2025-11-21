@@ -14,7 +14,7 @@ import pandas as pd
 
 from ..builders.utils import get_data_in_location
 from ..schema.dispatcher import CalibrationOutput
-from ..schema.output import OutputObject, PlotsConfig, QuantilesOutputConfig, QuantilesOutputTypeEnum
+from ..schema.output import ObservedValuesConfig, OutputObject, PlotsConfig, QuantilesOutputConfig, QuantilesOutputTypeEnum
 from .core import (
     _format_location_name,
     figure_to_output_object,
@@ -80,7 +80,7 @@ def _prepare_surveillance_for_location(
     location: str,
     proj_quant: pd.DataFrame | None,
     cal_quant: pd.DataFrame | None,
-    plots_config: PlotsConfig,
+    surveillance_config: ObservedValuesConfig,
 ) -> tuple[pd.DataFrame | None, pd.DataFrame | None, date | None]:
     """
     Build full and filtered surveillance dataframes for a location.
@@ -95,8 +95,8 @@ def _prepare_surveillance_for_location(
         Projection quantiles for the location (preferred to infer timespan start).
     cal_quant : pd.DataFrame or None
         Calibration quantiles for the location (fallback to infer timespan start).
-    plots_config : PlotsConfig
-        Plot configuration for surveillance column names.
+    surveillance_config : ObservedValuesConfig
+        Configuration for surveillance data source.
 
     Returns
     -------
@@ -107,21 +107,17 @@ def _prepare_surveillance_for_location(
     df_surv_filtered = None
     surveillance_start_date = None
 
-    if surveillance is None or not plots_config.quantiles.surveillance.location_column:
+    if surveillance is None:
         return df_surv_full, df_surv_filtered, surveillance_start_date
 
-    surv = get_data_in_location(surveillance, location, plots_config.quantiles.surveillance.location_column)
+    surv = get_data_in_location(surveillance, location, surveillance_config.location_column)
 
     # Full surveillance (no filtering)
-    if (
-        not surv.empty
-        and plots_config.quantiles.surveillance.date_column
-        and plots_config.quantiles.surveillance.value_column
-    ):
+    if not surv.empty:
         df_surv_full = surv.rename(
             columns={
-                plots_config.quantiles.surveillance.date_column: "date",
-                plots_config.quantiles.surveillance.value_column: "value",
+                surveillance_config.date_column: "date",
+                surveillance_config.value_column: "value",
             }
         )[["date", "value"]]
 
@@ -133,18 +129,14 @@ def _prepare_surveillance_for_location(
         if quantiles_for_timespan is not None and "date" in quantiles_for_timespan.columns:
             timespan_start = pd.to_datetime(quantiles_for_timespan["date"]).min().date()
             surv_filtered = surv_filtered[
-                pd.to_datetime(surv_filtered[plots_config.quantiles.surveillance.date_column]).dt.date >= timespan_start
+                pd.to_datetime(surv_filtered[surveillance_config.date_column]).dt.date >= timespan_start
             ]
 
-    if (
-        not surv_filtered.empty
-        and plots_config.quantiles.surveillance.date_column
-        and plots_config.quantiles.surveillance.value_column
-    ):
+    if not surv_filtered.empty:
         df_surv_filtered = surv_filtered.rename(
             columns={
-                plots_config.quantiles.surveillance.date_column: "date",
-                plots_config.quantiles.surveillance.value_column: "value",
+                surveillance_config.date_column: "date",
+                surveillance_config.value_column: "value",
             }
         )[["date", "value"]]
 
@@ -417,6 +409,7 @@ def generate_single_quantile_plots(
     calibrations: list[CalibrationOutput],
     plots_config: PlotsConfig,
     out_dict: dict[str, list[OutputObject]],
+    surveillance_sources: dict[str, ObservedValuesConfig] | None = None,
 ) -> None:
     """
     Generate individual quantile plots for each location.
@@ -448,15 +441,17 @@ def generate_single_quantile_plots(
     locations = get_locations_to_plot(calibrations, plots_config.quantiles.single)
 
     # Load surveillance data once before loop if any output needs it
-    surveillance = None
+    surveillance_data = {}
     needs_surveillance = any(output.show_surveillance for output in plots_config.quantiles.outputs)
-    if needs_surveillance and plots_config.quantiles.surveillance.data_path:
-        try:
-            surveillance = pd.read_csv(plots_config.quantiles.surveillance.data_path)
-        except Exception as e:
-            logger.warning(
-                "Failed to load surveillance data from %s: %s", plots_config.quantiles.surveillance.data_path, e
-            )
+    if needs_surveillance and surveillance_sources:
+        for source_name, source_config in surveillance_sources.items():
+            try:
+                surveillance_data[source_name] = {
+                    "data": pd.read_csv(source_config.data_path),
+                    "config": source_config,
+                }
+            except Exception as e:
+                logger.warning("Failed to load surveillance data from %s: %s", source_config.data_path, e)
 
     needs_calibration = any(output.show_calibration for output in plots_config.quantiles.outputs)
     needs_projection = any(output.show_projection for output in plots_config.quantiles.outputs)
@@ -500,8 +495,19 @@ def generate_single_quantile_plots(
                 fitting_window_start = dates.min()
                 fitting_window_end = dates.max()
 
-        df_surv_full, df_surv_filtered, surveillance_start_date = _prepare_surveillance_for_location(
-            surveillance, location, proj_quant, cal_quant, plots_config
+        # TODO: Determine which surveillance source to use (logic will be added with per-output processing)
+        # For now, use first available source if any
+        surveillance = None
+        surveillance_config = None
+        if surveillance_data:
+            first_source = next(iter(surveillance_data.values()))
+            surveillance = first_source["data"]
+            surveillance_config = first_source["config"]
+
+        df_surv_full, df_surv_filtered, surveillance_start_date = (
+            _prepare_surveillance_for_location(surveillance, location, proj_quant, cal_quant, surveillance_config)
+            if surveillance_config
+            else (None, None, None)
         )
 
         proj_quant_full, proj_quant_filtered = _prepare_projection_quantiles(
@@ -609,6 +615,7 @@ def generate_quantile_grid_plot(
     calibrations: list[CalibrationOutput],
     plots_config: PlotsConfig,
     out_dict: dict[str, list[OutputObject]],
+    surveillance_sources: dict[str, ObservedValuesConfig] | None = None,
 ) -> None:
     """
     Generate multi-location quantile grid plot.
@@ -635,19 +642,21 @@ def generate_quantile_grid_plot(
     """
     from ..dispatcher.output import filter_failed_projections
 
-    if not plots_config.quantiles.grid.enabled:
+    if not plots_config.quantiles.grid:
         return
 
     # Load surveillance data once before loop if any output needs it
-    surveillance = None
+    surveillance_data = {}
     needs_surveillance = any(output.show_surveillance for output in plots_config.quantiles.outputs)
-    if needs_surveillance and plots_config.quantiles.surveillance.data_path:
-        try:
-            surveillance = pd.read_csv(plots_config.quantiles.surveillance.data_path)
-        except Exception as e:
-            logger.warning(
-                "Failed to load surveillance data from %s: %s", plots_config.quantiles.surveillance.data_path, e
-            )
+    if needs_surveillance and surveillance_sources:
+        for source_name, source_config in surveillance_sources.items():
+            try:
+                surveillance_data[source_name] = {
+                    "data": pd.read_csv(source_config.data_path),
+                    "config": source_config,
+                }
+            except Exception as e:
+                logger.warning("Failed to load surveillance data from %s: %s", source_config.data_path, e)
 
     needs_calibration = any(output.show_calibration for output in plots_config.quantiles.outputs)
     needs_projection = any(output.show_projection for output in plots_config.quantiles.outputs)
@@ -698,13 +707,25 @@ def generate_quantile_grid_plot(
                 location_fitting_window_starts[loc] = dates.min()
                 location_fitting_window_ends[loc] = dates.max()
 
-        df_surv_full, df_surv_filtered, surveillance_start_date = _prepare_surveillance_for_location(
-            surveillance, loc, proj_quant_raw, cal_quant, plots_config
-        )
-        if df_surv_full is not None:
-            location_surveillance_full[loc] = df_surv_full
-        if df_surv_filtered is not None:
-            location_surveillance_filtered[loc] = df_surv_filtered
+        # TODO: Determine which surveillance source to use (logic will be added with per-output processing)
+        # For now, use first available source if any
+        surveillance = None
+        surveillance_config = None
+        if surveillance_data:
+            first_source = next(iter(surveillance_data.values()))
+            surveillance = first_source["data"]
+            surveillance_config = first_source["config"]
+
+        if surveillance_config:
+            df_surv_full, df_surv_filtered, surveillance_start_date = _prepare_surveillance_for_location(
+                surveillance, loc, proj_quant_raw, cal_quant, surveillance_config
+            )
+            if df_surv_full is not None:
+                location_surveillance_full[loc] = df_surv_full
+            if df_surv_filtered is not None:
+                location_surveillance_filtered[loc] = df_surv_filtered
+        else:
+            surveillance_start_date = None
 
         proj_quant_full, proj_quant_filtered = _prepare_projection_quantiles(
             proj_quant_raw, surveillance_start_date, plots_config
