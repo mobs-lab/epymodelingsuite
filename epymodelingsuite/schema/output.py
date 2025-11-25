@@ -93,10 +93,40 @@ class ObservedValuesConfig(BaseModel):
     location_column: str = Field(description="Name of column containing location in observed data CSV")
 
 
+class RescaleStrategyEnum(str, Enum):
+    """
+    Strategy for rescaling hospitalization surveillance/forecast.
+
+    Rescaling factors are obtained by minimizing MSE according to strategy, then applied to a hosipitalization forecast to create a prop ed forecast:
+    surveillance_window - fit using observed hospitalizations against observed ED visits over a fitting window
+    calibration_window - fit using median calibration quantile against observed ED visits over a fitting window anchored at the end of the calibration fitting window
+    """
+
+    surveillance_window = "surveillance_window"
+    calibration_window - "calibration_window"
+
+
 class FlusightPropED(BaseModel):
     """Specifications for generating the wk_inc_flu_prop_ed_visits target forecasts."""
 
-    observed: ObservedValuesConfig = Field("wk_inc_flu_prop_ed_visits surveillance data source.")
+    strategy: RescaleStrategyEnum = Field(description="Strategy for rescaling hospitalization surveillance/forecast.")
+    observed_ed: str = Field(description="Reference name for 'wk inc flu prop ed visits' surveillance data.")
+    observed_hosp: str | None = Field(
+        None,
+        description="Reference name for 'wk inc flu hosp' surveillance data (iff using 'surveillance_window' strategy).",
+    )
+    fit_start: date | None = Field(
+        None, description="Start date for rescaling factor fitting window (iff using 'surveillance_window' strategy)."
+    )
+    fit_end: date | None = Field(
+        None, description="End date for rescaling factor fitting window (iff using 'surveillance_window' strategy)."
+    )
+    num_fit_weeks: int | None = Field(
+        None,
+        description="Number of weeks for rescaling factor fitting window, extending back from the end of the calibration fitting window (iff using 'calibration_window' strategy).",
+    )
+
+    # TODO: validators
 
 
 class FlusightForecastOutput(BaseModel):
@@ -111,7 +141,7 @@ class FlusightForecastOutput(BaseModel):
     )
     prop_ed: FlusightPropED | None = Field(
         None,
-        description="Add wk_inc_flu_prop_ed_visits target to submission file.",
+        description="Add 'wk inc flu prop ed visits' target to submission file.",
     )
 
 
