@@ -76,15 +76,17 @@ def count_nans_at_start(arr: np.ndarray) -> int:
     mask = np.isnan(arr)
 
     # Find the index of the first non-NaN value
-    first_non_nan_index = np.argmax(~mask)
-
+    if mask.size > 0:
+        first_non_nan_index = np.argmax(~mask)
+    else:
+        first_non_nan_index = 0
+        
     # If no values are NaN, return 0
     # If all, return len(arr)
     if mask.all():
         return len(arr)
-    if mask.any():
+    else:
         return first_non_nan_index
-    return 0
 
 
 def dist_func_date_alignment_wrapper(dist_func: Callable) -> Callable:

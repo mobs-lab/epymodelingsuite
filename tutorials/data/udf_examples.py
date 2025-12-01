@@ -14,5 +14,5 @@ def udf_distance(data: Dict, simulation: Dict):
 def udf_transform(trajectory: Trajectory):
     """Dummy post-hoc transformation function that records a new compartment."""
     traj = copy.deepcopy(trajectory)
-    traj.compartments["Dummy_L+I"] = traj.compartments["L"] + traj.compartments["I"]
+    traj.compartments["Dummy_L+I"] = traj.compartments["L_total"] + traj.compartments["I_total"]
     return traj

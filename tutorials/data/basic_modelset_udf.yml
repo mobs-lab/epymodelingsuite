@@ -12,16 +12,16 @@ modelset:
   calibration:
 
     strategy:
-      name: SMC
+      name: smc
       options: # strategy specific arguments in calibrate() function
         num_particles: 100
         num_generations: 5
         #max_time: "6h"  # Optional: Maximum time for calibration (e.g., "30m", "2h", "1D", "W")
 
     # Apply a post-hoc transformation to trajectories obtained from simulate() within the simulate_wrapper
-    post_hoc_transformation:
-      user_script_path: data/udf_examples.py
-      user_function_name: udf_transform
+    #post_hoc_transformation:
+    #  user_script_path: data/udf_examples.py
+    #  user_function_name: udf_transform
 
     # Sampler options, passed directly when initializing ABCSampler
     distance_function: # Custom distance function
@@ -39,6 +39,9 @@ modelset:
     fitting_window:
       start_date: "2024-09-13"
       end_date: "2025-05-14"
+
+    projection:
+      n_trajectories: 100
 
     start_date:
       # For 'date' types, we set a reference date and add days sampled from a distribution
