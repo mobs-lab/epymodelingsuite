@@ -114,6 +114,41 @@ class ComparisonSpec(BaseModel):
             raise ValueError(msg)
         return v
 
+class AnchoringSpec(BaseModel):
+    """Specification for anchoring/filtering projections based on surveillance data."""
+
+    anchor_start_date: date = Field(description="Start date (inclusive) of the anchor date range for filtering observed data")
+    anchor_end_date: date = Field(description="End date (inclusive) of the anchor date range for filtering observed data")
+    top_fraction: float = Field(description="Fraction of projections to keep (between 0 and 1)")
+    distance_function: str = Field(description="Distance function name for comparing data (e.g., 'rmse', 'mae', 'wmape')")
+    # Reuse fields from ComparisonSpec
+    observed_value_column: str | None = Field(
+        None, description="Name of column containing observed values. If None, uses first comparison spec."
+    )
+    observed_date_column: str | None = Field(
+        None, description="Name of column containing target dates. If None, uses first comparison spec."
+    )
+    observed_location_column: str | None = Field(
+        None, description="Name of column containing location identifiers. If None, uses first comparison spec."
+    )
+    simulation: list[str] | None = Field(
+        None, description="List of transition names to sum for comparison. If None, uses first comparison spec."
+    )
+
+    @field_validator("top_fraction")
+    @classmethod
+    def validate_top_fraction(cls, v: float) -> float:
+        """Validate that top_fraction is in (0, 1]."""
+        if not (0 < v <= 1):
+            raise ValueError(f"`top_fraction` must be in (0, 1], got {v}")
+        return v
+
+    @model_validator(mode="after")
+    def validate_date_order(self: "AnchoringSpec") -> "AnchoringSpec":
+        """Ensure anchor_end_date is >= anchor_start_date."""
+        if self.anchor_end_date < self.anchor_start_date:
+            raise ValueError("anchor_end_date must be >= anchor_start_date")
+        return self
 
 class CalibrationParameter(BaseModel):
     """Parameter specification for calibration."""
@@ -315,6 +350,7 @@ class CalibrationConfiguration(BaseModel):
     fitting_window: FittingWindow = Field(description="Time window for calibration fitting")
 
     projection: ProjectionSpec | None = Field(None, description="Specification for projection")
+    anchoring: AnchoringSpec | None = Field(None, description="Specification for anchoring projections")
 
     @model_validator(mode="after")
     def check_calibration_consistency(self: "CalibrationConfiguration") -> "CalibrationConfiguration":
@@ -333,6 +369,13 @@ class CalibrationConfiguration(BaseModel):
         assert self.start_date or self.parameters or self.compartments, (
             "Calibration requires at least one of start_date, parameters, or compartments"
         )
+        return self
+
+    @model_validator(mode="after")
+    def validate_anchoring_requires_projection(self: "CalibrationConfiguration") -> "CalibrationConfiguration":
+        """Ensure anchoring is only specified when projection is enabled."""
+        if self.anchoring is not None and self.projection is None:
+            raise ValueError("Anchoring requires projection to be enabled. Set `projection` in calibration config.")
         return self
 
     @model_validator(mode="after")
