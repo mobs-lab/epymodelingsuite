@@ -4,12 +4,23 @@ import logging
 import time
 
 import numpy as np
+import pandas as pd
+from epydemix.calibration import ae, mae, mape, rmse, wmape
+from ..filtering import filter_projections_on_data_point
 
 from ..schema.dispatcher import BuilderOutput, CalibrationOutput, SimulationOutput
 from ..telemetry import ExecutionTelemetry
 
 logger = logging.getLogger(__name__)
 
+# Distance function dictionary matching builder
+dist_func_dict = {
+    "rmse": rmse,
+    "wmape": wmape,
+    "ae": ae,
+    "mae": mae,
+    "mape": mape,
+}
 
 # ===== Runner Functions =====
 
@@ -209,6 +220,56 @@ def run_calibration_with_projection(
         )
         projection_duration = time.time() - projection_start
         logger.info("RUNNER: completed calibration and projection.")
+
+        # Apply anchoring/filtering if specified
+        if configs.anchoring is not None:
+            try:
+                # Load surveillance data
+                surveillance_data = pd.read_csv(configs.anchoring.observed_data_path)
+                
+                # Get distance function
+                distance_function = dist_func_dict[configs.anchoring.distance_function]
+                
+                # Create temporary CalibrationOutput for filtering
+                temp_output = CalibrationOutput(
+                    primary_id=configs.primary_id,
+                    seed=configs.seed,
+                    delta_t=configs.delta_t,
+                    population=configs.model.population.name,
+                    start_date_reference=configs.start_date_reference,
+                    results=projection_results,
+                )
+                
+                # Apply filtering
+                original_count = len(projection_results.projections["baseline"])
+                filtered_projections, filtered_projection_parameters = filter_projections_on_data_point(
+                    runner_output=temp_output,
+                    surveillance_data=surveillance_data,
+                    top_fraction=configs.anchoring.top_fraction,
+                    anchor_start_date=configs.anchoring.anchor_start_date,
+                    anchor_end_date=configs.anchoring.anchor_end_date,
+                    distance_function=distance_function,
+                    surveillance_location_col=configs.anchoring.observed_location_column,
+                    surveillance_target_col=configs.anchoring.observed_value_column,
+                    surveillance_date_col=configs.anchoring.observed_date_column,
+                    simulation_target=configs.anchoring.simulation_target,
+                )
+                
+                # Update projection results with filtered data
+                projection_results.projections["baseline"] = filtered_projections
+                projection_results.projection_parameters["baseline"] = filtered_projection_parameters
+                
+                logger.info(
+                    f"RUNNER: applied anchoring filter, {len(filtered_projections)} trajectories remain "
+                    f"out of {original_count}"
+                )
+            except Exception as e:
+                logger.warning(
+                    f"RUNNER: anchoring filter failed for model with primary_id={configs.primary_id}, "
+                    f"returning unfiltered results.\nError message: {e}"
+                )
+                # Continue with unfiltered results
+
 
         output = CalibrationOutput(
             primary_id=configs.primary_id,
