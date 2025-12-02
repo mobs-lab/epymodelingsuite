@@ -76,17 +76,15 @@ def count_nans_at_start(arr: np.ndarray) -> int:
     mask = np.isnan(arr)
 
     # Find the index of the first non-NaN value
-    if mask.size > 0:
-        first_non_nan_index = np.argmax(~mask)
-    else:
-        first_non_nan_index = 0
+    first_non_nan_index = np.argmax(~mask)
         
     # If no values are NaN, return 0
     # If all, return len(arr)
     if mask.all():
         return len(arr)
-    else:
+    if mask.any():
         return first_non_nan_index
+    return 0
 
 
 def dist_func_date_alignment_wrapper(dist_func: Callable) -> Callable:
@@ -377,25 +375,6 @@ def build_sampling(
     ]
 
 
-def load_user_function(config: UserDefinedFunction) -> Callable:
-    """Import the user defined function and populate a computed field in the schema model."""
-    import importlib.machinery
-    import types
-
-    try:
-        module_name = "user_defined_module"
-        loader = importlib.machinery.SourceFileLoader(module_name, config.user_script_path)
-        code = loader.get_code(module_name)
-        new_module = types.ModuleType(loader.name)
-        exec(code, new_module.__dict__)
-        sys.modules[module_name] = new_module
-        module = import_module(module_name)
-        user_func = getattr(module, config.user_function_name)
-    except Exception as e:
-        raise RuntimeError(f"Error loading user-defined function {data['user_function_name']}: {e}")
-    return user_func
-
-
 @register_builder({"basemodel_config", "calibration_config"})
 def build_calibration(
     *, basemodel_config: BasemodelConfig, calibration_config: CalibrationConfig, **_
@@ -454,14 +433,15 @@ def build_calibration(
 
     # Collect user-defined post-hoc transformation function
     post_hoc_func = (
-        load_user_function(calibration.post_hoc_transformation) if calibration.post_hoc_transformation else None
+        calibration.post_hoc_transformation.user_function if calibration.post_hoc_transformation else None
     )
 
     # Collect user-defined distance function
-    if isinstance(calibration.distance_function, str):
-        dist_func = dist_func_dict[calibration.distance_function]
-    else:
-        dist_func = load_user_function(calibration.distance_function)
+    dist_func = (
+        dist_func_dict[calibration.distance_function]
+        if isinstance(calibration.distance_function, str)
+        else calibration.distance_function.user_function
+    )
 
     logger.info("BUILDER: setting up ABCSamplers...")
 

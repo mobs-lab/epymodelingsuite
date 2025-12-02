@@ -2,8 +2,9 @@ import logging
 from datetime import date, timedelta
 from enum import Enum
 from typing import Any
+from collections.abc import Callable
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator, computed_field
 
 from ..utils import parse_timedelta, validate_iso3166
 from .common import DateParameter, Distribution, Meta
@@ -127,6 +128,28 @@ class UserDefinedFunction(BaseModel):
 
     user_script_path: str = Field(description="Path to script containing user-defined functions.")
     user_function_name: str = Field(description="Name of function to import from the supplied script.")
+
+    @computed_field
+    @property
+    def user_function(self) -> Callable:
+        """Import the user defined function and populate a computed field in the schema model."""
+        from importlib.machinery import SourceFileLoader
+        from importlib import import_module
+        import types
+        import sys
+
+        try:
+            module_name = "user_defined_module"
+            loader = SourceFileLoader(module_name, self.user_script_path)
+            code = loader.get_code(module_name)
+            new_module = types.ModuleType(loader.name)
+            exec(code, new_module.__dict__)
+            sys.modules[module_name] = new_module
+            module = import_module(module_name)
+            user_func = getattr(module, self.user_function_name)
+        except Exception as e:
+            raise RuntimeError(f"Error loading user-defined function {self.user_function_name}: {e}")
+        return user_func
 
 
 class CalibrationConfiguration(BaseModel):
