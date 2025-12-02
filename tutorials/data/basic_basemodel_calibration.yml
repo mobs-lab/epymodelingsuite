@@ -13,6 +13,9 @@ model:
     end_date: "2025-08-05"
     delta_t: 0.2
 
+  simulation:
+    resample_frequency: W-SAT
+    
   population: # no population name provided, specify in modelset
     age_groups:
       - "0-4"
