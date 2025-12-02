@@ -2,9 +2,7 @@
 
 import copy
 import logging
-import sys
 from collections.abc import Callable
-from importlib import import_module
 
 import numpy as np
 import pandas as pd
@@ -34,7 +32,7 @@ from ..builders.seasonality import add_seasonality_from_config
 from ..builders.utils import get_data_in_location, get_data_in_window
 from ..builders.vaccination import add_vaccination_schedules_from_config
 from ..schema.basemodel import BasemodelConfig, Parameter, Timespan
-from ..schema.calibration import CalibrationConfig, UserDefinedFunction
+from ..schema.calibration import CalibrationConfig
 from ..schema.dispatcher import BuilderOutput, ProjectionArguments, SimulationArguments
 from ..schema.general import validate_cross_config_consistency
 from ..schema.sampling import SamplingConfig
@@ -77,7 +75,7 @@ def count_nans_at_start(arr: np.ndarray) -> int:
 
     # Find the index of the first non-NaN value
     first_non_nan_index = np.argmax(~mask)
-        
+
     # If no values are NaN, return 0
     # If all, return len(arr)
     if mask.all():
@@ -432,9 +430,7 @@ def build_calibration(
     models = setup_interventions(models, basemodel, intervention_types, sampled_start_timespan)
 
     # Collect user-defined post-hoc transformation function
-    post_hoc_func = (
-        calibration.post_hoc_transformation.user_function if calibration.post_hoc_transformation else None
-    )
+    post_hoc_func = calibration.post_hoc_transformation.user_function if calibration.post_hoc_transformation else None
 
     # Collect user-defined distance function
     dist_func = (

@@ -1,10 +1,10 @@
 import logging
+from collections.abc import Callable
 from datetime import date, timedelta
 from enum import Enum
 from typing import Any
-from collections.abc import Callable
 
-from pydantic import BaseModel, Field, field_validator, model_validator, computed_field
+from pydantic import BaseModel, Field, computed_field, field_validator, model_validator
 
 from ..utils import parse_timedelta, validate_iso3166
 from .common import DateParameter, Distribution, Meta
@@ -133,10 +133,10 @@ class UserDefinedFunction(BaseModel):
     @property
     def user_function(self) -> Callable:
         """Import the user defined function and populate a computed field in the schema model."""
-        from importlib.machinery import SourceFileLoader
-        from importlib import import_module
-        import types
         import sys
+        import types
+        from importlib import import_module
+        from importlib.machinery import SourceFileLoader
 
         try:
             module_name = "user_defined_module"
