@@ -460,6 +460,12 @@ class OutputConfiguration(BaseModel):
         description="Output formats to create for all requested tabular outputs.",
     )
 
+    # Shared options
+    options: OutputOptions | None = Field(
+        None,
+        description="Shared options for outputs (e.g., surveillance data sources).",
+    )
+
     # Tabular outputs
     quantiles: QuantilesOutput | None = Field(None, description="Specifications for default format quantile outputs.")
     trajectories: TrajectoriesOutput | None = Field(
@@ -479,12 +485,6 @@ class OutputConfiguration(BaseModel):
 
     model_meta: ModelMetaOutput = Field(
         default_factory=ModelMetaOutput, description="Specifications for parameter tracking / model metadata outputs."
-    )
-
-    # Shared options
-    options: OutputOptions | None = Field(
-        None,
-        description="Shared options for outputs (e.g., surveillance data sources).",
     )
 
     # Plots
@@ -517,9 +517,9 @@ class OutputConfiguration(BaseModel):
                         f"flusight_format.rate_trends_source='{self.flusight_format.rate_trends_source}' "
                         "but no surveillance sources defined in output.options.surveillance"
                     )
-                if self.flusight_format.prop_ed_source:
+                if self.flusight_format.prop_ed:
                     errors.append(
-                        f"flusight_format.prop_ed_source='{self.flusight_format.prop_ed_source}' "
+                        f"flusight_format.prop_ed='{self.flusight_format.prop_ed}' "
                         "but no surveillance sources defined in output.options.surveillance"
                     )
 
@@ -554,11 +554,20 @@ class OutputConfiguration(BaseModel):
                     f"flusight_format.rate_trends_source='{self.flusight_format.rate_trends_source}' "
                     f"not found in surveillance sources: {available_sources}"
                 )
-            if self.flusight_format.prop_ed_source and self.flusight_format.prop_ed_source not in available_sources:
-                errors.append(
-                    f"flusight_format.prop_ed_source='{self.flusight_format.prop_ed_source}' "
-                    f"not found in surveillance sources: {available_sources}"
-                )
+            if self.flusight_format.prop_ed:
+                if self.flusight_format.prop_ed.ed_source not in available_sources:
+                    errors.append(
+                        f"flusight_format.prop_ed.ed_source='{self.flusight_format.prop_ed.ed_source}' "
+                        f"not found in surveillance sources: {available_sources}"
+                    )
+                if (
+                    self.flusight_format.prop_ed.hosp_source
+                    and self.flusight_format.prop_ed.hosp_source not in available_sources
+                ):
+                    errors.append(
+                        f"flusight_format.prop_ed.hosp_source='{self.flusight_format.prop_ed.hosp_source}' "
+                        f"not found in surveillance sources: {available_sources}"
+                    )
 
         # Check plots.quantiles.outputs
         if self.plots and self.plots.quantiles:
