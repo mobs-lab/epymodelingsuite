@@ -19,9 +19,10 @@ from epymodelingsuite.schema.general import (
 )
 from epymodelingsuite.schema.output import (
     FlusightForecastOutput,
-    FlusightRateTrends,
+    ObservedValuesConfig,
     OutputConfig,
     OutputConfiguration,
+    OutputOptions,
     QuantilesOutput,
     TrajectoriesOutput,
 )
@@ -516,15 +517,20 @@ class TestWarnMismatchedObservedDataPaths:
     def test_no_warning_when_calibration_is_none(self, caplog):
         output_config = OutputConfig(
             output=OutputConfiguration(
+                options=OutputOptions(
+                    surveillance={
+                        "hosp": ObservedValuesConfig(
+                            data_path="data/output.csv",
+                            value_column="value",
+                            date_column="date",
+                            location_column="location",
+                        )
+                    }
+                ),
                 flusight_format=FlusightForecastOutput(
                     reference_date="2024-01-01",
-                    rate_trends=FlusightRateTrends(
-                        observed_data_path="data/output.csv",
-                        observed_value_column="value",
-                        observed_date_column="date",
-                        observed_location_column="location",
-                    ),
-                )
+                    rate_trends_source="hosp",
+                ),
             )
         )
         _warn_mismatched_observed_data_paths(None, output_config)
@@ -536,11 +542,11 @@ class TestWarnMismatchedObservedDataPaths:
         _warn_mismatched_observed_data_paths(calibration, output_config)
         assert "Observed data paths differ" not in caplog.text
 
-    def test_no_warning_when_rate_trends_is_none(self, caplog):
+    def test_no_warning_when_rate_trends_source_is_none(self, caplog):
         calibration = SimpleNamespace(observed_data_path="data/calibration.csv")
         output_config = OutputConfig(
             output=OutputConfiguration(
-                flusight_format=FlusightForecastOutput(reference_date="2024-01-01", rate_trends=None)
+                flusight_format=FlusightForecastOutput(reference_date="2024-01-01", rate_trends_source=None)
             )
         )
         _warn_mismatched_observed_data_paths(calibration, output_config)
@@ -550,15 +556,20 @@ class TestWarnMismatchedObservedDataPaths:
         calibration = SimpleNamespace(observed_data_path="data/same.csv")
         output_config = OutputConfig(
             output=OutputConfiguration(
+                options=OutputOptions(
+                    surveillance={
+                        "hosp": ObservedValuesConfig(
+                            data_path="data/same.csv",
+                            value_column="value",
+                            date_column="date",
+                            location_column="location",
+                        )
+                    }
+                ),
                 flusight_format=FlusightForecastOutput(
                     reference_date="2024-01-01",
-                    rate_trends=FlusightRateTrends(
-                        observed_data_path="data/same.csv",
-                        observed_value_column="value",
-                        observed_date_column="date",
-                        observed_location_column="location",
-                    ),
-                )
+                    rate_trends_source="hosp",
+                ),
             )
         )
         _warn_mismatched_observed_data_paths(calibration, output_config)
@@ -572,18 +583,23 @@ class TestWarnMismatchedObservedDataPaths:
         calibration = SimpleNamespace(observed_data_path="data/calibration.csv")
         output_config = OutputConfig(
             output=OutputConfiguration(
+                options=OutputOptions(
+                    surveillance={
+                        "hosp": ObservedValuesConfig(
+                            data_path="data/output.csv",
+                            value_column="value",
+                            date_column="date",
+                            location_column="location",
+                        )
+                    }
+                ),
                 flusight_format=FlusightForecastOutput(
                     reference_date="2024-01-01",
-                    rate_trends=FlusightRateTrends(
-                        observed_data_path="data/output.csv",
-                        observed_value_column="value",
-                        observed_date_column="date",
-                        observed_location_column="location",
-                    ),
-                )
+                    rate_trends_source="hosp",
+                ),
             )
         )
         _warn_mismatched_observed_data_paths(calibration, output_config)
         assert "Observed data paths differ between configs" in caplog.text
         assert "calibration='data/calibration.csv'" in caplog.text
-        assert "output.flusight_format.rate_trends='data/output.csv'" in caplog.text
+        assert "rate_trends_source ('hosp')='data/output.csv'" in caplog.text

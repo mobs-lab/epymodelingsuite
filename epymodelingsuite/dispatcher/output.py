@@ -660,6 +660,7 @@ def generate_simulation_outputs(
 
     ### Quantiles
     if output.quantiles:
+        logger.info("Generating quantile outputs")
         for simulation in simulations:
             # Compartments
             if output.quantiles.compartments:
@@ -704,6 +705,7 @@ def generate_simulation_outputs(
 
     ### Trajectories
     if output.trajectories:
+        logger.info("Generating trajectory outputs")
         for simulation in simulations:
             for i, traj in enumerate(simulation.results.trajectories):
                 # Compartments
@@ -759,6 +761,7 @@ def generate_simulation_outputs(
 
     ### Model Metadata
     if output.model_meta:
+        logger.info("Generating model metadata outputs")
         if output.model_meta.projection_parameters:
             warnings.add("OUTPUT_GENERATOR: Requested projection parameter metadata in simulation workflow, ignoring.")
 
@@ -788,6 +791,7 @@ def generate_simulation_outputs(
     for warning in warnings:
         logger.warning(warning)
 
+    logger.info("Formatting tabular outputs")
     out_dict = {}
     if not quantiles_compartments.empty:
         qc_name = "quantiles_compartments"
@@ -823,6 +827,7 @@ def generate_simulation_outputs(
         mm_objects = [format_tabular_object(model_meta, mm_name, _type) for _type in output.tabular_output_types]
         out_dict[mm_name] = mm_objects
 
+    logger.info("Output generation complete. Generated %d output types", len(out_dict))
     logger.info("OUTPUT GENERATOR: completed for simulation")
 
     return out_dict
@@ -864,6 +869,7 @@ def generate_calibration_outputs(
 
     ### Quantiles
     if output.quantiles:
+        logger.info("Generating quantile outputs")
         for calibration in calibrations:  # Calibration quantiles (only for calibration comparison target)
             # Calibration quantiles
             if output.quantiles.calibration:
@@ -975,6 +981,7 @@ def generate_calibration_outputs(
 
     ### Trajectories
     if output.trajectories:
+        logger.info("Generating trajectory outputs")
         for calibration in calibrations:
             # Collect all trajectories
             try:
@@ -1060,6 +1067,7 @@ def generate_calibration_outputs(
 
     ### Posteriors
     if output.posteriors:
+        logger.info("Generating posterior outputs")
         for calibration in calibrations:
             # Output last generation (default)
             if output.posteriors == True:
@@ -1090,7 +1098,9 @@ def generate_calibration_outputs(
 
     # FluSight Forecast Hub
     if output.flusight_format:
+        logger.info("Generating FluSight forecast hub outputs")
         # Quantile forecasts
+        logger.info("  - Generating FluSight quantile forecasts")
         for calibration in calibrations:
             try:
                 # FRAGILE: the name 'hospitalizations' is user-supplied in the modelset as the column to look for in the surveillance data.
@@ -1139,11 +1149,24 @@ def generate_calibration_outputs(
             hub_format_output_list.append(prop_ed_df)
 
         # Rate-trend forecasts
-        if output.flusight_format.rate_trends:
+        if output.flusight_format.rate_trends_source:
+            logger.info("  - Generating FluSight rate-trend forecasts")
+            # Get surveillance source configuration
+            if not output.options or not output.options.surveillance:
+                msg = "rate_trends_source specified but no surveillance sources defined in output.options.surveillance"
+                raise ValueError(msg)
+
+            source_name = output.flusight_format.rate_trends_source
+            if source_name not in output.options.surveillance:
+                msg = f"rate_trends_source '{source_name}' not found in output.options.surveillance"
+                raise ValueError(msg)
+
+            source_config = output.options.surveillance[source_name]
+
             # Read surveillance data
             surveillance = pd.read_csv(
-                output.flusight_format.rate_trends.data_path,
-                parse_dates=["target_end_date"],
+                source_config.data_path,
+                parse_dates=[source_config.date_column],
                 date_format="%Y-%m-%d",
             )
 
@@ -1159,13 +1182,13 @@ def generate_calibration_outputs(
 
                 # Filter surveillance for location
                 surv = surveillance[
-                    surveillance[output.flusight_format.rate_trends.location_column]
+                    surveillance[source_config.location_column]
                     == convert_location_name_format(calibration.population, "ISO")
                 ]
-                surv = surv.drop(columns=output.flusight_format.rate_trends.location_column).rename(
+                surv = surv.drop(columns=source_config.location_column).rename(
                     columns={
-                        output.flusight_format.rate_trends.date_column: "date",
-                        output.flusight_format.rate_trends.value_column: "value",
+                        source_config.date_column: "date",
+                        source_config.value_column: "value",
                     }
                 )
 
@@ -1184,6 +1207,24 @@ def generate_calibration_outputs(
                 trends_df.insert(0, "location", convert_location_name_format(calibration.population, "FIPS"))
                 hub_format_output_list.append(trends_df)
 
+        # Prop ED visits forecasts
+        if output.flusight_format.prop_ed_source:
+            # Get surveillance source configuration
+            if not output.options or not output.options.surveillance:
+                msg = "prop_ed_source specified but no surveillance sources defined in output.options.surveillance"
+                raise ValueError(msg)
+
+            source_name = output.flusight_format.prop_ed_source
+            if source_name not in output.options.surveillance:
+                msg = f"prop_ed_source '{source_name}' not found in output.options.surveillance"
+                raise ValueError(msg)
+
+            # TODO: Implement prop_ed forecast generation when make_prop_ed_flusightforecast() is implemented
+            # source_config = output.options.surveillance[source_name]
+            # surveillance = pd.read_csv(source_config.data_path, ...)
+            # ... prop_ed generation logic ...
+            logger.warning("prop_ed_source specified but prop_ed forecast generation is not yet implemented")
+
         hub_format_output = (
             pd.concat(hub_format_output_list, ignore_index=True) if hub_format_output_list else pd.DataFrame()
         )
@@ -1194,6 +1235,7 @@ def generate_calibration_outputs(
 
     ### Model Metadata
     if output.model_meta:
+        logger.info("Generating model metadata outputs")
         for calibration in calibrations:
             meta_dict["primary_id"].append(calibration.primary_id)
             meta_dict["seed"].append(calibration.seed)
@@ -1247,6 +1289,7 @@ def generate_calibration_outputs(
     for warning in warnings:
         logger.warning(warning)
 
+    logger.info("Formatting tabular outputs")
     out_dict = {}
     if not quantiles_projection_compartments.empty:
         qc_name = "quantiles_projection_compartments"
@@ -1308,11 +1351,19 @@ def generate_calibration_outputs(
                 start_date_reference = str(calibration.start_date_reference)
                 break
 
-        generate_single_quantile_plots(calibrations, plots_config, out_dict)
-        generate_quantile_grid_plot(calibrations, plots_config, out_dict)
+        logger.info("  - Generating quantile plots")
+        # Extract surveillance sources from output config if available
+        surveillance_sources = None
+        if output.options and output.options.surveillance:
+            surveillance_sources = output.options.surveillance
+
+        generate_single_quantile_plots(calibrations, plots_config, out_dict, surveillance_sources)
+        generate_quantile_grid_plot(calibrations, plots_config, out_dict, surveillance_sources)
+        logger.info("  - Generating posterior plots")
         generate_single_location_posterior_plots(calibrations, plots_config, out_dict, start_date_reference)
         generate_posterior_grid_plot(calibrations, plots_config, out_dict, start_date_reference)
 
+    logger.info("Output generation complete. Generated %d output types", len(out_dict))
     return out_dict
 
 

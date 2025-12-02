@@ -317,11 +317,12 @@ def plot_calibration_projection(  # noqa: PLR0913
     df_surveillance: pd.DataFrame | None = None,
     surveillance_date_col: str = "date",
     surveillance_value_col: str = "value",
-    surveillance_size: float = 30.0,
+    surveillance_size: float = 16.0,
     fitting_window_start: str | pd.Timestamp | datetime | None = None,
     fitting_window_end: str | pd.Timestamp | datetime | None = None,
     title: str | None = None,
     ax: plt.Axes | None = None,
+    weekly_x_labels: bool = False,
 ) -> tuple[plt.Figure | None, plt.Axes]:
     """
     Plot calibration and projection quantiles on top of each other for a single location.
@@ -497,7 +498,164 @@ def plot_calibration_projection(  # noqa: PLR0913
     if all_handles:
         ax.legend(all_handles, all_labels, loc="upper left", fontsize=8)
 
+    # Apply weekly x-axis labels if requested
+    if weekly_x_labels:
+        from matplotlib.dates import WeekdayLocator, DateFormatter
+        ax.xaxis.set_major_locator(WeekdayLocator(byweekday=5))  # Saturday = 5 (epiweek ending)
+        ax.xaxis.set_major_formatter(DateFormatter('%m/%d'))
+        ax.tick_params(axis='x', rotation=45)
+        plt.setp(ax.xaxis.get_majorticklabels(), ha='right')
+
     return fig, ax
+
+
+def plot_calibration_projection_sidebyside(  # noqa: PLR0913
+    calibration_quantiles: pd.DataFrame | None = None,
+    projection_quantiles_full: pd.DataFrame | None = None,
+    projection_quantiles_filtered: pd.DataFrame | None = None,
+    surveillance_full: pd.DataFrame | None = None,
+    surveillance_filtered: pd.DataFrame | None = None,
+    value_col: str = "hospitalizations",
+    date_col: str = "date",
+    quantile_col: str = "quantile",
+    calibration_color: str = "C0",
+    projection_color: str = "C1",
+    surveillance_date_col: str = "date",
+    surveillance_value_col: str = "value",
+    surveillance_size: float = 16.0,
+    fitting_window_start: str | pd.Timestamp | datetime | None = None,
+    fitting_window_end: str | pd.Timestamp | datetime | None = None,
+    title: str | None = None,
+    figsize: tuple[float, float] | None = None,
+    spacing: float = 0.3,
+    ax_full: plt.Axes | None = None,
+    ax_filtered: plt.Axes | None = None,
+) -> tuple[plt.Figure, tuple[plt.Axes, plt.Axes]]:
+    """
+    Create side-by-side quantile plots: [Full Range | Filtered].
+
+    Left panel shows full surveillance range with projection filtered only by horizon_max.
+    Right panel shows limited surveillance points with projection filtered by both
+    surveillance start and horizon_max.
+
+    Parameters
+    ----------
+    calibration_quantiles : pd.DataFrame | None, optional
+        Pre-computed quantiles for calibration period (shown in both panels).
+    projection_quantiles_full : pd.DataFrame | None, optional
+        Projection quantiles for left panel (full range, horizon_max only).
+    projection_quantiles_filtered : pd.DataFrame | None, optional
+        Projection quantiles for right panel (filtered by surveillance + horizon).
+    surveillance_full : pd.DataFrame | None, optional
+        Full surveillance data for left panel.
+    surveillance_filtered : pd.DataFrame | None, optional
+        Filtered surveillance data for right panel.
+    value_col : str, optional
+        Name of column containing values to plot, by default "hospitalizations".
+    date_col : str, optional
+        Name of date column, by default "date".
+    quantile_col : str, optional
+        Name of quantile column, by default "quantile".
+    calibration_color : str, optional
+        Color for calibration ribbons, by default "C0".
+    projection_color : str, optional
+        Color for projection ribbons, by default "C1".
+    surveillance_date_col : str, optional
+        Date column in surveillance data, by default "date".
+    surveillance_value_col : str, optional
+        Value column in surveillance data, by default "value".
+    surveillance_size : float, optional
+        Marker size for surveillance points, by default 30.0.
+    fitting_window_start : str | pd.Timestamp | datetime | None, optional
+        If provided, draw vertical line at start of calibration/fitting window,
+        by default None.
+    fitting_window_end : str | pd.Timestamp | datetime | None, optional
+        If provided, draw vertical line at end of calibration/fitting window,
+        by default None.
+    title : str | None, optional
+        Base plot title (will be suffixed with panel type), by default None.
+    figsize : tuple[float, float] | None, optional
+        Figure size. If None, defaults to (16, 6).
+    spacing : float, optional
+        Horizontal spacing between subplots, by default 0.3.
+    ax_full : plt.Axes | None, optional
+        Optional axes for the full panel. If provided, a new figure is not created.
+    ax_filtered : plt.Axes | None, optional
+        Optional axes for the filtered panel. If provided, a new figure is not created.
+
+    Returns
+    -------
+    tuple[plt.Figure, tuple[plt.Axes, plt.Axes]]
+        Figure and tuple of (ax_full, ax_filtered) axes objects.
+
+    Examples
+    --------
+    >>> # Prepare data with two versions
+    >>> cal_quant = results.get_calibration_quantiles([0.025, 0.5, 0.975])
+    >>> proj_quant_full = results.get_projection_quantiles([0.025, 0.5, 0.975])
+    >>> # Filter projection for right panel
+    >>> proj_quant_filtered = proj_quant_full[proj_quant_full["date"] >= surveillance_start]
+    >>> fig, (ax_full, ax_filtered) = plot_calibration_projection_sidebyside(
+    ...     calibration_quantiles=cal_quant,
+    ...     projection_quantiles_full=proj_quant_full,
+    ...     projection_quantiles_filtered=proj_quant_filtered,
+    ...     surveillance_full=surv_full,
+    ...     surveillance_filtered=surv_filtered,
+    ...     value_col="hospitalizations",
+    ...     title="US-CA"
+    ... )
+    >>> fig.savefig("sidebyside_forecast.png")
+    >>> plt.close(fig)
+
+    """
+    fig_provided = ax_full is not None and ax_filtered is not None
+
+    if not fig_provided:
+        if figsize is None:
+            figsize = (16, 6)
+        fig, (ax_full, ax_filtered) = plt.subplots(1, 2, figsize=figsize, gridspec_kw={"wspace": spacing})
+    else:
+        fig = ax_full.figure
+
+    # Left panel: Full range
+    plot_calibration_projection(
+        calibration_quantiles=calibration_quantiles,
+        projection_quantiles=projection_quantiles_full,
+        value_col=value_col,
+        date_col=date_col,
+        quantile_col=quantile_col,
+        calibration_color=calibration_color,
+        projection_color=projection_color,
+        df_surveillance=surveillance_full,
+        surveillance_date_col=surveillance_date_col,
+        surveillance_value_col=surveillance_value_col,
+        surveillance_size=surveillance_size,
+        fitting_window_start=fitting_window_start,
+        fitting_window_end=fitting_window_end,
+        title=title,
+        ax=ax_full,
+    )
+
+    # Right panel: Filtered
+    plot_calibration_projection(
+        calibration_quantiles=calibration_quantiles,
+        projection_quantiles=projection_quantiles_filtered,
+        value_col=value_col,
+        date_col=date_col,
+        quantile_col=quantile_col,
+        calibration_color=calibration_color,
+        projection_color=projection_color,
+        df_surveillance=surveillance_filtered,
+        surveillance_date_col=surveillance_date_col,
+        surveillance_value_col=surveillance_value_col,
+        surveillance_size=surveillance_size,
+        fitting_window_start=fitting_window_start,
+        fitting_window_end=fitting_window_end,
+        title=title,
+        ax=ax_filtered,
+    )
+
+    return fig, (ax_full, ax_filtered)
 
 
 def plot_calibration_projection_grid(  # noqa: PLR0913
@@ -511,7 +669,7 @@ def plot_calibration_projection_grid(  # noqa: PLR0913
     location_surveillance: dict[str, pd.DataFrame] | None = None,
     surveillance_date_col: str = "date",
     surveillance_value_col: str = "value",
-    surveillance_size: float = 30.0,
+    surveillance_size: float = 16.0,
     location_fitting_window_starts: dict[str, datetime] | None = None,
     location_fitting_window_ends: dict[str, datetime] | None = None,
     panels_per_row: int = 4,
