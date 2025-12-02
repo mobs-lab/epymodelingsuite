@@ -500,11 +500,12 @@ def plot_calibration_projection(  # noqa: PLR0913
 
     # Apply weekly x-axis labels if requested
     if weekly_x_labels:
-        from matplotlib.dates import WeekdayLocator, DateFormatter
+        from matplotlib.dates import DateFormatter, WeekdayLocator
+
         ax.xaxis.set_major_locator(WeekdayLocator(byweekday=5))  # Saturday = 5 (epiweek ending)
-        ax.xaxis.set_major_formatter(DateFormatter('%m/%d'))
-        ax.tick_params(axis='x', rotation=45)
-        plt.setp(ax.xaxis.get_majorticklabels(), ha='right')
+        ax.xaxis.set_major_formatter(DateFormatter("%m/%d"))
+        ax.tick_params(axis="x", rotation=45)
+        plt.setp(ax.xaxis.get_majorticklabels(), ha="right")
 
     return fig, ax
 

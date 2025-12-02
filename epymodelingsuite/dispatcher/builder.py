@@ -429,17 +429,29 @@ def build_calibration(
     # using the earliest start_date before creating ABCSamplers.
     models = setup_interventions(models, basemodel, intervention_types, sampled_start_timespan)
 
+    # Collect user-defined post-hoc transformation function
+    post_hoc_func = calibration.post_hoc_transformation.user_function if calibration.post_hoc_transformation else None
+
+    # Collect user-defined distance function
+    dist_func = (
+        dist_func_dict[calibration.distance_function]
+        if isinstance(calibration.distance_function, str)
+        else calibration.distance_function.user_function
+    )
+
     logger.info("BUILDER: setting up ABCSamplers...")
 
     observed_raw = pd.read_csv(calibration.observed_data_path)
     observed_in_window = get_data_in_window(observed_raw, calibration)
     calibrators = []
     location_column = calibration.comparison[0].observed_location_column
+
     for model in models:
         observed_data = get_data_in_location(observed_in_window, model.population.name, location_column)
         vax_state = (
             get_data_in_location(earliest_vax, model.population.name, "location") if earliest_vax is not None else None
         )
+
         # Create simulate_wrapper
         simulate_wrapper = make_simulate_wrapper(
             basemodel=basemodel,
@@ -448,6 +460,7 @@ def build_calibration(
             intervention_types=intervention_types,
             sampled_start_timespan=sampled_start_timespan,
             earliest_vax=vax_state,
+            post_hoc_transformation=post_hoc_func,
             rng=rng,
         )
 
@@ -469,7 +482,7 @@ def build_calibration(
             priors=priors,
             parameters=fixed_parameters,
             observed_data=observed_data[calibration.comparison[0].observed_value_column].values,
-            distance_function=dist_func_date_alignment_wrapper(dist_func_dict[calibration.distance_function]),
+            distance_function=dist_func_date_alignment_wrapper(dist_func),
         )
 
         calibrators.append(abc_sampler)

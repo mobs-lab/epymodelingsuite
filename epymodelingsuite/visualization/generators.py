@@ -751,7 +751,7 @@ def generate_quantile_grid_plot(
                 )
                 logger.debug(f"Surveillance data shape: {surveillance_df.shape}")
 
-                for loc in location_proj_quants_raw.keys():
+                for loc in location_proj_quants_raw:
                     cal_quant = location_cal_quants.get(loc)
                     proj_quant_raw = location_proj_quants_raw.get(loc)
 
@@ -889,7 +889,7 @@ def generate_quantile_grid_plot(
                         surveillance_df = source["data"]
                         surveillance_config = source["config"]
 
-                        for loc in location_proj_quants_raw.keys():
+                        for loc in location_proj_quants_raw:
                             cal_quant = location_cal_quants.get(loc)
                             proj_quant_raw = location_proj_quants_raw.get(loc)
 
