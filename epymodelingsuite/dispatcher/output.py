@@ -357,16 +357,19 @@ def make_rate_trends_flusightforecast(
 
     # Date of observation for comparison (equivalent to horizon -1)
     obs_date = reference_date - timedelta(weeks=1)
+    print(f"obs_date: {obs_date}\nref_date: {reference_date}")
 
     # Observed value and rate
     obs_val = observed[observed.date == pd.Timestamp(obs_date)].value.iloc[0]
     obs_rate = rate_population_scale * obs_val / population
+    print(f"obs_val: {obs_val}\nobs_rate: {obs_rate}")
 
     # Build list of rows
     rows = []
     for horizon in flusight_horizons:
         # Target date for forecast
         target_date = reference_date + timedelta(weeks=horizon)
+        print(f"target_date: {target_date}")
 
         # Projected values and rates (one for each projection trajectory)
         proj_vals = [
@@ -374,10 +377,12 @@ def make_rate_trends_flusightforecast(
             for dates, values in zip(proj_dates, proj_values, strict=True)
         ]
         proj_rates = (rate_population_scale / population) * np.array(proj_vals)
+        print(f"proj_vals: {proj_vals}\nproj_rates: {proj_rates}")
 
         # Calculate rate-changes and count-changes
         rate_changes = proj_rates - obs_rate
         count_changes = proj_vals - obs_val
+        print(f"rate_changes: {rate_changes}\ncount_changes: {count_changes}")
 
         # Counter containing the categorization for each projection trajectory
         trajectory_categories = Counter(
@@ -386,6 +391,7 @@ def make_rate_trends_flusightforecast(
                 for rate_change, count_change in zip(rate_changes, count_changes, strict=True)
             ]
         )
+        print(f"traj_cats: {trajectory_categories}")
 
         # Dict containing the probability of each category
         num_traj = trajectory_categories.total()
@@ -395,6 +401,7 @@ def make_rate_trends_flusightforecast(
         cat_probs.setdefault("decrease", 0)
         cat_probs.setdefault("large_increase", 0)
         cat_probs.setdefault("large_decrease", 0)
+        print(f"num_traj: {num_traj}\ncat_probs: {cat_probs}")
 
         # Add rows to the list
         for category, value in cat_probs.items():
@@ -481,7 +488,7 @@ def prop_ed_surveillance_window(
     prop_ed_list = []
     for loc in pred_hosp.location.unique():
         # Filter forecasts and observations
-        filt_pred_hosp = pred_hosp[(pred_hosp.location == loc) & (pred_hosp.output_type == "quantile")]
+        filt_pred_hosp = pred_hosp[(pred_hosp.location == loc) & (pred_hosp.output_type == "quantile")].copy(deep=True)
         filt_obs_hosp = (
             obs_hosp_df[
                 (obs_hosp_df[obs_hosp.location_column] == loc)
