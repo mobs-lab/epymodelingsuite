@@ -17,7 +17,7 @@ from ..schema.basemodel import BaseEpiModel, BasemodelConfig, Parameter, Timespa
 from ..schema.calibration import CalibrationConfig, ComparisonSpec
 from ..school_closures import make_school_closure_dict
 from ..utils import get_location_codebook, make_dummy_population
-from ..vaccinations import reaggregate_vaccines, resample_vaccination_schedule, scenario_to_epydemix
+from ..vaccinations import reaggregate_vaccines, scenario_to_epydemix
 from .base import (
     add_model_compartments_from_config,
     add_model_parameters_from_config,
@@ -91,10 +91,14 @@ def create_model_collection(
     add_model_transitions_from_config(init_model, basemodel.transitions)
     add_model_parameters_from_config(init_model, basemodel.parameters)
 
+    # Convert to list if it's a pandas Series (defensive check to avoid boolean ambiguity errors)
+    if population_names is not None and hasattr(population_names, "tolist"):
+        population_names = population_names.tolist()
+
     # Create models with populations set
     if population_names:
         if "all" in population_names:
-            resolved_names = get_location_codebook()["location_name_epydemix"]
+            resolved_names = get_location_codebook()["location_name_epydemix"].tolist()
         else:
             resolved_names = population_names
         for name in resolved_names:
@@ -230,19 +234,19 @@ def setup_interventions(
     return models
 
 
-def pad_array_with_zeros(
+def pad_array_with_nan(
     array: np.ndarray,
     pad_length: int,
 ) -> np.ndarray:
     """
-    Pad a numpy array with zeros at the beginning.
+    Pad a numpy array with nan at the beginning.
 
     Parameters
     ----------
     array : np.ndarray
             Array to pad.
     pad_length : int
-            Number of zeros to add at the beginning.
+            Number of nan to add at the beginning.
 
     Returns
     -------
@@ -252,7 +256,7 @@ def pad_array_with_zeros(
     if pad_length <= 0:
         return array
 
-    return np.pad(array, (pad_length, 0), constant_values=0)
+    return np.pad(array, (pad_length, 0), constant_values=np.nan)
 
 
 def pad_trajectory_arrays(
@@ -260,14 +264,14 @@ def pad_trajectory_arrays(
     pad_length: int,
 ) -> dict[str, np.ndarray]:
     """
-    Pad all arrays in a dictionary with zeros at the beginning.
+    Pad all arrays in a dictionary with nan at the beginning.
 
     Parameters
     ----------
     arrays_dict : dict[str, np.ndarray]
             Dictionary of arrays to pad.
     pad_length : int
-            Number of zeros to add at the beginning of each array.
+            Number of nan to add at the beginning of each array.
 
     Returns
     -------
@@ -277,7 +281,7 @@ def pad_trajectory_arrays(
     if pad_length <= 0:
         return arrays_dict
 
-    return {key: pad_array_with_zeros(value, pad_length) for key, value in arrays_dict.items()}
+    return {key: pad_array_with_nan(value, pad_length) for key, value in arrays_dict.items()}
 
 
 def calculate_padding_for_date_alignment(
@@ -307,7 +311,7 @@ def calculate_padding_for_date_alignment(
     >>> actual = [date(2024, 1, 10), date(2024, 1, 11)]
     >>> target = [date(2024, 1, 5), date(2024, 1, 6), ..., date(2024, 1, 11)]
     >>> calculate_padding_for_date_alignment(actual, target)
-    5  # Need 5 zeros for dates Jan 5-9
+    5  # Need 5 nan for dates Jan 5-9
     """
     # Find which target dates are covered by actual dates
     mask = np.isin(target_dates, actual_dates)
@@ -496,7 +500,7 @@ def format_calibration_data(
     dict[str, Any]
             Dictionary containing:
             - "data": np.ndarray of aggregated simulation values aligned to observation dates.
-                Padded with zeros at the beginning if simulation starts after first observation.
+                Padded with nan at the beginning if simulation starts after first observation.
             - "date": list of observation dates from observed data.
             - "random_state": dict containing RNG state for reproducibility.
     """
@@ -513,9 +517,9 @@ def format_calibration_data(
 
     # Step 3: Pad to align with full observation grid
     # When start_date is sampled, simulation may start later than first observation.
-    # Pad with zeros at beginning to align arrays for distance calculation.
+    # Pad with nan at beginning to align arrays for distance calculation.
     pad_len = calculate_padding_for_date_alignment(results.dates, data_dates)
-    aligned_data = pad_array_with_zeros(filtered_data, pad_len)
+    aligned_data = pad_array_with_nan(filtered_data, pad_len)
 
     return {"data": aligned_data, "date": data_dates, "random_state": random_state}
 
@@ -592,9 +596,8 @@ def apply_vaccination_for_sampled_start(
 
     # Start_date is sampled, need to reaggregate and resample
     reaggregated_vax = reaggregate_vaccines(earliest_vax, timespan.start_date)
-    reaggregated_resampled_vax = resample_vaccination_schedule(reaggregated_vax, timespan.delta_t)
     add_vaccination_schedules_from_config(
-        model, basemodel.transitions, basemodel.vaccination, timespan, use_schedule=reaggregated_resampled_vax
+        model, basemodel.transitions, basemodel.vaccination, timespan, use_schedule=reaggregated_vax
     )
 
 
@@ -694,6 +697,7 @@ def make_simulate_wrapper(
     intervention_types: list[str],
     sampled_start_timespan: Timespan | None = None,
     earliest_vax: pd.DataFrame | None = None,
+    post_hoc_transformation: Callable | None = None,
     rng: Generator | None = None,
 ) -> Callable[[dict], dict]:
     """
@@ -721,6 +725,9 @@ def make_simulate_wrapper(
             (e.g., "0-4", "5-17", "18-49", "50-64", "65+").
             Typically created by `setup_vaccination_schedules()` which calls
             `scenario_to_epydemix()` with the earliest start date.
+    post_hoc_transformation: Callable | None, optional
+            Transform simulation results with a post-hoc transformation function
+            before returning in simulate wrapper.
     rng : np.random.Generator | None, optional
             Random number generator for reproducible simulations.
             If None, a default generator will be created.
@@ -863,7 +870,15 @@ def make_simulate_wrapper(
             # Calibration: return zero-filled array
             return {"data": np.full(len(data_dates), 0)}
 
-        # 12. Format output based on mode
+        # 12. Apply post-hoc transformation
+        if post_hoc_transformation:
+            try:
+                results = post_hoc_transformation(results)
+            except Exception as e:
+                msg = f"Post-hoc transformation failed with transformation function {post_hoc_transformation}, returning non-transformed results. Error: {e}"
+                logger.warning(msg)
+
+        # 13. Format output based on mode
         # Projection: return full trajectories (flattened + padded)
         if params["projection"]:
             return format_projection_trajectories(
@@ -970,8 +985,10 @@ def make_scenario_projection_simulate_wrappers(
     for model in models:
         # TODO: Make location column name configurable instead of hardcoded "geo_value"
         # Should be added to ComparisonSpec schema (e.g., observed_location_column)
-        observed_data = get_data_in_location(observed_in_window, model, "geo_value")
-        vax_state = get_data_in_location(earliest_vax, model, "location") if earliest_vax is not None else None
+        observed_data = get_data_in_location(observed_in_window, model.population.name, "geo_value")
+        vax_state = (
+            get_data_in_location(earliest_vax, model.population.name, "location") if earliest_vax is not None else None
+        )
         # Create simulate_wrapper
         simulate_wrapper = make_simulate_wrapper(
             basemodel=basemodel,

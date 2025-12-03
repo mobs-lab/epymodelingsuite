@@ -2,6 +2,7 @@
 
 import copy
 import logging
+from collections.abc import Callable
 
 import numpy as np
 import pandas as pd
@@ -53,6 +54,84 @@ dist_func_dict = {
     "mae": mae,
     "mape": mape,
 }
+
+
+def count_nans_at_start(arr: np.ndarray) -> int:
+    """
+    Count the number of NaN values prepended to the input array, if any.
+
+    Parameters
+    ----------
+    arr: np.ndarray
+        The array to count NaNs from.
+
+    Returns
+    -------
+    int
+        The number of NaNs found prepended to the array.
+    """
+    # Create a boolean mask for NaN values
+    mask = np.isnan(arr)
+
+    # Find the index of the first non-NaN value
+    first_non_nan_index = np.argmax(~mask)
+
+    # If no values are NaN, return 0
+    # If all, return len(arr)
+    if mask.all():
+        return len(arr)
+    if mask.any():
+        return first_non_nan_index
+    return 0
+
+
+def dist_func_date_alignment_wrapper(dist_func: Callable) -> Callable:
+    """
+    Create a wrapped version of an epydemix distance function which truncates observed and simulated
+    trajectories to exclude prepended NaNs before applying the distance calculation.
+
+    Parameters
+    ----------
+    dist_func: Callable
+        An epydemix distance function.
+
+    Returns
+    -------
+    Callable
+        The wrapped distance function for handling prepended NaNs.
+    """
+
+    def wrapped_dist_func(data: dict, simulation: dict) -> float | np.ndarray:
+        """
+        A wrapped epydemix distance function which truncates observed and simulated
+        trajectories to exclude prepended NaNs before applying the distance calculation.
+
+        Parameters
+        ----------
+        data: dict
+            A dictionary containing the observed data with a key "data" pointing to an array of observations.
+        simulation: dict
+            A dictionary containing the simulated data with a key "data" pointing to an array of simulated values.
+
+        Returns
+        -------
+        float | np.ndarray
+            The result of calling dist_func on the truncated data, which is np.ndarray if
+            dist_func is Absolute Error and float otherwise.
+        """
+        observed = np.array(data["data"])
+        simulated = np.array(simulation["data"])
+
+        num_nans = count_nans_at_start(simulated)
+
+        trunc_data = copy.deepcopy(data)
+        trunc_simulation = copy.deepcopy(simulation)
+        trunc_data["data"] = observed[num_nans:]
+        trunc_simulation["data"] = simulated[num_nans:]
+
+        return dist_func(trunc_data, trunc_simulation)
+
+    return wrapped_dist_func
 
 
 # ===== Builder Registry and Functions =====
@@ -194,8 +273,12 @@ def build_sampling(
     models, population_names = create_model_collection(basemodel, sampling.population_names)
 
     # Output of this is a list of dicts containing start_date, initial conditions, and parameter value
-    # combinations where parameters is in the same format as basemodel.parameters
-    sampled_vars = generate_samples(sampling_config, basemodel.random_seed)
+    # combinations where parameters is in the same format as basemodel.parameters.
+    # Create empty structure when only using modelset for multiple populations.
+    if sampling.sampling is None:
+        sampled_vars = [{}]
+    else:
+        sampled_vars = generate_samples(sampling_config, basemodel.random_seed)
 
     # Extract intervention types
     if basemodel.interventions:
@@ -346,16 +429,29 @@ def build_calibration(
     # using the earliest start_date before creating ABCSamplers.
     models = setup_interventions(models, basemodel, intervention_types, sampled_start_timespan)
 
+    # Collect user-defined post-hoc transformation function
+    post_hoc_func = calibration.post_hoc_transformation.user_function if calibration.post_hoc_transformation else None
+
+    # Collect user-defined distance function
+    dist_func = (
+        dist_func_dict[calibration.distance_function]
+        if isinstance(calibration.distance_function, str)
+        else calibration.distance_function.user_function
+    )
+
     logger.info("BUILDER: setting up ABCSamplers...")
 
     observed_raw = pd.read_csv(calibration.observed_data_path)
     observed_in_window = get_data_in_window(observed_raw, calibration)
     calibrators = []
+    location_column = calibration.comparison[0].observed_location_column
+
     for model in models:
-        # TODO: Make location column name configurable instead of hardcoded "geo_value"
-        # Should be added to ComparisonSpec schema (e.g., observed_location_column)
-        observed_data = get_data_in_location(observed_in_window, model, "geo_value")
-        vax_state = get_data_in_location(earliest_vax, model, "location") if earliest_vax is not None else None
+        observed_data = get_data_in_location(observed_in_window, model.population.name, location_column)
+        vax_state = (
+            get_data_in_location(earliest_vax, model.population.name, "location") if earliest_vax is not None else None
+        )
+
         # Create simulate_wrapper
         simulate_wrapper = make_simulate_wrapper(
             basemodel=basemodel,
@@ -364,6 +460,7 @@ def build_calibration(
             intervention_types=intervention_types,
             sampled_start_timespan=sampled_start_timespan,
             earliest_vax=vax_state,
+            post_hoc_transformation=post_hoc_func,
             rng=rng,
         )
 
@@ -385,7 +482,7 @@ def build_calibration(
             priors=priors,
             parameters=fixed_parameters,
             observed_data=observed_data[calibration.comparison[0].observed_value_column].values,
-            distance_function=dist_func_dict[calibration.distance_function],
+            distance_function=dist_func_date_alignment_wrapper(dist_func),
         )
 
         calibrators.append(abc_sampler)
@@ -417,6 +514,7 @@ def build_calibration(
             calibrator=t[1],
             calibration=calibration.strategy,
             projection=projection_options,
+            start_date_reference=calibration.start_date.reference_date if calibration.start_date else None,
         )
         for i, t in enumerate(zip(models, calibrators, strict=True))
     ]

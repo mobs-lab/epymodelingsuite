@@ -27,6 +27,8 @@ class FigureOutputTypeEnum(str, Enum):
 
     MPLFigure = "MPLFigure"
     PNG = "PNG"
+    PDF = "PDF"
+    SVG = "SVG"
 
 
 def get_default_tabular_output() -> list[TabularOutputTypeEnum]:
@@ -65,24 +67,49 @@ class Covid19ForecastOutput(BaseModel):
 
 def get_flusight_quantiles() -> list[float]:
     """
-    Return an array containing the quantiles needed for FluSight submissions.
+    Return a list containing the quantiles needed for FluSight submissions.
+
     The set of quantiles is defined at https://github.com/cdcepi/FluSight-forecast-hub/tree/main/model-output#quantile-output
     """
-    import numpy as np
+    return [
+        0.01,
+        0.025,
+        0.05,
+        0.1,
+        0.15,
+        0.2,
+        0.25,
+        0.3,
+        0.35,
+        0.4,
+        0.45,
+        0.5,
+        0.55,
+        0.6,
+        0.65,
+        0.7,
+        0.75,
+        0.8,
+        0.85,
+        0.9,
+        0.95,
+        0.975,
+        0.99,
+    ]
 
-    # This has floating point errors
-    quantiles = np.append(np.append([0.01, 0.025], np.arange(0.05, 0.95 + 0.05, 0.05)), [0.975, 0.99])
-    return [round(_, 2) for _ in quantiles]
-    # 0.01, 0.025, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 0.975, and 0.99
+
+def get_quantile_ribbon_default() -> list[float]:
+    """Return a list containing default quantiles for plotting ribbons."""
+    return [0.025, 0.25, 0.5, 0.75, 0.975]
 
 
-class FlusightRateTrends(BaseModel):
-    """Specifications for FluSight rate-trends."""
+class ObservedValuesConfig(BaseModel):
+    """Specifications for selecting observed values."""
 
-    observed_data_path: str = Field(description="Path to observed data CSV file")
-    observed_value_column: str = Field(description="Name of column containing observed values in observed data CSV")
-    observed_date_column: str = Field(description="Name of column containing target dates in observed data CSV")
-    observed_location_column: str = Field(description="Name of column containing location in observed data CSV")
+    data_path: str = Field(description="Path to observed data CSV file")
+    value_column: str = Field(description="Name of column containing observed values in observed data CSV")
+    date_column: str = Field(description="Name of column containing target dates in observed data CSV")
+    location_column: str = Field(description="Name of column containing location in observed data CSV")
 
 
 class FlusightForecastOutput(BaseModel):
@@ -91,9 +118,13 @@ class FlusightForecastOutput(BaseModel):
     reference_date: date = Field(
         description="'YYYY-MM-DD' date to treat as reference date when creating horizons and target dates for submission file."
     )
-    rate_trends: FlusightRateTrends | None = Field(
+    rate_trends_source: str | None = Field(
         None,
-        description="Add rate-trend forecasts to submission file.",
+        description="Name of surveillance source from output.options.surveillance to use for rate-trend forecasts.",
+    )
+    prop_ed_source: str | None = Field(
+        None,
+        description="Name of surveillance source from output.options.surveillance to use for proportion ED visits forecasts.",
     )
 
 
@@ -107,19 +138,24 @@ class QuantilesOutput(BaseModel):
     )
     compartments: list[str] | bool = Field(
         False,
-        description="Return quantiles for compartments. Set `True` to get all compartments, or provide a list of identifiers (e.g. 'I_total') to select compartments.",
+        description="Return projection quantiles for compartments. Set `True` to get all compartments, or provide a list of identifiers (e.g. 'I_total') to select compartments.",
     )
     transitions: list[str] | bool = Field(
         False,
-        description="Return quantiles for transitions. Set `True` to get all transitions, or provide a list of identifiers (e.g. 'I_to_R_total') to select transitions.",
+        description="Return projection quantiles for transitions. Set `True` to get all transitions, or provide a list of identifiers (e.g. 'I_to_R_total') to select transitions.",
+    )
+    calibration: list[int] | bool = Field(
+        False,
+        description="Return quantiles from calibration. Only calibration comparison target is available. Set `True` to get last generation, or provide a list of integers to select generations.",
     )
 
     @field_validator("selections")
     @classmethod
-    def check_selections(cls, v):
+    def check_selections(cls, v: list[float]) -> list[float]:
         """Ensure quantiles are in (0, 1)."""
-        if not all([0.0 < q < 1.0 for q in v]):
-            raise ValueError("Received quantile not in (0, 1).")
+        if not all(0.0 < q < 1.0 for q in v):
+            msg = "Received quantile not in (0, 1)."
+            raise ValueError(msg)
         return v
 
 
@@ -128,11 +164,11 @@ class TrajectoriesOutput(BaseModel):
 
     compartments: list[str] | bool = Field(
         False,
-        description="Return trajectories for compartments. Set `True` to get all compartments, or provide a list of identifiers (e.g. 'I_total') to select compartments.",
+        description="Return projection trajectories for compartments. Set `True` to get all compartments, or provide a list of identifiers (e.g. 'I_total') to select compartments.",
     )
     transitions: list[str] | bool = Field(
         False,
-        description="Return trajectories for transitions. Set `True` to get all transitions, or provide a list of identifiers (e.g. 'I_to_R_total') to select transitions.",
+        description="Return projection trajectories for transitions. Set `True` to get all transitions, or provide a list of identifiers (e.g. 'I_to_R_total') to select transitions.",
     )
 
 
@@ -151,6 +187,233 @@ class ModelMetaOutput(BaseModel):
     )
 
 
+class PosteriorPlotConfig(BaseModel):
+    """Configuration for posterior distribution plots."""
+
+    single: bool | list[str] = Field(
+        False,
+        description="Create single plot per location. True for all locations, or list of specific locations.",
+    )
+    grid: bool = Field(False, description="Create grid plot with all locations.")
+    bins: int = Field(30, description="Number of histogram bins.")
+
+
+class QuantilesOutputTypeEnum(str, Enum):
+    """Types of quantile plot outputs."""
+
+    FILTERED = "filtered"
+    FULL = "full"
+    SIDE_BY_SIDE = "side_by_side"
+
+
+class SideBySidePanelConfig(BaseModel):
+    """Configuration for a single panel in side-by-side plot."""
+
+    surveillance_points: int | None = Field(
+        None, description="Number of most recent surveillance points to display. None = all points."
+    )
+    surveillance_start_date: str | None = Field(
+        None,
+        description="Filter surveillance to show only points >= this date (YYYY-MM-DD). Overrides surveillance_points if both set.",
+    )
+
+
+class QuantilesOutputConfig(BaseModel):
+    """Configuration for a single quantile plot output."""
+
+    type: QuantilesOutputTypeEnum = Field(description="Type of output to generate.")
+
+    # Display options (for all output types)
+    show_calibration: bool = Field(False, description="Show calibration period quantiles.")
+    show_projection: bool = Field(True, description="Show projection period quantiles.")
+    show_surveillance: bool = Field(True, description="Overlay surveillance observations.")
+    show_fitting_window_line: bool = Field(True, description="Show fitting window vertical lines.")
+    surveillance_source: str | None = Field(
+        None,
+        description="Name of surveillance source from surveillance dict. If None and surveillance dict has one entry, use that entry.",
+    )
+
+    # Filter settings (only for FILTERED and FULL types)
+    surveillance_points: int | None = Field(
+        None,
+        description="Number of most recent surveillance points to display. None = all points. Not used for SIDE_BY_SIDE.",
+    )
+    surveillance_start_date: str | None = Field(
+        None,
+        description="Filter surveillance to show only points >= this date (YYYY-MM-DD). Overrides surveillance_points if both set. Not used for SIDE_BY_SIDE.",
+    )
+    horizon_max: int | None = Field(None, description="Override base horizon_max. None = use base config value.")
+
+    # Panel settings (only for SIDE_BY_SIDE type)
+    full_panel: SideBySidePanelConfig | None = Field(
+        None, description="Configuration for full (left) panel in side-by-side plot."
+    )
+    filtered_panel: SideBySidePanelConfig | None = Field(
+        None, description="Configuration for filtered (right) panel in side-by-side plot."
+    )
+
+    # Layout settings (only for SIDE_BY_SIDE type)
+    spacing: float = Field(0.3, description="For side-by-side: horizontal spacing between panels.")
+    figsize: tuple[float, float] | None = Field(None, description="For side-by-side: figure size (width, height).")
+
+
+class QuantilesGridConfig(BaseModel):
+    """Configuration for quantiles grid plot."""
+
+    enabled: bool = Field(False, description="Create grid plot.")
+    panels_per_row: int = Field(4, description="Number of panels per row in grid.")
+
+
+class QuantilesCalibrationConfig(BaseModel):
+    """Configuration for calibration period visualization styling."""
+
+    color: str = Field("C0", description="Color for calibration ribbons.")
+
+
+class QuantilesProjectionConfig(BaseModel):
+    """Configuration for projection period visualization styling."""
+
+    color: str = Field("C1", description="Color for projection ribbons.")
+
+
+class QuantilesPlotConfig(BaseModel):
+    """Configuration for quantile ribbon plots."""
+
+    single: list[str] | bool = Field(
+        False,
+        description="Create single plot per location (default disabled). Set true for all locations, or provide list of specific locations.",
+    )
+    grid: QuantilesGridConfig | bool = Field(
+        default_factory=QuantilesGridConfig,
+        description="Grid plot with all locations (default enabled). Set true to use default options, or set options in subfields.",
+    )
+
+    # Output configuration
+    outputs: list[QuantilesOutputConfig] = Field(
+        default_factory=lambda: [
+            QuantilesOutputConfig(
+                type=QuantilesOutputTypeEnum.FILTERED,
+                surveillance_points=8,
+                show_calibration=False,
+                show_projection=True,
+                show_surveillance=True,
+                show_fitting_window_line=True,
+            ),
+            QuantilesOutputConfig(
+                type=QuantilesOutputTypeEnum.FULL,
+                surveillance_points=None,
+                show_calibration=False,
+                show_projection=True,
+                show_surveillance=True,
+                show_fitting_window_line=True,
+            ),
+            QuantilesOutputConfig(
+                type=QuantilesOutputTypeEnum.SIDE_BY_SIDE,
+                show_calibration=False,
+                show_projection=True,
+                show_surveillance=True,
+                show_fitting_window_line=True,
+                columns=4,
+                spacing=0.3,
+            ),
+        ],
+        description="List of output configurations to generate.",
+    )
+
+    # Shared settings
+    quantiles: list[float] = Field(
+        default_factory=get_quantile_ribbon_default,
+        description="Quantile levels for ribbons (default enabled: 95% CrI + IQR + median).",
+        validate_default=True,
+    )
+    horizon_max: int | None = Field(
+        3, description="Base maximum forecast horizon (weeks ahead). Can be overridden per output."
+    )
+
+    # Shared styling (data source and colors)
+    calibration: QuantilesCalibrationConfig | bool = Field(
+        default_factory=QuantilesCalibrationConfig,
+        description="Calibration period quantile ribbons (default enabled). Set true to use default options, or set options in subfields.",
+    )
+    projection: QuantilesProjectionConfig | bool = Field(
+        default_factory=QuantilesProjectionConfig,
+        description="Projection period quantile ribbons (default enabled). Set true to use default options, or set options in subfields.",
+    )
+
+    @field_validator("grid")
+    @classmethod
+    def validate_grid(cls, v: QuantilesGridConfig | bool) -> QuantilesGridConfig | bool:
+        """If passed True, use default factory."""
+        if v is True:
+            return QuantilesGridConfig()
+        return v
+
+    @field_validator("calibration")
+    @classmethod
+    def validate_calibration(cls, v: QuantilesCalibrationConfig | bool) -> QuantilesCalibrationConfig | bool:
+        """If passed True, use default factory."""
+        if v is True:
+            return QuantilesCalibrationConfig()
+        return v
+
+    @field_validator("projection")
+    @classmethod
+    def validate_projection(cls, v: QuantilesProjectionConfig | bool) -> QuantilesProjectionConfig | bool:
+        """If passed True, use default factory."""
+        if v is True:
+            return QuantilesProjectionConfig()
+        return v
+
+    @field_validator("quantiles")
+    @classmethod
+    def check_quantiles_valid(cls, v: list[float]) -> list[float]:
+        """Ensure quantiles are in [0, 1]."""
+        for q in v:
+            if not 0.0 <= q <= 1.0:
+                msg = f"Quantile {q} must be between 0 and 1"
+                raise ValueError(msg)
+        return v
+
+    @field_validator("single")
+    @classmethod
+    def validate_single_plot_locations(cls, v: list[str]):
+        """Validate each population name in the list."""
+        if isinstance(v, bool):
+            return v
+        validated_populations = [validate_iso3166(population) for population in v]
+        return validated_populations
+
+
+class PlotsConfig(BaseModel):
+    """Configuration for visualization plots."""
+
+    figure_output_types: list[FigureOutputTypeEnum] = Field(
+        default_factory=get_default_figure_output,
+        description="Output formats to create for all requested figure outputs.",
+    )
+    dpi: int | None = Field(150, description="DPI for raster formats.")
+
+    reference_date: date = Field(description="Forecast reference date for vertical line.")
+
+    posterior: PosteriorPlotConfig = Field(
+        default_factory=PosteriorPlotConfig,
+        description="Posterior distribution plot settings.",
+    )
+    quantiles: QuantilesPlotConfig = Field(
+        default_factory=QuantilesPlotConfig,
+        description="Quantile ribbon plot settings.",
+    )
+
+
+class OutputOptions(BaseModel):
+    """Shared options for output configuration."""
+
+    surveillance: dict[str, ObservedValuesConfig] | None = Field(
+        None,
+        description="Named surveillance data sources. Keys are source names, values are ObservedValuesConfig.",
+    )
+
+
 class OutputConfiguration(BaseModel):
     """Output configuration."""
 
@@ -159,10 +422,6 @@ class OutputConfiguration(BaseModel):
     tabular_output_types: list[TabularOutputTypeEnum] | None = Field(
         default_factory=get_default_tabular_output,
         description="Output formats to create for all requested tabular outputs.",
-    )
-    figure_output_types: list[FigureOutputTypeEnum] | None = Field(
-        default_factory=get_default_figure_output,
-        description="Output formats to create for all requested figure outputs.",
     )
 
     # Tabular outputs
@@ -186,6 +445,18 @@ class OutputConfiguration(BaseModel):
         default_factory=ModelMetaOutput, description="Specifications for parameter tracking / model metadata outputs."
     )
 
+    # Shared options
+    options: OutputOptions | None = Field(
+        None,
+        description="Shared options for outputs (e.g., surveillance data sources).",
+    )
+
+    # Plots
+    plots: PlotsConfig | None = Field(
+        None,
+        description="Visualization plot settings. Requires modelset config for inference.",
+    )
+
     @model_validator(mode="after")
     def check_formats(self):
         """Ensure output format selections are compatible."""
@@ -193,6 +464,78 @@ class OutputConfiguration(BaseModel):
 
         if len([1 for _ in hub_formats if bool(_)]) > 1:
             raise ValueError("Received specifications for more than one hub format.")
+
+        return self
+
+    @model_validator(mode="after")
+    def validate_surveillance_references(self):
+        """Ensure all surveillance_source references point to valid sources."""
+        # If no surveillance sources defined, check if any are referenced
+        if not self.options or not self.options.surveillance:
+            errors = []
+
+            # Check flusight_format
+            if self.flusight_format:
+                if self.flusight_format.rate_trends_source:
+                    errors.append(
+                        f"flusight_format.rate_trends_source='{self.flusight_format.rate_trends_source}' "
+                        "but no surveillance sources defined in output.options.surveillance"
+                    )
+                if self.flusight_format.prop_ed_source:
+                    errors.append(
+                        f"flusight_format.prop_ed_source='{self.flusight_format.prop_ed_source}' "
+                        "but no surveillance sources defined in output.options.surveillance"
+                    )
+
+            # Check plots.quantiles.outputs
+            if self.plots and self.plots.quantiles:
+                for i, output in enumerate(self.plots.quantiles.outputs):
+                    if output.surveillance_source:
+                        errors.append(
+                            f"plots.quantiles.outputs[{i}].surveillance_source='{output.surveillance_source}' "
+                            "but no surveillance sources defined in output.options.surveillance"
+                        )
+
+            if errors:
+                msg = "Surveillance source references without defined sources:\n" + "\n".join(
+                    f"  - {e}" for e in errors
+                )
+                raise ValueError(msg)
+
+            return self
+
+        # Surveillance sources defined - validate references exist
+        available_sources = set(self.options.surveillance.keys())
+        errors = []
+
+        # Check flusight_format
+        if self.flusight_format:
+            if (
+                self.flusight_format.rate_trends_source
+                and self.flusight_format.rate_trends_source not in available_sources
+            ):
+                errors.append(
+                    f"flusight_format.rate_trends_source='{self.flusight_format.rate_trends_source}' "
+                    f"not found in surveillance sources: {available_sources}"
+                )
+            if self.flusight_format.prop_ed_source and self.flusight_format.prop_ed_source not in available_sources:
+                errors.append(
+                    f"flusight_format.prop_ed_source='{self.flusight_format.prop_ed_source}' "
+                    f"not found in surveillance sources: {available_sources}"
+                )
+
+        # Check plots.quantiles.outputs
+        if self.plots and self.plots.quantiles:
+            for i, output in enumerate(self.plots.quantiles.outputs):
+                if output.surveillance_source and output.surveillance_source not in available_sources:
+                    errors.append(
+                        f"plots.quantiles.outputs[{i}].surveillance_source='{output.surveillance_source}' "
+                        f"not found in surveillance sources: {available_sources}"
+                    )
+
+        if errors:
+            msg = "Invalid surveillance source references:\n" + "\n".join(f"  - {e}" for e in errors)
+            raise ValueError(msg)
 
         return self
 

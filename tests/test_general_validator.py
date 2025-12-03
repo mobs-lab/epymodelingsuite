@@ -19,9 +19,10 @@ from epymodelingsuite.schema.general import (
 )
 from epymodelingsuite.schema.output import (
     FlusightForecastOutput,
-    FlusightRateTrends,
+    ObservedValuesConfig,
     OutputConfig,
     OutputConfiguration,
+    OutputOptions,
     QuantilesOutput,
     TrajectoriesOutput,
 )
@@ -334,6 +335,19 @@ class TestValidateTransitionList:
         names = []
         _validate_transition_list(names, base_transitions, "test.transitions")
 
+    def test_invalid_transitions_with_warn_only(self, caplog):
+        import logging
+
+        caplog.set_level(logging.WARNING)
+
+        base_transitions = {"S_to_I"}
+        names = ["S_to_I_total", "I_to_R_total"]
+
+        # Should not raise when warn_only=True, but should log a warning
+        _validate_transition_list(names, base_transitions, "test.transitions", warn_only=True)
+        assert "Transitions in test.transitions not defined in basemodel" in caplog.text
+        assert "I_to_R" in caplog.text
+
 
 class TestEnsureOutputReferencesValid:
     def test_valid_quantiles_compartments_list(self):
@@ -367,14 +381,20 @@ class TestEnsureOutputReferencesValid:
         )
         _ensure_output_references_valid(base_compartments, base_transitions, output)
 
-    def test_invalid_quantiles_transitions(self):
+    def test_invalid_quantiles_transitions_warns_only(self, caplog):
+        import logging
+
+        caplog.set_level(logging.WARNING)
+
         base_compartments = set()
         base_transitions = {"S_to_I"}
         output = OutputConfig(
             output=OutputConfiguration(quantiles=QuantilesOutput(transitions=["S_to_I_total", "I_to_R_total"]))
         )
-        with pytest.raises(ValueError, match="Transitions in quantiles.transitions not defined in basemodel"):
-            _ensure_output_references_valid(base_compartments, base_transitions, output)
+        # Should not raise, but should log a warning
+        _ensure_output_references_valid(base_compartments, base_transitions, output)
+        assert "Transitions in quantiles.transitions not defined in basemodel" in caplog.text
+        assert "I_to_R" in caplog.text
 
     def test_quantiles_transitions_boolean_true(self):
         base_compartments = set()
@@ -413,14 +433,20 @@ class TestEnsureOutputReferencesValid:
         )
         _ensure_output_references_valid(base_compartments, base_transitions, output)
 
-    def test_invalid_trajectories_transitions(self):
+    def test_invalid_trajectories_transitions_warns_only(self, caplog):
+        import logging
+
+        caplog.set_level(logging.WARNING)
+
         base_compartments = set()
         base_transitions = {"S_to_I"}
         output = OutputConfig(
             output=OutputConfiguration(trajectories=TrajectoriesOutput(transitions=["S_to_I_total", "I_to_R_total"]))
         )
-        with pytest.raises(ValueError, match="Transitions in trajectories.transitions not defined in basemodel"):
-            _ensure_output_references_valid(base_compartments, base_transitions, output)
+        # Should not raise, but should log a warning
+        _ensure_output_references_valid(base_compartments, base_transitions, output)
+        assert "Transitions in trajectories.transitions not defined in basemodel" in caplog.text
+        assert "I_to_R" in caplog.text
 
     def test_trajectories_transitions_boolean_true(self):
         base_compartments = set()
@@ -445,20 +471,66 @@ class TestEnsureOutputReferencesValid:
         )
         _ensure_output_references_valid(base_compartments, base_transitions, output)
 
+    def test_aggregated_transitions_allowed_in_quantiles(self, caplog):
+        """Test that aggregated transitions (not in basemodel) are allowed with warnings."""
+        import logging
+
+        caplog.set_level(logging.WARNING)
+
+        # Base model has transitions for both vaccinated and unvaccinated hospitalization
+        base_compartments = set()
+        base_transitions = {"Home_sev_to_Hosp", "Home_sev_vax_to_Hosp_vax"}
+
+        # Output config references an aggregated "hospitalization" transition that doesn't exist in basemodel
+        # This is valid because it will be created by summing multiple transitions during calibration
+        output = OutputConfig(
+            output=OutputConfiguration(quantiles=QuantilesOutput(transitions=["hospitalization_total"]))
+        )
+
+        # Should not raise, but should log a warning about the aggregated transition
+        _ensure_output_references_valid(base_compartments, base_transitions, output)
+        assert "Transitions in quantiles.transitions not defined in basemodel" in caplog.text
+        assert "hospitalization" in caplog.text
+
+    def test_aggregated_transitions_allowed_in_trajectories(self, caplog):
+        """Test that aggregated transitions (not in basemodel) are allowed with warnings."""
+        import logging
+
+        caplog.set_level(logging.WARNING)
+
+        # Base model has individual transitions
+        base_compartments = set()
+        base_transitions = {"I_to_R", "I_vax_to_R_vax"}
+
+        # Output config references an aggregated transition for both vaccinated and unvaccinated recovery
+        output = OutputConfig(
+            output=OutputConfiguration(trajectories=TrajectoriesOutput(transitions=["recovery_total"]))
+        )
+
+        # Should not raise, but should log a warning
+        _ensure_output_references_valid(base_compartments, base_transitions, output)
+        assert "Transitions in trajectories.transitions not defined in basemodel" in caplog.text
+        assert "recovery" in caplog.text
+
 
 class TestWarnMismatchedObservedDataPaths:
     def test_no_warning_when_calibration_is_none(self, caplog):
         output_config = OutputConfig(
             output=OutputConfiguration(
+                options=OutputOptions(
+                    surveillance={
+                        "hosp": ObservedValuesConfig(
+                            data_path="data/output.csv",
+                            value_column="value",
+                            date_column="date",
+                            location_column="location",
+                        )
+                    }
+                ),
                 flusight_format=FlusightForecastOutput(
                     reference_date="2024-01-01",
-                    rate_trends=FlusightRateTrends(
-                        observed_data_path="data/output.csv",
-                        observed_value_column="value",
-                        observed_date_column="date",
-                        observed_location_column="location",
-                    ),
-                )
+                    rate_trends_source="hosp",
+                ),
             )
         )
         _warn_mismatched_observed_data_paths(None, output_config)
@@ -470,11 +542,11 @@ class TestWarnMismatchedObservedDataPaths:
         _warn_mismatched_observed_data_paths(calibration, output_config)
         assert "Observed data paths differ" not in caplog.text
 
-    def test_no_warning_when_rate_trends_is_none(self, caplog):
+    def test_no_warning_when_rate_trends_source_is_none(self, caplog):
         calibration = SimpleNamespace(observed_data_path="data/calibration.csv")
         output_config = OutputConfig(
             output=OutputConfiguration(
-                flusight_format=FlusightForecastOutput(reference_date="2024-01-01", rate_trends=None)
+                flusight_format=FlusightForecastOutput(reference_date="2024-01-01", rate_trends_source=None)
             )
         )
         _warn_mismatched_observed_data_paths(calibration, output_config)
@@ -484,15 +556,20 @@ class TestWarnMismatchedObservedDataPaths:
         calibration = SimpleNamespace(observed_data_path="data/same.csv")
         output_config = OutputConfig(
             output=OutputConfiguration(
+                options=OutputOptions(
+                    surveillance={
+                        "hosp": ObservedValuesConfig(
+                            data_path="data/same.csv",
+                            value_column="value",
+                            date_column="date",
+                            location_column="location",
+                        )
+                    }
+                ),
                 flusight_format=FlusightForecastOutput(
                     reference_date="2024-01-01",
-                    rate_trends=FlusightRateTrends(
-                        observed_data_path="data/same.csv",
-                        observed_value_column="value",
-                        observed_date_column="date",
-                        observed_location_column="location",
-                    ),
-                )
+                    rate_trends_source="hosp",
+                ),
             )
         )
         _warn_mismatched_observed_data_paths(calibration, output_config)
@@ -506,18 +583,23 @@ class TestWarnMismatchedObservedDataPaths:
         calibration = SimpleNamespace(observed_data_path="data/calibration.csv")
         output_config = OutputConfig(
             output=OutputConfiguration(
+                options=OutputOptions(
+                    surveillance={
+                        "hosp": ObservedValuesConfig(
+                            data_path="data/output.csv",
+                            value_column="value",
+                            date_column="date",
+                            location_column="location",
+                        )
+                    }
+                ),
                 flusight_format=FlusightForecastOutput(
                     reference_date="2024-01-01",
-                    rate_trends=FlusightRateTrends(
-                        observed_data_path="data/output.csv",
-                        observed_value_column="value",
-                        observed_date_column="date",
-                        observed_location_column="location",
-                    ),
-                )
+                    rate_trends_source="hosp",
+                ),
             )
         )
         _warn_mismatched_observed_data_paths(calibration, output_config)
         assert "Observed data paths differ between configs" in caplog.text
         assert "calibration='data/calibration.csv'" in caplog.text
-        assert "output.flusight_format.rate_trends='data/output.csv'" in caplog.text
+        assert "rate_trends_source ('hosp')='data/output.csv'" in caplog.text

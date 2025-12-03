@@ -1,9 +1,10 @@
 import logging
+from collections.abc import Callable
 from datetime import date, timedelta
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, computed_field, field_validator, model_validator
 
 from ..utils import parse_timedelta, validate_iso3166
 from .common import DateParameter, Distribution, Meta
@@ -91,6 +92,9 @@ class ComparisonSpec(BaseModel):
 
     observed_value_column: str = Field(description="Name of column containing observed values in observed data CSV")
     observed_date_column: str = Field(description="Name of column containing target dates in observed data CSV")
+    observed_location_column: str = Field(
+        default="geo_value", description="Name of column containing location identifiers in observed data CSV"
+    )
     simulation: list[str] = Field(description="List of transition names to sum for comparison (e.g. I_to_R)")
 
 
@@ -116,13 +120,48 @@ class FittingWindow(BaseModel):
         return self
 
 
+class UserDefinedFunction(BaseModel):
+    """
+    Specifications for user-defined functions (i.e. custom distance function, or post-hoc transformation function).
+    Functions will be imported from the specified script and applied within the simulate wrapper.
+    """
+
+    user_script_path: str = Field(description="Path to script containing user-defined functions.")
+    user_function_name: str = Field(description="Name of function to import from the supplied script.")
+
+    @computed_field
+    @property
+    def user_function(self) -> Callable:
+        """Import the user defined function and populate a computed field in the schema model."""
+        import sys
+        import types
+        from importlib import import_module
+        from importlib.machinery import SourceFileLoader
+
+        try:
+            module_name = "user_defined_module"
+            loader = SourceFileLoader(module_name, self.user_script_path)
+            code = loader.get_code(module_name)
+            new_module = types.ModuleType(loader.name)
+            exec(code, new_module.__dict__)
+            sys.modules[module_name] = new_module
+            module = import_module(module_name)
+            user_func = getattr(module, self.user_function_name)
+        except Exception as e:
+            raise RuntimeError(f"Error loading user-defined function {self.user_function_name}: {e}")
+        return user_func
+
+
 class CalibrationConfiguration(BaseModel):
     """Calibration configuration section."""
 
     strategy: CalibrationStrategy = Field(description="Calibration strategy configuration")
+    post_hoc_transformation: UserDefinedFunction | None = Field(
+        None, description="Transformation function to apply to simulation results."
+    )
 
     # Sampler options, passed directly when initializing ABCSampler
-    distance_function: str = Field("rmse", description="Distance function for comparing data")
+    distance_function: str | UserDefinedFunction = Field("rmse", description="Distance function for comparing data")
     observed_data_path: str = Field(description="Path to observed data CSV file")
     comparison: list[ComparisonSpec] = Field(description="Specifications for data comparison")
 

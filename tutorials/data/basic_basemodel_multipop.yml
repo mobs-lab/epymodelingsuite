@@ -1,22 +1,23 @@
 model:
   meta:
-    description: "Example SLIR model for calibration workflow"
+    description: "Example SLIR model for simple workflow"
     author: "epymodelingsuite"
     version: "0.0.1"
     date: "2038-01-19"
     
-  name: "example_SLIR_calibration"
+  name: "example_SLIR_standalone"
   random_seed: 42
 
   timespan:
-    start_date: calibrated
+    start_date: "2024-08-05"
     end_date: "2025-08-05"
     delta_t: 0.2
 
   simulation:
     resample_frequency: W-SAT
-    
-  population: # no population name provided, specify in modelset
+    n_sims: 10
+
+  population:
     age_groups:
       - "0-4"
       - "5-17"
@@ -32,11 +33,10 @@ model:
       label: "Latent"
       # number of individuals
       init: 10
-      # proportion of population
-      #init: 0.05
     - id: I
       label: "Infectious"
-      init: calibrated
+      # proportion of population
+      init: 0.02
     - id: R
       label: "Recovered"
     - id: S_vax
@@ -94,9 +94,10 @@ model:
   parameters:
     beta:
       type: scalar
-      value: 0.3
+      value: 0.2
     eps:
-      type: calibrated
+      type: scalar
+      value: 1/1.5
     mu:
       type: scalar
       value: 1/1.5

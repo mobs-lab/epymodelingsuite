@@ -20,9 +20,6 @@ dependencies = [
     "matplotlib",
     "pydantic",
     "pyyaml",
-    "sphinx",
-    "sphinx-pyproject",
-    "autodoc_pydantic",
     "psutil",
     "sodapy",
     "epiweeks",
@@ -45,6 +42,7 @@ dev = [
     "sphinx",
     "sphinx-pyproject",
     "autodoc_pydantic",
+    "myst-parser",
 ]
 
 [project.urls]
@@ -58,6 +56,8 @@ packages = [
     "epymodelingsuite.dispatcher",
     "epymodelingsuite.utils",
     "epymodelingsuite.data",
+    "epymodelingsuite.visualization",
+    "epymodelingsuite.telemetry",
 ]
 include-package-data = true
 
@@ -69,6 +69,7 @@ extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",
+    "myst_parser",
 ]
 apidoc_modules = [
     {"path" = "../epymodelingsuite", "destination"= "source/", "max_depth" = 10, "separate_modules" = true},
