@@ -12,6 +12,7 @@ from epydemix.calibration import CalibrationResults
 
 from ..schema.dispatcher import CalibrationOutput, SimulationOutput
 from ..schema.output import (
+    FlusightPropED,
     ObservedValuesConfig,
     OutputConfig,
     OutputObject,
