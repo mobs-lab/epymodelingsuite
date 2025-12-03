@@ -185,7 +185,8 @@ def format_quantiles_flusightforecast(quantiles_df: pd.DataFrame, reference_date
 
     # Name and format remaining fields
     # FRAGILE: the name 'hospitalizations' is user-supplied in the modelset as the column to look for in the surveillance data.
-    formatted.hospitalizations = formatted.hospitalizations.round().astype(int)
+    # Use nullable integer dtype to handle potential NaN values
+    formatted.hospitalizations = formatted.hospitalizations.round().astype("Int64")
     formatted.rename(
         columns={"date": "target_end_date", "hospitalizations": "value", "quantile": "output_type_id"}, inplace=True
     )
