@@ -234,21 +234,21 @@ def fetch_nssp_edvisits(
 
     # Build query
     if query_start_date:
-        where_clause = f"weekendingdate >= '{query_start_date}'"
+        where_clause = f"week_end >= '{query_start_date}'"
         results = client.get(dataset_id, where=where_clause, limit=100000)
     else:
         results = client.get(dataset_id, limit=100000)
 
     # Convert to pandas DataFrame
     data = pd.DataFrame.from_records(results)
-    data = data[["weekendingdate", "jurisdiction", "totalconfflunewadm"]]
+    data = data[["week_end", "geography", "percent_visits_influenza"]]
 
     # Process dates and epiweeks
-    data["target_end_date"] = pd.to_datetime(data["weekendingdate"])
+    data["target_end_date"] = pd.to_datetime(data["week_end"])
     data["epiweek"] = data["target_end_date"].apply(lambda key: int(epiweeks.Week.fromdate(key).cdcformat()))
 
-    # Rename totalconfflunewadm and process it
-    data["hospitalizations"] = data["totalconfflunewadm"].fillna(0).astype(float)
+    # Rename percent_visits_influenza and process it
+    data["prop_ed_visits"] = data["percent_visits_influenza"].fillna(0).astype(float)
 
     # Load location mapping
     locations = get_flusight_locations()
