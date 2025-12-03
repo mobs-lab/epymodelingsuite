@@ -264,23 +264,23 @@ def categorize_rate_change_flusightforecast(
     assert -rate_population_scale <= rate_change <= rate_population_scale, msg
 
     if horizon == 0:
-        stable_thres = 0.3 / rate_population_scale
-        change_thres = 1.7 / rate_population_scale
+        stable_thres = 0.3
+        change_thres = 1.7
         return compare_thresholds_flusightforecast(stable_thres, change_thres, rate_change, count_change)
 
     if horizon == 1:
-        stable_thres = 0.5 / rate_population_scale
-        change_thres = 3 / rate_population_scale
+        stable_thres = 0.5
+        change_thres = 3
         return compare_thresholds_flusightforecast(stable_thres, change_thres, rate_change, count_change)
 
     if horizon == 2:
-        stable_thres = 0.7 / rate_population_scale
-        change_thres = 4 / rate_population_scale
+        stable_thres = 0.7
+        change_thres = 4
         return compare_thresholds_flusightforecast(stable_thres, change_thres, rate_change, count_change)
 
     if horizon == 3:
-        stable_thres = 1 / rate_population_scale
-        change_thres = 5 / rate_population_scale
+        stable_thres = 1
+        change_thres = 5
         return compare_thresholds_flusightforecast(stable_thres, change_thres, rate_change, count_change)
 
     msg = f"Received invalid horizon {horizon}."
