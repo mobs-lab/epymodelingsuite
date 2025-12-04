@@ -561,7 +561,7 @@ def prop_ed_calibration_window(
     prop_ed_list = []
     for loc in pred_hosp.location.unique():
         # Filter forecasts and observations
-        filt_pred_hosp = pred_hosp[(pred_hosp.location == loc) & (pred_hosp.output_type == "quantile")]
+        filt_pred_hosp = pred_hosp[(pred_hosp.location == loc) & (pred_hosp.output_type == "quantile")].copy(deep=True)
         filt_obs_ed = (
             obs_ed_df[
                 (obs_ed_df[obs_ed.location_column] == loc)
