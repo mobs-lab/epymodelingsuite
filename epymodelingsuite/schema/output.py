@@ -146,6 +146,47 @@ class FlusightPropED(BaseModel):
     )
 
     # TODO: validators
+    @model_validator(mode="after")
+    def check_strategy_args(self):
+        """Ensure appropriate arguments are provided for each strategy."""
+        match self.strategy:
+            case RescaleStrategyEnum.surveillance_window:
+                # This should be impossible
+                assert self.ed_source, "Missing 'ed_source'."
+                # Ensure source present
+                if not self.hosp_source:
+                    msg = "Prop ED strategy 'surveillance_window' requires field 'hosp_source'"
+                    raise ValueError(msg)
+                # Ensure window specified and valid
+                if not (bool(self.fit_start) and bool(self.fit_end)):
+                    msg = "Prop ED strategy 'surveillance_window' requires fields 'fit_start' and 'fit_end'"
+                    raise ValueError(msg)
+                if not self.fit_start <= self.fit_end:
+                    msg = f"Received fit_start: {self.fit_start} > fit_end: {self.fit_end}"
+                    raise ValueError(msg)
+                # Warn unused field
+                if self.num_fit_weeks is not None:
+                    msg = "Received unused 'num_fit_weeks' with prop ED strategy 'surveillance_window'; ignoring."
+                    logger.warning(msg)
+            case RescaleStrategyEnum.calibration_window:
+                # This should be impossible
+                assert self.ed_source, "Missing 'ed_source'."
+                # Ensure window specified
+                if self.num_fit_weeks is None:
+                    msg = "Prop ED strategy 'calibration_window' requires field 'num_fit_weeks'"
+                    raise ValueError(msg)
+                # Warn unused fields
+                if bool(self.fit_start) or bool(self.fit_end):
+                    msg = (
+                        "Received unused 'fit_start' or 'fit_end' with prop ED strategy 'calibration_window'; ignoring."
+                    )
+                    logger.warning(msg)
+                if self.hosp_source:
+                    msg = "Received unused 'hosp_source' with prop ED strategy 'calibration_window'; ignoring."
+            case _:
+                msg = f"Received invalid/unimplemented strategy {_}"
+                raise ValueError(msg)
+        return self
 
 
 class FlusightForecastOutput(BaseModel):
