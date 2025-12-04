@@ -42,6 +42,7 @@ class DateParameter(BaseModel):
 class Meta(BaseModel):
     """General metadata section."""
 
+    id: str | None = Field(None, description="ID of the configuration.")
     description: str | None = Field(None, description="Description of the experiment / configurations.")
     author: str | None = Field(None, description="Author of the experiment / configurations.")
     version: str | float | None = Field(None, description="Version of the experiment / configurations.")
