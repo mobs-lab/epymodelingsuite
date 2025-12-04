@@ -188,7 +188,7 @@ def fetch_nssp_edvisits(
             End date of the epidemiological week
         - epiweek : int
             MMWR epidemiological week in CDC format (YYYYWW)
-        - prop_ed : float
+        - prop_ed_visits : float
             Proportion of ED visits attributed to flu
 
     Examples
@@ -241,6 +241,7 @@ def fetch_nssp_edvisits(
 
     # Convert to pandas DataFrame
     data = pd.DataFrame.from_records(results)
+    data = data[data.county == "All"]
     data = data[["week_end", "geography", "percent_visits_influenza"]]
 
     # Process dates and epiweeks
@@ -254,30 +255,31 @@ def fetch_nssp_edvisits(
     locations = get_flusight_locations()
 
     # Handle USA (national level) separately
-    usa_mask = data["jurisdiction"] == "USA"
+    usa_mask = data["geography"] == "United States"
     data.loc[usa_mask, "location_iso"] = "US"
     data.loc[usa_mask, "location_code"] = "US"
 
     # Merge with locations to get FIPS codes and ISO codes for states
     data = data.merge(
-        locations[["abbreviation", "location"]],
-        left_on="jurisdiction",
-        right_on="abbreviation",
+        locations[["abbreviation", "location", "location_name"]],
+        left_on="geography",
+        right_on="location_name",
         how="left",
     )
 
     # Create ISO location codes for states (only where not already set)
     state_mask = data["location_iso"].isna()
     data.loc[state_mask, "location_iso"] = "US-" + data.loc[state_mask, "abbreviation"]
+
     data.loc[state_mask, "location_code"] = data.loc[state_mask, "location"]
 
     # Filter out territories and HHS regions (keep only states, DC, and USA)
     territories = ["AS", "GU", "MP", "PR", "VI"]
     data = data[data["location_iso"].notna()]
-    data = data[~data["jurisdiction"].isin(territories)]
+    data = data[~data["location"].isin(territories)]
 
     # Select final columns
-    data = data[["location_iso", "location_code", "target_end_date", "epiweek", "hospitalizations"]]
+    data = data[["location_iso", "location_code", "target_end_date", "epiweek", "prop_ed_visits"]]
 
     # Sort by location code and date
     data = data.sort_values(["location_code", "target_end_date"]).reset_index(drop=True)
