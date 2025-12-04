@@ -544,7 +544,8 @@ def prop_ed_calibration_window(
     calibration_quantiles: pd.DataFrame | None
         Quantiles from the calibration fitting window
     num_fit_weeks: int
-        Number of weeks for rescaling factor fitting window, extending back from the end of the calibration fitting window
+        Number of weeks for rescaling factor fitting window,
+        extending back from the end of the calibration fitting window
 
     Returns
     -------
@@ -556,7 +557,7 @@ def prop_ed_calibration_window(
 
     # Resolve fitting windows
     fit_end = calibration_quantiles.date.max()
-    fit_start = fit_end - timedelta(weeks=num_fit_weeks)
+    fit_start = fit_end - timedelta(weeks=num_fit_weeks-1)
     calibration_window = calibration_quantiles[
         (calibration_quantiles.date >= pd.to_datetime(fit_start)) & (calibration_quantiles["quantile"] == 0.5)
     ].rename(columns={"data": "value_pred"})
