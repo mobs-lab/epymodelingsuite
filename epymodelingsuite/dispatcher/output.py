@@ -255,17 +255,12 @@ def categorize_rate_change_flusightforecast(
         The difference between the last observed count and the simulated count (diff = simulated - observed).
     horizon : int
         The horizon on which the simulated changes are calculated.
-    rate_population_scale: int
-        Rates will be calculated per {rate_population_scale} population.
 
     Returns
     -------
     str
         A string representing the category of the rate-change ("stable", "increase", "large_increase", "decrease", "large_decrease").
     """
-    msg = f"Received invalid rate-change {rate_change} for rate per {rate_population_scale} population."
-    assert -rate_population_scale <= rate_change <= rate_population_scale, msg
-
     if horizon == 0:
         stable_thres = 0.3
         change_thres = 1.7
@@ -557,7 +552,7 @@ def prop_ed_calibration_window(
 
     # Resolve fitting windows
     fit_end = calibration_quantiles.date.max()
-    fit_start = fit_end - timedelta(weeks=num_fit_weeks-1)
+    fit_start = fit_end - timedelta(weeks=num_fit_weeks - 1)
     calibration_window = calibration_quantiles[
         (calibration_quantiles.date >= pd.to_datetime(fit_start)) & (calibration_quantiles["quantile"] == 0.5)
     ].rename(columns={"data": "value_pred"})
