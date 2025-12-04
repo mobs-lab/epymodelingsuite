@@ -1,4 +1,5 @@
 import logging
+from datetime import timedelta
 
 from ..utils.common import parse_transition_name, strip_agegroup_suffix, to_set
 from .basemodel import BasemodelConfig
@@ -265,6 +266,64 @@ def _warn_mismatched_observed_data_paths(
         )
 
 
+def _compare_prop_ed_window_against_calibration_window(
+    calibration: CalibrationConfiguration | None, output_config: OutputConfig
+) -> None:
+    """
+    Ensure
+
+    Parameters
+    ----------
+    calibration : CalibrationConfiguration or None
+        Calibration configuration, if present.
+    output_config : OutputConfig
+        Output configuration to check.
+    """
+    # Only check if we have both calibration config and FluSight prop ED output
+    if calibration is None:
+        return
+
+    output = output_config.output
+    if output.flusight_format is None or output.flusight_format.prop_ed is None:
+        return
+
+    # Collect calibration window
+    calibration_end = calibration.fitting_window.end_date
+    calibration_start = calibration.fitting_window.start_date
+
+    # calibration_window strategy
+    if output.flusight_format.prop_ed.strategy == "calibration_window":
+        rescale_start = calibration_end - timedelta(weeks=output.flusight_format.prop_ed.num_fit_weeks - 1)
+
+        # Validate
+        if rescale_start < calibration_start:
+            msg = (
+                f"Received flusight_format.prop_ed.num_fit_weeks: {output.flusight_format.prop_ed.num_fit_weeks}"
+                f"Resulting in a rescaling factor fit start: {rescale_start}"
+                f"Rescaling factor fit start cannot be earlier than calibration.fitting_window.start_date: {calibration_start}"
+            )
+            raise ValueError(msg)
+
+    # surveillance_window strategy
+    if output.flusight_format.prop_ed.strategy == "surveillance_window":
+        rescale_start = output.flusight_format.prop_ed.fit_start
+        rescale_end = output.flusight_format.prop_ed.fit_end
+
+        # Validate
+        if (
+            (rescale_start < calibration_start)
+            or (rescale_start > calibration_end)
+            or (rescale_end > calibration_end)
+            or (rescale_end < calibration_start)
+        ):
+            msg = (
+                f"Received flusight_format.prop_ed.fit_start: {rescale_start} and fit_end: {rescale_end}"
+                f"Received calibration.fitting_window.start_date: {calibration_start} and end_date: {calibration_end}"
+                "Prop ED rescaling factor must not extend beyond the calibration fitting window."
+            )
+            raise ValueError(msg)
+
+
 def validate_cross_config_consistency(
     base_config: BasemodelConfig,
     modelset_config: SamplingConfig | CalibrationConfig,
@@ -349,5 +408,8 @@ def validate_cross_config_consistency(
 
         # Warn if observed data paths differ between calibration and output configs
         _warn_mismatched_observed_data_paths(calibration, output_config)
+
+        # Ensure prop ed fitting window contained by calibration fitting window
+        _compare_prop_ed_window_against_calibration_window(calibration, output_config)
 
     logger.info("Config consistency validated successfully.")
