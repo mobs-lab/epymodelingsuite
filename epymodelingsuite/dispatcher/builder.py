@@ -448,9 +448,10 @@ def build_calibration(
     observed_in_window = get_data_in_window(observed_raw, calibration)
     calibrators = []
     location_column = calibration.comparison[0].observed_location_column
+    location_format = calibration.comparison[0].observed_location_format
 
     for model in models:
-        observed_data = get_data_in_location(observed_in_window, model.population.name, location_column)
+        observed_data = get_data_in_location(observed_in_window, model.population.name, location_column, location_format)
         vax_state = (
             get_data_in_location(earliest_vax, model.population.name, "location") if earliest_vax is not None else None
         )

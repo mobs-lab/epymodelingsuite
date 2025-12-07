@@ -95,6 +95,10 @@ class ComparisonSpec(BaseModel):
     observed_location_column: str = Field(
         default="geo_value", description="Name of column containing location identifiers in observed data CSV"
     )
+    observed_location_format: str = Field(
+        default="ISO",
+        description="Format of location identifiers in observed data. Options: ISO, FIPS, abbreviation, name, epydemix_population",
+    )
     simulation: list[str] = Field(description="List of transition names to sum for comparison (e.g. I_to_R)")
 
 
