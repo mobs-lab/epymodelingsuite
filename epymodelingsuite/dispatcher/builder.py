@@ -70,19 +70,24 @@ def count_nans_at_start(arr: np.ndarray) -> int:
     int
         The number of NaNs found prepended to the array.
     """
+    # Handle empty array case
+    if arr.size == 0:
+        return 0
+
     # Create a boolean mask for NaN values
     mask = np.isnan(arr)
 
-    # Find the index of the first non-NaN value
-    first_non_nan_index = np.argmax(~mask)
-
-    # If no values are NaN, return 0
-    # If all, return len(arr)
+    # If all values are NaN, return len(arr)
     if mask.all():
         return len(arr)
-    if mask.any():
-        return first_non_nan_index
-    return 0
+
+    # If no values are NaN, return 0
+    if not mask.any():
+        return 0
+
+    # Find the index of the first non-NaN value
+    first_non_nan_index = np.argmax(~mask)
+    return first_non_nan_index
 
 
 def dist_func_date_alignment_wrapper(dist_func: Callable) -> Callable:
