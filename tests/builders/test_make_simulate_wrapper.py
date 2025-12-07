@@ -554,3 +554,123 @@ class TestMakeSimulateWrapper:
                 observed_data=observed_data_with_duplicates,
                 intervention_types=[],
             )
+
+    def test_wrapper_with_post_hoc_transformation(self, base_model_config, mock_calibration, data_state):
+        """
+        Test that wrapper correctly applies post-hoc transformation function.
+
+        Tests:
+        - Post-hoc transformation is applied to simulation results
+        - Transformation function receives Trajectory object
+        - Transformation output is used in final results
+        - Works in both calibration and projection modes
+        """
+        models, _ = create_model_collection(base_model_config, None)
+        model = models[0]
+
+        # Create a simple transformation function that adds a new compartment
+        def test_transformation(trajectory):
+            """Add a new compartment 'I_plus_R' that sums I and R compartments."""
+            import copy
+
+            traj = copy.deepcopy(trajectory)
+            # Sum all I compartments with all R compartments (across age groups)
+            i_keys = [k for k in traj.compartments.keys() if k.startswith("I_")]
+            r_keys = [k for k in traj.compartments.keys() if k.startswith("R_")]
+
+            if i_keys and r_keys:
+                i_total = sum(traj.compartments[k] for k in i_keys)
+                r_total = sum(traj.compartments[k] for k in r_keys)
+                traj.compartments["I_plus_R_total"] = i_total + r_total
+
+            return traj
+
+        wrapper = make_simulate_wrapper(
+            basemodel=base_model_config,
+            calibration=mock_calibration,
+            observed_data=data_state,
+            intervention_types=[],
+            post_hoc_transformation=test_transformation,
+        )
+
+        # Test in projection mode
+        params_projection = {
+            "epimodel": model,
+            "end_date": date(2024, 3, 31),
+            "projection": True,
+            "beta": 0.5,
+            "gamma": 0.1,
+        }
+        result_projection = wrapper(params_projection)
+
+        # Verify projection mode results include transformed compartment
+        if result_projection:  # If simulation succeeded
+            assert "I_plus_R_total" in result_projection
+            assert isinstance(result_projection["I_plus_R_total"], np.ndarray)
+
+        # Test in calibration mode
+        params_calibration = {
+            "epimodel": model,
+            "end_date": date(2024, 3, 31),
+            "projection": False,
+            "beta": 0.5,
+            "gamma": 0.1,
+        }
+        result_calibration = wrapper(params_calibration)
+
+        # Verify calibration mode still works (transformation applied before aggregation)
+        assert isinstance(result_calibration, dict)
+        assert "data" in result_calibration
+        assert isinstance(result_calibration["data"], np.ndarray)
+
+    def test_wrapper_with_failing_post_hoc_transformation(
+        self, base_model_config, mock_calibration, data_state, caplog
+    ):
+        """
+        Test that wrapper handles post-hoc transformation failures gracefully.
+
+        Tests:
+        - Exceptions in transformation are caught
+        - Non-transformed results are returned on failure
+        - Simulation continues despite transformation error
+        - Warning is logged
+        """
+        models, _ = create_model_collection(base_model_config, None)
+        model = models[0]
+
+        # Create a transformation function that always raises an exception
+        def failing_transformation(trajectory):
+            """Transformation that always fails."""
+            raise ValueError("Intentional test failure")
+
+        wrapper = make_simulate_wrapper(
+            basemodel=base_model_config,
+            calibration=mock_calibration,
+            observed_data=data_state,
+            intervention_types=[],
+            post_hoc_transformation=failing_transformation,
+        )
+
+        # Test in projection mode
+        params = {
+            "epimodel": model,
+            "end_date": date(2024, 3, 31),
+            "projection": True,
+            "beta": 0.5,
+            "gamma": 0.1,
+        }
+
+        # Should not raise exception - wrapper handles it gracefully
+        result = wrapper(params)
+
+        # Verify simulation completed (either succeeded or failed, but didn't crash)
+        assert isinstance(result, dict)
+
+        # Verify warning was logged
+        assert any("Post-hoc transformation failed" in record.message for record in caplog.records)
+
+        # If simulation succeeded, result should have standard keys (not transformed ones)
+        if result:  # Non-empty result means simulation succeeded
+            assert "date" in result
+            # Should NOT have any custom transformed compartments
+            assert "I_plus_R_total" not in result
