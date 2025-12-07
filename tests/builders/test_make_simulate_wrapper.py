@@ -674,3 +674,140 @@ class TestMakeSimulateWrapper:
             assert "date" in result
             # Should NOT have any custom transformed compartments
             assert "I_plus_R_total" not in result
+
+    def test_wrapper_with_post_hoc_transformation_receives_context(
+        self, base_model_config, mock_calibration, data_state
+    ):
+        """
+        Test that post-hoc transformation function receives context dict.
+
+        Tests:
+        - Transformation function is called with context keyword argument
+        - context contains expected keys (params, basemodel, timespan, observed_data, etc.)
+        - Function can access calibrated parameter values via context['params']
+        - Function can access model config via context['basemodel']
+        - Function can access actual dates via context['timespan']
+        - Works with optional context argument (backward compatible)
+        """
+        models, _ = create_model_collection(base_model_config, None)
+        model = models[0]
+
+        # Track what context was passed to the transformation
+        captured_context = {}
+
+        def context_aware_transformation(trajectory, context=None):
+            """Transformation that captures context for inspection."""
+            import copy
+
+            # Capture context for testing
+            if context is not None:
+                captured_context.update(context)
+
+            traj = copy.deepcopy(trajectory)
+            # Use context if available
+            if context:
+                beta = context["params"].get("beta", 0)
+                location = context["location"]
+                # Add compartment with info from context
+                traj.compartments["test_compartment"] = traj.compartments["S_total"] * beta
+
+            return traj
+
+        wrapper = make_simulate_wrapper(
+            basemodel=base_model_config,
+            calibration=mock_calibration,
+            observed_data=data_state,
+            intervention_types=[],
+            post_hoc_transformation=context_aware_transformation,
+        )
+
+        # Run in projection mode
+        params = {
+            "epimodel": model,
+            "end_date": date(2024, 3, 31),
+            "projection": True,
+            "beta": 0.6,
+            "gamma": 0.1,
+        }
+        result = wrapper(params)
+
+        # Verify context was passed
+        assert captured_context, "Context should have been passed to transformation function"
+
+        # Verify context has expected keys
+        assert "params" in captured_context
+        assert "basemodel" in captured_context
+        assert "timespan" in captured_context
+        assert "observed_data" in captured_context
+        assert "intervention_types" in captured_context
+        assert "projection" in captured_context
+        assert "location" in captured_context
+
+        # Verify context content
+        assert captured_context["params"]["beta"] == 0.6
+        assert captured_context["params"]["gamma"] == 0.1
+        assert captured_context["params"]["projection"] is True
+        assert captured_context["projection"] is True
+        # Location name is transformed from "US-CA" to "United_States_California"
+        assert captured_context["location"] == "United_States_California"
+        assert isinstance(captured_context["basemodel"], BaseEpiModel)
+        assert isinstance(captured_context["timespan"], Timespan)
+        assert isinstance(captured_context["observed_data"], pd.DataFrame)
+        assert isinstance(captured_context["intervention_types"], list)
+
+        # Verify transformation still worked
+        if result:
+            assert "test_compartment" in result
+
+    def test_wrapper_with_post_hoc_transformation_without_context_arg(
+        self, base_model_config, mock_calibration, data_state
+    ):
+        """
+        Test that transformation functions without context argument still work.
+
+        Tests:
+        - Functions with basic signature (only accepting trajectory) continue to work
+        - No error when function doesn't accept context keyword
+        - TypeError is caught and function is retried without context
+        - Backward compatibility is maintained
+        """
+        models, _ = create_model_collection(base_model_config, None)
+        model = models[0]
+
+        # Track that the function was called
+        call_count = {"count": 0}
+
+        def basic_transformation(trajectory):
+            """Transformation with basic signature that doesn't accept context."""
+            import copy
+
+            call_count["count"] += 1
+            traj = copy.deepcopy(trajectory)
+            traj.compartments["basic_compartment"] = traj.compartments["S_total"] * 2
+            return traj
+
+        wrapper = make_simulate_wrapper(
+            basemodel=base_model_config,
+            calibration=mock_calibration,
+            observed_data=data_state,
+            intervention_types=[],
+            post_hoc_transformation=basic_transformation,
+        )
+
+        # Run in projection mode
+        params = {
+            "epimodel": model,
+            "end_date": date(2024, 3, 31),
+            "projection": True,
+            "beta": 0.5,
+            "gamma": 0.1,
+        }
+        result = wrapper(params)
+
+        # Verify function was called
+        assert call_count["count"] > 0, "Transformation function should have been called"
+
+        # Verify transformation still worked despite not accepting context
+        if result:
+            assert "basic_compartment" in result
+            assert isinstance(result["basic_compartment"], np.ndarray)
