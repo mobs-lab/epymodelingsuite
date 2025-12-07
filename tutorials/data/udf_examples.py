@@ -1,6 +1,7 @@
 ## udf_examples.py
 # Dummy examples for User-Defined Functions
 import copy
+from typing import Dict
 
 from epydemix.calibration import rmse
 from epydemix.model.simulation_output import Trajectory
