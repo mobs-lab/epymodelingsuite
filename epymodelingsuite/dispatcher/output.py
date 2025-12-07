@@ -1321,7 +1321,7 @@ def generate_calibration_outputs(
         )
 
     # Covid19 Forecast Hub
-    elif output.quantiles.covid19_format:
+    elif output.covid19_format:
         pass
 
     ### Model Metadata
