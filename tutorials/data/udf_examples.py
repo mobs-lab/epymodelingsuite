@@ -14,7 +14,7 @@ def udf_distance(data: Dict, simulation: Dict):
 
 def udf_transform(trajectory: Trajectory, context: dict | None = None):
     """
-    Dummy post-hoc transformation function that records a new compartment.
+    Dummy post-hoc transformation function that adds new compartments and transitions.
 
     Parameters
     ----------
@@ -33,10 +33,16 @@ def udf_transform(trajectory: Trajectory, context: dict | None = None):
     Returns
     -------
     Trajectory
-        Modified trajectory with additional compartment
+        Modified trajectory with additional compartments and transitions
 
     Examples
     --------
+    Adding new compartments:
+        >>> traj.compartments["Combined"] = traj.compartments["S_total"] + traj.compartments["I_total"]
+
+    Adding new transitions:
+        >>> traj.transitions["Total_flow"] = traj.transitions["S_to_I_total"] + traj.transitions["I_to_R_total"]
+
     Access calibrated parameters:
         >>> if context:
         ...     beta = context['params'].get('beta', 0)
@@ -45,17 +51,24 @@ def udf_transform(trajectory: Trajectory, context: dict | None = None):
         ...         pass
 
     Location-specific transformations:
-        >>> if context and context['location'] == 'US-CA':
+        >>> if context and context['location'] == 'United_States_California':
         ...     # California-specific transformation
         ...     pass
 
     Mode-dependent transformations:
         >>> if context and context['projection']:
-        ...     # Only add extra compartments in projection mode
+        ...     # Only add extra outputs in projection mode
         ...     pass
     """
     traj = copy.deepcopy(trajectory)
+
+    # Add new compartment (sum of existing compartments)
     traj.compartments["Dummy_S+L"] = traj.compartments["S_total"] + traj.compartments["L_total"]
+
+    # Add new transition (you can combine or derive from existing transitions)
+    # Note: Only add if the source transitions exist
+    if "S_to_I_total" in traj.transitions and "I_to_R_total" in traj.transitions:
+        traj.transitions["Dummy_total_flow"] = traj.transitions["S_to_I_total"] + traj.transitions["I_to_R_total"]
 
     # Example: Use context if provided
     if context:
