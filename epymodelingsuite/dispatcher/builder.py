@@ -429,10 +429,8 @@ def build_calibration(
     # using the earliest start_date before creating ABCSamplers.
     models = setup_interventions(models, basemodel, intervention_types, sampled_start_timespan)
 
-    # Collect user-defined post-hoc transformation function
+    # Extract UDF functions (now wrapped in PicklableFunction for correct serialization)
     post_hoc_func = calibration.post_hoc_transformation.user_function if calibration.post_hoc_transformation else None
-
-    # Collect user-defined distance function
     dist_func = (
         dist_func_dict[calibration.distance_function]
         if isinstance(calibration.distance_function, str)

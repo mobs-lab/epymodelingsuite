@@ -149,7 +149,11 @@ class UserDefinedFunction(BaseModel):
     @computed_field
     @property
     def user_function(self) -> Callable:
-        """Import the user defined function and populate a computed field in the schema model."""
+        """
+        Import the user defined function and populate a computed field in the schema model.
+
+        Returns a PicklableFunction wrapper that can be serialized and deserialized correctly.
+        """
         import sys
         import types
         from importlib import import_module
@@ -164,9 +168,56 @@ class UserDefinedFunction(BaseModel):
             sys.modules[module_name] = new_module
             module = import_module(module_name)
             user_func = getattr(module, self.user_function_name)
+
+            # Wrap in a picklable function class
+            return PicklableFunction(self.user_script_path, self.user_function_name, user_func)
         except Exception as e:
             raise RuntimeError(f"Error loading user-defined function {self.user_function_name}: {e}")
-        return user_func
+
+
+class PicklableFunction:
+    """
+    Wrapper for user-defined functions that handles pickling/unpickling correctly.
+
+    When pickled, stores the script path and function name instead of the function object.
+    When unpickled, reloads the function from the script file.
+    """
+
+    def __init__(self, script_path: str, function_name: str, func: Callable):
+        self.script_path = script_path
+        self.function_name = function_name
+        self._func = func
+
+    def __call__(self, *args, **kwargs):
+        """Call the wrapped function."""
+        return self._func(*args, **kwargs)
+
+    def __reduce__(self):
+        """Custom pickle protocol: store path and name, reload on unpickle."""
+        return (_reload_picklable_function, (self.script_path, self.function_name))
+
+
+def _reload_picklable_function(script_path: str, function_name: str) -> PicklableFunction:
+    """
+    Reload a PicklableFunction from script path and function name.
+
+    This function is called during unpickling to reconstruct the function.
+    """
+    import sys
+    import types
+    from importlib import import_module
+    from importlib.machinery import SourceFileLoader
+
+    module_name = "user_defined_module"
+    loader = SourceFileLoader(module_name, script_path)
+    code = loader.get_code(module_name)
+    new_module = types.ModuleType(loader.name)
+    exec(code, new_module.__dict__)
+    sys.modules[module_name] = new_module
+    module = import_module(module_name)
+    user_func = getattr(module, function_name)
+
+    return PicklableFunction(script_path, function_name, user_func)
 
 
 class CalibrationConfiguration(BaseModel):
