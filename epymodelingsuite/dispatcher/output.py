@@ -1322,7 +1322,11 @@ def generate_calibration_outputs(
 
     # Covid19 Forecast Hub
     elif output.covid19_format:
-        pass
+        hub_format_output = pd.DataFrame()  # TODO: implement covid19 format
+
+    else:
+        # No hub format specified
+        hub_format_output = pd.DataFrame()
 
     ### Model Metadata
     if output.model_meta:
