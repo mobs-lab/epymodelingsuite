@@ -124,6 +124,23 @@ class UserDefinedFunction(BaseModel):
     """
     Specifications for user-defined functions (i.e. custom distance function, or post-hoc transformation function).
     Functions will be imported from the specified script and applied within the simulate wrapper.
+
+    For post-hoc transformation functions, the function can optionally accept a 'context' keyword argument
+    containing simulation metadata and calibrated parameters:
+
+    Expected signatures:
+        - def transform(trajectory): ...  # Basic signature (still supported)
+        - def transform(trajectory, context=None): ...  # With optional context parameter
+        - def transform(trajectory, **kwargs): ...  # Flexible signature accepting kwargs
+
+    Context dictionary structure (when provided):
+        - params: dict of all simulation parameters (including calibrated values like beta, gamma)
+        - basemodel: BaseEpiModel configuration object
+        - timespan: Timespan object with actual simulation dates
+        - observed_data: DataFrame of observed data for this location
+        - intervention_types: list of intervention type strings
+        - projection: bool indicating calibration vs projection mode
+        - location: str location/population name
     """
 
     user_script_path: str = Field(description="Path to script containing user-defined functions.")
@@ -157,7 +174,11 @@ class CalibrationConfiguration(BaseModel):
 
     strategy: CalibrationStrategy = Field(description="Calibration strategy configuration")
     post_hoc_transformation: UserDefinedFunction | None = Field(
-        None, description="Transformation function to apply to simulation results."
+        None,
+        description="Transformation function to apply to simulation results. "
+        "The function can optionally accept a 'context' keyword argument with simulation metadata "
+        "(params, basemodel, timespan, observed_data, projection, location). See UserDefinedFunction "
+        "docstring for details.",
     )
 
     # Sampler options, passed directly when initializing ABCSampler
