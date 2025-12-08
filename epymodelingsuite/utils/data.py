@@ -206,7 +206,7 @@ def fetch_nssp_edvisits(
     Example Output
     --------------
     >>> df.head(3)
-    	location_iso location_code	target_end_date	epiweek	prop_ed_visits
+        location_iso location_code	target_end_date	epiweek	prop_ed_visits
     0	       US-AL            01	     2022-11-19	 202246	          6.15
     1	       US-AL	        01	     2022-12-10	 202249        	  3.03
     2	       US-AL        	01	     2023-02-04	 202305	          0.43
