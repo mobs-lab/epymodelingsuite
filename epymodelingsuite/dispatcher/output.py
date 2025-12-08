@@ -452,7 +452,7 @@ def prop_ed_surveillance_window(
     obs_hosp: ObservedValuesConfig,
     fit_start: date,
     fit_end: date,
-) -> pd.DataFrame:
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Create FluSight prop ed forecasts using surveillance_window strategy.
 
@@ -473,6 +473,8 @@ def prop_ed_surveillance_window(
     -------
     pd.DataFrame
         Complete prop ed forecasts for a submission (all dates/locations)
+    pd.DataFrame
+        Record of rescaling factors for each location
     """
     # Read surveillance files from config
     obs_ed_df = read_surveillance_from_config(obs_ed)
@@ -483,6 +485,7 @@ def prop_ed_surveillance_window(
 
     # Create forecast
     prop_ed_list = []
+    r_dict = defaultdict(list)
     for loc in pred_hosp.location.unique():
         # Filter forecasts and observations
         filt_pred_hosp = pred_hosp[(pred_hosp.location == loc) & (pred_hosp.output_type == "quantile")].copy(deep=True)
@@ -517,16 +520,19 @@ def prop_ed_surveillance_window(
         )
         filt_pred_hosp.value = filt_pred_hosp.value * r
         prop_ed_list.append(filt_pred_hosp)
+        r_dict["population"].append(convert_location_name_format(loc, "epydemix_population"))
+        r_dict["rescaling_factor"].append(r)
 
     # Format and return
     prop_ed = pd.concat(prop_ed_list)
     prop_ed.target = "wk inc flu prop ed visits"
-    return prop_ed
+    rescaling_factors = pd.DataFrame.from_dict(r_dict, orient="columns")
+    return prop_ed, rescaling_factors
 
 
 def prop_ed_calibration_window(
     pred_hosp: pd.DataFrame, obs_ed: ObservedValuesConfig, calibration_quantiles: pd.DataFrame, num_fit_weeks: int
-) -> pd.DataFrame:
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Create FluSight prop ed forecasts using calibration_window strategy.
 
@@ -546,6 +552,8 @@ def prop_ed_calibration_window(
     -------
     pd.DataFrame
         Complete prop ed forecasts for a submission (all dates/locations)
+    pd.DataFrame
+        Record of rescaling factors for each location
     """
     # Read surveillance file from config
     obs_ed_df = read_surveillance_from_config(obs_ed)
@@ -559,6 +567,7 @@ def prop_ed_calibration_window(
 
     # Create forecast
     prop_ed_list = []
+    r_dict = defaultdict(list)
     for loc in pred_hosp.location.unique():
         # Filter forecasts and observations
         filt_pred_hosp = pred_hosp[(pred_hosp.location == loc) & (pred_hosp.output_type == "quantile")].copy(deep=True)
@@ -571,21 +580,23 @@ def prop_ed_calibration_window(
             .rename(columns={obs_ed.value_column: "value_truth"})
             .sort_values(by=obs_ed.date_column)
         )
-        filt_calibration = calibration_window[
-            calibration_window.population == convert_location_name_format(loc, "epydemix_population")
-        ]
+        epy_loc = convert_location_name_format(loc, "epydemix_population")
+        filt_calibration = calibration_window[calibration_window.population == epy_loc]
         window = filt_obs_ed.merge(filt_calibration)
         # Obtain rescaling and create forecast for location
         r = prop_ed_rescaling_factor(np.array(window.value_truth), np.array(window.value_pred))
         filt_pred_hosp.value = filt_pred_hosp.value * r
         prop_ed_list.append(filt_pred_hosp)
+        r_dict["population"].append(epy_loc)
+        r_dict["rescaling_factor"].append(r)
 
     # Format and return
     prop_ed = pd.concat(prop_ed_list)
     prop_ed.target = "wk inc flu prop ed visits"
     prop_ed.value = prop_ed.value.apply(lambda x: max(x, 0))
     prop_ed.value = prop_ed.value.apply(lambda x: min(x, 1))
-    return prop_ed
+    rescaling_factors = pd.DataFrame.from_dict(r_dict, orient="columns")
+    return prop_ed, rescaling_factors
 
 
 def make_prop_ed_flusightforecast(
@@ -593,7 +604,7 @@ def make_prop_ed_flusightforecast(
     config: FlusightPropED,
     surveillance: dict[str, ObservedValuesConfig],
     calibration_quantiles: pd.DataFrame | None = None,
-) -> pd.DataFrame:
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Create FluSight prop ed forecasts from hosp forecast and surveillance data.
 
@@ -612,6 +623,8 @@ def make_prop_ed_flusightforecast(
     -------
     pd.DataFrame
         Complete prop ed forecasts for a submission (all dates/locations)
+    pd.DataFrame
+        Record of rescaling factors for each location
     """
     match config.strategy:
         case "surveillance_window":
@@ -1249,7 +1262,7 @@ def generate_calibration_outputs(
             hosp_forecast = (
                 pd.concat(hub_format_output_list, ignore_index=True) if hub_format_output_list else pd.DataFrame()
             )
-            prop_ed_df = make_prop_ed_flusightforecast(
+            prop_ed_df, rescaling_factors = make_prop_ed_flusightforecast(
                 hosp_forecast,
                 output.flusight_format.prop_ed,
                 output.options.surveillance,
@@ -1371,6 +1384,8 @@ def generate_calibration_outputs(
                         meta_dict[colname].append(str(proj_params[p]))
 
         model_meta = pd.DataFrame(meta_dict)
+        if output.flusight_format.prop_ed:
+            model_meta = model_meta.merge(rescaling_factors, on="population")
 
     ### Cleanup and return
     for warning in warnings:
