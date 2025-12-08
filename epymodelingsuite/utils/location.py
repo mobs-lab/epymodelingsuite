@@ -34,7 +34,7 @@ def get_flusight_population(location: str) -> int:
     ].iloc[0]
 
 
-def convert_location_name_format(value: str, output_format: str) -> str:
+def convert_location_name_format(value: str, output_format: str, input_format: str | None = None) -> str:
     """
     Convert location name from any valid format to the specified format.
 
@@ -49,6 +49,8 @@ def convert_location_name_format(value: str, output_format: str) -> str:
     ----------
             value (str): The location name to convert, in any valid format.
             output_format (str): The location name format to convert to, either "ISO", "epydemix_population", "name", "abbreviation", or "FIPS".
+            input_format (str | None): Optional. The format of the input value. If provided, enables direct lookup
+                    instead of auto-detection, which is more efficient for batch conversions.
 
     Returns
     -------
@@ -56,12 +58,6 @@ def convert_location_name_format(value: str, output_format: str) -> str:
     """
     # Retrieve codebook
     codebook = get_location_codebook()
-
-    # Find row with input value
-    location = codebook[codebook.isin([value]).any(axis=1)]
-
-    # Ensure value exists
-    assert not location.empty, f"Supplied location value {value} does not match any valid format"
 
     # Match format strings to codebook columns
     format_dict = {
@@ -71,6 +67,18 @@ def convert_location_name_format(value: str, output_format: str) -> str:
         "abbreviation": "location_abbreviation",
         "FIPS": "location_code",
     }
+
+    # Find row with input value
+    if input_format is not None:
+        # Direct lookup using known input format (more efficient)
+        input_col = format_dict[input_format]
+        location = codebook[codebook[input_col] == value]
+    else:
+        # Auto-detect by searching all columns (current behavior)
+        location = codebook[codebook.isin([value]).any(axis=1)]
+
+    # Ensure value exists
+    assert not location.empty, f"Supplied location value {value} does not match any valid format"
 
     # Location name in requested format
     result = location[format_dict[output_format]].values[0]

@@ -95,6 +95,10 @@ class ComparisonSpec(BaseModel):
     observed_location_column: str = Field(
         default="geo_value", description="Name of column containing location identifiers in observed data CSV"
     )
+    observed_location_format: str = Field(
+        default="ISO",
+        description="Format of location identifiers in observed data. Options: ISO, FIPS, abbreviation, name, epydemix_population",
+    )
     simulation: list[str] = Field(description="List of transition names to sum for comparison (e.g. I_to_R)")
 
 
@@ -124,6 +128,23 @@ class UserDefinedFunction(BaseModel):
     """
     Specifications for user-defined functions (i.e. custom distance function, or post-hoc transformation function).
     Functions will be imported from the specified script and applied within the simulate wrapper.
+
+    For post-hoc transformation functions, the function can optionally accept a 'context' keyword argument
+    containing simulation metadata and calibrated parameters:
+
+    Expected signatures:
+        - def transform(trajectory): ...  # Basic signature (still supported)
+        - def transform(trajectory, context=None): ...  # With optional context parameter
+        - def transform(trajectory, **kwargs): ...  # Flexible signature accepting kwargs
+
+    Context dictionary structure (when provided):
+        - params: dict of all simulation parameters (including calibrated values like beta, gamma)
+        - basemodel: BaseEpiModel configuration object
+        - timespan: Timespan object with actual simulation dates
+        - observed_data: DataFrame of observed data for this location
+        - intervention_types: list of intervention type strings
+        - projection: bool indicating calibration vs projection mode
+        - location: str location/population name
     """
 
     user_script_path: str = Field(description="Path to script containing user-defined functions.")
@@ -132,7 +153,11 @@ class UserDefinedFunction(BaseModel):
     @computed_field
     @property
     def user_function(self) -> Callable:
-        """Import the user defined function and populate a computed field in the schema model."""
+        """
+        Import the user defined function and populate a computed field in the schema model.
+
+        Returns a PicklableFunction wrapper that can be serialized and deserialized correctly.
+        """
         import sys
         import types
         from importlib import import_module
@@ -147,9 +172,56 @@ class UserDefinedFunction(BaseModel):
             sys.modules[module_name] = new_module
             module = import_module(module_name)
             user_func = getattr(module, self.user_function_name)
+
+            # Wrap in a picklable function class
+            return PicklableFunction(self.user_script_path, self.user_function_name, user_func)
         except Exception as e:
             raise RuntimeError(f"Error loading user-defined function {self.user_function_name}: {e}")
-        return user_func
+
+
+class PicklableFunction:
+    """
+    Wrapper for user-defined functions that handles pickling/unpickling correctly.
+
+    When pickled, stores the script path and function name instead of the function object.
+    When unpickled, reloads the function from the script file.
+    """
+
+    def __init__(self, script_path: str, function_name: str, func: Callable):
+        self.script_path = script_path
+        self.function_name = function_name
+        self._func = func
+
+    def __call__(self, *args, **kwargs):
+        """Call the wrapped function."""
+        return self._func(*args, **kwargs)
+
+    def __reduce__(self):
+        """Custom pickle protocol: store path and name, reload on unpickle."""
+        return (_reload_picklable_function, (self.script_path, self.function_name))
+
+
+def _reload_picklable_function(script_path: str, function_name: str) -> PicklableFunction:
+    """
+    Reload a PicklableFunction from script path and function name.
+
+    This function is called during unpickling to reconstruct the function.
+    """
+    import sys
+    import types
+    from importlib import import_module
+    from importlib.machinery import SourceFileLoader
+
+    module_name = "user_defined_module"
+    loader = SourceFileLoader(module_name, script_path)
+    code = loader.get_code(module_name)
+    new_module = types.ModuleType(loader.name)
+    exec(code, new_module.__dict__)
+    sys.modules[module_name] = new_module
+    module = import_module(module_name)
+    user_func = getattr(module, function_name)
+
+    return PicklableFunction(script_path, function_name, user_func)
 
 
 class CalibrationConfiguration(BaseModel):
@@ -157,7 +229,11 @@ class CalibrationConfiguration(BaseModel):
 
     strategy: CalibrationStrategy = Field(description="Calibration strategy configuration")
     post_hoc_transformation: UserDefinedFunction | None = Field(
-        None, description="Transformation function to apply to simulation results."
+        None,
+        description="Transformation function to apply to simulation results. "
+        "The function can optionally accept a 'context' keyword argument with simulation metadata "
+        "(params, basemodel, timespan, observed_data, projection, location). See UserDefinedFunction "
+        "docstring for details.",
     )
 
     # Sampler options, passed directly when initializing ABCSampler

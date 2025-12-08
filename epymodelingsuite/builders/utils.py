@@ -32,7 +32,9 @@ def get_data_in_window(data: pd.DataFrame, calibration: CalibrationConfig) -> pd
     return data.loc[mask]
 
 
-def get_data_in_location(data: pd.DataFrame, population_name: str, location_key: str) -> pd.DataFrame:
+def get_data_in_location(
+    data: pd.DataFrame, population_name: str, location_key: str, location_format: str = "ISO"
+) -> pd.DataFrame:
     """
     Get data for a specific location.
 
@@ -44,6 +46,9 @@ def get_data_in_location(data: pd.DataFrame, population_name: str, location_key:
         Name of the population/location.
     location_key : str
         The column name containing location identifiers.
+    location_format : str
+        Format of location identifiers in the data. Options: ISO, FIPS, abbreviation, name, epydemix_population.
+        Default is "ISO".
 
     Returns
     -------
@@ -51,4 +56,13 @@ def get_data_in_location(data: pd.DataFrame, population_name: str, location_key:
         Filtered data for the location.
     """
     location_iso = convert_location_name_format(population_name, "ISO")
-    return data[data[location_key] == location_iso]
+
+    if location_format == "ISO":
+        # Direct match (current behavior)
+        return data[data[location_key] == location_iso]
+    else:
+        # Convert observed data values to ISO using known input format
+        data_iso = data[location_key].apply(
+            lambda x: convert_location_name_format(str(x), "ISO", input_format=location_format)
+        )
+        return data[data_iso == location_iso]
