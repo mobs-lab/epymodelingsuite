@@ -38,8 +38,8 @@ modelset:
           - Home_sev_vax_to_Hosp_vax_total
     
     fitting_window:
-      start_date: "2024-09-15"
-      end_date: "2025-04-19"
+      start_date: "2025-01-19"
+      end_date: "2025-02-22"
     
     projection:
       n_trajectories: 100
@@ -67,7 +67,7 @@ modelset:
         name: randint
         args:
         - 0
-        - 80
+        - 42
 
     parameters:
       Rt:

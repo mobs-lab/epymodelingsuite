@@ -191,7 +191,7 @@ def run_calibration_with_projection(
         if telemetry:
             calibration_duration = time.time() - calibration_start
             telemetry.capture_calibration(
-                output, calibration_duration, error=f"Calibration error: {e}", calibration_strategy=configs.calibration
+                output, calibration_duration, error=f"Calibration error: {e}", builder_output=configs
             )
         raise RuntimeError(f"Error during calibration: {e}")
 

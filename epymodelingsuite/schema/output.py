@@ -112,6 +112,83 @@ class ObservedValuesConfig(BaseModel):
     location_column: str = Field(description="Name of column containing location in observed data CSV")
 
 
+class RescaleStrategyEnum(str, Enum):
+    """
+    Strategy for rescaling hospitalization surveillance/forecast.
+
+    Rescaling factors are obtained by minimizing MSE according to strategy, then applied to a hosipitalization forecast to create a prop ed forecast:
+    surveillance_window - fit using observed hospitalizations against observed ED visits over a fitting window
+    calibration_window - fit using median calibration quantile against observed ED visits over a fitting window anchored at the end of the calibration fitting window
+    """
+
+    surveillance_window = "surveillance_window"
+    calibration_window = "calibration_window"
+
+
+class FlusightPropED(BaseModel):
+    """Specifications for generating the wk_inc_flu_prop_ed_visits target forecasts."""
+
+    strategy: RescaleStrategyEnum = Field(description="Strategy for rescaling hospitalization surveillance/forecast.")
+    ed_source: str = Field(description="Reference name for 'wk inc flu prop ed visits' surveillance data.")
+    hosp_source: str | None = Field(
+        None,
+        description="Name of hospitalization surveillance source from output.options.surveillance (iff using 'surveillance_window' strategy).",
+    )
+    fit_start: date | None = Field(
+        None, description="Start date for rescaling factor fitting window (iff using 'surveillance_window' strategy)."
+    )
+    fit_end: date | None = Field(
+        None, description="End date for rescaling factor fitting window (iff using 'surveillance_window' strategy)."
+    )
+    num_fit_weeks: int | None = Field(
+        None,
+        description="Number of weeks for rescaling factor fitting window, extending back from the end of the calibration fitting window (iff using 'calibration_window' strategy).",
+    )
+
+    # TODO: validators
+    @model_validator(mode="after")
+    def check_strategy_args(self):
+        """Ensure appropriate arguments are provided for each strategy."""
+        match self.strategy:
+            case RescaleStrategyEnum.surveillance_window:
+                # This should be impossible
+                assert self.ed_source, "Missing 'ed_source'."
+                # Ensure source present
+                if not self.hosp_source:
+                    msg = "Prop ED strategy 'surveillance_window' requires field 'hosp_source'"
+                    raise ValueError(msg)
+                # Ensure window specified and valid
+                if not (bool(self.fit_start) and bool(self.fit_end)):
+                    msg = "Prop ED strategy 'surveillance_window' requires fields 'fit_start' and 'fit_end'"
+                    raise ValueError(msg)
+                if not self.fit_start <= self.fit_end:
+                    msg = f"Received fit_start: {self.fit_start} > fit_end: {self.fit_end}"
+                    raise ValueError(msg)
+                # Warn unused field
+                if self.num_fit_weeks is not None:
+                    msg = "Received unused 'num_fit_weeks' with prop ED strategy 'surveillance_window'; ignoring."
+                    logger.warning(msg)
+            case RescaleStrategyEnum.calibration_window:
+                # This should be impossible
+                assert self.ed_source, "Missing 'ed_source'."
+                # Ensure window specified
+                if self.num_fit_weeks is None:
+                    msg = "Prop ED strategy 'calibration_window' requires field 'num_fit_weeks'"
+                    raise ValueError(msg)
+                # Warn unused fields
+                if bool(self.fit_start) or bool(self.fit_end):
+                    msg = (
+                        "Received unused 'fit_start' or 'fit_end' with prop ED strategy 'calibration_window'; ignoring."
+                    )
+                    logger.warning(msg)
+                if self.hosp_source:
+                    msg = "Received unused 'hosp_source' with prop ED strategy 'calibration_window'; ignoring."
+            case _:
+                msg = f"Received invalid/unimplemented strategy {_}"
+                raise ValueError(msg)
+        return self
+
+
 class FlusightForecastOutput(BaseModel):
     """Specifications for outputs in flusight forecast hub format."""
 
@@ -122,9 +199,9 @@ class FlusightForecastOutput(BaseModel):
         None,
         description="Name of surveillance source from output.options.surveillance to use for rate-trend forecasts.",
     )
-    prop_ed_source: str | None = Field(
+    prop_ed: FlusightPropED | None = Field(
         None,
-        description="Name of surveillance source from output.options.surveillance to use for proportion ED visits forecasts.",
+        description="Add 'wk inc flu prop ed visits' target to submission file.",
     )
 
 
@@ -424,6 +501,12 @@ class OutputConfiguration(BaseModel):
         description="Output formats to create for all requested tabular outputs.",
     )
 
+    # Shared options
+    options: OutputOptions | None = Field(
+        None,
+        description="Shared options for outputs (e.g., surveillance data sources).",
+    )
+
     # Tabular outputs
     quantiles: QuantilesOutput | None = Field(None, description="Specifications for default format quantile outputs.")
     trajectories: TrajectoriesOutput | None = Field(
@@ -443,12 +526,6 @@ class OutputConfiguration(BaseModel):
 
     model_meta: ModelMetaOutput = Field(
         default_factory=ModelMetaOutput, description="Specifications for parameter tracking / model metadata outputs."
-    )
-
-    # Shared options
-    options: OutputOptions | None = Field(
-        None,
-        description="Shared options for outputs (e.g., surveillance data sources).",
     )
 
     # Plots
@@ -481,9 +558,9 @@ class OutputConfiguration(BaseModel):
                         f"flusight_format.rate_trends_source='{self.flusight_format.rate_trends_source}' "
                         "but no surveillance sources defined in output.options.surveillance"
                     )
-                if self.flusight_format.prop_ed_source:
+                if self.flusight_format.prop_ed:
                     errors.append(
-                        f"flusight_format.prop_ed_source='{self.flusight_format.prop_ed_source}' "
+                        f"flusight_format.prop_ed='{self.flusight_format.prop_ed}' "
                         "but no surveillance sources defined in output.options.surveillance"
                     )
 
@@ -518,11 +595,20 @@ class OutputConfiguration(BaseModel):
                     f"flusight_format.rate_trends_source='{self.flusight_format.rate_trends_source}' "
                     f"not found in surveillance sources: {available_sources}"
                 )
-            if self.flusight_format.prop_ed_source and self.flusight_format.prop_ed_source not in available_sources:
-                errors.append(
-                    f"flusight_format.prop_ed_source='{self.flusight_format.prop_ed_source}' "
-                    f"not found in surveillance sources: {available_sources}"
-                )
+            if self.flusight_format.prop_ed:
+                if self.flusight_format.prop_ed.ed_source not in available_sources:
+                    errors.append(
+                        f"flusight_format.prop_ed.ed_source='{self.flusight_format.prop_ed.ed_source}' "
+                        f"not found in surveillance sources: {available_sources}"
+                    )
+                if (
+                    self.flusight_format.prop_ed.hosp_source
+                    and self.flusight_format.prop_ed.hosp_source not in available_sources
+                ):
+                    errors.append(
+                        f"flusight_format.prop_ed.hosp_source='{self.flusight_format.prop_ed.hosp_source}' "
+                        f"not found in surveillance sources: {available_sources}"
+                    )
 
         # Check plots.quantiles.outputs
         if self.plots and self.plots.quantiles:

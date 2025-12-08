@@ -728,6 +728,20 @@ def make_simulate_wrapper(
     post_hoc_transformation: Callable | None, optional
             Transform simulation results with a post-hoc transformation function
             before returning in simulate wrapper.
+
+            The function can optionally accept a 'context' keyword argument containing:
+            - params: dict of all simulation parameters (including calibrated values)
+            - basemodel: BaseEpiModel configuration object
+            - timespan: Timespan object with actual simulation dates
+            - observed_data: DataFrame of observed data for this location
+            - intervention_types: list of intervention type strings
+            - projection: bool indicating calibration vs projection mode
+            - location: str location/population name
+
+            Example signatures:
+                def transform(trajectory): ...  # Basic signature (still supported)
+                def transform(trajectory, context=None): ...  # With optional context
+                def transform(trajectory, **kwargs): ...  # Flexible signature
     rng : np.random.Generator | None, optional
             Random number generator for reproducible simulations.
             If None, a default generator will be created.
@@ -871,12 +885,41 @@ def make_simulate_wrapper(
             return {"data": np.full(len(data_dates), 0)}
 
         # 12. Apply post-hoc transformation
+        logger.debug(f"[DEBUG] post_hoc_transformation = {post_hoc_transformation}")
+        logger.debug(f"[DEBUG] post_hoc_transformation type = {type(post_hoc_transformation)}")
         if post_hoc_transformation:
+            logger.info(f"[DEBUG] Applying post-hoc transformation")
+            # Build context dict
+            context = {
+                "params": params,
+                "basemodel": basemodel,
+                "timespan": timespan,
+                "observed_data": observed_data,
+                "intervention_types": intervention_types,
+                "projection": params["projection"],
+                "location": model.population.name,
+            }
+
             try:
-                results = post_hoc_transformation(results)
+                # Try calling with context first
+                logger.debug(f"[DEBUG] Calling post_hoc_transformation with context")
+                results = post_hoc_transformation(results, context=context)
+                logger.info(f"[DEBUG] Post-hoc transformation succeeded with context")
+            except TypeError:
+                # Function doesn't accept context, retry without it
+                try:
+                    logger.debug(f"[DEBUG] Calling post_hoc_transformation without context")
+                    results = post_hoc_transformation(results)
+                    logger.info(f"[DEBUG] Post-hoc transformation succeeded without context")
+                except Exception as e:
+                    msg = f"Post-hoc transformation failed with transformation function {post_hoc_transformation}, returning non-transformed results. Error: {e}"
+                    logger.warning(msg)
             except Exception as e:
+                # Other errors (not TypeError)
                 msg = f"Post-hoc transformation failed with transformation function {post_hoc_transformation}, returning non-transformed results. Error: {e}"
                 logger.warning(msg)
+        else:
+            logger.warning(f"[DEBUG] No post-hoc transformation to apply (is None)")
 
         # 13. Format output based on mode
         # Projection: return full trajectories (flattened + padded)

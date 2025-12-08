@@ -12,6 +12,8 @@ from epydemix.calibration import CalibrationResults
 
 from ..schema.dispatcher import CalibrationOutput, SimulationOutput
 from ..schema.output import (
+    FlusightPropED,
+    ObservedValuesConfig,
     OutputConfig,
     OutputObject,
     TabularOutputTypeEnum,
@@ -184,7 +186,8 @@ def format_quantiles_flusightforecast(quantiles_df: pd.DataFrame, reference_date
 
     # Name and format remaining fields
     # FRAGILE: the name 'hospitalizations' is user-supplied in the modelset as the column to look for in the surveillance data.
-    formatted.hospitalizations = formatted.hospitalizations.round().astype(int)
+    # Use nullable integer dtype to handle potential NaN values
+    formatted.hospitalizations = formatted.hospitalizations.round().astype("Int64")
     formatted.rename(
         columns={"date": "target_end_date", "hospitalizations": "value", "quantile": "output_type_id"}, inplace=True
     )
@@ -252,17 +255,12 @@ def categorize_rate_change_flusightforecast(
         The difference between the last observed count and the simulated count (diff = simulated - observed).
     horizon : int
         The horizon on which the simulated changes are calculated.
-    rate_population_scale: int
-        Rates will be calculated per {rate_population_scale} population.
 
     Returns
     -------
     str
         A string representing the category of the rate-change ("stable", "increase", "large_increase", "decrease", "large_decrease").
     """
-    msg = f"Received invalid rate-change {rate_change} for rate per {rate_population_scale} population."
-    assert -rate_population_scale <= rate_change <= rate_population_scale, msg
-
     if horizon == 0:
         stable_thres = 0.3
         change_thres = 1.7
@@ -356,16 +354,19 @@ def make_rate_trends_flusightforecast(
 
     # Date of observation for comparison (equivalent to horizon -1)
     obs_date = reference_date - timedelta(weeks=1)
+    print(f"obs_date: {obs_date}\nref_date: {reference_date}")
 
     # Observed value and rate
     obs_val = observed[observed.date == pd.Timestamp(obs_date)].value.iloc[0]
     obs_rate = rate_population_scale * obs_val / population
+    print(f"obs_val: {obs_val}\nobs_rate: {obs_rate}")
 
     # Build list of rows
     rows = []
     for horizon in flusight_horizons:
         # Target date for forecast
         target_date = reference_date + timedelta(weeks=horizon)
+        print(f"target_date: {target_date}")
 
         # Projected values and rates (one for each projection trajectory)
         proj_vals = [
@@ -373,10 +374,12 @@ def make_rate_trends_flusightforecast(
             for dates, values in zip(proj_dates, proj_values, strict=True)
         ]
         proj_rates = (rate_population_scale / population) * np.array(proj_vals)
+        print(f"proj_vals: {proj_vals}\nproj_rates: {proj_rates}")
 
         # Calculate rate-changes and count-changes
         rate_changes = proj_rates - obs_rate
         count_changes = proj_vals - obs_val
+        print(f"rate_changes: {rate_changes}\ncount_changes: {count_changes}")
 
         # Counter containing the categorization for each projection trajectory
         trajectory_categories = Counter(
@@ -385,6 +388,7 @@ def make_rate_trends_flusightforecast(
                 for rate_change, count_change in zip(rate_changes, count_changes, strict=True)
             ]
         )
+        print(f"traj_cats: {trajectory_categories}")
 
         # Dict containing the probability of each category
         num_traj = trajectory_categories.total()
@@ -394,6 +398,7 @@ def make_rate_trends_flusightforecast(
         cat_probs.setdefault("decrease", 0)
         cat_probs.setdefault("large_increase", 0)
         cat_probs.setdefault("large_decrease", 0)
+        print(f"num_traj: {num_traj}\ncat_probs: {cat_probs}")
 
         # Add rows to the list
         for category, value in cat_probs.items():
@@ -404,9 +409,250 @@ def make_rate_trends_flusightforecast(
     return pd.DataFrame.from_records(rows)
 
 
-def make_prop_ed_flusightforecast():
-    """"""
-    return
+def prop_ed_rescaling_factor(observed: np.array, prediction: np.array) -> np.float64:
+    """
+    Calculate the rescaling factor for converting values from prediction to the scale of values from observed.
+
+    Parameters
+    ----------
+    observed: np.array
+        Array of observed prop ed visits, aligned with `prediction`
+    prediction: np.array
+        Array of values to rescale to `observed`, aligned with `observed`
+
+    Returns
+    -------
+    np.float64
+        Calculated rescaling factor
+    """
+    return observed.dot(prediction) / (prediction**2).sum()
+
+
+def read_surveillance_from_config(config: ObservedValuesConfig) -> pd.DataFrame:
+    """
+    Read a surveillance file from a configuration object.
+
+    Parameters
+    ----------
+    config: ObservedValuesConfig
+
+    Returns
+    -------
+    pd.DataFrame
+        Surveillance data read from config
+    """
+    return pd.read_csv(
+        config.data_path, dtype={config.location_column: str}, parse_dates=[config.date_column], date_format="%Y-%m-%d"
+    )
+
+
+def prop_ed_surveillance_window(
+    pred_hosp: pd.DataFrame,
+    obs_ed: ObservedValuesConfig,
+    obs_hosp: ObservedValuesConfig,
+    fit_start: date,
+    fit_end: date,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Create FluSight prop ed forecasts using surveillance_window strategy.
+
+    Parameters
+    ----------
+    pred_hosp: pd.DataFrame
+        Hospitalization quantile forecasts in FluSight format
+    obs_ed: ObservedValuesConfig
+        Configuration object for observed prop ed visits
+    obs_hosp: ObservedValuesConfig
+        Configuration object for observed hospitalizations
+    fit_start: date
+        Start date for rescaling factor fitting window
+    fit_end: date
+        End date for rescaling factor fitting window
+
+    Returns
+    -------
+    pd.DataFrame
+        Complete prop ed forecasts for a submission (all dates/locations)
+    pd.DataFrame
+        Record of rescaling factors for each location
+    """
+    # Read surveillance files from config
+    obs_ed_df = read_surveillance_from_config(obs_ed)
+    obs_hosp_df = read_surveillance_from_config(obs_hosp)
+    obs_hosp_df[obs_hosp.location_column] = obs_hosp_df[obs_hosp.location_column].apply(
+        lambda x: convert_location_name_format(x, "FIPS")
+    )
+
+    # Create forecast
+    prop_ed_list = []
+    r_dict = defaultdict(list)
+    for loc in pred_hosp.location.unique():
+        # Filter forecasts and observations
+        filt_pred_hosp = pred_hosp[(pred_hosp.location == loc) & (pred_hosp.output_type == "quantile")].copy(deep=True)
+        filt_obs_hosp = (
+            obs_hosp_df[
+                (obs_hosp_df[obs_hosp.location_column] == loc)
+                & (obs_hosp_df[obs_hosp.date_column] >= pd.to_datetime(fit_start))
+                & (obs_hosp_df[obs_hosp.date_column] < pd.to_datetime(fit_end))
+            ]
+            .dropna(axis=0, subset=obs_hosp.value_column)
+            .rename(columns={obs_hosp.value_column: "value_pred"})
+        )
+        filt_obs_ed = (
+            obs_ed_df[
+                (obs_ed_df[obs_ed.location_column] == loc)
+                & (obs_ed_df[obs_ed.date_column] >= pd.to_datetime(fit_start))
+                & (obs_ed_df[obs_ed.date_column] < pd.to_datetime(fit_end))
+            ]
+            .dropna(axis=0, subset=obs_ed.value_column)
+            .rename(columns={obs_ed.value_column: "value_truth"})
+        )
+        timeseries = filt_obs_hosp.merge(
+            filt_obs_ed,
+            left_on=[filt_obs_hosp[obs_hosp.location_column], filt_obs_hosp[obs_hosp.date_column]],
+            right_on=[filt_obs_ed[obs_ed.location_column], filt_obs_ed[obs_ed.date_column]],
+            how="inner",
+        )
+
+        # Obtain rescaling and create forecast for location
+        r = prop_ed_rescaling_factor(
+            np.array(timeseries.value_truth.astype(float)), np.array(timeseries.value_pred.astype(float))
+        )
+        filt_pred_hosp.value = filt_pred_hosp.value * r
+        prop_ed_list.append(filt_pred_hosp)
+        r_dict["population"].append(convert_location_name_format(loc, "epydemix_population"))
+        r_dict["rescaling_factor"].append(r)
+
+    # Format and return
+    prop_ed = pd.concat(prop_ed_list)
+    prop_ed.target = "wk inc flu prop ed visits"
+    rescaling_factors = pd.DataFrame.from_dict(r_dict, orient="columns")
+    return prop_ed, rescaling_factors
+
+
+def prop_ed_calibration_window(
+    pred_hosp: pd.DataFrame, obs_ed: ObservedValuesConfig, calibration_quantiles: pd.DataFrame, num_fit_weeks: int
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Create FluSight prop ed forecasts using calibration_window strategy.
+
+    Parameters
+    ----------
+    pred_hosp: pd.DataFrame
+        Hospitalization quantile forecasts in FluSight format
+    obs_ed: ObservedValuesConfig
+        Configuration object for observed prop ed visits
+    calibration_quantiles: pd.DataFrame | None
+        Quantiles from the calibration fitting window
+    num_fit_weeks: int
+        Number of weeks for rescaling factor fitting window,
+        extending back from the end of the calibration fitting window
+
+    Returns
+    -------
+    pd.DataFrame
+        Complete prop ed forecasts for a submission (all dates/locations)
+    pd.DataFrame
+        Record of rescaling factors for each location
+    """
+    # Read surveillance file from config
+    obs_ed_df = read_surveillance_from_config(obs_ed)
+
+    # Resolve fitting windows
+    fit_end = calibration_quantiles.date.max()
+    fit_start = fit_end - timedelta(weeks=num_fit_weeks - 1)
+    calibration_window = calibration_quantiles[
+        (calibration_quantiles.date >= pd.to_datetime(fit_start)) & (calibration_quantiles["quantile"] == 0.5)
+    ].rename(columns={"data": "value_pred"})
+
+    # Create forecast
+    prop_ed_list = []
+    r_dict = defaultdict(list)
+    for loc in pred_hosp.location.unique():
+        # Filter forecasts and observations
+        filt_pred_hosp = pred_hosp[(pred_hosp.location == loc) & (pred_hosp.output_type == "quantile")].copy(deep=True)
+        filt_obs_ed = (
+            obs_ed_df[
+                (obs_ed_df[obs_ed.location_column] == loc)
+                & (obs_ed_df[obs_ed.date_column] >= fit_start)
+                & (obs_ed_df[obs_ed.date_column] <= fit_end)
+            ]
+            .rename(columns={obs_ed.value_column: "value_truth"})
+            .sort_values(by=obs_ed.date_column)
+        )
+        epy_loc = convert_location_name_format(loc, "epydemix_population")
+        filt_calibration = calibration_window[calibration_window.population == epy_loc]
+        window = filt_obs_ed.merge(filt_calibration)
+        # Obtain rescaling and create forecast for location
+        r = prop_ed_rescaling_factor(np.array(window.value_truth), np.array(window.value_pred))
+        filt_pred_hosp.value = filt_pred_hosp.value * r
+        prop_ed_list.append(filt_pred_hosp)
+        r_dict["population"].append(epy_loc)
+        r_dict["rescaling_factor"].append(r)
+
+    # Format and return
+    prop_ed = pd.concat(prop_ed_list)
+    prop_ed.target = "wk inc flu prop ed visits"
+    prop_ed.value = prop_ed.value.apply(lambda x: max(x, 0))
+    prop_ed.value = prop_ed.value.apply(lambda x: min(x, 1))
+    rescaling_factors = pd.DataFrame.from_dict(r_dict, orient="columns")
+    return prop_ed, rescaling_factors
+
+
+def make_prop_ed_flusightforecast(
+    pred_hosp: pd.DataFrame,
+    config: FlusightPropED,
+    surveillance: dict[str, ObservedValuesConfig],
+    calibration_quantiles: pd.DataFrame | None = None,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Create FluSight prop ed forecasts from hosp forecast and surveillance data.
+
+    Parameters
+    ----------
+    pred_hosp: pd.DataFrame
+        Hospitalization quantile forecasts in FluSight format
+    config: FlusightPropED
+        Configuration object for target
+    surveillance: dict[str, ObservedValuesConfig]
+        Dictionary containing configurations for surveillance data (from output.options.surveillance)
+    calibration_quantiles: pd.DataFrame | None
+        Quantiles from the calibration fitting window (if config.strategy is 'calibration_window')
+
+    Returns
+    -------
+    pd.DataFrame
+        Complete prop ed forecasts for a submission (all dates/locations)
+    pd.DataFrame
+        Record of rescaling factors for each location
+    """
+    match config.strategy:
+        case "surveillance_window":
+            # Ensure sources are present
+            if config.ed_source not in surveillance or config.hosp_source not in surveillance:
+                msg = f"prop_ed ed_source '{config.ed_source}' or hosp_source '{config.hosp_source}' not found in output.options.surveillance"
+                raise ValueError(msg)
+
+            return prop_ed_surveillance_window(
+                pred_hosp,
+                surveillance[config.ed_source],
+                surveillance[config.hosp_source],
+                config.fit_start,
+                config.fit_end,
+            )
+        case "calibration_window":
+            # Ensure sources are present
+            assert not calibration_quantiles.empty, (
+                "Strategy calibration_window requires calibration quantiles, but not received."
+            )
+            if config.ed_source not in surveillance:
+                msg = f"prop_ed ed_source '{config.ed_source}' not found in output.options.surveillance"
+                raise ValueError(msg)
+            return prop_ed_calibration_window(
+                pred_hosp, surveillance[config.ed_source], calibration_quantiles, config.num_fit_weeks
+            )
+        case _:
+            raise ValueError(f"Received undefined/unimplemented strategy {config.strategy}")
 
 
 def format_quantiles_flusmh(quantiles_df: pd.DataFrame) -> pd.DataFrame:
@@ -720,7 +966,7 @@ def generate_calibration_outputs(
     output = output_config.output
     warnings = set()
 
-    # Initialize lists for efficient DataFrame concatenation (converted to DataFrames after loops)
+    # Initialize structures for efficient DataFrame concatenation (converted to DataFrames after loops)
     quantiles_projection_compartments_list = []
     quantiles_projection_transitions_list = []
     quantiles_calibration_list = []
@@ -728,7 +974,11 @@ def generate_calibration_outputs(
     trajectories_projection_transitions_list = []
     posteriors_list = []
     hub_format_output_list = []
-    model_meta = pd.DataFrame()
+    meta_dict = defaultdict(list)
+
+    # Filter out failed projections
+    for calibration in calibrations:
+        calibration.results = filter_failed_projections(calibration.results)
 
     ### Quantiles
     if output.quantiles:
@@ -740,7 +990,7 @@ def generate_calibration_outputs(
                     for generation in output.quantiles.calibration:
                         try:
                             quancal_df = calibration.results.get_calibration_quantiles(
-                                quantiles=output.quantiles.selections, generation=generation, variables="data"
+                                quantiles=output.quantiles.selections, generation=generation, variables=["data", "date"]
                             )
                             quancal_df.insert(0, "primary_id", calibration.primary_id)
                             quancal_df.insert(1, "seed", calibration.seed)
@@ -754,7 +1004,7 @@ def generate_calibration_outputs(
                 else:
                     try:
                         quancal_df = calibration.results.get_calibration_quantiles(
-                            quantiles=output.quantiles.selections, variables="data"
+                            quantiles=output.quantiles.selections, variables=["data", "date"]
                         )
                         quancal_df.insert(0, "primary_id", calibration.primary_id)
                         quancal_df.insert(1, "seed", calibration.seed)
@@ -775,9 +1025,6 @@ def generate_calibration_outputs(
                 continue
 
             transition_columns = [c for c in quan_df.columns if "_to_" in c]
-
-            # Filter out failed projections
-            calibration.results = filter_failed_projections(calibration.results)
 
             # Compartments
             if output.quantiles.compartments:
@@ -849,8 +1096,6 @@ def generate_calibration_outputs(
     if output.trajectories:
         logger.info("Generating trajectory outputs")
         for calibration in calibrations:
-            # Filter out failed projections
-            calibration.results = filter_failed_projections(calibration.results)
             # Collect all trajectories
             try:
                 traj = calibration.results.get_projection_trajectories()
@@ -967,6 +1212,7 @@ def generate_calibration_outputs(
     # FluSight Forecast Hub
     if output.flusight_format:
         logger.info("Generating FluSight forecast hub outputs")
+
         # Quantile forecasts
         logger.info("  - Generating FluSight quantile forecasts")
         for calibration in calibrations:
@@ -985,6 +1231,45 @@ def generate_calibration_outputs(
             quanf_df.insert(0, "location", convert_location_name_format(calibration.population, "FIPS"))
             hub_format_output_list.append(quanf_df)
 
+        # Prop ED forecasts
+        if output.flusight_format.prop_ed:
+            # Get surveillance source configuration
+            if not output.options or not output.options.surveillance:
+                msg = "prop_ed specified but no surveillance sources defined in output.options.surveillance"
+                raise ValueError(msg)
+
+            # Make calibration quantiles with flusight required quantiles if using calibration_window strategy
+            quantiles_calibration_flusight_list = []
+            if output.flusight_format.prop_ed.strategy == "calibration_window":
+                for calibration in calibrations:
+                    try:
+                        quancalflu_df = calibration.results.get_calibration_quantiles(
+                            quantiles=get_flusight_quantiles(), variables=["data", "date"]
+                        )
+                        quancalflu_df.insert(0, "primary_id", calibration.primary_id)
+                        quancalflu_df.insert(1, "seed", calibration.seed)
+                        quancalflu_df.insert(2, "population", calibration.population)
+                        quantiles_calibration_flusight_list.append(quancalflu_df)
+                    except Exception as e:
+                        warnings.add(
+                            f"OUTPUT GENERATOR: Exception occured obtaining calibration quantiles for model with primary_id={calibration.primary_id} during prop_ed forecast generation, continuing. Message: {e}"
+                        )
+
+            # Collect data and generate prop ed forecast
+            quantiles_calibration_flusight = (
+                pd.concat(quantiles_calibration_flusight_list) if quantiles_calibration_flusight_list else None
+            )
+            hosp_forecast = (
+                pd.concat(hub_format_output_list, ignore_index=True) if hub_format_output_list else pd.DataFrame()
+            )
+            prop_ed_df, rescaling_factors = make_prop_ed_flusightforecast(
+                hosp_forecast,
+                output.flusight_format.prop_ed,
+                output.options.surveillance,
+                quantiles_calibration_flusight,
+            )
+            hub_format_output_list.append(prop_ed_df)
+
         # Rate-trend forecasts
         if output.flusight_format.rate_trends_source:
             logger.info("  - Generating FluSight rate-trend forecasts")
@@ -1001,11 +1286,7 @@ def generate_calibration_outputs(
             source_config = output.options.surveillance[source_name]
 
             # Read surveillance data
-            surveillance = pd.read_csv(
-                source_config.data_path,
-                parse_dates=[source_config.date_column],
-                date_format="%Y-%m-%d",
-            )
+            surveillance = read_surveillance_from_config(source_config)
 
             for calibration in calibrations:
                 # Get trajectories
@@ -1044,36 +1325,21 @@ def generate_calibration_outputs(
                 trends_df.insert(0, "location", convert_location_name_format(calibration.population, "FIPS"))
                 hub_format_output_list.append(trends_df)
 
-        # Prop ED visits forecasts
-        if output.flusight_format.prop_ed_source:
-            # Get surveillance source configuration
-            if not output.options or not output.options.surveillance:
-                msg = "prop_ed_source specified but no surveillance sources defined in output.options.surveillance"
-                raise ValueError(msg)
-
-            source_name = output.flusight_format.prop_ed_source
-            if source_name not in output.options.surveillance:
-                msg = f"prop_ed_source '{source_name}' not found in output.options.surveillance"
-                raise ValueError(msg)
-
-            # TODO: Implement prop_ed forecast generation when make_prop_ed_flusightforecast() is implemented
-            # source_config = output.options.surveillance[source_name]
-            # surveillance = pd.read_csv(source_config.data_path, ...)
-            # ... prop_ed generation logic ...
-            logger.warning("prop_ed_source specified but prop_ed forecast generation is not yet implemented")
-
         hub_format_output = (
             pd.concat(hub_format_output_list, ignore_index=True) if hub_format_output_list else pd.DataFrame()
         )
 
     # Covid19 Forecast Hub
-    elif output.quantiles.covid19_format:
-        pass
+    elif output.covid19_format:
+        hub_format_output = pd.DataFrame()  # TODO: implement covid19 format
+
+    else:
+        # No hub format specified
+        hub_format_output = pd.DataFrame()
 
     ### Model Metadata
     if output.model_meta:
         logger.info("Generating model metadata outputs")
-        meta_dict = defaultdict(list)
         for calibration in calibrations:
             meta_dict["primary_id"].append(calibration.primary_id)
             meta_dict["seed"].append(calibration.seed)
@@ -1122,6 +1388,8 @@ def generate_calibration_outputs(
                         meta_dict[colname].append(str(proj_params[p]))
 
         model_meta = pd.DataFrame(meta_dict)
+        if output.flusight_format.prop_ed:
+            model_meta = model_meta.merge(rescaling_factors, on="population")
 
     ### Cleanup and return
     for warning in warnings:
