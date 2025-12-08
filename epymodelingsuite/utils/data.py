@@ -206,10 +206,10 @@ def fetch_nssp_edvisits(
     Example Output
     --------------
     >>> df.head(3)
-      location_iso location_code target_end_date  epiweek  hospitalizations
-    0        US-AL            01      2024-10-19   202442             123.0
-    1        US-AL            01      2024-10-26   202443             145.0
-    2        US-AK            02      2024-10-19   202442              23.0
+    	location_iso location_code	target_end_date	epiweek	prop_ed_visits
+    0	       US-AL            01	     2022-11-19	 202246	          6.15
+    1	       US-AL	        01	     2022-12-10	 202249        	  3.03
+    2	       US-AL        	01	     2023-02-04	 202305	          0.43
 
     Notes
     -----
@@ -222,8 +222,8 @@ def fetch_nssp_edvisits(
         Uses `percent_visits_influenza`
 
     Coverage
-        Data available from August 2020 onwards. Includes US states, DC, and national
-        aggregates. Territories (AS, GU, MP, PR, VI) and HHS regions are excluded from the output.
+        Data available from October 2022 onwards. Includes US states, DC, and national
+        aggregates. Territories (AS, GU, MP, PR, VI) and HSAs are excluded from the output.
 
     """
     # There is only one version of the dataset
