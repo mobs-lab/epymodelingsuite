@@ -70,19 +70,24 @@ def count_nans_at_start(arr: np.ndarray) -> int:
     int
         The number of NaNs found prepended to the array.
     """
+    # Handle empty array case
+    if arr.size == 0:
+        return 0
+
     # Create a boolean mask for NaN values
     mask = np.isnan(arr)
 
-    # Find the index of the first non-NaN value
-    first_non_nan_index = np.argmax(~mask)
-
-    # If no values are NaN, return 0
-    # If all, return len(arr)
+    # If all values are NaN, return len(arr)
     if mask.all():
         return len(arr)
-    if mask.any():
-        return first_non_nan_index
-    return 0
+
+    # If no values are NaN, return 0
+    if not mask.any():
+        return 0
+
+    # Find the index of the first non-NaN value
+    first_non_nan_index = np.argmax(~mask)
+    return first_non_nan_index
 
 
 def dist_func_date_alignment_wrapper(dist_func: Callable) -> Callable:
@@ -429,10 +434,8 @@ def build_calibration(
     # using the earliest start_date before creating ABCSamplers.
     models = setup_interventions(models, basemodel, intervention_types, sampled_start_timespan)
 
-    # Collect user-defined post-hoc transformation function
+    # Extract UDF functions (now wrapped in PicklableFunction for correct serialization)
     post_hoc_func = calibration.post_hoc_transformation.user_function if calibration.post_hoc_transformation else None
-
-    # Collect user-defined distance function
     dist_func = (
         dist_func_dict[calibration.distance_function]
         if isinstance(calibration.distance_function, str)
@@ -445,9 +448,10 @@ def build_calibration(
     observed_in_window = get_data_in_window(observed_raw, calibration)
     calibrators = []
     location_column = calibration.comparison[0].observed_location_column
+    location_format = calibration.comparison[0].observed_location_format
 
     for model in models:
-        observed_data = get_data_in_location(observed_in_window, model.population.name, location_column)
+        observed_data = get_data_in_location(observed_in_window, model.population.name, location_column, location_format)
         vax_state = (
             get_data_in_location(earliest_vax, model.population.name, "location") if earliest_vax is not None else None
         )
