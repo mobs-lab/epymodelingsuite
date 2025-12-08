@@ -270,7 +270,7 @@ def _compare_prop_ed_window_against_calibration_window(
     calibration: CalibrationConfiguration | None, output_config: OutputConfig
 ) -> None:
     """
-    Ensure
+    Ensure rescaling factor fitting window is within calibration fitting window.
 
     Parameters
     ----------
