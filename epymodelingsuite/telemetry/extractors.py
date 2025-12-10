@@ -67,8 +67,13 @@ def extract_builder_metadata(
             str(fitting_window.start_date),
             str(fitting_window.end_date),
         )
-        # Extract distance function
-        metadata["distance_function"] = calibration_config.modelset.calibration.distance_function
+        # Extract distance function (convert UserDefinedFunction to string representation)
+        distance_func = calibration_config.modelset.calibration.distance_function
+        if isinstance(distance_func, str):
+            metadata["distance_function"] = distance_func
+        else:
+            # UserDefinedFunction - store as string representation
+            metadata["distance_function"] = f"user_defined:{distance_func.user_function_name}"
 
     return metadata
 
