@@ -558,6 +558,12 @@ def prop_ed_calibration_window(
     # Read surveillance file from config
     obs_ed_df = read_surveillance_from_config(obs_ed)
 
+    # TODO: Use ISO in future
+    # Convert location codes to FIPS format to match pred_hosp
+    obs_ed_df[obs_ed.location_column] = obs_ed_df[obs_ed.location_column].apply(
+        lambda x: convert_location_name_format(x, "FIPS")
+    )
+
     # Resolve fitting windows
     fit_end = calibration_quantiles.date.max()
     fit_start = fit_end - timedelta(weeks=num_fit_weeks - 1)
