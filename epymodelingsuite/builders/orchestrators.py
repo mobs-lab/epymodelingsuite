@@ -885,10 +885,7 @@ def make_simulate_wrapper(
             return {"data": np.full(len(data_dates), 0)}
 
         # 12. Apply post-hoc transformation
-        logger.debug(f"[DEBUG] post_hoc_transformation = {post_hoc_transformation}")
-        logger.debug(f"[DEBUG] post_hoc_transformation type = {type(post_hoc_transformation)}")
         if post_hoc_transformation:
-            logger.info(f"[DEBUG] Applying post-hoc transformation")
             # Build context dict
             context = {
                 "params": params,
@@ -902,15 +899,11 @@ def make_simulate_wrapper(
 
             try:
                 # Try calling with context first
-                logger.debug(f"[DEBUG] Calling post_hoc_transformation with context")
                 results = post_hoc_transformation(results, context=context)
-                logger.info(f"[DEBUG] Post-hoc transformation succeeded with context")
             except TypeError:
                 # Function doesn't accept context, retry without it
                 try:
-                    logger.debug(f"[DEBUG] Calling post_hoc_transformation without context")
                     results = post_hoc_transformation(results)
-                    logger.info(f"[DEBUG] Post-hoc transformation succeeded without context")
                 except Exception as e:
                     msg = f"Post-hoc transformation failed with transformation function {post_hoc_transformation}, returning non-transformed results. Error: {e}"
                     logger.warning(msg)
@@ -918,8 +911,6 @@ def make_simulate_wrapper(
                 # Other errors (not TypeError)
                 msg = f"Post-hoc transformation failed with transformation function {post_hoc_transformation}, returning non-transformed results. Error: {e}"
                 logger.warning(msg)
-        else:
-            logger.warning(f"[DEBUG] No post-hoc transformation to apply (is None)")
 
         # 13. Format output based on mode
         # Projection: return full trajectories (flattened + padded)
