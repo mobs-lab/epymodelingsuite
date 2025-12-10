@@ -582,7 +582,12 @@ def prop_ed_calibration_window(
         )
         epy_loc = convert_location_name_format(loc, "epydemix_population")
         filt_calibration = calibration_window[calibration_window.population == epy_loc]
-        window = filt_obs_ed.merge(filt_calibration)
+        filt_calibration.location = loc
+        window = filt_obs_ed.merge(
+            filt_calibration,
+            left_on=[filt_obs_ed[obs_ed.location_column], filt_obs_ed[obs_ed.date_column]],
+            right_on=[filt_calibration.location, filt_calibration.date],
+        )
         # Obtain rescaling and create forecast for location
         r = prop_ed_rescaling_factor(np.array(window.value_truth), np.array(window.value_pred))
         filt_pred_hosp.value = filt_pred_hosp.value * r
