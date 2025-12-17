@@ -218,6 +218,9 @@ def fetch_nssp_edvisits(
         of all ED patient visits for the specified geography that were observed for the given week from
         data submitted to the National Syndromic Surveillance Program (NSSP).
 
+        Dataset ID: rdmq-nq56
+        https://data.cdc.gov/Public-Health-Surveillance/NSSP-Emergency-Department-Visit-Trajectories-by-St/rdmq-nq56/about_data
+
     Data Field
         Uses `percent_visits_influenza`
 
@@ -233,15 +236,16 @@ def fetch_nssp_edvisits(
     client = Socrata("data.cdc.gov", None)
 
     # Build query
+    # Filter for state-level data (county='All') in the API call, because the data is granular than hospitalization data. If we don't add filtering clause here, recent data points would not be included since hitting the 100,000 limit.
+    base_where = "county='All'"
     if query_start_date:
-        where_clause = f"week_end >= '{query_start_date}'"
+        where_clause = f"{base_where} AND week_end >= '{query_start_date}'"
         results = client.get(dataset_id, where=where_clause, limit=100000)
     else:
-        results = client.get(dataset_id, limit=100000)
+        results = client.get(dataset_id, where=base_where, limit=100000)
 
     # Convert to pandas DataFrame
     data = pd.DataFrame.from_records(results)
-    data = data[data.county == "All"]
     data = data[["week_end", "geography", "percent_visits_influenza"]]
 
     # Process dates and epiweeks
@@ -276,7 +280,7 @@ def fetch_nssp_edvisits(
     # Filter out territories and HHS regions (keep only states, DC, and USA)
     territories = ["AS", "GU", "MP", "PR", "VI"]
     data = data[data["location_iso"].notna()]
-    data = data[~data["location"].isin(territories)]
+    data = data[~data["abbreviation"].isin(territories)]
 
     # Select final columns
     data = data[["location_iso", "location_code", "target_end_date", "epiweek", "prop_ed_visits"]]
