@@ -659,7 +659,13 @@ def generate_single_quantile_plots(
                 out_dict[output_name] = output_objs
                 plt.close(fig)
             except Exception as e:
-                logger.warning("Failed to create %s quantile plot for %s: %s", output_config.type.value, location, e)
+                logger.warning(
+                    "Failed to create %s quantile plot for %s: %s",
+                    output_config.type.value,
+                    location,
+                    e,
+                    exc_info=True,
+                )
 
 
 def generate_quantile_grid_plot(
@@ -915,7 +921,7 @@ def generate_quantile_grid_plot(
                     out_dict[f"quantiles_grid_{output_type_name}"] = output_objs
                     plt.close(fig)
                 except Exception as e:
-                    logger.warning(f"Failed to create {output_type_name} quantile grid plot: %s", e)
+                    logger.warning("Failed to create %s quantile grid plot: %s", output_type_name, e, exc_info=True)
 
             elif output_type_name == "side_by_side":
                 # Side-by-side grid plot
@@ -1105,7 +1111,7 @@ def generate_quantile_grid_plot(
                         out_dict["quantiles_grid_sidebyside"] = output_objs
                         plt.close(fig)
                 except Exception as e:
-                    logger.warning(f"Failed to create sidebyside quantile grid plot: {e}")
+                    logger.warning("Failed to create sidebyside quantile grid plot: %s", e, exc_info=True)
 
 
 def generate_single_location_posterior_plots(
@@ -1186,7 +1192,9 @@ def generate_single_location_posterior_plots(
                     )
                     axes[idx].set_title(param)
                 except Exception as e:
-                    logger.warning("Failed to create posterior histogram for %s - %s: %s", location, param, e)
+                    logger.warning(
+                        "Failed to create posterior histogram for %s - %s: %s", location, param, e, exc_info=True
+                    )
                     axes[idx].set_visible(False)
 
             # Hide unused subplots
@@ -1274,4 +1282,4 @@ def generate_posterior_grid_plot(
             out_dict["posterior_grid"] = output_objs
             plt.close(fig)
         except Exception as e:
-            logger.warning("Failed to create posterior grid plot: %s", e)
+            logger.warning("Failed to create posterior grid plot: %s", e, exc_info=True)
