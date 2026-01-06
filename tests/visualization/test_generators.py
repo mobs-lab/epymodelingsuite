@@ -7,8 +7,8 @@ import pandas as pd
 import pytest
 
 from epymodelingsuite.schema.dispatcher import CalibrationOutput
-from epymodelingsuite.schema.output import PlotsConfig, QuantilesPlotConfig, QuantilesSurveillanceConfig
-from epymodelingsuite.visualization.generators import generate_single_quantile_plots
+from epymodelingsuite.schema.output import ObservedValuesConfig, PlotsConfig, QuantilesPlotConfig
+from epymodelingsuite.visualization.generators import _rename_value_column, generate_single_quantile_plots
 
 
 class TestSurveillanceDataFiltering:
@@ -254,3 +254,32 @@ class TestSurveillanceDataFiltering:
             # Surveillance should be None when no matching location (for both plots)
             assert df_surv_filtered is None
             assert df_surv_full is None
+
+
+class TestRenameValueColumn:
+    """Test _rename_value_column helper function."""
+
+    def test_rename_existing_column(self):
+        """Test renaming when column exists."""
+        df = pd.DataFrame({"date": ["2024-01-01"], "ed_signal": [100], "quantile": [0.5]})
+        result = _rename_value_column(df, "ed_signal")
+        assert "value" in result.columns
+        assert "ed_signal" not in result.columns
+        assert result["value"].iloc[0] == 100
+
+    def test_rename_none_input(self):
+        """Test with None input."""
+        result = _rename_value_column(None, "hospitalizations")
+        assert result is None
+
+    def test_rename_missing_column_raises_error(self):
+        """Test error when column doesn't exist."""
+        df = pd.DataFrame({"date": ["2024-01-01"], "ed_signal": [100], "quantile": [0.5]})
+        with pytest.raises(ValueError, match="Column 'hospitalizations' not found"):
+            _rename_value_column(df, "hospitalizations")
+
+    def test_error_message_suggests_available_columns(self):
+        """Test error message lists available columns."""
+        df = pd.DataFrame({"date": ["2024-01-01"], "ed_signal": [100], "other_transition": [200], "quantile": [0.5]})
+        with pytest.raises(ValueError, match=r"Available value columns:.*ed_signal.*other_transition"):
+            _rename_value_column(df, "hospitalizations")
