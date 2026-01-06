@@ -205,18 +205,42 @@ def _prepare_projection_quantiles(
 
 def _rename_value_column(df: pd.DataFrame | None, old_name: str) -> pd.DataFrame | None:
     """
-    Return a copy with `old_name` renamed to `value` if the column exists; otherwise return df unchanged.
+    Return a copy with `old_name` renamed to `value` if the column exists.
 
     Parameters
     ----------
     df : pd.DataFrame or None
-        Dataframe to inspect and rename.
+        DataFrame containing quantile data.
     old_name : str
-        Column name to replace with `value`.
+        Column name to rename to 'value'.
+
+    Returns
+    -------
+    pd.DataFrame or None
+        DataFrame with renamed column, or None if input is None.
+
+    Raises
+    ------
+    ValueError
+        If df is not None and old_name is not found in columns.
     """
-    if df is not None and old_name in df.columns:
+    if df is None:
+        return None
+
+    if old_name in df.columns:
         return df.rename(columns={old_name: "value"})
-    return df
+
+    # Column not found - provide helpful error message
+    metadata_cols = {"date", "location", "quantile"}
+    available_value_cols = [c for c in df.columns if c not in metadata_cols]
+
+    msg = (
+        f"Column '{old_name}' not found in quantiles DataFrame. "
+        f"Available value columns: {available_value_cols}. "
+        f"Check output.plots.quantiles.value_column in your config matches "
+        f"a transition in output.quantiles.transitions."
+    )
+    raise ValueError(msg)
 
 
 def _create_filtered_plot(
@@ -522,10 +546,9 @@ def generate_single_quantile_plots(
         )
 
         # Rename columns to have consistent naming for plotting
-        # TODO: Calibration uses "data", projection uses "hospitalizations" - make this configurable
         cal_quant = _rename_value_column(cal_quant, "data")
-        proj_quant_filtered = _rename_value_column(proj_quant_filtered, "hospitalizations")
-        proj_quant_full = _rename_value_column(proj_quant_full, "hospitalizations")
+        proj_quant_filtered = _rename_value_column(proj_quant_filtered, plots_config.quantiles.value_column)
+        proj_quant_full = _rename_value_column(proj_quant_full, plots_config.quantiles.value_column)
 
         value_col = "value"
 
@@ -786,11 +809,13 @@ def generate_quantile_grid_plot(
                 if output_type_name == "filtered":
                     if proj_quant_filtered is not None:
                         location_proj_quants_for_output[loc] = _rename_value_column(
-                            proj_quant_filtered, "hospitalizations"
+                            proj_quant_filtered, plots_config.quantiles.value_column
                         )
                 elif output_type_name == "full":
                     if proj_quant_full is not None:
-                        location_proj_quants_for_output[loc] = _rename_value_column(proj_quant_full, "hospitalizations")
+                        location_proj_quants_for_output[loc] = _rename_value_column(
+                            proj_quant_full, plots_config.quantiles.value_column
+                        )
 
             # Set data to use for this output
             if output_type_name in ["filtered", "full"]:
@@ -914,11 +939,11 @@ def generate_quantile_grid_plot(
                         )
                         if proj_quant_full is not None:
                             location_proj_quants_full_sbs[loc] = _rename_value_column(
-                                proj_quant_full, "hospitalizations"
+                                proj_quant_full, plots_config.quantiles.value_column
                             )
                         if proj_quant_filtered is not None:
                             location_proj_quants_filtered_sbs[loc] = _rename_value_column(
-                                proj_quant_filtered, "hospitalizations"
+                                proj_quant_filtered, plots_config.quantiles.value_column
                             )
 
                     # Get all locations

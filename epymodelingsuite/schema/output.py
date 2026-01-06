@@ -390,7 +390,6 @@ class QuantilesPlotConfig(BaseModel):
                 show_projection=True,
                 show_surveillance=True,
                 show_fitting_window_line=True,
-                columns=4,
                 spacing=0.3,
             ),
         ],
@@ -415,6 +414,11 @@ class QuantilesPlotConfig(BaseModel):
     projection: QuantilesProjectionConfig | bool = Field(
         default_factory=QuantilesProjectionConfig,
         description="Projection period quantile ribbons (default enabled). Set true to use default options, or set options in subfields.",
+    )
+
+    value_column: str = Field(
+        "hospitalizations",
+        description="Column name for projection quantiles to plot. Common values: 'hospitalizations', 'ed_signal', 'value'. Must match a transition name in output.quantiles.transitions.",
     )
 
     @field_validator("grid")
