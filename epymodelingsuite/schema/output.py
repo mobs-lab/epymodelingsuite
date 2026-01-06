@@ -110,6 +110,20 @@ class ObservedValuesConfig(BaseModel):
     value_column: str = Field(description="Name of column containing observed values in observed data CSV")
     date_column: str = Field(description="Name of column containing target dates in observed data CSV")
     location_column: str = Field(description="Name of column containing location in observed data CSV")
+    location_format: str = Field(
+        default="ISO",
+        description="Format of location identifiers in observed data. Options: ISO, FIPS, abbreviation, name, epydemix_population",
+    )
+
+    @field_validator("location_format")
+    @classmethod
+    def validate_location_format(cls, v: str) -> str:
+        """Ensure location_format is a valid option."""
+        valid_formats = {"ISO", "FIPS", "abbreviation", "name", "epydemix_population"}
+        if v not in valid_formats:
+            msg = f"location_format must be one of {valid_formats}, got '{v}'"
+            raise ValueError(msg)
+        return v
 
 
 class RescaleStrategyEnum(str, Enum):

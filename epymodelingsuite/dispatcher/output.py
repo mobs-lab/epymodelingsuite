@@ -479,19 +479,20 @@ def prop_ed_surveillance_window(
     # Read surveillance files from config
     obs_ed_df = read_surveillance_from_config(obs_ed)
     obs_hosp_df = read_surveillance_from_config(obs_hosp)
-    obs_hosp_df[obs_hosp.location_column] = obs_hosp_df[obs_hosp.location_column].apply(
-        lambda x: convert_location_name_format(x, "FIPS")
-    )
 
     # Create forecast
     prop_ed_list = []
     r_dict = defaultdict(list)
     for loc in pred_hosp.location.unique():
+        # Convert FIPS location to surveillance data formats for filtering
+        loc_hosp = convert_location_name_format(loc, obs_hosp.location_format)
+        loc_ed = convert_location_name_format(loc, obs_ed.location_format)
+
         # Filter forecasts and observations
         filt_pred_hosp = pred_hosp[(pred_hosp.location == loc) & (pred_hosp.output_type == "quantile")].copy(deep=True)
         filt_obs_hosp = (
             obs_hosp_df[
-                (obs_hosp_df[obs_hosp.location_column] == loc)
+                (obs_hosp_df[obs_hosp.location_column] == loc_hosp)
                 & (obs_hosp_df[obs_hosp.date_column] >= pd.to_datetime(fit_start))
                 & (obs_hosp_df[obs_hosp.date_column] < pd.to_datetime(fit_end))
             ]
@@ -500,7 +501,7 @@ def prop_ed_surveillance_window(
         )
         filt_obs_ed = (
             obs_ed_df[
-                (obs_ed_df[obs_ed.location_column] == loc)
+                (obs_ed_df[obs_ed.location_column] == loc_ed)
                 & (obs_ed_df[obs_ed.date_column] >= pd.to_datetime(fit_start))
                 & (obs_ed_df[obs_ed.date_column] < pd.to_datetime(fit_end))
             ]
@@ -575,11 +576,14 @@ def prop_ed_calibration_window(
     prop_ed_list = []
     r_dict = defaultdict(list)
     for loc in pred_hosp.location.unique():
+        # Convert FIPS location to surveillance data format for filtering
+        loc_ed = convert_location_name_format(loc, obs_ed.location_format)
+
         # Filter forecasts and observations
         filt_pred_hosp = pred_hosp[(pred_hosp.location == loc) & (pred_hosp.output_type == "quantile")].copy(deep=True)
         filt_obs_ed = (
             obs_ed_df[
-                (obs_ed_df[obs_ed.location_column] == loc)
+                (obs_ed_df[obs_ed.location_column] == loc_ed)
                 & (obs_ed_df[obs_ed.date_column] >= fit_start)
                 & (obs_ed_df[obs_ed.date_column] <= fit_end)
             ]
@@ -1310,10 +1314,9 @@ def generate_calibration_outputs(
                     continue
 
                 # Filter surveillance for location
-                surv = surveillance[
-                    surveillance[source_config.location_column]
-                    == convert_location_name_format(calibration.population, "ISO")
-                ]
+                # Convert calibration population to surveillance data's location format
+                target_location = convert_location_name_format(calibration.population, source_config.location_format)
+                surv = surveillance[surveillance[source_config.location_column] == target_location]
                 surv = surv.drop(columns=source_config.location_column).rename(
                     columns={
                         source_config.date_column: "date",
