@@ -126,24 +126,32 @@ class ObservedValuesConfig(BaseModel):
         return v
 
 
-class RescaleStrategyEnum(str, Enum):
+class PropEDStrategyEnum(str, Enum):
     """
-    Strategy for rescaling hospitalization surveillance/forecast.
+    Strategy for generating prop ED forecasts.
 
-    Rescaling factors are obtained by minimizing MSE according to strategy, then applied to a hosipitalization forecast to create a prop ed forecast:
-    surveillance_window - fit using observed hospitalizations against observed ED visits over a fitting window
-    calibration_window - fit using median calibration quantile against observed ED visits over a fitting window anchored at the end of the calibration fitting window
+    surveillance_window - fit rescaling factor using observed hospitalizations against observed ED visits over a fitting window
+    calibration_window - fit rescaling factor using median calibration quantile against observed ED visits over a fitting window anchored at the end of the calibration fitting window
+    transition - use a transition directly (e.g., ed_prop) computed in UDF, no rescaling needed
     """
 
     surveillance_window = "surveillance_window"
     calibration_window = "calibration_window"
+    transition = "transition"
 
 
 class FlusightPropED(BaseModel):
     """Specifications for generating the wk_inc_flu_prop_ed_visits target forecasts."""
 
-    strategy: RescaleStrategyEnum = Field(description="Strategy for rescaling hospitalization surveillance/forecast.")
-    ed_source: str = Field(description="Reference name for 'wk inc flu prop ed visits' surveillance data.")
+    strategy: PropEDStrategyEnum = Field(description="Strategy for generating prop ED forecasts.")
+    transition_name: str | None = Field(
+        None,
+        description="Name of transition to use for prop ED forecasts (required iff using 'transition' strategy).",
+    )
+    ed_source: str | None = Field(
+        None,
+        description="Reference name for 'wk inc flu prop ed visits' surveillance data (required for rescaling strategies).",
+    )
     hosp_source: str | None = Field(
         None,
         description="Name of hospitalization surveillance source from output.options.surveillance (iff using 'surveillance_window' strategy).",
@@ -164,9 +172,11 @@ class FlusightPropED(BaseModel):
     def check_strategy_args(self):
         """Ensure appropriate arguments are provided for each strategy."""
         match self.strategy:
-            case RescaleStrategyEnum.surveillance_window:
-                # This should be impossible
-                assert self.ed_source, "Missing 'ed_source'."
+            case PropEDStrategyEnum.surveillance_window:
+                # Ensure ed_source present
+                if not self.ed_source:
+                    msg = "Prop ED strategy 'surveillance_window' requires field 'ed_source'"
+                    raise ValueError(msg)
                 # Ensure source present
                 if not self.hosp_source:
                     msg = "Prop ED strategy 'surveillance_window' requires field 'hosp_source'"
@@ -178,13 +188,18 @@ class FlusightPropED(BaseModel):
                 if not self.fit_start <= self.fit_end:
                     msg = f"Received fit_start: {self.fit_start} > fit_end: {self.fit_end}"
                     raise ValueError(msg)
-                # Warn unused field
+                # Warn unused fields
                 if self.num_fit_weeks is not None:
                     msg = "Received unused 'num_fit_weeks' with prop ED strategy 'surveillance_window'; ignoring."
                     logger.warning(msg)
-            case RescaleStrategyEnum.calibration_window:
-                # This should be impossible
-                assert self.ed_source, "Missing 'ed_source'."
+                if self.transition_name is not None:
+                    msg = "Received unused 'transition_name' with prop ED strategy 'surveillance_window'; ignoring."
+                    logger.warning(msg)
+            case PropEDStrategyEnum.calibration_window:
+                # Ensure ed_source present
+                if not self.ed_source:
+                    msg = "Prop ED strategy 'calibration_window' requires field 'ed_source'"
+                    raise ValueError(msg)
                 # Ensure window specified
                 if self.num_fit_weeks is None:
                     msg = "Prop ED strategy 'calibration_window' requires field 'num_fit_weeks'"
@@ -197,10 +212,38 @@ class FlusightPropED(BaseModel):
                     logger.warning(msg)
                 if self.hosp_source:
                     msg = "Received unused 'hosp_source' with prop ED strategy 'calibration_window'; ignoring."
+                    logger.warning(msg)
+                if self.transition_name is not None:
+                    msg = "Received unused 'transition_name' with prop ED strategy 'calibration_window'; ignoring."
+                    logger.warning(msg)
+            case PropEDStrategyEnum.transition:
+                # Ensure transition_name present
+                if not self.transition_name:
+                    msg = "Prop ED strategy 'transition' requires field 'transition_name'"
+                    raise ValueError(msg)
+                # Warn unused fields
+                if self.ed_source is not None:
+                    msg = "Received unused 'ed_source' with prop ED strategy 'transition'; ignoring."
+                    logger.warning(msg)
+                if self.hosp_source is not None:
+                    msg = "Received unused 'hosp_source' with prop ED strategy 'transition'; ignoring."
+                    logger.warning(msg)
+                if bool(self.fit_start) or bool(self.fit_end):
+                    msg = "Received unused 'fit_start' or 'fit_end' with prop ED strategy 'transition'; ignoring."
+                    logger.warning(msg)
+                if self.num_fit_weeks is not None:
+                    msg = "Received unused 'num_fit_weeks' with prop ED strategy 'transition'; ignoring."
+                    logger.warning(msg)
             case _:
                 msg = f"Received invalid/unimplemented strategy {_}"
                 raise ValueError(msg)
         return self
+
+
+class FlusightHospitalizations(BaseModel):
+    """Specifications for generating hospitalizations forecasts."""
+
+    pass
 
 
 class FlusightForecastOutput(BaseModel):
@@ -208,6 +251,10 @@ class FlusightForecastOutput(BaseModel):
 
     reference_date: date = Field(
         description="'YYYY-MM-DD' date to treat as reference date when creating horizons and target dates for submission file."
+    )
+    hospitalizations: FlusightHospitalizations | None = Field(
+        default_factory=FlusightHospitalizations,
+        description="Add 'wk inc flu hosp' quantile forecasts and rate-trend forecasts to submission file. Set to null to disable all hospitalization outputs, omit to enable.",
     )
     rate_trends_source: str | None = Field(
         None,

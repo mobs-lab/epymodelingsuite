@@ -619,6 +619,8 @@ def make_prop_ed_flusightforecast(
     config: FlusightPropED,
     surveillance: dict[str, ObservedValuesConfig],
     calibration_quantiles: pd.DataFrame | None = None,
+    projection_quantiles: pd.DataFrame | None = None,
+    reference_date: date | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Create FluSight prop ed forecasts from hosp forecast and surveillance data.
@@ -633,6 +635,10 @@ def make_prop_ed_flusightforecast(
         Dictionary containing configurations for surveillance data (from output.options.surveillance)
     calibration_quantiles: pd.DataFrame | None
         Quantiles from the calibration fitting window (if config.strategy is 'calibration_window')
+    projection_quantiles: pd.DataFrame | None
+        Quantiles from the projection phase (if config.strategy is 'transition')
+    reference_date: date | None
+        Reference date for calculating horizons (required if pred_hosp is empty)
 
     Returns
     -------
@@ -666,6 +672,76 @@ def make_prop_ed_flusightforecast(
             return prop_ed_calibration_window(
                 pred_hosp, surveillance[config.ed_source], calibration_quantiles, config.num_fit_weeks
             )
+        case "transition":
+            # Ensure projection_quantiles is provided
+            if projection_quantiles is None or projection_quantiles.empty:
+                msg = "Strategy 'transition' requires projection_quantiles, but not received."
+                raise ValueError(msg)
+
+            # Ensure transition_name exists in projection_quantiles
+            if config.transition_name not in projection_quantiles.columns:
+                msg = f"Transition '{config.transition_name}' not found in projection_quantiles. Available columns: {list(projection_quantiles.columns)}"
+                raise ValueError(msg)
+
+            # Format the transition quantiles into FluSight format
+            formatted = copy.deepcopy(projection_quantiles)
+
+            # Horizons required for quantile outputs
+            flusight_horizons = range(-1, 4)
+
+            # Get the reference date from parameter or pred_hosp
+            if reference_date is None:
+                if not pred_hosp.empty and "reference_date" in pred_hosp.columns:
+                    reference_date = pd.to_datetime(pred_hosp.reference_date.iloc[0]).date()
+                else:
+                    msg = (
+                        "Cannot determine reference_date: must provide reference_date parameter or non-empty pred_hosp"
+                    )
+                    raise ValueError(msg)
+
+            # Create horizon column and filter for appropriate horizons
+            formatted.insert(
+                0,
+                "horizon",
+                (formatted.date - pd.to_datetime(reference_date))
+                .apply(lambda x: x / np.timedelta64(1, "W"))
+                .astype(int),
+            )
+            formatted = formatted[formatted.horizon.isin(flusight_horizons)]
+
+            # Rename and format columns
+            formatted.rename(
+                columns={"date": "target_end_date", config.transition_name: "value", "quantile": "output_type_id"},
+                inplace=True,
+            )
+            formatted.insert(2, "output_type", "quantile")
+            formatted.insert(2, "target", "wk inc flu prop ed visits")
+            formatted.target_end_date = formatted.target_end_date.apply(lambda x: x.date() if hasattr(x, "date") else x)
+
+            # Add location and reference_date columns
+            formatted.insert(0, "reference_date", reference_date)
+            # Convert population to FIPS format for each row
+            formatted.insert(
+                0, "location", formatted.population.apply(lambda x: convert_location_name_format(x, "FIPS"))
+            )
+
+            # Select only the columns we need for FluSight format
+            formatted = formatted[
+                [
+                    "location",
+                    "reference_date",
+                    "horizon",
+                    "target",
+                    "output_type",
+                    "output_type_id",
+                    "target_end_date",
+                    "value",
+                ]
+            ]
+
+            # Return formatted df and empty rescaling_factors dataframe
+            rescaling_factors = pd.DataFrame()
+            return formatted, rescaling_factors
         case _:
             raise ValueError(f"Received undefined/unimplemented strategy {config.strategy}")
 
@@ -1228,30 +1304,32 @@ def generate_calibration_outputs(
     if output.flusight_format:
         logger.info("Generating FluSight forecast hub outputs")
 
-        # Quantile forecasts
-        logger.info("  - Generating FluSight quantile forecasts")
-        for calibration in calibrations:
-            try:
-                # FRAGILE: the name 'hospitalizations' is user-supplied in the modelset as the column to look for in the surveillance data.
-                quanf_df = calibration.results.get_projection_quantiles(
-                    quantiles=get_flusight_quantiles(), variables=["date", "quantile", "hospitalizations"]
-                )
-            except ValueError:
-                warnings.add(
-                    f"OUTPUT GENERATOR: failed to obtain projection quantiles for model with primary_id={calibration.primary_id}, continuing to next model."
-                )
-                continue
-            quanf_df = format_quantiles_flusightforecast(quanf_df, output.flusight_format.reference_date)
-            quanf_df.insert(0, "reference_date", output.flusight_format.reference_date)
-            quanf_df.insert(0, "location", convert_location_name_format(calibration.population, "FIPS"))
-            hub_format_output_list.append(quanf_df)
+        # Quantile forecasts (hospitalizations)
+        if output.flusight_format.hospitalizations:
+            logger.info("  - Generating FluSight quantile forecasts (hospitalizations)")
+            for calibration in calibrations:
+                try:
+                    # FRAGILE: the name 'hospitalizations' is user-supplied in the modelset as the column to look for in the surveillance data.
+                    quanf_df = calibration.results.get_projection_quantiles(
+                        quantiles=get_flusight_quantiles(), variables=["date", "quantile", "hospitalizations"]
+                    )
+                except ValueError:
+                    warnings.add(
+                        f"OUTPUT GENERATOR: failed to obtain projection quantiles for model with primary_id={calibration.primary_id}, continuing to next model."
+                    )
+                    continue
+                quanf_df = format_quantiles_flusightforecast(quanf_df, output.flusight_format.reference_date)
+                quanf_df.insert(0, "reference_date", output.flusight_format.reference_date)
+                quanf_df.insert(0, "location", convert_location_name_format(calibration.population, "FIPS"))
+                hub_format_output_list.append(quanf_df)
 
         # Prop ED forecasts
         if output.flusight_format.prop_ed:
-            # Get surveillance source configuration
-            if not output.options or not output.options.surveillance:
-                msg = "prop_ed specified but no surveillance sources defined in output.options.surveillance"
-                raise ValueError(msg)
+            # Get surveillance source configuration (not needed for transition strategy)
+            if output.flusight_format.prop_ed.strategy != "transition":
+                if not output.options or not output.options.surveillance:
+                    msg = "prop_ed specified but no surveillance sources defined in output.options.surveillance"
+                    raise ValueError(msg)
 
             # Make calibration quantiles with flusight required quantiles if using calibration_window strategy
             quantiles_calibration_flusight_list = []
@@ -1270,9 +1348,30 @@ def generate_calibration_outputs(
                             f"OUTPUT GENERATOR: Exception occured obtaining calibration quantiles for model with primary_id={calibration.primary_id} during prop_ed forecast generation, continuing. Message: {e}"
                         )
 
+            # Make projection quantiles with transition if using transition strategy
+            quantiles_projection_flusight_list = []
+            if output.flusight_format.prop_ed.strategy == "transition":
+                transition_name = output.flusight_format.prop_ed.transition_name
+                for calibration in calibrations:
+                    try:
+                        quanproj_df = calibration.results.get_projection_quantiles(
+                            quantiles=get_flusight_quantiles(), variables=["date", "quantile", transition_name]
+                        )
+                        quanproj_df.insert(0, "primary_id", calibration.primary_id)
+                        quanproj_df.insert(1, "seed", calibration.seed)
+                        quanproj_df.insert(2, "population", calibration.population)
+                        quantiles_projection_flusight_list.append(quanproj_df)
+                    except Exception as e:
+                        warnings.add(
+                            f"OUTPUT GENERATOR: Exception occured obtaining projection quantiles for transition '{transition_name}' for model with primary_id={calibration.primary_id} during prop_ed forecast generation, continuing. Message: {e}"
+                        )
+
             # Collect data and generate prop ed forecast
             quantiles_calibration_flusight = (
                 pd.concat(quantiles_calibration_flusight_list) if quantiles_calibration_flusight_list else None
+            )
+            quantiles_projection_flusight = (
+                pd.concat(quantiles_projection_flusight_list) if quantiles_projection_flusight_list else None
             )
             hosp_forecast = (
                 pd.concat(hub_format_output_list, ignore_index=True) if hub_format_output_list else pd.DataFrame()
@@ -1280,13 +1379,15 @@ def generate_calibration_outputs(
             prop_ed_df, rescaling_factors = make_prop_ed_flusightforecast(
                 hosp_forecast,
                 output.flusight_format.prop_ed,
-                output.options.surveillance,
+                output.options.surveillance if output.options else {},
                 quantiles_calibration_flusight,
+                quantiles_projection_flusight,
+                output.flusight_format.reference_date,
             )
             hub_format_output_list.append(prop_ed_df)
 
-        # Rate-trend forecasts
-        if output.flusight_format.rate_trends_source:
+        # Rate-trend forecasts (only if hospitalizations is enabled)
+        if output.flusight_format.rate_trends_source and output.flusight_format.hospitalizations:
             logger.info("  - Generating FluSight rate-trend forecasts")
             # Get surveillance source configuration
             if not output.options or not output.options.surveillance:
