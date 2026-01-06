@@ -207,19 +207,33 @@ def _prepare_projection_quantiles(
 
 def _rename_value_column(df: pd.DataFrame | None, old_name: str) -> pd.DataFrame | None:
     """
-    Return a copy with `old_name` renamed to `value` if the column exists.
+    Select the specified value column and rename it to 'value', keeping only metadata columns.
+
+    This function filters the DataFrame to keep only metadata columns (date, quantile, population)
+    plus the specified value column, then renames that column to 'value'.
+
+    NOTE: The rename to 'value' is necessary because plot_calibration_projection() uses a single
+    value_col parameter for both calibration and projection quantiles. Since calibration uses
+    'data' and projection uses configurable columns (e.g., 'ed_signal'), we need a common name.
+
+    The column selection is critical to avoid duplicate column names. CalibrationResults.get_projection_quantiles()
+    returns 269 columns including a pre-existing 'value' column (from epydemix) plus all transitions
+    (ed_signal, hospitalizations, etc.) and compartments. Simply renaming without filtering would
+    create two 'value' columns, causing pivot() to fail with "Data must be 1-dimensional, got ndarray
+    of shape (N, 2)".
 
     Parameters
     ----------
     df : pd.DataFrame or None
-        DataFrame containing quantile data.
+        DataFrame containing quantile data with multiple value columns.
     old_name : str
-        Column name to rename to 'value'.
+        Column name to select and rename to 'value'.
 
     Returns
     -------
     pd.DataFrame or None
-        DataFrame with renamed column, or None if input is None.
+        DataFrame with only metadata columns plus the selected value column renamed to 'value',
+        or None if input is None.
 
     Raises
     ------
@@ -230,11 +244,15 @@ def _rename_value_column(df: pd.DataFrame | None, old_name: str) -> pd.DataFrame
         return None
 
     if old_name in df.columns:
-        return df.rename(columns={old_name: "value"})
+        # Select only metadata columns plus the specified value column
+        # This excludes the pre-existing 'value' column and all other transitions/compartments
+        metadata_cols = ["date", "quantile", "population"]
+        cols_to_keep = [c for c in metadata_cols if c in df.columns] + [old_name]
+        return df[cols_to_keep].rename(columns={old_name: "value"})
 
     # Column not found - provide helpful error message
-    metadata_cols = {"date", "location", "quantile"}
-    available_value_cols = [c for c in df.columns if c not in metadata_cols]
+    metadata_cols_for_error = {"date", "location", "quantile", "population"}
+    available_value_cols = [c for c in df.columns if c not in metadata_cols_for_error]
 
     msg = (
         f"Column '{old_name}' not found in quantiles DataFrame. "
