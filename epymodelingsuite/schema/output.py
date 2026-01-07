@@ -623,9 +623,9 @@ class OutputConfiguration(BaseModel):
                         f"flusight_format.rate_trends_source='{self.flusight_format.rate_trends_source}' "
                         "but no surveillance sources defined in output.options.surveillance"
                     )
-                if self.flusight_format.prop_ed:
+                if self.flusight_format.prop_ed and self.flusight_format.prop_ed.strategy != "transition":
                     errors.append(
-                        f"flusight_format.prop_ed='{self.flusight_format.prop_ed}' "
+                        f"flusight_format.prop_ed with strategy '{self.flusight_format.prop_ed.strategy}' "
                         "but no surveillance sources defined in output.options.surveillance"
                     )
 
@@ -661,7 +661,10 @@ class OutputConfiguration(BaseModel):
                     f"not found in surveillance sources: {available_sources}"
                 )
             if self.flusight_format.prop_ed:
-                if self.flusight_format.prop_ed.ed_source not in available_sources:
+                if (
+                    self.flusight_format.prop_ed.ed_source
+                    and self.flusight_format.prop_ed.ed_source not in available_sources
+                ):
                     errors.append(
                         f"flusight_format.prop_ed.ed_source='{self.flusight_format.prop_ed.ed_source}' "
                         f"not found in surveillance sources: {available_sources}"
