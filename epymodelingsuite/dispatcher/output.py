@@ -1457,6 +1457,15 @@ def generate_calibration_outputs(
     if output.model_meta:
         logger.info("Generating model metadata outputs")
         for calibration in calibrations:
+            # Skip calibrations without projections (failed calibrations)
+            if not calibration.results.projections:
+                logger.warning(
+                    "Skipping model metadata for primary_id=%s (%s) - no projections available",
+                    calibration.primary_id,
+                    calibration.population,
+                )
+                continue
+
             meta_dict["primary_id"].append(calibration.primary_id)
             meta_dict["seed"].append(calibration.seed)
             meta_dict["delta_t"].append(calibration.delta_t)
