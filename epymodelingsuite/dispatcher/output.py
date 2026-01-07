@@ -1489,7 +1489,7 @@ def generate_calibration_outputs(
                 else:
                     meta_dict["start_date"].append(None)
                     meta_dict["end_date"].append(None)
-            except (KeyError, IndexError, AttributeError, TypeError) as e:
+            except (KeyError, IndexError, AttributeError, TypeError, ValueError) as e:
                 logger.warning("Failed to extract projection window dates: %s", e)
                 meta_dict["start_date"].append(None)
                 meta_dict["end_date"].append(None)
