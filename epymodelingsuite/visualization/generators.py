@@ -121,13 +121,14 @@ def _prepare_surveillance_for_location(
     )
 
     # Full surveillance (no filtering)
+    # Select columns before renaming to avoid duplicates if source data already has 'value' column
     if not surv.empty:
-        df_surv_full = surv.rename(
+        df_surv_full = surv[[surveillance_config.date_column, surveillance_config.value_column]].rename(
             columns={
                 surveillance_config.date_column: "date",
                 surveillance_config.value_column: "value",
             }
-        )[["date", "value"]]
+        )
 
     # Filtered surveillance
     surv_filtered = surv.copy()
@@ -141,12 +142,13 @@ def _prepare_surveillance_for_location(
             ]
 
     if not surv_filtered.empty:
-        df_surv_filtered = surv_filtered.rename(
+        # Select columns before renaming to avoid duplicates if source data already has 'value' column
+        df_surv_filtered = surv_filtered[[surveillance_config.date_column, surveillance_config.value_column]].rename(
             columns={
                 surveillance_config.date_column: "date",
                 surveillance_config.value_column: "value",
             }
-        )[["date", "value"]]
+        )
 
         if not df_surv_filtered.empty:
             surveillance_start_date = pd.to_datetime(df_surv_filtered["date"]).min().date()
