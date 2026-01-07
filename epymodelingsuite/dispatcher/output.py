@@ -1504,7 +1504,7 @@ def generate_calibration_outputs(
                         meta_dict[colname].append(str(proj_params[p]))
 
         model_meta = pd.DataFrame(meta_dict)
-        if output.flusight_format and output.flusight_format.prop_ed:
+        if output.flusight_format and output.flusight_format.prop_ed and not rescaling_factors.empty:
             model_meta = model_meta.merge(rescaling_factors, on="population")
 
     ### Cleanup and return
