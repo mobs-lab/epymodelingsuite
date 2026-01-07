@@ -944,6 +944,12 @@ def make_scenario_projection_simulate_wrappers(
     Construct a list of simulate_wrappers from basemodel and calibration config, which differ only
     in the overrides
 
+    .. deprecated::
+        This function is deprecated and will be removed in a future version.
+        Use the dispatcher workflow (dispatch_builder/dispatch_runner) instead.
+        This function uses hardcoded "geo_value" for location column name instead of
+        reading from calibration_config.comparison[0].observed_location_column.
+
     Parameters
     ----------
         basemodel_config: BasemodelConfig
@@ -965,6 +971,15 @@ def make_scenario_projection_simulate_wrappers(
         list[Callable]
             A list of simulate-wrapper callables (one per location).
     """
+    import warnings
+
+    warnings.warn(
+        "make_scenario_projection_simulate_wrappers is deprecated and will be removed in a future version. "
+        "Use the dispatcher workflow (dispatch_builder/dispatch_runner) instead. "
+        "This function uses hardcoded 'geo_value' for location column instead of reading from config.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     basemodel = copy.deepcopy(basemodel_config.model)
     modelset = calibration_config.modelset
     calibration = modelset.calibration
