@@ -1301,6 +1301,7 @@ def generate_calibration_outputs(
     ### Hub Formats
 
     # FluSight Forecast Hub
+    logger.info(f"DEBUG: output.flusight_format = {output.flusight_format}")
     if output.flusight_format:
         logger.info("Generating FluSight forecast hub outputs")
 
