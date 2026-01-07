@@ -1115,59 +1115,64 @@ def generate_calibration_outputs(
                 )
                 continue
 
-            transition_columns = [c for c in quan_df.columns if "_to_" in c]
+            try:
+                transition_columns = [c for c in quan_df.columns if "_to_" in c]
 
-            # Compartments
-            if output.quantiles.compartments:
-                if hasattr(output.quantiles.compartments, "__len__"):
-                    # Filter for explicitly requested compartments
-                    try:
-                        columns_to_select = ["date", "quantile"]
-                        columns_to_select.extend(output.quantiles.compartments)
-                        quanc_df = quan_df[columns_to_select].copy()
-                    except KeyError as e:
-                        warnings.add(
-                            f"OUTPUT GENERATOR: Exception occured selecting compartment quantiles, returning all compartments: {e}"
-                        )
+                # Compartments
+                if output.quantiles.compartments:
+                    if hasattr(output.quantiles.compartments, "__len__"):
+                        # Filter for explicitly requested compartments
+                        try:
+                            columns_to_select = ["date", "quantile"]
+                            columns_to_select.extend(output.quantiles.compartments)
+                            quanc_df = quan_df[columns_to_select].copy()
+                        except KeyError as e:
+                            warnings.add(
+                                f"OUTPUT GENERATOR: Exception occured selecting compartment quantiles, returning all compartments: {e}"
+                            )
+                            # Use all compartments, filter out transitions
+                            quanc_df = quan_df.copy()
+                            quanc_df.drop(columns=transition_columns, inplace=True)
+                    else:
                         # Use all compartments, filter out transitions
                         quanc_df = quan_df.copy()
                         quanc_df.drop(columns=transition_columns, inplace=True)
-                else:
-                    # Use all compartments, filter out transitions
-                    quanc_df = quan_df.copy()
-                    quanc_df.drop(columns=transition_columns, inplace=True)
-                quanc_df.insert(0, "primary_id", calibration.primary_id)
-                quanc_df.insert(1, "seed", calibration.seed)
-                quanc_df.insert(2, "population", calibration.population)
-                quantiles_projection_compartments_list.append(quanc_df)
+                    quanc_df.insert(0, "primary_id", calibration.primary_id)
+                    quanc_df.insert(1, "seed", calibration.seed)
+                    quanc_df.insert(2, "population", calibration.population)
+                    quantiles_projection_compartments_list.append(quanc_df)
 
-            # Transitions
-            if output.quantiles.transitions:
-                if hasattr(output.quantiles.transitions, "__len__"):
-                    # Filter for explicitly requested transitions
-                    try:
-                        columns_to_select = ["date", "quantile"]
-                        columns_to_select.extend(output.quantiles.transitions)
-                        quant_df = quan_df[columns_to_select].copy()
-                    except Exception as e:
-                        warnings.add(
-                            f"OUTPUT GENERATOR: Exception occured selecting compartment quantiles, returning all transitions: {e}"
-                        )
+                # Transitions
+                if output.quantiles.transitions:
+                    if hasattr(output.quantiles.transitions, "__len__"):
+                        # Filter for explicitly requested transitions
+                        try:
+                            columns_to_select = ["date", "quantile"]
+                            columns_to_select.extend(output.quantiles.transitions)
+                            quant_df = quan_df[columns_to_select].copy()
+                        except Exception as e:
+                            warnings.add(
+                                f"OUTPUT GENERATOR: Exception occured selecting compartment quantiles, returning all transitions: {e}"
+                            )
+                            # Use all transitions, filter out compartments
+                            # TODO: add target prediction data column name below
+                            columns_to_select = ["date", "quantile"]
+                            columns_to_select.extend(transition_columns)
+                            quant_df = quan_df[columns_to_select].copy()
+                    else:
                         # Use all transitions, filter out compartments
                         # TODO: add target prediction data column name below
                         columns_to_select = ["date", "quantile"]
                         columns_to_select.extend(transition_columns)
                         quant_df = quan_df[columns_to_select].copy()
-                else:
-                    # Use all transitions, filter out compartments
-                    # TODO: add target prediction data column name below
-                    columns_to_select = ["date", "quantile"]
-                    columns_to_select.extend(transition_columns)
-                    quant_df = quan_df[columns_to_select].copy()
-                quant_df.insert(0, "primary_id", calibration.primary_id)
-                quant_df.insert(1, "seed", calibration.seed)
-                quant_df.insert(2, "population", calibration.population)
-                quantiles_projection_transitions_list.append(quant_df)
+                    quant_df.insert(0, "primary_id", calibration.primary_id)
+                    quant_df.insert(1, "seed", calibration.seed)
+                    quant_df.insert(2, "population", calibration.population)
+                    quantiles_projection_transitions_list.append(quant_df)
+            except Exception as e:
+                warnings.add(
+                    f"OUTPUT GENERATOR: Exception occurred processing quantile outputs for model with primary_id={calibration.primary_id}, continuing to next model. Message: {e}"
+                )
 
     quantiles_projection_compartments = (
         pd.concat(quantiles_projection_compartments_list, ignore_index=True)
