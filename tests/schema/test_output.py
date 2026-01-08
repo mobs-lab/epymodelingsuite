@@ -5,6 +5,7 @@ from datetime import date
 import pytest
 
 from epymodelingsuite.schema.output import (
+    CategoricalPlotConfig,
     FlusightForecastOutput,
     FlusightPropED,
     ObservedValuesConfig,
@@ -124,3 +125,47 @@ class TestOutputConfigurationSurveillanceValidation:
             ),
         )
         assert config.flusight_format.prop_ed.ed_source is None
+
+
+class TestCategoricalPlotConfigValidation:
+    """Test CategoricalPlotConfig schema validation."""
+
+    def test_categorical_plot_config_defaults(self):
+        """Test CategoricalPlotConfig default values."""
+        config = CategoricalPlotConfig()
+        assert len(config.categories) == 5
+        assert config.categories == ["large_decrease", "decrease", "stable", "increase", "large_increase"]
+        assert len(config.colors) == 5
+        assert config.colors == ["#476a6f", "#519e8a", "#b7c3f3", "#dd7596", "#cf1259"]
+        assert config.horizons == [0, 1, 2, 3]
+        assert config.figsize is None
+
+    def test_categorical_plot_config_custom_values(self):
+        """Test CategoricalPlotConfig with custom values."""
+        config = CategoricalPlotConfig(
+            categories=["low", "medium", "high"],
+            colors=["#000000", "#808080", "#FFFFFF"],
+            horizons=[0, 1],
+            figsize=(12, 10),
+        )
+        assert config.categories == ["low", "medium", "high"]
+        assert config.colors == ["#000000", "#808080", "#FFFFFF"]
+        assert config.horizons == [0, 1]
+        assert config.figsize == (12, 10)
+
+    def test_categorical_plot_config_color_validation(self):
+        """Test validation that colors list matches categories list."""
+        with pytest.raises(ValueError, match="colors list length .* must match categories list length"):
+            CategoricalPlotConfig(
+                categories=["a", "b", "c"],
+                colors=["#000000", "#111111"],  # Wrong length (2 instead of 3)
+            )
+
+    def test_categorical_plot_config_color_validation_with_defaults(self):
+        """Test that default categories and colors have matching lengths."""
+        # This should not raise - defaults are designed to match
+        config = CategoricalPlotConfig(
+            categories=["large_decrease", "decrease", "stable", "increase", "large_increase"],
+            # colors will use default which also has 5 elements
+        )
+        assert len(config.categories) == len(config.colors)
