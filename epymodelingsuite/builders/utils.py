@@ -6,7 +6,7 @@ from ..schema.calibration import CalibrationConfig
 from ..utils import convert_location_name_format
 
 
-def get_data_in_window(data: pd.DataFrame, calibration: CalibrationConfig) -> pd.DataFrame:
+def get_data_in_window(data: pd.DataFrame, calibration: CalibrationConfig, sort: bool = True) -> pd.DataFrame:
     """
     Get data within a specified time window.
 
@@ -16,11 +16,14 @@ def get_data_in_window(data: pd.DataFrame, calibration: CalibrationConfig) -> pd
         The full dataset to filter.
     calibration : CalibrationConfig
         Calibration configuration containing fitting window dates.
+    sort : bool, optional
+        If True, sort the filtered data by date in ascending order (oldest to newest).
+        Default is True to ensure consistent ordering for ABC distance functions.
 
     Returns
     -------
     pd.DataFrame
-        Filtered data within the specified time window.
+        Filtered data within the specified time window, optionally sorted by date.
     """
     window_start = calibration.fitting_window.start_date
     window_end = calibration.fitting_window.end_date
@@ -29,7 +32,12 @@ def get_data_in_window(data: pd.DataFrame, calibration: CalibrationConfig) -> pd
     date_col = pd.to_datetime(data[date_col_name]).dt.date
 
     mask = (date_col >= window_start) & (date_col <= window_end)
-    return data.loc[mask]
+    filtered = data.loc[mask]
+
+    if sort:
+        filtered = filtered.sort_values(by=date_col_name).reset_index(drop=True)
+
+    return filtered
 
 
 def get_data_in_location(

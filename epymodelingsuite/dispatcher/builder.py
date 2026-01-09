@@ -444,14 +444,18 @@ def build_calibration(
 
     logger.info("BUILDER: setting up ABCSamplers...")
 
+    # Load observed data from CSV
     observed_raw = pd.read_csv(calibration.observed_data_path)
+    # Filter to fitting window and sort by date (oldest to newest) for consistent ABC distance calculations
     observed_in_window = get_data_in_window(observed_raw, calibration)
     calibrators = []
     location_column = calibration.comparison[0].observed_location_column
     location_format = calibration.comparison[0].observed_location_format
 
     for model in models:
-        observed_data = get_data_in_location(observed_in_window, model.population.name, location_column, location_format)
+        observed_data = get_data_in_location(
+            observed_in_window, model.population.name, location_column, location_format
+        )
         vax_state = (
             get_data_in_location(earliest_vax, model.population.name, "location") if earliest_vax is not None else None
         )
