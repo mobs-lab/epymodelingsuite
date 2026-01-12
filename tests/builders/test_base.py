@@ -509,7 +509,7 @@ class TestLoadMetrocastPopulation:
         population = load_metrocast_population("denver", age_groups)
 
         assert population is not None
-        assert population.name == "metrocast_denver"
+        assert population.name == "metrocast_location_denver"
         assert len(population.Nk) == len(age_groups)
         assert all(nk > 0 for nk in population.Nk)
 
@@ -519,7 +519,7 @@ class TestLoadMetrocastPopulation:
         population = load_metrocast_population("boston", age_groups)
 
         assert population is not None
-        assert population.name == "metrocast_boston"
+        assert population.name == "metrocast_location_boston"
         assert len(population.Nk) == len(age_groups)
         assert all(nk > 0 for nk in population.Nk)
 
@@ -529,7 +529,7 @@ class TestLoadMetrocastPopulation:
         population = load_metrocast_population("nenc", age_groups)
 
         assert population is not None
-        assert population.name == "metrocast_nenc"
+        assert population.name == "metrocast_location_nenc"
         assert len(population.Nk) == len(age_groups)
 
     def test_has_contact_matrices(self):
@@ -575,7 +575,7 @@ class TestLoadMetrocastPopulation:
         )
 
         assert population is not None
-        assert population.name == "metrocast_denver"
+        assert population.name == "metrocast_location_denver"
         # Contact matrices should be loaded from Texas
         assert len(population.contact_matrices) > 0
 

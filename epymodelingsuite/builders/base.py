@@ -13,7 +13,7 @@ from ..schema.basemodel import Compartment, Parameter, Transition
 from ..schema.basemodel import Population as PopulationConfig
 from ..utils import convert_location_name_format
 from ..utils.expression_eval import RetrieveName, SafeEvalVisitor, safe_eval
-from ..utils.location import get_metrocast_population_data, get_parent_region
+from ..utils.location import METROCAST_PREFIX, get_metrocast_population_data, get_parent_region
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +128,7 @@ def load_metrocast_population(
     cm_population = load_epydemix_population(cm_epydemix, age_group_mapping=age_mapping)
 
     # 5. Create custom population with metrocast Nk + parent region contact matrix
-    population = Population(name=f"metrocast_{location_name}")
+    population = Population(name=f"{METROCAST_PREFIX}{location_name}")
     population.add_population(Nk=np.array(Nk, dtype=float), Nk_names=age_groups)
     population.contact_matrices = cm_population.contact_matrices  # layers derived from this
 
