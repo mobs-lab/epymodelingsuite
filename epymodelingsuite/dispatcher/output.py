@@ -21,6 +21,7 @@ from ..schema.output import (
 )
 from ..telemetry import ExecutionTelemetry
 from ..utils.location import (
+    METROCAST_PREFIX,
     convert_location_name_format,
 )
 from ..utils.populations import get_total_population
@@ -33,6 +34,54 @@ from ..visualization.generators import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def get_hub_location_id(population_name: str) -> str:
+    """
+    Convert population name to location ID for hub CSV outputs.
+
+    For ISO locations, returns FIPS code (e.g., "06" for California).
+    For metrocast locations, returns metrocast_location_id (e.g., "denver").
+
+    Parameters
+    ----------
+    population_name : str
+        Population name in epydemix format (e.g., "United_States_California" or
+        "metrocast_location_denver").
+
+    Returns
+    -------
+    str
+        Location ID appropriate for hub CSV output format.
+    """
+    if population_name.startswith(METROCAST_PREFIX):
+        return convert_location_name_format(population_name, "metrocast_location_id")
+    return convert_location_name_format(population_name, "FIPS")
+
+
+def get_plot_location_label(population_name: str) -> str:
+    """
+    Convert population name to human-readable label for plot titles.
+
+    For ISO locations, returns state name (e.g., "California").
+    For metrocast locations, returns "location_id (state_abb)" (e.g., "denver (CO)").
+
+    Parameters
+    ----------
+    population_name : str
+        Population name in epydemix format (e.g., "United_States_California" or
+        "metrocast_location_denver").
+
+    Returns
+    -------
+    str
+        Human-readable location label for plot titles.
+    """
+    if population_name.startswith(METROCAST_PREFIX):
+        location_id = convert_location_name_format(population_name, "metrocast_location_id")
+        state_abb = convert_location_name_format(population_name, "abbreviation")
+        return f"{location_id} ({state_abb})"
+    return convert_location_name_format(population_name, "name")
 
 
 # ===== Output Generator Helper Functions =====
@@ -724,10 +773,8 @@ def make_prop_ed_flusightforecast(
 
             # Add location and reference_date columns
             formatted.insert(0, "reference_date", reference_date)
-            # Convert population to FIPS format for each row
-            formatted.insert(
-                0, "location", formatted.population.apply(lambda x: convert_location_name_format(x, "FIPS"))
-            )
+            # Convert population to location ID (FIPS for ISO, metrocast_location_id for metrocast)
+            formatted.insert(0, "location", formatted.population.apply(get_hub_location_id))
 
             # Select only the columns we need for FluSight format
             formatted = formatted[
@@ -1330,7 +1377,7 @@ def generate_calibration_outputs(
                     continue
                 quanf_df = format_quantiles_flusightforecast(quanf_df, output.flusight_format.reference_date)
                 quanf_df.insert(0, "reference_date", output.flusight_format.reference_date)
-                quanf_df.insert(0, "location", convert_location_name_format(calibration.population, "FIPS"))
+                quanf_df.insert(0, "location", get_hub_location_id(calibration.population))
                 hub_format_output_list.append(quanf_df)
 
         # Prop ED forecasts
@@ -1447,7 +1494,7 @@ def generate_calibration_outputs(
                 trends_df.insert(0, "target", "wk flu hosp rate change")
                 trends_df.insert(0, "output_type", "pmf")
                 trends_df.insert(0, "reference_date", output.flusight_format.reference_date)
-                trends_df.insert(0, "location", convert_location_name_format(calibration.population, "FIPS"))
+                trends_df.insert(0, "location", get_hub_location_id(calibration.population))
                 hub_format_output_list.append(trends_df)
 
         hub_format_output = (
