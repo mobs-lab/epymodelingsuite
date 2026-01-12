@@ -488,7 +488,7 @@ def prop_ed_surveillance_window(
     prop_ed_list = []
     r_dict = defaultdict(list)
     for loc in pred_hosp.location.unique():
-        # Convert FIPS location to surveillance data formats for filtering
+        # Convert hub location to surveillance data formats for filtering
         loc_hosp = convert_location_name_format(loc, obs_hosp.location_format)
         loc_ed = convert_location_name_format(loc, obs_ed.location_format)
 
@@ -580,7 +580,7 @@ def prop_ed_calibration_window(
     prop_ed_list = []
     r_dict = defaultdict(list)
     for loc in pred_hosp.location.unique():
-        # Convert FIPS location to surveillance data format for filtering
+        # Convert hub location to surveillance data format for filtering
         loc_ed = convert_location_name_format(loc, obs_ed.location_format)
 
         # Filter forecasts and observations
