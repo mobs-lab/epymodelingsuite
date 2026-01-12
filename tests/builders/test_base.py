@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from epymodelingsuite.builders.base import (
+    _parse_age_group,
     calculate_compartment_initial_conditions,
     load_iso_population,
     load_metrocast_population,
@@ -429,6 +430,74 @@ class TestCalculateCompartmentInitialConditions:
 
         expected = np.zeros_like(population_array)
         np.testing.assert_array_almost_equal(result["I"], expected)
+
+
+class TestParseAgeGroup:
+    """Tests for _parse_age_group function."""
+
+    def test_parse_simple_range(self):
+        """Test parsing a simple age range like '0-4'."""
+        result = _parse_age_group("0-4")
+        expected = ["0", "1", "2", "3", "4"]
+        assert result == expected
+
+    def test_parse_teenage_range(self):
+        """Test parsing a teenage age range like '5-17'."""
+        result = _parse_age_group("5-17")
+        expected = [str(i) for i in range(5, 18)]
+        assert result == expected
+        assert len(result) == 13
+
+    def test_parse_adult_range(self):
+        """Test parsing an adult age range like '18-49'."""
+        result = _parse_age_group("18-49")
+        expected = [str(i) for i in range(18, 50)]
+        assert result == expected
+        assert len(result) == 32
+
+    def test_parse_middle_age_range(self):
+        """Test parsing a middle age range like '50-64'."""
+        result = _parse_age_group("50-64")
+        expected = [str(i) for i in range(50, 65)]
+        assert result == expected
+        assert len(result) == 15
+
+    def test_parse_plus_notation(self):
+        """Test parsing plus notation like '65+'."""
+        result = _parse_age_group("65+")
+        # Should return ["65", "66", ..., "83", "84+"]
+        expected = [str(i) for i in range(65, 84)] + ["84+"]
+        assert result == expected
+        assert len(result) == 20  # 65-83 (19 ages) + "84+"
+
+    def test_parse_plus_notation_starts_with_84(self):
+        """Test parsing '84+' edge case."""
+        result = _parse_age_group("84+")
+        # Should return just ["84+"] since range(84, 84) is empty
+        expected = ["84+"]
+        assert result == expected
+
+    def test_parse_plus_notation_zero(self):
+        """Test parsing '0+' which represents all ages."""
+        result = _parse_age_group("0+")
+        # Should return ["0", "1", ..., "83", "84+"]
+        expected = [str(i) for i in range(0, 84)] + ["84+"]
+        assert result == expected
+        assert len(result) == 85  # 0-83 (84 ages) + "84+"
+
+    def test_parse_single_age_range(self):
+        """Test parsing a single age like '5-5'."""
+        result = _parse_age_group("5-5")
+        expected = ["5"]
+        assert result == expected
+
+    def test_result_types_are_strings(self):
+        """Test that all returned values are strings."""
+        result = _parse_age_group("0-4")
+        assert all(isinstance(age, str) for age in result)
+
+        result_plus = _parse_age_group("65+")
+        assert all(isinstance(age, str) for age in result_plus)
 
 
 class TestLoadMetrocastPopulation:
