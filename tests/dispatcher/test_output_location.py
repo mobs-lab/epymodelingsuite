@@ -229,15 +229,25 @@ class TestConvertLocationNameFormatMetrocast:
         result = convert_location_name_format("denver", "ISO")
         assert result == "US-CO"
 
-    def test_location_id_to_fips_returns_id(self):
-        """Test location ID to FIPS returns location ID (no FIPS for metrocast)."""
-        result = convert_location_name_format("denver", "FIPS")
+    def test_location_id_to_metrocast_location_id(self):
+        """Test location ID to metrocast_location_id."""
+        result = convert_location_name_format("denver", "metrocast_location_id")
         assert result == "denver"
 
-    def test_location_id_to_unknown_format_returns_id(self):
-        """Test location ID to unknown format returns location ID."""
-        result = convert_location_name_format("denver", "unknown_format")
-        assert result == "denver"
+    def test_location_id_to_original_location_code(self):
+        """Test location ID to original_location_code (HSA NCI ID)."""
+        result = convert_location_name_format("denver", "original_location_code")
+        assert result == "688"
+
+    def test_location_id_to_fips_raises_error(self):
+        """Test location ID to FIPS raises ValueError (no FIPS for metrocast)."""
+        with pytest.raises(ValueError, match="Unknown output format 'FIPS' for metrocast"):
+            convert_location_name_format("denver", "FIPS")
+
+    def test_location_id_to_unknown_format_raises_error(self):
+        """Test location ID to unknown format raises ValueError."""
+        with pytest.raises(ValueError, match="Unknown output format"):
+            convert_location_name_format("denver", "unknown_format")
 
     # From epydemix_population format (prefixed)
     def test_prefixed_to_epydemix_population(self):
@@ -270,10 +280,15 @@ class TestConvertLocationNameFormatMetrocast:
         result = convert_location_name_format("metrocast_location_denver", "ISO")
         assert result == "US-CO"
 
-    def test_prefixed_to_fips_returns_id(self):
-        """Test prefixed to FIPS returns location ID."""
-        result = convert_location_name_format("metrocast_location_denver", "FIPS")
+    def test_prefixed_to_metrocast_location_id(self):
+        """Test prefixed to metrocast_location_id."""
+        result = convert_location_name_format("metrocast_location_denver", "metrocast_location_id")
         assert result == "denver"
+
+    def test_prefixed_to_fips_raises_error(self):
+        """Test prefixed to FIPS raises ValueError."""
+        with pytest.raises(ValueError, match="Unknown output format 'FIPS' for metrocast"):
+            convert_location_name_format("metrocast_location_denver", "FIPS")
 
     # NC flu regions (different location type in same system)
     def test_nc_region_to_epydemix_population(self):
