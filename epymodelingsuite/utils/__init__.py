@@ -19,7 +19,7 @@ from .distributions import distribution_to_scipy
 from .expression_eval import RetrieveName, SafeEvalVisitor, safe_eval
 from .formatting import format_data_size, format_duration
 from .location import convert_location_name_format, get_location_codebook, validate_iso3166
-from .populations import get_population_codebook, make_dummy_population
+from .populations import get_population_codebook, get_total_population, make_dummy_population
 
 __all__ = [
     # Common utilities
@@ -43,5 +43,6 @@ __all__ = [
     "validate_iso3166",
     # Population utilities
     "get_population_codebook",
+    "get_total_population",
     "make_dummy_population",
 ]

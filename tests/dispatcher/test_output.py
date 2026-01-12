@@ -6,9 +6,12 @@ from datetime import date
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from epymodelingsuite.dispatcher.output import filter_failed_projections
+from epymodelingsuite.schema.output import CategoricalPlotConfig, FigureOutputTypeEnum, PlotsConfig
+from epymodelingsuite.visualization.generators import generate_categorical_plots
 
 
 class TestFilterFailedProjections:
@@ -271,3 +274,118 @@ class TestFilterFailedProjections:
         # Should aggregate count across scenarios (1 + 2 = 3)
         assert hasattr(filtered, "_filtered_count")
         assert filtered._filtered_count == 3
+
+
+class TestGenerateCategoricalPlots:
+    """Tests for generate_categorical_plots function."""
+
+    @pytest.fixture
+    def mock_hub_format_data(self):
+        """Create mock FluSight hub format data with rate-trend forecasts."""
+        data = []
+        for horizon in [0, 1, 2, 3]:
+            for location in ["06", "48"]:  # FIPS codes for CA and TX
+                for category in ["large_decrease", "decrease", "stable", "increase", "large_increase"]:
+                    data.append(
+                        {
+                            "reference_date": date(2025, 11, 26),
+                            "location": location,
+                            "target": "wk flu hosp rate change",
+                            "horizon": horizon,
+                            "target_end_date": date(2025, 12, 7 + horizon * 7),
+                            "output_type": "pmf",
+                            "output_type_id": category,
+                            "value": 0.2,  # Equal probabilities for simplicity
+                        }
+                    )
+        return pd.DataFrame(data)
+
+    @pytest.fixture
+    def mock_plots_config_enabled(self):
+        """Create PlotsConfig with categorical plots enabled."""
+        return PlotsConfig(
+            reference_date=date(2025, 11, 26),
+            figure_output_types=[FigureOutputTypeEnum.PNG],
+            dpi=150,
+            categorical=CategoricalPlotConfig(),
+        )
+
+    @pytest.fixture
+    def mock_plots_config_disabled(self):
+        """Create PlotsConfig with categorical plots disabled."""
+        return PlotsConfig(
+            reference_date=date(2025, 11, 26),
+            figure_output_types=[FigureOutputTypeEnum.PNG],
+            dpi=150,
+            categorical=None,
+        )
+
+    def test_categorical_plots_from_flusight_data(self, mock_hub_format_data, mock_plots_config_enabled):
+        """Test categorical plot generation from FluSight rate-trend data."""
+        out_dict = {}
+
+        # Call generate_categorical_plots
+        generate_categorical_plots(mock_plots_config_enabled, out_dict, mock_hub_format_data)
+
+        # Assert: "categorical_rate_trends" in out_dict
+        assert "categorical_rate_trends" in out_dict
+
+        # Assert: OutputObject has correct types
+        assert len(out_dict["categorical_rate_trends"]) == 1  # One output type (PNG)
+        output_obj = out_dict["categorical_rate_trends"][0]
+        assert output_obj.name == "categorical_rate_trends.png"
+        assert output_obj.output_type == FigureOutputTypeEnum.PNG
+
+    def test_categorical_plots_skip_when_disabled(self, mock_hub_format_data, mock_plots_config_disabled):
+        """Test categorical plots are skipped when config.enabled=False."""
+        out_dict = {}
+
+        # Call generate_categorical_plots with disabled config
+        generate_categorical_plots(mock_plots_config_disabled, out_dict, mock_hub_format_data)
+
+        # Assert: "categorical_rate_trends" NOT in out_dict
+        assert "categorical_rate_trends" not in out_dict
+
+    def test_categorical_plots_skip_when_no_flusight_format(self, mock_plots_config_enabled, caplog):
+        """Test categorical plots are skipped when FluSight format not configured."""
+        out_dict = {}
+
+        # Call generate_categorical_plots with hub_format_data=None
+        generate_categorical_plots(mock_plots_config_enabled, out_dict, hub_format_data=None)
+
+        # Assert: categorical plots skipped
+        assert "categorical_rate_trends" not in out_dict
+
+        # Assert: warning mentions "flusight_format.rate_trends"
+        assert any(
+            "Categorical plots enabled but no FluSight format data available" in rec.message for rec in caplog.records
+        )
+        assert any("flusight_format.rate_trends" in rec.message for rec in caplog.records)
+
+    def test_categorical_plots_skip_when_no_rate_trends(self, mock_plots_config_enabled, caplog):
+        """Test categorical plots are skipped when rate-trend data missing."""
+        out_dict = {}
+
+        # Create hub format data WITHOUT rate-trend forecasts (only hospitalizations)
+        hub_format_data = pd.DataFrame(
+            {
+                "reference_date": [date(2025, 11, 26)],
+                "location": ["06"],
+                "target": ["wk ahead inc flu hosp"],  # Different target, not rate-trend
+                "horizon": [0],
+                "target_end_date": [date(2025, 12, 7)],
+                "output_type": ["quantile"],
+                "output_type_id": ["0.5"],
+                "value": [100.0],
+            }
+        )
+
+        # Call generate_categorical_plots
+        generate_categorical_plots(mock_plots_config_enabled, out_dict, hub_format_data)
+
+        # Assert: categorical plots skipped
+        assert "categorical_rate_trends" not in out_dict
+
+        # Assert: warning mentions "rate-trend categorical forecasts"
+        assert any("No rate-trend categorical forecasts found" in rec.message for rec in caplog.records)
+        assert any("flusight_format.rate_trends" in rec.message for rec in caplog.records)

@@ -1105,6 +1105,273 @@ def plot_posterior_histogram_grid(
     return fig, axes
 
 
+def plot_categorical_stacked_bars(
+    df_categorical: pd.DataFrame,
+    categories: list[str],
+    colors: list[str],
+    location_col: str = "location",
+    category_col: str = "output_type_id",
+    value_col: str = "value",
+    title: str | None = None,
+    ax: plt.Axes | None = None,
+    category_labels: dict[str, str] | None = None,
+) -> tuple[plt.Figure | None, plt.Axes]:
+    """
+    Plot stacked bar chart of categorical forecast probabilities for a single horizon.
+
+    Parameters
+    ----------
+    df_categorical : pd.DataFrame
+        DataFrame containing categorical forecast data.
+    categories : list of str
+        Category names in display order (bottom to top in stacked bars).
+    colors : list of str
+        Colors for categories (must match length of categories list).
+    location_col : str, default "location"
+        Column name for location identifiers.
+    category_col : str, default "output_type_id"
+        Column name for category identifiers.
+    value_col : str, default "value"
+        Column name for probability values.
+    title : str or None, optional
+        Plot title.
+    ax : plt.Axes or None, optional
+        Axes to plot on. If None, creates new figure and axes.
+    category_labels : dict[str, str] or None, optional
+        Mapping from category values to display labels for legend.
+        If None, uses category values as-is.
+
+    Returns
+    -------
+    fig : plt.Figure or None
+        Figure (None if ax was provided).
+    ax : plt.Axes
+        Axes with the plot.
+
+    Raises
+    ------
+    ValueError
+        If data is empty, required columns are missing, or colors/categories lists
+        have different lengths.
+
+    Examples
+    --------
+    >>> df = pd.DataFrame({
+    ...     "location": ["US-CA", "US-CA", "US-TX", "US-TX"],
+    ...     "output_type_id": ["increase", "stable", "increase", "stable"],
+    ...     "value": [0.3, 0.7, 0.4, 0.6],
+    ... })
+    >>> fig, ax = plot_categorical_stacked_bars(
+    ...     df, categories=["stable", "increase"], colors=["blue", "red"]
+    ... )
+
+    """
+    # Validate inputs
+    if df_categorical.empty:
+        msg = "Cannot create categorical plot: data is empty"
+        raise ValueError(msg)
+
+    required_cols = [location_col, category_col, value_col]
+    missing_cols = [col for col in required_cols if col not in df_categorical.columns]
+    if missing_cols:
+        msg = f"Required columns missing from data: {missing_cols}"
+        raise ValueError(msg)
+
+    if len(categories) != len(colors):
+        msg = f"categories list length ({len(categories)}) must match colors list length ({len(colors)})"
+        raise ValueError(msg)
+
+    # Create figure if no axes provided
+    fig = None
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(10, 3))
+
+    # Get sorted locations list with United States first
+    locations = sorted(df_categorical[location_col].unique())
+    if "United States" in locations:
+        locations.remove("United States")
+        locations = ["United States"] + locations
+    n_locations = len(locations)
+
+    # Build stacked bars by iterating through categories
+    bottoms = np.zeros(n_locations)
+    bar_handles = []
+
+    for category, color in zip(categories, colors):
+        # Extract probability values for each location
+        values = []
+        for location in locations:
+            mask = (df_categorical[location_col] == location) & (df_categorical[category_col] == category)
+            matching_rows = df_categorical[mask]
+
+            if not matching_rows.empty:
+                values.append(matching_rows[value_col].values[0])
+            else:
+                # Handle missing data (default to 0.0)
+                values.append(0.0)
+
+        # Get display label for legend
+        display_label = category_labels.get(category, category) if category_labels else category
+
+        # Create bar segment
+        bars = ax.bar(range(n_locations), values, bottom=bottoms, color=color, label=display_label, width=0.8)
+        bar_handles.append(bars)
+
+        # Update bottom for next category
+        bottoms += np.array(values)
+
+    # Format axes
+    ax.set_xticks(range(n_locations))
+    ax.set_xticklabels([_format_location_name(loc) for loc in locations], rotation=90)
+    ax.set_ylabel("")
+    ax.set_ylim(0, 1.0)
+    ax.legend(loc="upper left", bbox_to_anchor=(1.02, 1), borderaxespad=0)
+    ax.grid(axis="y", linestyle="--", alpha=0.3)
+
+    if title:
+        ax.set_title(title)
+
+    return fig, ax
+
+
+def plot_categorical_stacked_bars_multihorizon(
+    df_categorical: pd.DataFrame,
+    categories: list[str],
+    colors: list[str],
+    horizons: list[int],
+    location_col: str = "location",
+    horizon_col: str = "horizon",
+    category_col: str = "output_type_id",
+    value_col: str = "value",
+    figsize: tuple[float, float] | None = None,
+    reference_date: datetime | None = None,
+    category_labels: dict[str, str] | None = None,
+) -> tuple[plt.Figure, np.ndarray]:
+    """
+    Create vertical stack of categorical stacked bars across horizons.
+
+    Creates a nx1 grid (n = len(horizons)) with shared x-axis.
+    X-axis labels are shown only on the bottom panel.
+
+    Parameters
+    ----------
+    df_categorical : pd.DataFrame
+        DataFrame containing categorical forecast data with horizon column.
+    categories : list of str
+        Category names in display order (bottom to top in stacked bars).
+    colors : list of str
+        Colors for categories (must match length of categories list).
+    horizons : list of int
+        Forecast horizons to display (e.g., [0, 1, 2, 3] for FluSight).
+    location_col : str, default "location"
+        Column name for location identifiers.
+    horizon_col : str, default "horizon"
+        Column name for horizon identifiers.
+    category_col : str, default "output_type_id"
+        Column name for category identifiers.
+    value_col : str, default "value"
+        Column name for probability values.
+    figsize : tuple of float or None, optional
+        Figure size (width, height). If None, defaults to (10, 3 * n_horizons).
+    reference_date : datetime or None, optional
+        Reference date for calculating target_end_date in panel titles.
+    category_labels : dict[str, str] or None, optional
+        Mapping from category values to display labels for legend.
+        If None, uses category values as-is.
+
+    Returns
+    -------
+    fig : plt.Figure
+        Figure with stacked panels.
+    axes : np.ndarray
+        Array of axes (shape: n_horizons x 1).
+
+    Examples
+    --------
+    >>> df = pd.DataFrame({
+    ...     "location": ["US-CA", "US-TX"] * 8,
+    ...     "horizon": [0]*4 + [1]*4 + [2]*4 + [3]*4,
+    ...     "output_type_id": ["stable", "increase"] * 8,
+    ...     "value": [0.6, 0.4] * 8,
+    ... })
+    >>> fig, axes = plot_categorical_stacked_bars_multihorizon(
+    ...     df, categories=["stable", "increase"], colors=["blue", "red"],
+    ...     horizons=[0, 1, 2, 3]
+    ... )
+
+    """
+    # Set grid layout
+    nrows = len(horizons)
+    ncols = 1
+
+    # Default figsize
+    if figsize is None:
+        figsize = (10, 3 * nrows)
+
+    # Create subplots with shared x-axis
+    fig, axes = plt.subplots(nrows, ncols, figsize=figsize, squeeze=False, sharex=True)
+
+    # Set overall figure title
+    fig.suptitle("Rate-change trend forecasts", fontsize=14, y=0.995)
+
+    # For each horizon
+    for idx, horizon in enumerate(horizons):
+        ax = axes[idx, 0]
+
+        # Filter data for this horizon
+        df_horizon = df_categorical[df_categorical[horizon_col] == horizon]
+
+        # Generate panel title
+        week_ahead = horizon + 2  # FluSight convention
+
+        # Extract target_end_date from data if available, otherwise calculate from reference_date
+        target_end_date_str = ""
+        if "target_end_date" in df_horizon.columns:
+            target_dates = df_horizon["target_end_date"].unique()
+            if len(target_dates) > 0:
+                # Convert to pandas Timestamp and format as date only
+                target_date = pd.Timestamp(target_dates[0])
+                target_end_date_str = f" ({target_date.strftime('%Y-%m-%d')})"
+        elif reference_date is not None:
+            # Calculate target_end_date from reference_date (assuming weekly forecasts)
+            from datetime import timedelta
+
+            target_date = reference_date + timedelta(weeks=week_ahead)
+            target_end_date_str = f" ({target_date.strftime('%Y-%m-%d')})"
+
+        panel_title = f"{week_ahead} week ahead{target_end_date_str}"
+
+        # Call single-horizon plot function
+        _, ax = plot_categorical_stacked_bars(
+            df_categorical=df_horizon,
+            categories=categories,
+            colors=colors,
+            location_col=location_col,
+            category_col=category_col,
+            value_col=value_col,
+            title=panel_title,
+            ax=ax,
+            category_labels=category_labels,
+        )
+
+        # Remove individual panel legend (will create shared legend later)
+        if ax.get_legend() is not None:
+            ax.get_legend().remove()
+
+        # Hide x-axis labels for all panels except the last one (bottom panel)
+        if idx < nrows - 1:
+            ax.set_xticklabels([])
+
+    # Create shared legend outside all panels
+    handles, labels = axes[0, 0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="center right", bbox_to_anchor=(1.08, 0.5))
+
+    # Apply tight_layout to make room for legend
+    plt.tight_layout(rect=[0, 0, 0.91, 0.99])
+
+    return fig, axes
+
+
 # == Utilities ==
 
 

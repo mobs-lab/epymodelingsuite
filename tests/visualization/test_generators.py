@@ -7,8 +7,12 @@ import pandas as pd
 import pytest
 
 from epymodelingsuite.schema.dispatcher import CalibrationOutput
-from epymodelingsuite.schema.output import PlotsConfig, QuantilesPlotConfig, QuantilesSurveillanceConfig
-from epymodelingsuite.visualization.generators import generate_single_quantile_plots
+from epymodelingsuite.schema.output import ObservedValuesConfig, PlotsConfig, QuantilesPlotConfig
+from epymodelingsuite.visualization.generators import (
+    _prepare_surveillance_for_location,
+    _rename_value_column,
+    generate_single_quantile_plots,
+)
 
 
 class TestSurveillanceDataFiltering:
@@ -254,3 +258,112 @@ class TestSurveillanceDataFiltering:
             # Surveillance should be None when no matching location (for both plots)
             assert df_surv_filtered is None
             assert df_surv_full is None
+
+
+class TestPrepareSurveillanceForLocation:
+    """Test _prepare_surveillance_for_location helper function."""
+
+    def test_handles_duplicate_value_column(self):
+        """Test that preparing surveillance data avoids duplicate 'value' columns."""
+        # Create surveillance data with both 'value' and 'original_value' columns
+        # This simulates real-world data where both columns exist
+        surveillance_df = pd.DataFrame(
+            {
+                "date": pd.date_range("2024-01-01", periods=5, freq="D"),
+                "location_iso": ["US-AL"] * 5,
+                "value": [100.0, 200.0, 300.0, 400.0, 500.0],  # Existing 'value' column
+                "original_value": [0.01, 0.02, 0.03, 0.04, 0.05],  # Column we want to rename to 'value'
+            }
+        )
+
+        # Configure to use 'original_value' as the value column
+        config = ObservedValuesConfig(
+            data_path="dummy.csv",
+            date_column="date",
+            value_column="original_value",
+            location_column="location_iso",
+            location_format="ISO",
+        )
+
+        # Call the function
+        df_surv_full, df_surv_filtered, _ = _prepare_surveillance_for_location(
+            surveillance=surveillance_df,
+            location="US-AL",
+            proj_quant=None,
+            cal_quant=None,
+            surveillance_config=config,
+        )
+
+        # Verify df_surv_full has exactly 2 columns: date and value
+        assert df_surv_full is not None
+        assert len(df_surv_full.columns) == 2
+        assert list(df_surv_full.columns) == ["date", "value"]
+
+        # Verify df['value'] returns a Series, not a DataFrame
+        assert isinstance(df_surv_full["value"], pd.Series)
+
+        # Verify the values are from 'original_value', not the pre-existing 'value' column
+        assert df_surv_full["value"].iloc[0] == 0.01
+        assert df_surv_full["value"].iloc[4] == 0.05
+
+        # Same checks for filtered surveillance
+        assert df_surv_filtered is not None
+        assert len(df_surv_filtered.columns) == 2
+        assert list(df_surv_filtered.columns) == ["date", "value"]
+        assert isinstance(df_surv_filtered["value"], pd.Series)
+
+
+class TestRenameValueColumn:
+    """Test _rename_value_column helper function."""
+
+    def test_rename_existing_column(self):
+        """Test renaming when column exists."""
+        df = pd.DataFrame({"date": ["2024-01-01"], "ed_signal": [100], "quantile": [0.5]})
+        result = _rename_value_column(df, "ed_signal")
+        assert "value" in result.columns
+        assert "ed_signal" not in result.columns
+        assert result["value"].iloc[0] == 100
+
+    def test_handles_duplicate_value_column(self):
+        """Test that renaming avoids duplicate 'value' columns when source has pre-existing 'value'."""
+        # Simulates projection quantiles with 269 columns including both 'value' and 'ed_signal'
+        df = pd.DataFrame(
+            {
+                "date": ["2024-01-01", "2024-01-02"],
+                "quantile": [0.5, 0.5],
+                "population": ["US-AL", "US-AL"],
+                "value": [999.0, 999.0],  # Pre-existing 'value' column from epydemix
+                "ed_signal": [100.0, 200.0],  # Column we want to rename to 'value'
+                "other_column": [1, 2],  # Extra column that should be filtered out
+            }
+        )
+
+        result = _rename_value_column(df, "ed_signal")
+
+        # Should have exactly 4 columns: date, quantile, population, value
+        assert len(result.columns) == 4
+        assert list(result.columns) == ["date", "quantile", "population", "value"]
+
+        # result['value'] should be a Series, not a DataFrame
+        assert isinstance(result["value"], pd.Series)
+
+        # Values should be from 'ed_signal', not the pre-existing 'value' column
+        assert result["value"].iloc[0] == 100.0
+        assert result["value"].iloc[1] == 200.0
+
+    def test_rename_none_input(self):
+        """Test with None input."""
+        result = _rename_value_column(None, "hospitalizations")
+        assert result is None
+
+    def test_rename_missing_column_raises_error(self):
+        """Test error when column doesn't exist."""
+        df = pd.DataFrame({"date": ["2024-01-01"], "ed_signal": [100], "quantile": [0.5]})
+        with pytest.raises(ValueError, match="Column 'hospitalizations' not found"):
+            _rename_value_column(df, "hospitalizations")
+
+    def test_error_message_suggests_available_columns(self):
+        """Test error message lists available columns."""
+        df = pd.DataFrame({"date": ["2024-01-01"], "ed_signal": [100], "other_transition": [200], "quantile": [0.5]})
+        with pytest.raises(ValueError, match=r"Available value columns:.*ed_signal.*other_transition"):
+            _rename_value_column(df, "hospitalizations")

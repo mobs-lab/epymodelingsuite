@@ -32,6 +32,28 @@ def _get_package_version() -> str:
         return "unknown"
 
 
+def _serialize_distance_function(distance_func: str | object) -> str:
+    """Convert distance function to JSON-serializable string.
+
+    Parameters
+    ----------
+    distance_func : str | object
+        Distance function (str or UserDefinedFunction)
+
+    Returns
+    -------
+    str
+        String representation of the distance function
+    """
+    if isinstance(distance_func, str):
+        return distance_func
+    # Check if it's a UserDefinedFunction by checking for user_function_name attribute
+    if hasattr(distance_func, "user_function_name"):
+        return f"user_defined:{distance_func.user_function_name}"
+    # Fallback to string conversion
+    return str(distance_func)
+
+
 class ExecutionTelemetry:
     """Track execution metrics and telemetry for dispatcher workflows.
 
@@ -350,7 +372,9 @@ class ExecutionTelemetry:
             if "num_generations" in calibration_strategy.options:
                 model_data["calibration"]["num_generations"] = calibration_strategy.options["num_generations"]
             if "distance_function" in calibration_strategy.options:
-                model_data["calibration"]["distance_function"] = calibration_strategy.options["distance_function"]
+                model_data["calibration"]["distance_function"] = _serialize_distance_function(
+                    calibration_strategy.options["distance_function"]
+                )
 
         if error:
             model_data["error"] = error
@@ -413,7 +437,9 @@ class ExecutionTelemetry:
             if "num_generations" in calibration_strategy.options:
                 model_data["calibration"]["num_generations"] = calibration_strategy.options["num_generations"]
             if "distance_function" in calibration_strategy.options:
-                model_data["calibration"]["distance_function"] = calibration_strategy.options["distance_function"]
+                model_data["calibration"]["distance_function"] = _serialize_distance_function(
+                    calibration_strategy.options["distance_function"]
+                )
 
         # Record projection info
         projection_info = self._extract_projection_info(output.results, n_trajectories)
