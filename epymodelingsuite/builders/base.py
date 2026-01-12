@@ -42,7 +42,67 @@ def _parse_age_group(group_str: str) -> list:
     return labels
 
 
-def set_population_from_config(model: EpiModel, population_name: str, age_groups: list[str]) -> EpiModel:
+def load_metrocast_population(
+    location_name: str,
+    age_groups: list[str],
+    contact_matrix_override: str | None = None,
+) -> Population:
+    """
+    Load population for metrocast location from metrocast population CSV.
+
+    Parameters
+    ----------
+        location_name: Metrocast location name (e.g., "denver", "nenc")
+        age_groups: List of age group strings to map
+        contact_matrix_override: Optional ISO code to use different contact matrix
+
+    Returns
+    -------
+        epydemix Population object with metrocast population + parent region contact matrix
+    """
+    # 1. Load granular age data
+    age_data = get_metrocast_population_data()
+    location_data = age_data[age_data["location_name"] == location_name]
+
+    if location_data.empty:
+        raise ValueError(f"No population data found for metrocast location: {location_name}")
+
+    # 2. Aggregate to model age groups
+    Nk = []
+    for age_group in age_groups:
+        ages = _parse_age_group(age_group)
+        # Filter to rows matching this age group's ages
+        # Need to handle both numeric ages (0-83) and "84+" string
+        group_pop = 0
+        for age in ages:
+            age_rows = location_data[location_data["age"].astype(str) == str(age)]
+            group_pop += age_rows["population"].sum()
+        Nk.append(int(group_pop))
+
+    # 3. Get contact matrix (inherit from parent region or use override)
+    if contact_matrix_override:
+        cm_iso = contact_matrix_override
+    else:
+        cm_iso = get_parent_region(
+            location_name,
+            output_format="ISO",
+            granularity="state",
+        )
+
+    # 4. Load parent region's contact matrix
+    cm_epydemix = convert_location_name_format(cm_iso, "epydemix_population")
+    age_mapping = {g: _parse_age_group(g) for g in age_groups}
+    cm_population = load_epydemix_population(cm_epydemix, age_mapping)
+
+    # 5. Create custom population with metrocast Nk + parent region contact matrix
+    population = Population(name=f"metrocast_{location_name}")
+    population.add_population(Nk=np.array(Nk, dtype=float), Nk_names=age_groups)
+    population.layers = cm_population.layers  # Inherit
+    population.contact_matrices = cm_population.contact_matrices
+
+    return population
+
+
     """
     Set the population for the EpiModel instance.
 
