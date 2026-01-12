@@ -20,7 +20,10 @@ from ..schema.output import (
     get_flusight_quantiles,
 )
 from ..telemetry import ExecutionTelemetry
-from ..utils.location import convert_location_name_format, get_flusight_population
+from ..utils.location import (
+    convert_location_name_format,
+)
+from ..utils.populations import get_total_population
 from ..visualization.generators import (
     generate_categorical_plots,
     generate_posterior_grid_plot,
@@ -1439,7 +1442,7 @@ def generate_calibration_outputs(
                     proj_dates=traj["date"],
                     proj_values=traj["hospitalizations"],
                     observed=surv,
-                    population=get_flusight_population(calibration.population),
+                    population=get_total_population(calibration.population),
                 )
                 trends_df.insert(0, "target", "wk flu hosp rate change")
                 trends_df.insert(0, "output_type", "pmf")
