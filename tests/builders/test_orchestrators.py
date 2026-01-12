@@ -137,6 +137,32 @@ class TestCreateModelCollection:
             assert len(models) == len(expected_locations)
             assert resolved_names == expected_locations
 
+    def test_all_states_expands_to_all_us_states(self, base_model_config):
+        """Test that 'all-states' expands to all US state ISO codes."""
+        # Mock codebook with a subset of states for faster testing
+        mock_codebook = pd.DataFrame(
+            {
+                "ISO": ["US-CA", "US-TX", "US-NY", "US-FL", "US-MA"],
+                "location_name_epydemix": [
+                    "United_States_California",
+                    "United_States_Texas",
+                    "United_States_New_York",
+                    "United_States_Florida",
+                    "United_States_Massachusetts",
+                ],
+            }
+        )
+
+        with patch("epymodelingsuite.builders.orchestrators.get_location_codebook", return_value=mock_codebook):
+            population_names = ["all-states"]
+            models, resolved_names = create_model_collection(base_model_config, population_names)
+
+            # Should create models for all states in mocked codebook
+            expected_locations = mock_codebook["ISO"].tolist()
+
+            assert len(models) == len(expected_locations)
+            assert resolved_names == expected_locations
+
     def test_all_metrocast_excludes_state_level_locations(self, base_model_config):
         """Test that 'all-metrocast' expands to sub-state locations only, excluding state-level."""
         # Mock metrocast locations with mix of state-level and sub-state entries
