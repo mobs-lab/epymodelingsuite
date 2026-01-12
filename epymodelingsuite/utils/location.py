@@ -216,3 +216,75 @@ def get_metrocast_population_data() -> pd.DataFrame:
     return population_data
 
 
+def get_parent_region(
+    location_name: str,
+    output_format: str = "ISO",
+    granularity: str = "state",
+) -> str:
+    """
+    Get parent region for a location in specified format.
+
+    Supports metrocast locations and ISO 3166-2 state codes.
+
+    Parameters
+    ----------
+    location_name : str
+        Location name: metrocast location (e.g., "denver", "metrocast_location_denver")
+        or ISO 3166-2 state code (e.g., "US-MA")
+    output_format : str
+        Output format: "ISO", "FIPS", "abbreviation", "name", "epydemix_population"
+    granularity : str
+        Region level: "state", "country"
+
+    Returns
+    -------
+    str
+        Parent region identifier in requested format
+
+    Examples
+    --------
+    >>> get_parent_region("denver")
+    'US-CO'
+    >>> get_parent_region("denver", output_format="abbreviation")
+    'CO'
+    >>> get_parent_region("denver", granularity="country")
+    'US'
+    >>> get_parent_region("US-MA", granularity="country")
+    'US'
+    """
+    # Parse location name (handles "metrocast_location_denver" prefix)
+    parsed_name, location_type = parse_population_name(location_name)
+
+    # Determine if this is a metrocast location or ISO location
+    if location_type == "metrocast_location":
+        # Prefixed metrocast location
+        metrocast_locs = get_metrocast_locations()
+        location_row = metrocast_locs[metrocast_locs["location"] == parsed_name]
+        if location_row.empty:
+            raise ValueError(f"Metrocast location '{parsed_name}' not found")
+        state_iso = location_row["state_iso"].iloc[0]
+    elif parsed_name in get_metrocast_locations()["location"].values:
+        # Raw metrocast location name
+        metrocast_locs = get_metrocast_locations()
+        location_row = metrocast_locs[metrocast_locs["location"] == parsed_name]
+        state_iso = location_row["state_iso"].iloc[0]
+    elif "-" in parsed_name:
+        # ISO 3166-2 state code (e.g., "US-MA")
+        state_iso = parsed_name
+    else:
+        raise ValueError(f"Unknown location: '{location_name}'")
+
+    if granularity == "country":
+        # Extract country code (e.g., "US" from "US-CO")
+        country = state_iso.split("-")[0]
+        if output_format == "ISO":
+            return country
+        return convert_location_name_format(country, output_format, input_format="ISO")
+    if granularity == "state":
+        # Return state in requested format
+        if output_format == "ISO":
+            return state_iso
+        return convert_location_name_format(state_iso, output_format, input_format="ISO")
+    raise ValueError(f"Invalid granularity: {granularity}. Must be 'state' or 'country'")
+
+
