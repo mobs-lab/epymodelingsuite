@@ -137,6 +137,40 @@ class TestCreateModelCollection:
             assert len(models) == len(expected_locations)
             assert resolved_names == expected_locations
 
+    def test_all_metrocast_excludes_state_level_locations(self, base_model_config):
+        """Test that 'all-metrocast' expands to sub-state locations only, excluding state-level."""
+        # Mock metrocast locations with mix of state-level and sub-state entries
+        # Use real location names (denver, mesa, savannah) to pass schema validation
+        mock_metrocast = pd.DataFrame(
+            {
+                "location": ["denver", "mesa", "colorado", "savannah", "georgia"],
+                "original_location_code": ["688", "711", "All", "501", "All"],
+                "state": ["Colorado", "Colorado", "Colorado", "Georgia", "Georgia"],
+                "state_abb": ["CO", "CO", "CO", "GA", "GA"],
+                "location_name": ["Denver", "Mesa", "Colorado", "Savannah", "Georgia"],
+                "population": [100000, 50000, 150000, 200000, 250000],
+                "location_type": ["hsa", "hsa", "state", "hsa", "state"],
+                "hsa_counties": ["", "", "", "", ""],
+                "state_iso": ["US-CO", "US-CO", "US-CO", "US-GA", "US-GA"],
+            }
+        )
+
+        with (
+            patch(
+                "epymodelingsuite.builders.orchestrators.get_metrocast_locations",
+                return_value=mock_metrocast,
+            ),
+            patch("epymodelingsuite.builders.orchestrators.set_population_from_config"),
+        ):
+            population_names = ["all-metrocast"]
+            models, resolved_names = create_model_collection(base_model_config, population_names)
+
+            # Should only include sub-state locations (exclude "colorado" and "georgia")
+            expected_locations = ["denver", "mesa", "savannah"]
+
+            assert len(models) == len(expected_locations)
+            assert resolved_names == expected_locations
+
     def test_all_models_share_compartments(self, base_model_config):
         """Test that all models have the same compartments."""
         population_names = ["US-CA", "US-TX"]
