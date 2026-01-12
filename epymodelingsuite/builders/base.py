@@ -130,8 +130,7 @@ def load_metrocast_population(
     # 5. Create custom population with metrocast Nk + parent region contact matrix
     population = Population(name=f"metrocast_{location_name}")
     population.add_population(Nk=np.array(Nk, dtype=float), Nk_names=age_groups)
-    population.layers = cm_population.layers  # Inherit
-    population.contact_matrices = cm_population.contact_matrices
+    population.contact_matrices = cm_population.contact_matrices  # layers derived from this
 
     return population
 
