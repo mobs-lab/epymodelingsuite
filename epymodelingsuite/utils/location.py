@@ -137,3 +137,19 @@ def get_metrocast_locations() -> pd.DataFrame:
     filename = os.path.join(os.path.dirname(sys.modules[__name__].__file__), "../data/metrocast_locations.csv")
     return pd.read_csv(filename)
 
+
+def get_metrocast_population_data() -> pd.DataFrame:
+    """
+    Retrieve granular age-stratified population data for metrocast locations.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with columns: location_name, age, population
+        Age values are single-year ages (0, 1, 2, ..., 83, 84+)
+    """
+    filename = os.path.join(os.path.dirname(sys.modules[__name__].__file__), "../data/metrocast_population.csv")
+    population_data = pd.read_csv(filename)
+    return population_data
+
+
