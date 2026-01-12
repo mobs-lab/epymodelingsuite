@@ -118,11 +118,12 @@ class TestCreateModelCollection:
         # Mock codebook with 3 locations (major + minor states) for faster testing
         mock_codebook = pd.DataFrame(
             {
+                "ISO": ["US-CA", "US-VT", "US-WA"],
                 "location_name_epydemix": [
                     "United_States_California",
                     "United_States_Vermont",
                     "United_States_Washington",
-                ]
+                ],
             }
         )
 
@@ -131,15 +132,10 @@ class TestCreateModelCollection:
             models, resolved_names = create_model_collection(base_model_config, population_names)
 
             # Should create models for all locations in mocked codebook
-            expected_locations = mock_codebook["location_name_epydemix"]
+            expected_locations = mock_codebook["ISO"].tolist()
 
             assert len(models) == len(expected_locations)
-            # resolved_names is a pandas Series when "all" is used
-            # Convert to list for comparison
-            if isinstance(resolved_names, pd.Series):
-                assert list(resolved_names) == list(expected_locations)
-            else:
-                assert resolved_names == list(expected_locations)
+            assert resolved_names == expected_locations
 
     def test_all_models_share_compartments(self, base_model_config):
         """Test that all models have the same compartments."""
@@ -634,17 +630,14 @@ class TestApplyVaccinationForSampledStart:
 
         with (
             patch("epymodelingsuite.builders.orchestrators.reaggregate_vaccines") as mock_reagg,
-            patch("epymodelingsuite.builders.orchestrators.resample_vaccination_schedule") as mock_resample,
             patch("epymodelingsuite.builders.orchestrators.add_vaccination_schedules_from_config") as mock_add,
         ):
             mock_reagg.return_value = {"reaggregated": "data"}
-            mock_resample.return_value = {"resampled": "data"}
 
             apply_vaccination_for_sampled_start(model, basemodel, timespan, earliest_vax, sampled_start_timespan)
 
-            # Should reaggregate, resample, and add
+            # Should reaggregate and add
             mock_reagg.assert_called_once_with(earliest_vax, date(2024, 1, 15))
-            mock_resample.assert_called_once_with({"reaggregated": "data"}, 1.0)
             mock_add.assert_called_once()
 
 
@@ -771,12 +764,12 @@ class TestFormatCalibrationData:
         np.testing.assert_array_equal(result["data"], expected_data)
         assert result["date"] == data_dates
 
-    def test_pads_with_zeros_when_simulation_shorter(self):
-        """Test that zeros are padded when simulation is shorter than observations."""
+    def test_pads_with_nan_when_simulation_shorter(self):
+        """Test that NaN values are padded when simulation is shorter than observations."""
         results = Mock()
         results.dates = [date(2024, 1, 3), date(2024, 1, 4), date(2024, 1, 5)]
         results.transitions = {
-            "Hosp": np.array([30, 40, 50]),
+            "Hosp": np.array([30.0, 40.0, 50.0]),  # Use float array for NaN padding
         }
 
         comparison_transitions = ["Hosp"]
@@ -795,9 +788,11 @@ class TestFormatCalibrationData:
         assert "data" in result
         assert "date" in result
 
-        # Should pad with 2 zeros at beginning
-        expected_data = np.array([0, 0, 30, 40, 50])
-        np.testing.assert_array_equal(result["data"], expected_data)
+        # Should pad with 2 NaN values at beginning
+        assert len(result["data"]) == 5
+        assert np.isnan(result["data"][0])
+        assert np.isnan(result["data"][1])
+        np.testing.assert_array_equal(result["data"][2:], [30.0, 40.0, 50.0])
         assert result["date"] == data_dates
 
     def test_handles_multiple_transitions(self):
@@ -903,8 +898,8 @@ class TestFormatProjectionTrajectories:
         # Simulate starting at week 2 (Jan 13), missing first week (Jan 6)
         # Jan 6, 2024 is the first Saturday of the year
         results.dates = [date(2024, 1, 13), date(2024, 1, 20)]
-        results.transitions = {"Hosp": np.array([10, 20])}
-        results.compartments = {"S": np.array([1000, 990])}
+        results.transitions = {"Hosp": np.array([10.0, 20.0])}
+        results.compartments = {"S": np.array([1000.0, 990.0])}
 
         result = format_projection_trajectories(
             results=results,
@@ -918,16 +913,18 @@ class TestFormatProjectionTrajectories:
         assert len(result["date"]) == 3
         # First date should be padded (Jan 6)
         assert result["date"][0] == pd.Timestamp(date(2024, 1, 6))
-        # Hosp should have one zero padded at beginning
-        np.testing.assert_array_equal(result["Hosp"], np.array([0, 10, 20]))
-        np.testing.assert_array_equal(result["S"], np.array([0, 1000, 990]))
+        # Hosp should have one NaN padded at beginning
+        assert np.isnan(result["Hosp"][0])
+        np.testing.assert_array_equal(result["Hosp"][1:], np.array([10.0, 20.0]))
+        assert np.isnan(result["S"][0])
+        np.testing.assert_array_equal(result["S"][1:], np.array([1000.0, 990.0]))
 
     def test_handles_different_pad_lengths(self):
         """Test that different trajectories pad to same final length."""
         # Trajectory 1: starts early, needs little padding
         results1 = Mock()
         results1.dates = [date(2024, 1, 8), date(2024, 1, 15)]
-        results1.transitions = {"Hosp": np.array([10, 20])}
+        results1.transitions = {"Hosp": np.array([10.0, 20.0])}
         results1.compartments = {}
 
         result1 = format_projection_trajectories(
@@ -941,7 +938,7 @@ class TestFormatProjectionTrajectories:
         # Trajectory 2: starts late, needs more padding
         results2 = Mock()
         results2.dates = [date(2024, 1, 15)]
-        results2.transitions = {"Hosp": np.array([30])}
+        results2.transitions = {"Hosp": np.array([30.0])}
         results2.compartments = {}
 
         result2 = format_projection_trajectories(
@@ -1091,8 +1088,8 @@ class TestFormatProjectionTrajectories:
         results = Mock()
         results.dates = [date(2024, 1, 13), date(2024, 1, 20)]
         results.transitions = {
-            "Hosp_vax": np.array([10, 20]),
-            "Hosp_unvax": np.array([5, 10]),
+            "Hosp_vax": np.array([10.0, 20.0]),
+            "Hosp_unvax": np.array([5.0, 10.0]),
         }
         results.compartments = {}
 
@@ -1115,8 +1112,9 @@ class TestFormatProjectionTrajectories:
 
         # Should pad aggregated transition to 3 weeks total
         assert len(result["total_hosp"]) == 3
-        # First value should be zero (padding)
-        np.testing.assert_array_equal(result["total_hosp"], np.array([0, 15, 30]))
+        # First value should be NaN (padding)
+        assert np.isnan(result["total_hosp"][0])
+        np.testing.assert_array_equal(result["total_hosp"][1:], np.array([15.0, 30.0]))
 
 
 class TestGetAggregatedComparisonTransition:
