@@ -6,6 +6,7 @@ import pytest
 
 from epymodelingsuite.schema.calibration import (
     CalibrationConfig,
+    CalibrationModelset,
     CalibrationStrategy,
     ComparisonSpec,
 )
@@ -292,3 +293,78 @@ class TestComparisonSpecLocationFormat:
                 observed_location_format="invalid_format",
                 simulation=["I_to_R"],
             )
+
+
+class TestCalibrationModelsetPopulationNames:
+    """Tests for CalibrationModelset population_names validation."""
+
+    @pytest.fixture
+    def base_config(self):
+        """Return base calibration configuration dict for testing population_names."""
+        return {
+            "modelset": {
+                "calibration": {
+                    "strategy": {"name": "top_fraction", "options": {"Nsim": 100, "top_fraction": 0.1}},
+                    "observed_data_path": "/tmp/data.csv",
+                    "fitting_window": {"start_date": "2024-01-01", "end_date": "2024-03-01"},
+                    "comparison": [
+                        {
+                            "observed_value_column": "value",
+                            "observed_date_column": "date",
+                            "simulation": ["I_to_R"],
+                        }
+                    ],
+                    "parameters": {
+                        "beta": {"prior": {"type": "scipy", "name": "uniform", "args": [0.1, 0.5]}},
+                    },
+                },
+            },
+        }
+
+    def test_all_states_keyword_is_valid(self, base_config):
+        """Test that 'all-states' keyword is accepted as a valid population name."""
+        base_config["modelset"]["population_names"] = ["all-states"]
+        config = CalibrationConfig(**base_config)
+        assert config.modelset.population_names == ["all-states"]
+
+    def test_all_metrocast_keyword_is_valid(self, base_config):
+        """Test that 'all-metrocast' keyword is accepted as a valid population name."""
+        base_config["modelset"]["population_names"] = ["all-metrocast"]
+        config = CalibrationConfig(**base_config)
+        assert config.modelset.population_names == ["all-metrocast"]
+
+    def test_deprecated_all_keyword_is_valid(self, base_config):
+        """Test that deprecated 'all' keyword is still accepted (with deprecation warning)."""
+        import warnings
+
+        base_config["modelset"]["population_names"] = ["all"]
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            config = CalibrationConfig(**base_config)
+            assert config.modelset.population_names == ["all"]
+            # Should have raised a deprecation warning
+            assert any("deprecated" in str(warning.message).lower() for warning in w)
+
+    def test_iso_location_is_valid(self, base_config):
+        """Test that ISO location codes are accepted."""
+        base_config["modelset"]["population_names"] = ["US-MA", "US-CA"]
+        config = CalibrationConfig(**base_config)
+        assert config.modelset.population_names == ["US-MA", "US-CA"]
+
+    def test_metrocast_location_is_valid(self, base_config):
+        """Test that metrocast location names are accepted."""
+        base_config["modelset"]["population_names"] = ["denver", "boston"]
+        config = CalibrationConfig(**base_config)
+        assert config.modelset.population_names == ["denver", "boston"]
+
+    def test_mixed_keywords_and_locations(self, base_config):
+        """Test that keywords can be mixed with specific locations."""
+        base_config["modelset"]["population_names"] = ["all-states", "denver"]
+        config = CalibrationConfig(**base_config)
+        assert config.modelset.population_names == ["all-states", "denver"]
+
+    def test_invalid_location_raises_error(self, base_config):
+        """Test that invalid location names raise ValueError."""
+        base_config["modelset"]["population_names"] = ["invalid_location_xyz"]
+        with pytest.raises(ValueError):
+            CalibrationConfig(**base_config)
