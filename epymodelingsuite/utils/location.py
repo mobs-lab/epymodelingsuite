@@ -31,29 +31,92 @@ def get_flusight_population(location: str) -> int:
     ].iloc[0]
 
 
-def convert_location_name_format(value: str, output_format: str, input_format: str | None = None) -> str:
+METROCAST_PREFIX = "metrocast_location_"
+
+
+def convert_location_name_format(
+    value: str,
+    output_format: str,
+    input_format: str | None = None,
+    location_type: str | None = None,
+) -> str:
     """
     Convert location name from any valid format to the specified format.
 
-    Available formats:
-    "ISO" - Location code in ISO 3166. Countries use ISO 3166-1 alpha-2 country code (e.g. "US") and states/regions use ISO 3166-2 subdivision (e.g. "US-NY").
-    "epydemix_population" - Population names used by epydemix (e.g. "United_States", "United_States_New_York").
-    "name" - Standard English names (e.g. "United States", "New York").
-    "abbreviation" - Two-letter postal abbreviations (e.g. "US", "NY").
-    "FIPS" - Two-character Federal Information Processing Standard codes (e.g. "US", "36").
+    Available formats for ISO locations:
+    - "ISO" - Location code in ISO 3166 (e.g., "US", "US-NY")
+    - "epydemix_population" - Population names used by epydemix (e.g., "United_States_New_York")
+    - "name" - Standard English names (e.g., "New York")
+    - "abbreviation" - Two-letter postal abbreviations (e.g., "NY")
+    - "FIPS" - Federal Information Processing Standard codes (e.g., "36")
+
+    Available formats for metrocast locations:
+    - "epydemix_population" - Prefixed location ID (e.g., "metrocast_location_denver")
+    - "name" - Human-readable name (e.g., "Denver, CO")
+    - "hsa_counties" - Counties list (e.g., "Adams, Arapahoe, ...")
+    - "state" - Full state name (e.g., "Colorado")
+    - "abbreviation" - State abbreviation (e.g., "CO")
+    - "ISO" - State ISO code (e.g., "US-CO")
+    - Other formats - Location ID (e.g., "denver")
 
     Parameters
     ----------
-            value (str): The location name to convert, in any valid format.
-            output_format (str): The location name format to convert to, either "ISO", "epydemix_population", "name", "abbreviation", or "FIPS".
-            input_format (str | None): Optional. The format of the input value. If provided, enables direct lookup
-                    instead of auto-detection, which is more efficient for batch conversions.
+    value : str
+        The location name to convert, in any valid format.
+    output_format : str
+        The format to convert to.
+    input_format : str | None
+        Optional. The format of the input value. If provided, enables direct lookup
+        instead of auto-detection, which is more efficient for batch conversions.
+    location_type : str | None
+        Location type: "iso", "metrocast_location", or None for auto-detection.
+        Auto-detection checks for metrocast prefix or metrocast location list.
 
     Returns
     -------
-            str: The converted location name.
+    str
+        The converted location name.
     """
-    # Retrieve codebook
+    # Auto-detect location_type if not provided
+    if location_type is None:
+        if value.startswith(METROCAST_PREFIX):
+            location_type = "metrocast_location"
+            input_format = "epydemix_population"
+        elif value in get_metrocast_locations()["location"].values:
+            location_type = "metrocast_location"
+        else:
+            location_type = "iso"
+
+    # Handle metrocast locations
+    if location_type == "metrocast_location":
+        # Parse location name from input
+        if input_format == "epydemix_population" and value.startswith(METROCAST_PREFIX):
+            location_id = value[len(METROCAST_PREFIX) :]
+        else:
+            location_id = value
+
+        # Convert to output format
+        if output_format == "epydemix_population":
+            return f"{METROCAST_PREFIX}{location_id}"
+
+        # Formats that require CSV lookup
+        csv_column_map = {
+            "name": "location_name",
+            "hsa_counties": "hsa_counties",
+            "state": "state",
+            "abbreviation": "state_abb",
+            "ISO": "state_iso",
+        }
+        if output_format in csv_column_map:
+            metrocast_locs = get_metrocast_locations()
+            row = metrocast_locs[metrocast_locs["location"] == location_id]
+            if not row.empty:
+                return row[csv_column_map[output_format]].iloc[0]
+
+        # Other formats return the location ID directly
+        return location_id
+
+    # ISO location handling
     codebook = get_location_codebook()
 
     # Match format strings to codebook columns
