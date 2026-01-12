@@ -96,8 +96,8 @@ class TestGetDataInLocation:
         )
 
     def test_filters_by_location_iso_format(self, sample_data):
-        """Test filtering by location using ISO format."""
-        result = get_data_in_location(sample_data, "US-CA", "location", location_format="ISO")
+        """Test filtering by location using ISO format (epydemix population name)."""
+        result = get_data_in_location(sample_data, "United_States_California", "location", data_location_format="ISO")
 
         assert len(result) == 3
         assert all(result["location"] == "US-CA")
@@ -105,6 +105,6 @@ class TestGetDataInLocation:
 
     def test_empty_result_when_location_not_found(self, sample_data):
         """Test that empty DataFrame is returned when location is not found."""
-        result = get_data_in_location(sample_data, "US-FL", "location", location_format="ISO")
+        result = get_data_in_location(sample_data, "United_States_Florida", "location", data_location_format="ISO")
 
         assert len(result) == 0
