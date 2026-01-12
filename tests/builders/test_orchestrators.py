@@ -536,6 +536,106 @@ class TestSetupVaccinationSchedules:
                 # _add_vaccination_schedules_from_config should not be called when start_date is sampled
                 mock_add_vax.assert_not_called()
 
+    def test_iso_states_passed_directly_to_scenario_to_epydemix(self, base_model_with_vaccination):
+        """Test that ISO state codes are passed directly without conversion."""
+        models = [Mock(), Mock()]
+        population_names = ["US-CA", "US-TX"]
+
+        sampled_start_timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
+
+        mock_vax_schedule = pd.DataFrame({"date": ["2024-01-01"], "location": ["US-CA"], "doses": [100]})
+
+        with patch(
+            "epymodelingsuite.builders.orchestrators.scenario_to_epydemix", return_value=mock_vax_schedule
+        ) as mock_scenario_to_epydemix:
+            setup_vaccination_schedules(
+                basemodel=base_model_with_vaccination,
+                models=models,
+                sampled_start_timespan=sampled_start_timespan,
+                population_names=population_names,
+            )
+
+            # Verify ISO states are passed directly
+            mock_scenario_to_epydemix.assert_called_once()
+            call_kwargs = mock_scenario_to_epydemix.call_args[1]
+            assert call_kwargs["states"] == ["US-CA", "US-TX"]
+
+    def test_metrocast_locations_converted_to_parent_state_iso(self, base_model_with_vaccination):
+        """Test that metrocast locations are converted to their parent state ISO codes."""
+        models = [Mock(), Mock()]
+        # denver -> US-CO, boston -> US-MA
+        population_names = ["denver", "boston"]
+
+        sampled_start_timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
+
+        mock_vax_schedule = pd.DataFrame({"date": ["2024-01-01"], "location": ["US-CO"], "doses": [100]})
+
+        with patch(
+            "epymodelingsuite.builders.orchestrators.scenario_to_epydemix", return_value=mock_vax_schedule
+        ) as mock_scenario_to_epydemix:
+            setup_vaccination_schedules(
+                basemodel=base_model_with_vaccination,
+                models=models,
+                sampled_start_timespan=sampled_start_timespan,
+                population_names=population_names,
+            )
+
+            # Verify metrocast locations are converted to parent state ISO codes
+            mock_scenario_to_epydemix.assert_called_once()
+            call_kwargs = mock_scenario_to_epydemix.call_args[1]
+            assert call_kwargs["states"] == ["US-CO", "US-MA"]
+
+    def test_mixed_iso_and_metrocast_locations(self, base_model_with_vaccination):
+        """Test handling of mixed ISO states and metrocast locations."""
+        models = [Mock(), Mock(), Mock()]
+        # US-CA (ISO), denver (metrocast -> US-CO), US-TX (ISO)
+        population_names = ["US-CA", "denver", "US-TX"]
+
+        sampled_start_timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
+
+        mock_vax_schedule = pd.DataFrame({"date": ["2024-01-01"], "location": ["US-CA"], "doses": [100]})
+
+        with patch(
+            "epymodelingsuite.builders.orchestrators.scenario_to_epydemix", return_value=mock_vax_schedule
+        ) as mock_scenario_to_epydemix:
+            setup_vaccination_schedules(
+                basemodel=base_model_with_vaccination,
+                models=models,
+                sampled_start_timespan=sampled_start_timespan,
+                population_names=population_names,
+            )
+
+            # Verify conversion: US-CA stays, denver -> US-CO, US-TX stays
+            mock_scenario_to_epydemix.assert_called_once()
+            call_kwargs = mock_scenario_to_epydemix.call_args[1]
+            assert call_kwargs["states"] == ["US-CA", "US-CO", "US-TX"]
+
+    def test_metrocast_locations_in_same_state_deduplicated(self, base_model_with_vaccination):
+        """Test that multiple metrocast locations in the same state result in a single state ISO."""
+        models = [Mock(), Mock()]
+        # Both denver and colorado-springs are in Colorado (US-CO)
+        population_names = ["denver", "colorado-springs"]
+
+        sampled_start_timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
+
+        mock_vax_schedule = pd.DataFrame({"date": ["2024-01-01"], "location": ["US-CO"], "doses": [100]})
+
+        with patch(
+            "epymodelingsuite.builders.orchestrators.scenario_to_epydemix", return_value=mock_vax_schedule
+        ) as mock_scenario_to_epydemix:
+            setup_vaccination_schedules(
+                basemodel=base_model_with_vaccination,
+                models=models,
+                sampled_start_timespan=sampled_start_timespan,
+                population_names=population_names,
+            )
+
+            # Verify duplicates are removed - both locations map to US-CO
+            mock_scenario_to_epydemix.assert_called_once()
+            call_kwargs = mock_scenario_to_epydemix.call_args[1]
+            # Should be ["US-CO"] not ["US-CO", "US-CO"]
+            assert call_kwargs["states"] == ["US-CO"]
+
 
 class TestComputeSimulationStartDate:
     """Tests for compute_simulation_start_date function."""

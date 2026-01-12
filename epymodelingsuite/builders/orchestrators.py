@@ -18,7 +18,7 @@ from ..schema.basemodel import BaseEpiModel, BasemodelConfig, LocationTypeEnum, 
 from ..schema.calibration import CalibrationConfig, ComparisonSpec
 from ..school_closures import make_school_closure_dict
 from ..utils import get_location_codebook, make_dummy_population, validate_iso3166
-from ..utils.location import get_metrocast_locations
+from ..utils.location import get_metrocast_locations, get_parent_region
 from ..vaccinations import reaggregate_vaccines, scenario_to_epydemix
 from .base import (
     add_model_compartments_from_config,
@@ -200,6 +200,20 @@ def setup_vaccination_schedules(
     if not basemodel.vaccination:
         return models, None
 
+    # Convert population names to state ISO codes for vaccination data lookup
+    # Metrocast locations use their parent state's vaccination data
+    metrocast_locs = get_metrocast_locations()["location"].values
+    state_iso_codes = []
+    for name in population_names:
+        if name in metrocast_locs:
+            # Metrocast location: get parent state ISO
+            state_iso_codes.append(get_parent_region(name, output_format="ISO"))
+        else:
+            # ISO location: use as-is
+            state_iso_codes.append(name)
+    # Remove duplicates while preserving order
+    state_iso_codes = list(dict.fromkeys(state_iso_codes))
+
     # If start_date is sampled, precalculate schedule with earliest start for later reaggregation
     if sampled_start_timespan:
         earliest_vax = scenario_to_epydemix(
@@ -207,7 +221,7 @@ def setup_vaccination_schedules(
             start_date=sampled_start_timespan.start_date,
             end_date=sampled_start_timespan.end_date,
             target_age_groups=basemodel.population.age_groups,
-            states=population_names,
+            states=state_iso_codes,
         )
         return models, earliest_vax
 
