@@ -233,11 +233,12 @@ class TestValidateModelsetConsistency:
             validate_cross_config_consistency(base_config, sampling_config)
 
     def test_no_sampling_or_calibration(self):
+        """Test that validation passes for population-only modelsets (no sampling or calibration)."""
         base_config = self.create_base_config()
         modelset = DummyModelset(population_names=["US"], sampling=None, calibration=None)
         sampling_config = DummyModelsetConfig(modelset=modelset)
-        with pytest.raises(ValueError, match="Modelset must provide a 'sampling' or 'calibration' section"):
-            validate_cross_config_consistency(base_config, sampling_config)
+        # Population-only modelsets are valid - validation returns early without error
+        validate_cross_config_consistency(base_config, sampling_config)
 
     def test_missing_parameters(self):
         base_config = self.create_base_config()
@@ -260,7 +261,14 @@ class TestValidateModelsetConsistency:
     def test_invalid_transitions_in_calibration(self):
         base_config = self.create_base_config()
         comparison = DummyComparison(simulation=["death"])
-        calibration_config = self.create_calibration_config(comparisons=[comparison])
+        calibration = DummyCalibration(
+            parameters={"beta": object()},
+            comparison=[comparison],
+        )
+        # Need to include sampling so validation continues past the early return
+        sampling = DummySampling(parameters={"beta": object()})
+        modelset = DummyModelset(population_names=["US"], sampling=sampling, calibration=calibration)
+        calibration_config = DummyModelsetConfig(modelset=modelset)
         with pytest.raises(ValueError, match="Transitions in calibration comparison not defined in base model"):
             validate_cross_config_consistency(base_config, calibration_config)
 
