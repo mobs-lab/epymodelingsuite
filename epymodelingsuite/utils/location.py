@@ -288,3 +288,34 @@ def get_parent_region(
     raise ValueError(f"Invalid granularity: {granularity}. Must be 'state' or 'country'")
 
 
+
+def validate_metrocast_location(location_id: str) -> str:
+    """
+    Validate that metrocast location name exists in metrocast data.
+
+    Parameters
+    ----------
+    location_id : str
+        Location name to validate (e.g., "denver", "nenc")
+
+    Returns
+    -------
+    str
+        The validated location name
+
+    Raises
+    ------
+    ValueError
+        If location is not found in metrocast data
+    """
+    metrocast_locs = get_metrocast_locations()
+    valid_locations = metrocast_locs["location"].tolist()
+
+    if location_id not in valid_locations:
+        raise ValueError(
+            f"Invalid metrocast location: {location_id}. Must be one of {', '.join(sorted(valid_locations))}"
+        )
+
+    return location_id
+
+
