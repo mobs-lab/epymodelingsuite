@@ -151,42 +151,6 @@ def convert_location_name_format(
     return result
 
 
-def validate_iso3166(value: str) -> str:
-    """
-    Validate that `value` follows ISO 3166.
-
-    Parameters
-    ----------
-                value (str): Location code in ISO 3166. Countries use ISO 3166-1 alpha-2 country code (e.g., "US") and states/regions use ISO 3166-2 subdivision (e.g., "US-NY").
-
-    Returns
-    -------
-        str: The validated ISO 3166 code. Raises error when the code is invalid.
-
-    """
-    # fmt: off
-    countries = ["AF", "AX", "AL", "DZ", "AS", "AD", "AO", "AI", "AQ", "AG", "AR", "AM", "AW", "AU", "AT", "AZ", "BS", "BH", "BD", "BB", "BY", "BE", "BZ", "BJ", "BM", "BT", "BO", "BQ", "BA", "BW", "BV", "BR", "IO", "BN", "BG", "BF", "BI", "CV", "KH", "CM", "CA", "KY", "CF", "TD", "CL", "CN", "CX", "CC", "CO", "KM", "CG", "CD", "CK", "CR", "CI", "HR", "CU", "CW", "CY", "CZ", "DK", "DJ", "DM", "DO", "EC", "EG", "SV", "GQ", "ER", "EE", "SZ", "ET", "FK", "FO", "FJ", "FI", "FR", "GF", "PF", "TF", "GA", "GM", "GE", "DE", "GH", "GI", "GR", "GL", "GD", "GP", "GU", "GT", "GG", "GN", "GW", "GY", "HT", "HM", "VA", "HN", "HK", "HU", "IS", "IN", "ID", "IR", "IQ", "IE", "IM", "IL", "IT", "JM", "JP", "JE", "JO", "KZ", "KE", "KI", "KP", "KR", "KW", "KG", "LA", "LV", "LB", "LS", "LR", "LY", "LI", "LT", "LU", "MO", "MG", "MW", "MY", "MV", "ML", "MT", "MH", "MQ", "MR", "MU", "YT", "MX", "FM", "MD", "MC", "MN", "ME", "MS", "MA", "MZ", "MM", "NA", "NR", "NP", "NL", "NC", "NZ", "NI", "NE", "NG", "NU", "NF", "MK", "MP", "NO", "OM", "PK", "PW", "PS", "PA", "PG", "PY", "PE", "PH", "PN", "PL", "PT", "PR", "QA", "RE", "RO", "RU", "RW", "BL", "SH", "KN", "LC", "MF", "PM", "VC", "WS", "SM", "ST", "SA", "SN", "RS", "SC", "SL", "SG", "SX", "SK", "SI", "SB", "SO", "ZA", "GS", "SS", "ES", "LK", "SD", "SR", "SJ", "SE", "CH", "SY", "TW", "TJ", "TZ", "TH", "TL", "TG", "TK", "TO", "TT", "TN", "TR", "TM", "TC", "TV", "UG", "UA", "AE", "GB", "US", "UM", "UY", "UZ", "VU", "VE", "VN", "VG", "VI", "WF", "EH", "YE", "ZM", "ZW"]
-    subdivisions = {
-        "US": ["US-AL", "US-AK", "US-AZ", "US-AR", "US-CA", "US-CO", "US-CT", "US-DE", "US-FL", "US-GA", "US-HI", "US-ID", "US-IL", "US-IN", "US-IA", "US-KS", "US-KY", "US-LA", "US-ME", "US-MD", "US-MA", "US-MI", "US-MN", "US-MS", "US-MO", "US-MT", "US-NE", "US-NV", "US-NH", "US-NJ", "US-NM", "US-NY", "US-NC", "US-ND", "US-OH", "US-OK", "US-OR", "US-PA", "US-RI", "US-SC", "US-SD", "US-TN", "US-TX", "US-UT", "US-VT", "US-VA", "US-WA", "US-WV", "US-WI", "US-WY", "US-DC", "US-AS", "US-GU", "US-MP", "US-PR", "US-UM", "US-VI"]
-    }
-    # fmt: on
-
-    # Check ISO 3166-1 (country)
-    if value in countries:
-        return value
-
-    # Check ISO 3166-2 (subdivision)
-    if value.startswith("US-"):
-        if value in subdivisions["US"]:
-            return value
-    else:
-        sub = value.split("-")[1]
-        if len(sub) == 2:
-            return value
-
-    raise ValueError(f"Invalid ISO 3166 code: {value}")
-
-
 def get_metrocast_locations() -> pd.DataFrame:
     """
     Retrieve the metrocast location metadata as a Pandas DataFrame.
@@ -288,6 +252,48 @@ def get_parent_region(
     raise ValueError(f"Invalid granularity: {granularity}. Must be 'state' or 'country'")
 
 
+def validate_iso3166(value: str) -> str:
+    """
+    Validate that `value` follows ISO 3166.
+
+    Parameters
+    ----------
+    value : str
+        Location code in ISO 3166. Countries use ISO 3166-1 alpha-2 country code
+        (e.g., "US") and states/regions use ISO 3166-2 subdivision (e.g., "US-NY").
+
+    Returns
+    -------
+    str
+        The validated ISO 3166 code.
+
+    Raises
+    ------
+    ValueError
+        If the code is invalid.
+    """
+    # fmt: off
+    countries = ["AF", "AX", "AL", "DZ", "AS", "AD", "AO", "AI", "AQ", "AG", "AR", "AM", "AW", "AU", "AT", "AZ", "BS", "BH", "BD", "BB", "BY", "BE", "BZ", "BJ", "BM", "BT", "BO", "BQ", "BA", "BW", "BV", "BR", "IO", "BN", "BG", "BF", "BI", "CV", "KH", "CM", "CA", "KY", "CF", "TD", "CL", "CN", "CX", "CC", "CO", "KM", "CG", "CD", "CK", "CR", "CI", "HR", "CU", "CW", "CY", "CZ", "DK", "DJ", "DM", "DO", "EC", "EG", "SV", "GQ", "ER", "EE", "SZ", "ET", "FK", "FO", "FJ", "FI", "FR", "GF", "PF", "TF", "GA", "GM", "GE", "DE", "GH", "GI", "GR", "GL", "GD", "GP", "GU", "GT", "GG", "GN", "GW", "GY", "HT", "HM", "VA", "HN", "HK", "HU", "IS", "IN", "ID", "IR", "IQ", "IE", "IM", "IL", "IT", "JM", "JP", "JE", "JO", "KZ", "KE", "KI", "KP", "KR", "KW", "KG", "LA", "LV", "LB", "LS", "LR", "LY", "LI", "LT", "LU", "MO", "MG", "MW", "MY", "MV", "ML", "MT", "MH", "MQ", "MR", "MU", "YT", "MX", "FM", "MD", "MC", "MN", "ME", "MS", "MA", "MZ", "MM", "NA", "NR", "NP", "NL", "NC", "NZ", "NI", "NE", "NG", "NU", "NF", "MK", "MP", "NO", "OM", "PK", "PW", "PS", "PA", "PG", "PY", "PE", "PH", "PN", "PL", "PT", "PR", "QA", "RE", "RO", "RU", "RW", "BL", "SH", "KN", "LC", "MF", "PM", "VC", "WS", "SM", "ST", "SA", "SN", "RS", "SC", "SL", "SG", "SX", "SK", "SI", "SB", "SO", "ZA", "GS", "SS", "ES", "LK", "SD", "SR", "SJ", "SE", "CH", "SY", "TW", "TJ", "TZ", "TH", "TL", "TG", "TK", "TO", "TT", "TN", "TR", "TM", "TC", "TV", "UG", "UA", "AE", "GB", "US", "UM", "UY", "UZ", "VU", "VE", "VN", "VG", "VI", "WF", "EH", "YE", "ZM", "ZW"]
+    subdivisions = {
+        "US": ["US-AL", "US-AK", "US-AZ", "US-AR", "US-CA", "US-CO", "US-CT", "US-DE", "US-FL", "US-GA", "US-HI", "US-ID", "US-IL", "US-IN", "US-IA", "US-KS", "US-KY", "US-LA", "US-ME", "US-MD", "US-MA", "US-MI", "US-MN", "US-MS", "US-MO", "US-MT", "US-NE", "US-NV", "US-NH", "US-NJ", "US-NM", "US-NY", "US-NC", "US-ND", "US-OH", "US-OK", "US-OR", "US-PA", "US-RI", "US-SC", "US-SD", "US-TN", "US-TX", "US-UT", "US-VT", "US-VA", "US-WA", "US-WV", "US-WI", "US-WY", "US-DC", "US-AS", "US-GU", "US-MP", "US-PR", "US-UM", "US-VI"]
+    }
+    # fmt: on
+
+    # Check ISO 3166-1 (country)
+    if value in countries:
+        return value
+
+    # Check ISO 3166-2 (subdivision)
+    if value.startswith("US-"):
+        if value in subdivisions["US"]:
+            return value
+    else:
+        sub = value.split("-")[1]
+        if len(sub) == 2:
+            return value
+
+    raise ValueError(f"Invalid ISO 3166 code: {value}")
+
 
 def validate_metrocast_location(location_id: str) -> str:
     """
@@ -317,5 +323,42 @@ def validate_metrocast_location(location_id: str) -> str:
         )
 
     return location_id
+
+
+# Registry for location validators
+LOCATION_VALIDATOR_REGISTRY = {
+    "iso": validate_iso3166,
+    "metrocast_location": validate_metrocast_location,
+}
+
+
+def validate_location_by_type(location_id: str, location_type: str) -> str:
+    """
+    Validate location id by type.
+
+    Parameters
+    ----------
+    location_id : str
+        Location identifier to validate
+    location_type : str
+        Type of location ("iso" or "metrocast_location")
+
+    Returns
+    -------
+    str
+        The validated location identifier
+
+    Raises
+    ------
+    ValueError
+        If location_type is not registered or location is invalid
+    """
+    if location_type not in LOCATION_VALIDATOR_REGISTRY:
+        raise ValueError(
+            f"Unknown location type: {location_type}. Must be one of {', '.join(LOCATION_VALIDATOR_REGISTRY.keys())}"
+        )
+
+    validator = LOCATION_VALIDATOR_REGISTRY[location_type]
+    return validator(location_id)
 
 
