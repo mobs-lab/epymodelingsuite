@@ -22,6 +22,7 @@ from ..schema.output import (
 from ..telemetry import ExecutionTelemetry
 from ..utils.location import convert_location_name_format, get_flusight_population
 from ..visualization.generators import (
+    generate_categorical_plots,
     generate_posterior_grid_plot,
     generate_quantile_grid_plot,
     generate_single_location_posterior_plots,
@@ -1598,6 +1599,11 @@ def generate_calibration_outputs(
         logger.info("  - Generating posterior plots")
         generate_single_location_posterior_plots(calibrations, plots_config, out_dict, start_date_reference)
         generate_posterior_grid_plot(calibrations, plots_config, out_dict, start_date_reference)
+
+        # Generate categorical plots (requires FluSight rate-trend data)
+        if plots_config.categorical:
+            logger.info("  - Generating categorical plots")
+            generate_categorical_plots(plots_config, out_dict, hub_format_output)
 
     logger.info("Output generation complete. Generated %d output types", len(out_dict))
     return out_dict

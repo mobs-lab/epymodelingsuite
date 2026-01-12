@@ -526,6 +526,47 @@ class QuantilesPlotConfig(BaseModel):
         return validated_populations
 
 
+class CategoricalPlotConfig(BaseModel):
+    """Configuration for categorical forecast probability plots.
+
+    Creates a vertical stack of 4 subplots (one per horizon 0-3) showing
+    stacked bar charts of categorical forecast probabilities for rate-change trends.
+    All panels share the same x-axis with labels shown only on the bottom panel.
+
+    To enable categorical plots, include this section in your config.
+    To disable, omit the section or set categorical: null.
+    """
+
+    categories: list[str] = Field(
+        default_factory=lambda: ["large_decrease", "decrease", "stable", "increase", "large_increase"],
+        description="Category names in display order (bottom to top in stacked bars).",
+    )
+
+    colors: list[str] = Field(
+        default_factory=lambda: ["#476a6f", "#519e8a", "#b7c3f3", "#dd7596", "#cf1259"],
+        description="Colors for categories (must match length of categories list).",
+    )
+
+    horizons: list[int] = Field(
+        default_factory=lambda: [0, 1, 2, 3],
+        description="Forecast horizons to display (0-3 for FluSight).",
+    )
+
+    figsize: tuple[float, float] | None = Field(
+        None,
+        description="Figure size (width, height). If None, defaults to (10, 4.5 * n_horizons).",
+    )
+
+    @field_validator("colors")
+    @classmethod
+    def validate_colors_match_categories(cls, v: list[str], info) -> list[str]:
+        """Ensure colors list matches categories list length."""
+        if "categories" in info.data and len(v) != len(info.data["categories"]):
+            msg = f"colors list length ({len(v)}) must match categories list length ({len(info.data['categories'])})"
+            raise ValueError(msg)
+        return v
+
+
 class PlotsConfig(BaseModel):
     """Configuration for visualization plots."""
 
@@ -544,6 +585,10 @@ class PlotsConfig(BaseModel):
     quantiles: QuantilesPlotConfig = Field(
         default_factory=QuantilesPlotConfig,
         description="Quantile ribbon plot settings.",
+    )
+    categorical: CategoricalPlotConfig | None = Field(
+        None,
+        description="Categorical forecast probability plot settings (rate-change trends). Set to null or omit to disable.",
     )
 
 
