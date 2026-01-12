@@ -6,12 +6,14 @@ import logging
 import numpy as np
 import scipy
 from epydemix.model import EpiModel
-from epydemix.population import load_epydemix_population
+from epydemix.population import Population, load_epydemix_population
 from epydemix.utils import convert_to_2Darray
 
 from ..schema.basemodel import Compartment, Parameter, Transition
+from ..schema.basemodel import Population as PopulationConfig
 from ..utils import convert_location_name_format
 from ..utils.expression_eval import RetrieveName, SafeEvalVisitor, safe_eval
+from ..utils.location import get_metrocast_population_data, get_parent_region
 
 logger = logging.getLogger(__name__)
 
@@ -134,30 +136,43 @@ def load_metrocast_population(
     return population
 
 
+def set_population_from_config(model: EpiModel, population_config: PopulationConfig) -> EpiModel:
     """
-    Set the population for the EpiModel instance.
+    Set the population for the EpiModel instance with location type awareness.
 
     Parameters
     ----------
         model: The EpiModel instance for which the population will be set.
-        population_name: Name of the population to load.
-        age_groups: List of age group strings to map.
+        population_config: Population configuration schema object.
 
     Returns
     -------
         EpiModel instance with the population set.
     """
-    try:
-        # Convert to "epydemix_population" name
-        population_name = convert_location_name_format(population_name, "epydemix_population")
+    location_name = population_config.name
+    location_type = population_config.location_type
+    age_groups = population_config.age_groups
+    contact_matrix_override = population_config.contact_matrix
 
-        # Create age group mapping
-        age_group_mapping = {group: _parse_age_group(group) for group in age_groups}
-        population = load_epydemix_population(population_name=population_name, age_group_mapping=age_group_mapping)
+    try:
+        if location_type == "iso":
+            population = load_iso_population(
+                location_name,
+                age_groups,
+                contact_matrix_override,
+            )
+        else:  # metrocast_location
+            population = load_metrocast_population(
+                location_name,
+                age_groups,
+                contact_matrix_override,
+            )
+
         model.set_population(population)
-        logger.info(f"Model population set to: {population_name}")
+        logger.info(f"Model population set to: {location_name} (type: {location_type})")
     except Exception as e:
-        raise ValueError(f"Error setting population: {e}")
+        raise ValueError(f"Error setting population for {location_name}: {e}")
+
     return model
 
 
