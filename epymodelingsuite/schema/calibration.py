@@ -99,9 +99,19 @@ class ComparisonSpec(BaseModel):
     )
     observed_location_format: str = Field(
         default="ISO",
-        description="Format of location identifiers in observed data. Options: ISO, FIPS, abbreviation, name, epydemix_population",
+        description="Format of location identifiers in observed data. Options: ISO, FIPS, abbreviation, name, epydemix_population, metrocast_location_id",
     )
     simulation: list[str] = Field(description="List of transition names to sum for comparison (e.g. I_to_R)")
+
+    @field_validator("observed_location_format")
+    @classmethod
+    def validate_observed_location_format(cls, v: str) -> str:
+        """Ensure observed_location_format is a valid option."""
+        valid_formats = {"ISO", "FIPS", "abbreviation", "name", "epydemix_population", "metrocast_location_id"}
+        if v not in valid_formats:
+            msg = f"observed_location_format must be one of {valid_formats}, got '{v}'"
+            raise ValueError(msg)
+        return v
 
 
 class CalibrationParameter(BaseModel):

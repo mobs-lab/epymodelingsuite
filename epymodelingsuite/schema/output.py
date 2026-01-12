@@ -112,14 +112,14 @@ class ObservedValuesConfig(BaseModel):
     location_column: str = Field(description="Name of column containing location in observed data CSV")
     location_format: str = Field(
         default="ISO",
-        description="Format of location identifiers in observed data. Options: ISO, FIPS, abbreviation, name, epydemix_population",
+        description="Format of location identifiers in observed data. Options: ISO, FIPS, abbreviation, name, epydemix_population, metrocast_location_id",
     )
 
     @field_validator("location_format")
     @classmethod
     def validate_location_format(cls, v: str) -> str:
         """Ensure location_format is a valid option."""
-        valid_formats = {"ISO", "FIPS", "abbreviation", "name", "epydemix_population"}
+        valid_formats = {"ISO", "FIPS", "abbreviation", "name", "epydemix_population", "metrocast_location_id"}
         if v not in valid_formats:
             msg = f"location_format must be one of {valid_formats}, got '{v}'"
             raise ValueError(msg)

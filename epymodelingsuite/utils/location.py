@@ -295,9 +295,10 @@ def validate_iso3166(value: str) -> str:
     if value.startswith("US-"):
         if value in subdivisions["US"]:
             return value
-    else:
-        sub = value.split("-")[1]
-        if len(sub) == 2:
+    elif "-" in value:
+        # Non-US subdivision: check format XX-YY
+        parts = value.split("-")
+        if len(parts) >= 2 and len(parts[1]) == 2:
             return value
 
     raise ValueError(f"Invalid ISO 3166 code: {value}")
