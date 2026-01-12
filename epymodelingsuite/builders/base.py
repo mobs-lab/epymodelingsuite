@@ -125,7 +125,7 @@ def load_metrocast_population(
     # 4. Load parent region's contact matrix
     cm_epydemix = convert_location_name_format(cm_iso, "epydemix_population")
     age_mapping = {g: _parse_age_group(g) for g in age_groups}
-    cm_population = load_epydemix_population(cm_epydemix, age_mapping)
+    cm_population = load_epydemix_population(cm_epydemix, age_group_mapping=age_mapping)
 
     # 5. Create custom population with metrocast Nk + parent region contact matrix
     population = Population(name=f"metrocast_{location_name}")
