@@ -108,3 +108,49 @@ class TestGetDataInLocation:
         result = get_data_in_location(sample_data, "United_States_Florida", "location", data_location_format="ISO")
 
         assert len(result) == 0
+
+    def test_filters_by_metrocast_location_id(self):
+        """Test filtering by metrocast location using metrocast_location_id format."""
+        data = pd.DataFrame(
+            {
+                "location": ["denver", "mesa", "denver", "colorado-springs"],
+                "value": [100, 200, 150, 300],
+            }
+        )
+        result = get_data_in_location(
+            data, "metrocast_location_denver", "location", data_location_format="metrocast_location_id"
+        )
+
+        assert len(result) == 2
+        assert all(result["location"] == "denver")
+        assert list(result["value"].values) == [100, 150]
+
+    def test_filters_by_metrocast_original_location_code(self):
+        """Test filtering by metrocast location using original_location_code format."""
+        data = pd.DataFrame(
+            {
+                "location": ["688", "711", "688", "754"],
+                "value": [100, 200, 150, 300],
+            }
+        )
+        result = get_data_in_location(
+            data, "metrocast_location_denver", "location", data_location_format="original_location_code"
+        )
+
+        assert len(result) == 2
+        assert all(result["location"] == "688")
+        assert list(result["value"].values) == [100, 150]
+
+    def test_filters_by_metrocast_name(self):
+        """Test filtering by metrocast location using name format."""
+        data = pd.DataFrame(
+            {
+                "location": ["Denver, CO", "Mesa, CO", "Denver, CO", "Colorado Springs, CO"],
+                "value": [100, 200, 150, 300],
+            }
+        )
+        result = get_data_in_location(data, "metrocast_location_denver", "location", data_location_format="name")
+
+        assert len(result) == 2
+        assert all(result["location"] == "Denver, CO")
+        assert list(result["value"].values) == [100, 150]
