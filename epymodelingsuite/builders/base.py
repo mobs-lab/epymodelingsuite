@@ -42,6 +42,37 @@ def _parse_age_group(group_str: str) -> list:
     return labels
 
 
+def load_iso_population(
+    location_name: str,
+    age_groups: list[str],
+    contact_matrix_override: str | None = None,
+) -> Population:
+    """
+    Load population for ISO 3166 location using epydemix data.
+
+    Parameters
+    ----------
+        location_name: ISO 3166 location code (e.g., "US-MA")
+        age_groups: List of age group strings to map
+        contact_matrix_override: Optional ISO code to use different contact matrix
+
+    Returns
+    -------
+        epydemix Population object
+    """
+    # Determine which location to use for contact matrix
+    cm_location = contact_matrix_override if contact_matrix_override else location_name
+
+    # Convert to "epydemix_population" name
+    population_name = convert_location_name_format(cm_location, "epydemix_population")
+
+    # Create age group mapping
+    age_group_mapping = {group: _parse_age_group(group) for group in age_groups}
+    population = load_epydemix_population(population_name=population_name, age_group_mapping=age_group_mapping)
+
+    return population
+
+
 def load_metrocast_population(
     location_name: str,
     age_groups: list[str],
