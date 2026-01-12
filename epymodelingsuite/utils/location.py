@@ -1,13 +1,13 @@
 """Location validation and conversion utilities."""
 
+import os
+import sys
+
 import pandas as pd
 
 
 def get_location_codebook() -> pd.DataFrame:
     """Retrieve the location codebook as a Pandas DataFrame."""
-    import os
-    import sys
-
     filename = os.path.join(os.path.dirname(sys.modules[__name__].__file__), "../data/location_codebook.csv")
     location_codebook = pd.read_csv(filename)
 
@@ -16,9 +16,6 @@ def get_location_codebook() -> pd.DataFrame:
 
 def get_flusight_locations() -> pd.DataFrame:
     """Retrieve the FluSight location data as a Pandas DataFrame."""
-    import os
-    import sys
-
     filename = os.path.join(os.path.dirname(sys.modules[__name__].__file__), "../data/flusight_locations.csv")
     flusight_locations = pd.read_csv(filename)
 
