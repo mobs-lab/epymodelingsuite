@@ -118,7 +118,10 @@ def _prepare_surveillance_for_location(
         return df_surv_full, df_surv_filtered, surveillance_start_date
 
     surv = get_data_in_location(
-        surveillance, location, surveillance_config.location_column, surveillance_config.location_format
+        surveillance,
+        location,
+        surveillance_config.location_column,
+        surveillance_config.location_format,
     )
 
     # Full surveillance (no filtering)
