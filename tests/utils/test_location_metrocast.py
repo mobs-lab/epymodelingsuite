@@ -7,6 +7,7 @@ from epymodelingsuite.utils.location import (
     get_metrocast_locations,
     get_metrocast_population_data,
     get_parent_region,
+    validate_iso3166,
     validate_location_by_type,
     validate_metrocast_location,
 )
@@ -160,8 +161,7 @@ class TestValidateLocationByType:
     def test_invalid_iso_raises_error(self):
         """Test that invalid ISO location raises error."""
         # ISO validation expects ISO 3166-2 format (e.g., US-XX)
-        # Input without hyphen causes IndexError, input with invalid code raises ValueError
-        with pytest.raises((ValueError, IndexError, AssertionError)):
+        with pytest.raises(ValueError):
             validate_location_by_type("US-ZZ", "iso")  # Invalid state code
 
     def test_invalid_metrocast_raises_error(self):
@@ -173,3 +173,47 @@ class TestValidateLocationByType:
         """Test that unknown location type raises ValueError."""
         with pytest.raises(ValueError, match="Unknown location type"):
             validate_location_by_type("some_location", "unknown_type")
+
+
+class TestValidateISO3166:
+    """Tests for validate_iso3166 function."""
+
+    def test_valid_us_state_returns_code(self):
+        """Test that valid US state code is returned."""
+        result = validate_iso3166("US-MA")
+        assert result == "US-MA"
+
+    def test_valid_country_code_returns_code(self):
+        """Test that valid country code is returned."""
+        result = validate_iso3166("US")
+        assert result == "US"
+
+    def test_valid_non_us_subdivision_returns_code(self):
+        """Test that valid non-US subdivision is returned."""
+        result = validate_iso3166("CA-ON")  # Canada - Ontario
+        assert result == "CA-ON"
+
+    def test_location_without_hyphen_raises_valueerror(self):
+        """Test that location without hyphen raises ValueError, not IndexError.
+
+        This is a regression test for the fix where metrocast locations like
+        'denver' were causing IndexError when validate_iso3166 tried to split
+        by hyphen and access index 1.
+        """
+        with pytest.raises(ValueError, match="Invalid ISO 3166 code"):
+            validate_iso3166("denver")
+
+    def test_single_word_location_raises_valueerror(self):
+        """Test that single-word non-ISO locations raise ValueError."""
+        with pytest.raises(ValueError, match="Invalid ISO 3166 code"):
+            validate_iso3166("boston")
+
+    def test_invalid_us_state_raises_valueerror(self):
+        """Test that invalid US state code raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid ISO 3166 code"):
+            validate_iso3166("US-ZZ")  # ZZ is not a valid US state
+
+    def test_invalid_country_code_raises_valueerror(self):
+        """Test that invalid country code raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid ISO 3166 code"):
+            validate_iso3166("XX")  # XX is not a valid country

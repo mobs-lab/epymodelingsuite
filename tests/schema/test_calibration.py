@@ -7,6 +7,7 @@ import pytest
 from epymodelingsuite.schema.calibration import (
     CalibrationConfig,
     CalibrationStrategy,
+    ComparisonSpec,
 )
 
 
@@ -224,3 +225,70 @@ class TestCalibrationStrategyEnum:
         )
         assert strategy.name == "top_fraction"
         assert "max_time" not in strategy.options
+
+
+class TestComparisonSpecLocationFormat:
+    """Tests for ComparisonSpec observed_location_format validation."""
+
+    def test_default_location_format_is_iso(self):
+        """Test that default observed_location_format is ISO."""
+        spec = ComparisonSpec(
+            observed_date_column="date",
+            observed_value_column="value",
+            simulation=["I_to_R"],
+        )
+        assert spec.observed_location_format == "ISO"
+
+    def test_iso_location_format_is_valid(self):
+        """Test that ISO location format is accepted."""
+        spec = ComparisonSpec(
+            observed_date_column="date",
+            observed_value_column="value",
+            observed_location_format="ISO",
+            simulation=["I_to_R"],
+        )
+        assert spec.observed_location_format == "ISO"
+
+    def test_fips_location_format_is_valid(self):
+        """Test that FIPS location format is accepted."""
+        spec = ComparisonSpec(
+            observed_date_column="date",
+            observed_value_column="value",
+            observed_location_format="FIPS",
+            simulation=["I_to_R"],
+        )
+        assert spec.observed_location_format == "FIPS"
+
+    def test_metrocast_location_id_format_is_valid(self):
+        """Test that metrocast_location_id location format is accepted.
+
+        This is a regression test to ensure metrocast location format
+        is properly supported in calibration configs.
+        """
+        spec = ComparisonSpec(
+            observed_date_column="date",
+            observed_value_column="value",
+            observed_location_format="metrocast_location_id",
+            simulation=["I_to_R"],
+        )
+        assert spec.observed_location_format == "metrocast_location_id"
+
+    def test_epydemix_population_format_is_valid(self):
+        """Test that epydemix_population location format is accepted."""
+        spec = ComparisonSpec(
+            observed_date_column="date",
+            observed_value_column="value",
+            observed_location_format="epydemix_population",
+            simulation=["I_to_R"],
+        )
+        assert spec.observed_location_format == "epydemix_population"
+
+    def test_invalid_location_format_raises_error(self):
+        """Test that invalid location format raises ValueError."""
+        with pytest.raises(ValueError, match="observed_location_format must be one of"):
+            ComparisonSpec(
+                observed_date_column="date",
+                observed_value_column="value",
+                observed_location_format="invalid_format",
+                simulation=["I_to_R"],
+            )
