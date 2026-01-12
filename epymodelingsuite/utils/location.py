@@ -51,13 +51,14 @@ def convert_location_name_format(
     - "FIPS" - Federal Information Processing Standard codes (e.g., "36")
 
     Available formats for metrocast locations:
+    - "metrocast_location_id" - Location ID (e.g., "denver", "nenc")
+    - "original_location_code" - Original code from source data (e.g., "688", "1")
     - "epydemix_population" - Prefixed location ID (e.g., "metrocast_location_denver")
     - "name" - Human-readable name (e.g., "Denver, CO")
     - "hsa_counties" - Counties list (e.g., "Adams, Arapahoe, ...")
     - "state" - Full state name (e.g., "Colorado")
     - "abbreviation" - State abbreviation (e.g., "CO")
     - "ISO" - State ISO code (e.g., "US-CO")
-    - Other formats - Location ID (e.g., "denver")
 
     Parameters
     ----------
@@ -99,6 +100,9 @@ def convert_location_name_format(
         if output_format == "epydemix_population":
             return f"{METROCAST_PREFIX}{location_id}"
 
+        if output_format == "metrocast_location_id":
+            return location_id
+
         # Formats that require CSV lookup
         csv_column_map = {
             "name": "location_name",
@@ -106,6 +110,7 @@ def convert_location_name_format(
             "state": "state",
             "abbreviation": "state_abb",
             "ISO": "state_iso",
+            "original_location_code": "original_location_code",
         }
         if output_format in csv_column_map:
             metrocast_locs = get_metrocast_locations()
@@ -113,8 +118,11 @@ def convert_location_name_format(
             if not row.empty:
                 return row[csv_column_map[output_format]].iloc[0]
 
-        # Other formats return the location ID directly
-        return location_id
+        # Unknown format - raise error for clarity
+        valid_formats = ["epydemix_population", "metrocast_location_id", *csv_column_map.keys()]
+        raise ValueError(
+            f"Unknown output format '{output_format}' for metrocast location. Valid formats: {valid_formats}"
+        )
 
     # ISO location handling
     codebook = get_location_codebook()
