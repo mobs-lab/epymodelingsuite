@@ -140,10 +140,16 @@ class PropEDStrategyEnum(str, Enum):
     transition = "transition"
 
 
+# TODO: Consider renaming 'prop_ed' key to a more generic name (e.g., 'ed_visits', 'ed_target')
+# Metrocast uses "Flu ED visits pct" which is a percentage, not a proportion.
 class FlusightPropED(BaseModel):
-    """Specifications for generating the wk_inc_flu_prop_ed_visits target forecasts."""
+    """Specifications for generating ED-related target forecasts."""
 
-    strategy: PropEDStrategyEnum = Field(description="Strategy for generating prop ED forecasts.")
+    target: str = Field(
+        default="wk inc flu prop ed visits",
+        description="Target name for the submission file (e.g., 'wk inc flu prop ed visits', 'Flu ED visits pct').",
+    )
+    strategy: PropEDStrategyEnum = Field(description="Strategy for generating ED forecasts.")
     transition_name: str | None = Field(
         None,
         description="Name of transition to use for prop ED forecasts (required iff using 'transition' strategy).",
@@ -243,7 +249,10 @@ class FlusightPropED(BaseModel):
 class FlusightHospitalizations(BaseModel):
     """Specifications for generating hospitalizations forecasts."""
 
-    pass
+    target: str = Field(
+        default="wk inc flu hosp",
+        description="Target name for the submission file (e.g., 'wk inc flu hosp').",
+    )
 
 
 class FlusightForecastOutput(BaseModel):

@@ -208,7 +208,9 @@ def filter_failed_calibration_trajectories(calibration_results: CalibrationResul
     return calibration_results
 
 
-def format_quantiles_flusightforecast(quantiles_df: pd.DataFrame, reference_date: date) -> pd.DataFrame:
+def format_quantiles_flusightforecast(
+    quantiles_df: pd.DataFrame, reference_date: date, target: str = "wk inc flu hosp"
+) -> pd.DataFrame:
     """
     Create FluSight forecast formatted quantile outputs for a single model. Rate-trends are handled separately.
 
@@ -218,6 +220,8 @@ def format_quantiles_flusightforecast(quantiles_df: pd.DataFrame, reference_date
         Quantile forecast data with columns: date, quantile, hospitalizations
     reference_date : date
         Reference date for calculating forecast horizons
+    target : str
+        Target name for the submission file (default: "wk inc flu hosp")
 
     Returns
     -------
@@ -245,7 +249,7 @@ def format_quantiles_flusightforecast(quantiles_df: pd.DataFrame, reference_date
         columns={"date": "target_end_date", "hospitalizations": "value", "quantile": "output_type_id"}, inplace=True
     )
     formatted.insert(2, "output_type", "quantile")
-    formatted.insert(2, "target", "wk inc flu hosp")
+    formatted.insert(2, "target", target)
     formatted.target_end_date = formatted.target_end_date.apply(lambda x: x.date())
 
     return formatted
@@ -505,6 +509,7 @@ def prop_ed_surveillance_window(
     obs_hosp: ObservedValuesConfig,
     fit_start: date,
     fit_end: date,
+    target: str = "wk inc flu prop ed visits",
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Create FluSight prop ed forecasts using surveillance_window strategy.
@@ -521,6 +526,8 @@ def prop_ed_surveillance_window(
         Start date for rescaling factor fitting window
     fit_end: date
         End date for rescaling factor fitting window
+    target: str
+        Target name for the submission file (default: "wk inc flu prop ed visits")
 
     Returns
     -------
@@ -579,13 +586,17 @@ def prop_ed_surveillance_window(
 
     # Format and return
     prop_ed = pd.concat(prop_ed_list)
-    prop_ed.target = "wk inc flu prop ed visits"
+    prop_ed.target = target
     rescaling_factors = pd.DataFrame.from_dict(r_dict, orient="columns")
     return prop_ed, rescaling_factors
 
 
 def prop_ed_calibration_window(
-    pred_hosp: pd.DataFrame, obs_ed: ObservedValuesConfig, calibration_quantiles: pd.DataFrame, num_fit_weeks: int
+    pred_hosp: pd.DataFrame,
+    obs_ed: ObservedValuesConfig,
+    calibration_quantiles: pd.DataFrame,
+    num_fit_weeks: int,
+    target: str = "wk inc flu prop ed visits",
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Create FluSight prop ed forecasts using calibration_window strategy.
@@ -601,6 +612,8 @@ def prop_ed_calibration_window(
     num_fit_weeks: int
         Number of weeks for rescaling factor fitting window,
         extending back from the end of the calibration fitting window
+    target: str
+        Target name for the submission file (default: "wk inc flu prop ed visits")
 
     Returns
     -------
@@ -660,7 +673,7 @@ def prop_ed_calibration_window(
 
     # Format and return
     prop_ed = pd.concat(prop_ed_list)
-    prop_ed.target = "wk inc flu prop ed visits"
+    prop_ed.target = target
     prop_ed.value = prop_ed.value.apply(lambda x: max(x, 0))
     prop_ed.value = prop_ed.value.apply(lambda x: min(x, 1))
     rescaling_factors = pd.DataFrame.from_dict(r_dict, orient="columns")
@@ -713,6 +726,7 @@ def make_prop_ed_flusightforecast(
                 surveillance[config.hosp_source],
                 config.fit_start,
                 config.fit_end,
+                target=config.target,
             )
         case "calibration_window":
             # Ensure sources are present
@@ -723,7 +737,11 @@ def make_prop_ed_flusightforecast(
                 msg = f"prop_ed ed_source '{config.ed_source}' not found in output.options.surveillance"
                 raise ValueError(msg)
             return prop_ed_calibration_window(
-                pred_hosp, surveillance[config.ed_source], calibration_quantiles, config.num_fit_weeks
+                pred_hosp,
+                surveillance[config.ed_source],
+                calibration_quantiles,
+                config.num_fit_weeks,
+                target=config.target,
             )
         case "transition":
             # Ensure projection_quantiles is provided
@@ -768,7 +786,7 @@ def make_prop_ed_flusightforecast(
                 inplace=True,
             )
             formatted.insert(2, "output_type", "quantile")
-            formatted.insert(2, "target", "wk inc flu prop ed visits")
+            formatted.insert(2, "target", config.target)
             formatted.target_end_date = formatted.target_end_date.apply(lambda x: x.date() if hasattr(x, "date") else x)
 
             # Add location and reference_date columns
@@ -1375,7 +1393,11 @@ def generate_calibration_outputs(
                         f"OUTPUT GENERATOR: failed to obtain projection quantiles for model with primary_id={calibration.primary_id}, continuing to next model."
                     )
                     continue
-                quanf_df = format_quantiles_flusightforecast(quanf_df, output.flusight_format.reference_date)
+                quanf_df = format_quantiles_flusightforecast(
+                    quanf_df,
+                    output.flusight_format.reference_date,
+                    target=output.flusight_format.hospitalizations.target,
+                )
                 quanf_df.insert(0, "reference_date", output.flusight_format.reference_date)
                 quanf_df.insert(0, "location", get_hub_location_id(calibration.population))
                 hub_format_output_list.append(quanf_df)
