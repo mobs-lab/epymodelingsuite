@@ -362,3 +362,27 @@ def validate_location_by_type(location_id: str, location_type: str) -> str:
     return validator(location_id)
 
 
+def parse_population_name(population_name: str) -> tuple[str, str]:
+    """
+    Parse an epydemix population name into location name and type.
+
+    Epydemix population names use two naming conventions:
+    - Countries/states: "United_States_Massachusetts"
+    - Metrocast locations: "metrocast_location_denver" (prefixed)
+
+    Parameters
+    ----------
+    population_name : str
+        The epydemix population name (from model.population.name or CalibrationOutput.population)
+
+    Returns
+    -------
+    tuple[str, str]
+        (location_name, location_type) tuple:
+        - For countries/states: ("United_States_Massachusetts", "iso")
+        - For metrocast: ("denver", "metrocast_location")
+    """
+    if population_name.startswith(METROCAST_PREFIX):
+        location_name = population_name[len(METROCAST_PREFIX) :]
+        return location_name, "metrocast_location"
+    return population_name, "iso"
