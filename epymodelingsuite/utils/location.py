@@ -122,3 +122,18 @@ def validate_iso3166(value: str) -> str:
             return value
 
     raise ValueError(f"Invalid ISO 3166 code: {value}")
+
+
+def get_metrocast_locations() -> pd.DataFrame:
+    """
+    Retrieve the metrocast location metadata as a Pandas DataFrame.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with columns: location, original_location_code, state, state_abb,
+        location_name, population, location_type, hsa_counties, state_iso
+    """
+    filename = os.path.join(os.path.dirname(sys.modules[__name__].__file__), "../data/metrocast_locations.csv")
+    return pd.read_csv(filename)
+
