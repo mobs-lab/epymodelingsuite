@@ -254,6 +254,7 @@ class FlusightHospitalizations(BaseModel):
         description="Target name for the submission file (e.g., 'wk inc flu hosp').",
     )
 
+
 class FlusightForecastOutput(BaseModel):
     """Specifications for outputs in flusight forecast hub format."""
 
@@ -488,6 +489,10 @@ class QuantilesPlotConfig(BaseModel):
     value_column: str = Field(
         "hospitalizations",
         description="Column name for projection quantiles to plot. Common values: 'hospitalizations', 'ed_signal', 'value'. Must match a transition name in output.quantiles.transitions.",
+    )
+    ylabel: str | None = Field(
+        default=None,
+        description="Y-axis label for quantile plots (e.g., 'Hospitalizations'). If None, no label is shown.",
     )
 
     @field_validator("grid")

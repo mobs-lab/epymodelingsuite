@@ -320,6 +320,7 @@ def _create_filtered_plot(
         fitting_window_start=fitting_window_start if output_config.show_fitting_window_line else None,
         fitting_window_end=fitting_window_end if output_config.show_fitting_window_line else None,
         title=format_location_name(location),
+        ylabel=plots_config.quantiles.ylabel,
     )
 
 
@@ -373,6 +374,7 @@ def _create_full_plot(
         fitting_window_start=fitting_window_start if output_config.show_fitting_window_line else None,
         fitting_window_end=fitting_window_end if output_config.show_fitting_window_line else None,
         title=format_location_name(location),
+        ylabel=plots_config.quantiles.ylabel,
     )
 
 
@@ -436,6 +438,7 @@ def _create_sidebyside_plot(
         title=format_location_name(location),
         figsize=output_config.figsize,
         spacing=output_config.spacing,
+        ylabel=plots_config.quantiles.ylabel,
     )
 
 
@@ -941,6 +944,7 @@ def generate_quantile_grid_plot(
                             location_fitting_window_ends if output_config.show_fitting_window_line else None
                         ),
                         panels_per_row=plots_config.quantiles.grid.panels_per_row,
+                        ylabel=plots_config.quantiles.ylabel,
                     )
 
                     # Package output
@@ -1128,6 +1132,7 @@ def generate_quantile_grid_plot(
                                 title=format_location_name(location),
                                 ax_full=ax_full,
                                 ax_filtered=ax_filtered,
+                                ylabel=plots_config.quantiles.ylabel if col_start == 0 else None,
                             )
 
                             # Hide legends except for leftmost column

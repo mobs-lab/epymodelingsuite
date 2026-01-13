@@ -111,6 +111,7 @@ def plot_quantiles(  # noqa: PLR0913
     ax: plt.Axes | None = None,
     marker: str | None = None,
     zorder: float = 2,
+    ylabel: str | None = None,
 ) -> tuple[plt.Figure | None, plt.Axes]:
     """
     Plot quantile ribbons from quantile DataFrame.
@@ -142,6 +143,8 @@ def plot_quantiles(  # noqa: PLR0913
         Marker style for median line points (e.g., 'o', 's', '^'). If None, no markers, by default None.
     zorder : float, optional
         Z-order for layering (higher values are on top), by default 2.
+    ylabel : str | None, optional
+        Y-axis label (e.g., 'Hospitalizations'). If None, no label is shown, by default None.
 
     Returns
     -------
@@ -255,7 +258,7 @@ def plot_quantiles(  # noqa: PLR0913
     if title is not None:
         ax.set_title(title)
     ax.set_xlabel("")
-    ax.set_ylabel("")
+    ax.set_ylabel(ylabel or "")
     ax.grid(visible=True, linestyle="--", alpha=0.3, linewidth=0.5)
 
     # Add legend
@@ -380,6 +383,7 @@ def plot_calibration_projection(  # noqa: PLR0913
     title: str | None = None,
     ax: plt.Axes | None = None,
     weekly_x_labels: bool = False,
+    ylabel: str | None = None,
 ) -> tuple[plt.Figure | None, plt.Axes]:
     """
     Plot calibration and projection quantiles on top of each other for a single location.
@@ -421,6 +425,10 @@ def plot_calibration_projection(  # noqa: PLR0913
         Plot title, by default None.
     ax : plt.Axes | None, optional
         Matplotlib axes to plot on. If None, creates new figure, by default None.
+    weekly_x_labels : bool, optional
+        If True, use weekly x-axis labels, by default False.
+    ylabel : str | None, optional
+        Y-axis label (e.g., 'Hospitalizations'). If None, no label is shown, by default None.
 
     Returns
     -------
@@ -537,6 +545,7 @@ def plot_calibration_projection(  # noqa: PLR0913
 
     if title is not None:
         ax.set_title(title)
+    ax.set_ylabel(ylabel or "")
 
     # Recreate combined legend with both projection and calibration
     all_handles = []
@@ -588,6 +597,7 @@ def plot_calibration_projection_sidebyside(  # noqa: PLR0913
     spacing: float = 0.3,
     ax_full: plt.Axes | None = None,
     ax_filtered: plt.Axes | None = None,
+    ylabel: str | None = None,
 ) -> tuple[plt.Figure, tuple[plt.Axes, plt.Axes]]:
     """
     Create side-by-side quantile plots: [Full Range | Filtered].
@@ -692,6 +702,7 @@ def plot_calibration_projection_sidebyside(  # noqa: PLR0913
         fitting_window_end=fitting_window_end,
         title=title,
         ax=ax_full,
+        ylabel=ylabel,
     )
 
     # Right panel: Filtered
@@ -732,6 +743,7 @@ def plot_calibration_projection_grid(  # noqa: PLR0913
     location_fitting_window_ends: dict[str, datetime] | None = None,
     panels_per_row: int = 4,
     figsize: tuple[float, float] | None = None,
+    ylabel: str | None = None,
 ) -> tuple[plt.Figure, np.ndarray]:
     """
     Create multipanel grid of calibration and projection quantile plots.
@@ -860,6 +872,7 @@ def plot_calibration_projection_grid(  # noqa: PLR0913
             fitting_window_end=fitting_window_end,
             title=format_location_name(location),
             ax=ax,
+            ylabel=ylabel if c == 0 else None,
         )
 
         # Hide legend for non-leftmost columns (c != 0)
