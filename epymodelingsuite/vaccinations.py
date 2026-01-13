@@ -5,7 +5,7 @@ from collections.abc import Callable
 import pandas as pd
 from epydemix.model import EpiModel
 
-from .utils.populations import get_age_group_mapping, validate_age_groups
+from .utils.populations import aggregate_population_by_age_groups, get_age_group_mapping, validate_age_groups
 
 logger = logging.getLogger(__name__)
 
@@ -337,16 +337,11 @@ def scenario_to_epydemix(
             "50-64 Years": 4,
             "65+ Years": 5,
         }
-        age_group_map_data = get_age_group_mapping(data_age_groups)
-        # population_data = load_epydemix_population(loc_epydemix, age_group_mapping=age_group_map_data)
-        population_data = {}
-        for key, val in age_group_map_data.items():
-            vals = [int(v.replace("+", "")) for v in val]
-            population_data[key] = sum(population_codebook[loc_epydemix][vals].values)
+        pop_by_agegroup = aggregate_population_by_age_groups(population_codebook[loc_epydemix], data_age_groups)
 
         # Add model population and calculate cumulative doses
         vaccine_schedule["population_data"] = vaccine_schedule["Age"].map(
-            lambda age: list(population_data.values())[age_to_index[age]] if age in age_to_index else 0
+            lambda age: list(pop_by_agegroup.values())[age_to_index[age]] if age in age_to_index else 0
         )
 
         vaccine_schedule["cumulative_doses"] = (
@@ -437,16 +432,9 @@ def scenario_to_epydemix(
 
         daily_vaccines_wide_subset = this_location_wide[data_age_groups]
 
-        age_group_map_model = get_age_group_mapping(target_age_groups)
-        # population_model = load_epydemix_population(loc_epydemix, age_group_mapping=age_group_map_model)
-        population_dict_model = {}
-        for key, val in age_group_map_model.items():
-            vals = [int(v.replace("+", "")) for v in val]
-            population_dict_model[key] = sum(population_codebook[loc_epydemix][vals].values)
+        pop_by_agegroup_model = aggregate_population_by_age_groups(population_codebook[loc_epydemix], target_age_groups)
 
-        # population_dict_model= dict(zip(population_model.Nk_names, population_model.Nk))
-
-        reweighting_factors_dict = make_reweighting_factors(population_dict_model, data_age_groups, loc_epydemix)
+        reweighting_factors_dict = make_reweighting_factors(pop_by_agegroup_model, data_age_groups, loc_epydemix)
         new_coverages = {}
         for target_group, weights in reweighting_factors_dict.items():
             # linear combination

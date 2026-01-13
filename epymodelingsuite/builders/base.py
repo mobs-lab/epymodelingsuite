@@ -14,6 +14,7 @@ from ..schema.basemodel import Population as PopulationConfig
 from ..utils import convert_location_name_format
 from ..utils.expression_eval import RetrieveName, SafeEvalVisitor, safe_eval
 from ..utils.location import METROCAST_PREFIX, get_metrocast_population_data, get_parent_region
+from ..utils.populations import aggregate_population_by_age_groups
 
 logger = logging.getLogger(__name__)
 
@@ -101,16 +102,8 @@ def load_metrocast_population(
         raise ValueError(f"No population data found for metrocast location: {location_name}")
 
     # 2. Aggregate to model age groups
-    Nk = []
-    for age_group in age_groups:
-        ages = _parse_age_group(age_group)
-        # Filter to rows matching this age group's ages
-        # Need to handle both numeric ages (0-83) and "84+" string
-        group_pop = 0
-        for age in ages:
-            age_rows = location_data[location_data["age"].astype(str) == str(age)]
-            group_pop += age_rows["population"].sum()
-        Nk.append(int(group_pop))
+    pop_by_age = aggregate_population_by_age_groups(location_data, age_groups)
+    Nk = [pop_by_age[ag] for ag in age_groups]
 
     # 3. Get contact matrix (inherit from parent region or use override)
     if contact_matrix_override:
