@@ -125,6 +125,79 @@ def get_all_age_map() -> dict[str, list[str]]:
     # fmt: on
     return age_map
 
+
+def aggregate_population_by_age_groups(
+    population_data: pd.DataFrame | pd.Series | dict,
+    age_groups: list[str],
+) -> dict[str, int]:
+    """
+    Aggregate single-year age population data into age groups.
+
+    Parameters
+    ----------
+    population_data : pd.DataFrame | pd.Series | dict
+        Population data indexed/keyed by single-year ages (0, 1, ..., 83, 84+).
+        - DataFrame: must have 'age' and 'population' columns (pre-filtered to location)
+        - Series/dict: indexed/keyed by age (int or str)
+    age_groups : list[str]
+        List of age group strings (e.g., ["0-4", "5-17", "18-49", "50-64", "65+"])
+
+    Returns
+    -------
+    dict[str, int]
+        Mapping of age group -> total population
+
+    Notes
+    -----
+    This function uses `get_age_group_mapping` internally to expand age group
+    labels into individual ages. For example:
+
+    - ``"0-4"`` expands to ``["0", "1", "2", "3", "4"]``
+    - ``"65+"`` expands to ``["65", "66", ..., "83", "84+"]``
+
+    The population for each single-year age is then summed to get the total
+    for each age group.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> # DataFrame input (metrocast population format)
+    >>> df = pd.DataFrame({
+    ...     "age": [0, 1, 2, 3, 4, 5, 6],
+    ...     "population": [100, 100, 100, 100, 100, 200, 200]
+    ... })
+    >>> aggregate_population_by_age_groups(df, ["0-4", "5+"])
+    {'0-4': 500, '5+': ...}
+
+    >>> # Dict input
+    >>> pop_dict = {0: 100, 1: 100, 2: 100, 3: 100, 4: 100}
+    >>> aggregate_population_by_age_groups(pop_dict, ["0-2", "3+"])
+    {'0-2': 300, '3+': 200}
+    """
+    age_group_map = get_age_group_mapping(age_groups)
+    result = {}
+
+    for age_group, ages in age_group_map.items():
+        total = 0
+        for age in ages:
+            if isinstance(population_data, pd.DataFrame):
+                # DataFrame with age, population columns (pre-filtered by caller)
+                age_rows = population_data[population_data["age"].astype(str) == str(age)]
+                total += age_rows["population"].sum()
+            elif isinstance(population_data, pd.Series):
+                # Series indexed by age (from population_codebook)
+                age_idx = int(str(age).replace("+", ""))
+                total += population_data.iloc[age_idx]
+            else:
+                # Dict keyed by age
+                age_key = int(str(age).replace("+", "")) if age != "84+" else 84
+                total += population_data.get(age_key, 0)
+
+        result[age_group] = int(total)
+
+    return result
+
+
 def get_population_codebook() -> pd.DataFrame:
     """Retrieve the population codebook as a Pandas DataFrame."""
     import os
