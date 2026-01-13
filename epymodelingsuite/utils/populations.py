@@ -1,10 +1,15 @@
 """Population-related utilities."""
 
+import logging
+
 import pandas as pd
 from epydemix import EpiModel
 from epydemix.population import Population
 
 from .location import METROCAST_PREFIX, get_metrocast_locations
+
+logger = logging.getLogger(__name__)
+
 
 def validate_age_groups(target_age_groups: list[str]) -> None:
     """
