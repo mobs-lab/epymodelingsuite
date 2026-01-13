@@ -243,8 +243,6 @@ class FlusightPropED(BaseModel):
 class FlusightHospitalizations(BaseModel):
     """Specifications for generating hospitalizations forecasts."""
 
-    pass
-
 
 class FlusightForecastOutput(BaseModel):
     """Specifications for outputs in flusight forecast hub format."""

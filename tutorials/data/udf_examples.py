@@ -1,13 +1,12 @@
 ## udf_examples.py
 # Dummy examples for User-Defined Functions
 import copy
-from typing import Dict
 
 from epydemix.calibration import rmse
 from epydemix.model.simulation_output import Trajectory
 
 
-def udf_distance(data: Dict, simulation: Dict):
+def udf_distance(data: dict, simulation: dict):
     """Dummy wrapper for epydemix rmse."""
     return rmse(data, simulation)
 
