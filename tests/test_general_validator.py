@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 from types import SimpleNamespace
 from typing import Any
 
@@ -8,6 +9,7 @@ import pytest
 
 from epymodelingsuite.schema.general import (
     _ensure_compartments_valid,
+    _ensure_fitting_window_within_timespan,
     _ensure_output_references_valid,
     _ensure_parameters_present,
     _ensure_populations_valid,
@@ -603,3 +605,166 @@ class TestWarnMismatchedObservedDataPaths:
         assert "Observed data paths differ between configs" in caplog.text
         assert "calibration='data/calibration.csv'" in caplog.text
         assert "rate_trends_source ('hosp')='data/output.csv'" in caplog.text
+
+
+class TestEnsureFittingWindowWithinTimespan:
+    """Test validation of fitting window against simulation timespan."""
+
+    def _create_basemodel_with_timespan(
+        self,
+        start_date: date | str,
+        end_date: date,
+    ) -> SimpleNamespace:
+        """Create a mock base config with timespan."""
+        timespan = SimpleNamespace(start_date=start_date, end_date=end_date)
+        model = SimpleNamespace(timespan=timespan)
+        return SimpleNamespace(model=model)
+
+    def _create_calibration_with_fitting_window(
+        self,
+        start_date: date | None = None,
+        end_date: date | None = None,
+        epiweek_start_date: date | None = None,
+        epiweek_end_date: date | None = None,
+    ) -> SimpleNamespace:
+        """Create a mock calibration with fitting window."""
+        # Mimic the computed fields behavior from epiweek_fitting_window
+        fitting_window = SimpleNamespace(
+            start_date=start_date,
+            end_date=end_date,
+            epiweek_start_date=epiweek_start_date if epiweek_start_date else start_date,
+            epiweek_end_date=epiweek_end_date if epiweek_end_date else end_date,
+        )
+        return SimpleNamespace(fitting_window=fitting_window)
+
+    def test_fitting_window_within_timespan_valid(self):
+        """Test that fitting window within timespan is valid."""
+        basemodel = self._create_basemodel_with_timespan(
+            start_date=date(2024, 1, 1),
+            end_date=date(2024, 12, 31),
+        )
+        calibration = self._create_calibration_with_fitting_window(
+            start_date=date(2024, 3, 1),
+            end_date=date(2024, 6, 30),
+        )
+        # Should not raise
+        _ensure_fitting_window_within_timespan(basemodel, calibration)
+
+    def test_fitting_window_end_exceeds_timespan_end_invalid(self):
+        """Test that fitting window end exceeding timespan raises error."""
+        basemodel = self._create_basemodel_with_timespan(
+            start_date=date(2024, 1, 1),
+            end_date=date(2024, 6, 30),
+        )
+        calibration = self._create_calibration_with_fitting_window(
+            start_date=date(2024, 3, 1),
+            end_date=date(2024, 12, 31),  # Exceeds timespan end
+        )
+        with pytest.raises(ValueError, match="exceeds simulation timespan end_date"):
+            _ensure_fitting_window_within_timespan(basemodel, calibration)
+
+    def test_fitting_window_start_before_timespan_start_invalid(self):
+        """Test that fitting window start before timespan raises error."""
+        basemodel = self._create_basemodel_with_timespan(
+            start_date=date(2024, 3, 1),
+            end_date=date(2024, 12, 31),
+        )
+        calibration = self._create_calibration_with_fitting_window(
+            start_date=date(2024, 1, 1),  # Before timespan start
+            end_date=date(2024, 6, 30),
+        )
+        with pytest.raises(ValueError, match="is before simulation timespan start_date"):
+            _ensure_fitting_window_within_timespan(basemodel, calibration)
+
+    def test_sampled_start_date_skips_start_validation(self):
+        """Test that 'sampled' start_date skips start date validation."""
+        basemodel = self._create_basemodel_with_timespan(
+            start_date="sampled",  # Not a concrete date
+            end_date=date(2024, 12, 31),
+        )
+        calibration = self._create_calibration_with_fitting_window(
+            start_date=date(2024, 1, 1),
+            end_date=date(2024, 6, 30),
+        )
+        # Should not raise - start date validation skipped
+        _ensure_fitting_window_within_timespan(basemodel, calibration)
+
+    def test_calibrated_start_date_skips_start_validation(self):
+        """Test that 'calibrated' start_date skips start date validation."""
+        basemodel = self._create_basemodel_with_timespan(
+            start_date="calibrated",  # Not a concrete date
+            end_date=date(2024, 12, 31),
+        )
+        calibration = self._create_calibration_with_fitting_window(
+            start_date=date(2024, 1, 1),
+            end_date=date(2024, 6, 30),
+        )
+        # Should not raise - start date validation skipped
+        _ensure_fitting_window_within_timespan(basemodel, calibration)
+
+    def test_sampled_start_still_validates_end_date(self):
+        """Test that 'sampled' start_date still validates end date."""
+        basemodel = self._create_basemodel_with_timespan(
+            start_date="sampled",
+            end_date=date(2024, 6, 30),
+        )
+        calibration = self._create_calibration_with_fitting_window(
+            start_date=date(2024, 1, 1),
+            end_date=date(2024, 12, 31),  # Exceeds timespan end
+        )
+        with pytest.raises(ValueError, match="exceeds simulation timespan end_date"):
+            _ensure_fitting_window_within_timespan(basemodel, calibration)
+
+    def test_no_calibration_skips_validation(self):
+        """Test that None calibration skips validation."""
+        basemodel = self._create_basemodel_with_timespan(
+            start_date=date(2024, 1, 1),
+            end_date=date(2024, 12, 31),
+        )
+        # Should not raise
+        _ensure_fitting_window_within_timespan(basemodel, None)
+
+    def test_exact_boundary_match_valid(self):
+        """Test that fitting window exactly matching timespan is valid."""
+        basemodel = self._create_basemodel_with_timespan(
+            start_date=date(2024, 1, 1),
+            end_date=date(2024, 12, 31),
+        )
+        calibration = self._create_calibration_with_fitting_window(
+            start_date=date(2024, 1, 1),  # Exact match
+            end_date=date(2024, 12, 31),  # Exact match
+        )
+        # Should not raise
+        _ensure_fitting_window_within_timespan(basemodel, calibration)
+
+    def test_epiweek_fitting_window_within_timespan_valid(self):
+        """Test that fitting window via epiweeks within timespan is valid."""
+        basemodel = self._create_basemodel_with_timespan(
+            start_date=date(2024, 1, 1),
+            end_date=date(2024, 12, 31),
+        )
+        # Simulate epiweek-based fitting window
+        calibration = self._create_calibration_with_fitting_window(
+            start_date=None,  # Not using dates directly
+            end_date=None,
+            epiweek_start_date=date(2024, 3, 3),  # Computed from epiweeks
+            epiweek_end_date=date(2024, 6, 29),
+        )
+        # Should not raise
+        _ensure_fitting_window_within_timespan(basemodel, calibration)
+
+    def test_epiweek_fitting_window_end_exceeds_timespan_invalid(self):
+        """Test that epiweek-based fitting window end exceeding timespan raises error."""
+        basemodel = self._create_basemodel_with_timespan(
+            start_date=date(2024, 1, 1),
+            end_date=date(2024, 6, 30),
+        )
+        # Simulate epiweek-based fitting window
+        calibration = self._create_calibration_with_fitting_window(
+            start_date=None,
+            end_date=None,
+            epiweek_start_date=date(2024, 3, 3),
+            epiweek_end_date=date(2024, 12, 28),  # Exceeds timespan end
+        )
+        with pytest.raises(ValueError, match="exceeds simulation timespan end_date"):
+            _ensure_fitting_window_within_timespan(basemodel, calibration)
