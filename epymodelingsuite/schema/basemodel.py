@@ -486,6 +486,48 @@ class BaseEpiModel(BaseModel):
             raise ValueError(msg)
         return self
 
+    @model_validator(mode="after")
+    def check_weekly_frequency_end_date(self: "BaseEpiModel") -> "BaseEpiModel":
+        """Warn if end_date doesn't match the expected day for weekly resample_frequency."""
+        if not self.simulation or not self.simulation.resample_frequency:
+            return self
+
+        freq = self.simulation.resample_frequency
+        # Check if it's a weekly frequency (W-MON, W-TUE, ..., W-SUN)
+        if not freq.startswith("W-"):
+            return self
+
+        # Map day abbreviation to (weekday number, full day name)
+        # weekday(): Monday=0, ..., Sunday=6
+        day_info = {
+            "MON": (0, "Monday"),
+            "TUE": (1, "Tuesday"),
+            "WED": (2, "Wednesday"),
+            "THU": (3, "Thursday"),
+            "FRI": (4, "Friday"),
+            "SAT": (5, "Saturday"),
+            "SUN": (6, "Sunday"),
+        }
+        day_abbrev = freq[2:]  # Extract "SAT" from "W-SAT"
+
+        if day_abbrev not in day_info:
+            return self  # Not a recognized weekly frequency, skip validation
+
+        expected_weekday, expected_day_name = day_info[day_abbrev]
+        actual_weekday = self.timespan.end_date.weekday()
+
+        if actual_weekday != expected_weekday:
+            actual_day = self.timespan.end_date.strftime("%A")
+            logger.warning(
+                "When resample_frequency is '%s', %s is preferred for timespan.end_date. "
+                "Received end_date=%s which is a %s.",
+                freq,
+                expected_day_name,
+                self.timespan.end_date,
+                actual_day,
+            )
+        return self
+
     @field_validator("interventions")
     @classmethod
     def enforce_single_school_closure(cls, v: list[Intervention]) -> list[Intervention]:
