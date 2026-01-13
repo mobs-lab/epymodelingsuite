@@ -363,6 +363,10 @@ class SideBySidePanelConfig(BaseModel):
         None,
         description="Filter surveillance to show only points >= this date (YYYY-MM-DD). Overrides surveillance_points if both set.",
     )
+    xlabel_interval: str | None = Field(
+        None,
+        description="X-axis label interval as pandas offset string (e.g., 'W-SAT', '2W-SAT', 'MS'). None = auto (matplotlib default).",
+    )
 
 
 class QuantilesOutputConfig(BaseModel):
@@ -390,6 +394,10 @@ class QuantilesOutputConfig(BaseModel):
         description="Filter surveillance to show only points >= this date (YYYY-MM-DD). Overrides surveillance_points if both set. Not used for SIDE_BY_SIDE.",
     )
     horizon_max: int | None = Field(None, description="Override base horizon_max. None = use base config value.")
+    xlabel_interval: str | None = Field(
+        None,
+        description="X-axis label interval as pandas offset string (e.g., 'W-SAT', '2W-SAT', 'MS'). None = auto. For SIDE_BY_SIDE, use panel configs instead.",
+    )
 
     # Panel settings (only for SIDE_BY_SIDE type)
     full_panel: SideBySidePanelConfig | None = Field(

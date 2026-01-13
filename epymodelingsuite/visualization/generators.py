@@ -320,6 +320,7 @@ def _create_filtered_plot(
         fitting_window_start=fitting_window_start if output_config.show_fitting_window_line else None,
         fitting_window_end=fitting_window_end if output_config.show_fitting_window_line else None,
         title=format_location_name(location),
+        xlabel_interval=output_config.xlabel_interval,
         ylabel=plots_config.quantiles.ylabel,
     )
 
@@ -374,6 +375,7 @@ def _create_full_plot(
         fitting_window_start=fitting_window_start if output_config.show_fitting_window_line else None,
         fitting_window_end=fitting_window_end if output_config.show_fitting_window_line else None,
         title=format_location_name(location),
+        xlabel_interval=output_config.xlabel_interval,
         ylabel=plots_config.quantiles.ylabel,
     )
 
@@ -424,6 +426,10 @@ def _create_sidebyside_plot(
     tuple
         (fig, (ax_full, ax_filtered)) matplotlib figure and tuple of axes
     """
+    # Get xlabel_interval for each panel from panel configs
+    xlabel_interval_full = output_config.full_panel.xlabel_interval if output_config.full_panel else None
+    xlabel_interval_filtered = output_config.filtered_panel.xlabel_interval if output_config.filtered_panel else None
+
     return plot_calibration_projection_sidebyside(
         calibration_quantiles=cal_quant if output_config.show_calibration else None,
         projection_quantiles_full=proj_quant_full if output_config.show_projection else None,
@@ -439,6 +445,8 @@ def _create_sidebyside_plot(
         figsize=output_config.figsize,
         spacing=output_config.spacing,
         ylabel=plots_config.quantiles.ylabel,
+        xlabel_interval_full=xlabel_interval_full,
+        xlabel_interval_filtered=xlabel_interval_filtered,
     )
 
 
@@ -945,6 +953,7 @@ def generate_quantile_grid_plot(
                         ),
                         panels_per_row=plots_config.quantiles.grid.panels_per_row,
                         ylabel=plots_config.quantiles.ylabel,
+                        xlabel_interval=output_config.xlabel_interval,
                     )
 
                     # Package output
@@ -1118,6 +1127,14 @@ def generate_quantile_grid_plot(
                             )
 
                             # Use core helper to draw both panels on provided axes
+                            # Get xlabel_interval for each panel from panel configs
+                            x_interval_full = (
+                                output_config.full_panel.xlabel_interval if output_config.full_panel else None
+                            )
+                            x_interval_filtered = (
+                                output_config.filtered_panel.xlabel_interval if output_config.filtered_panel else None
+                            )
+
                             plot_calibration_projection_sidebyside(
                                 calibration_quantiles=cal_quant,
                                 projection_quantiles_full=proj_quant_full,
@@ -1133,6 +1150,8 @@ def generate_quantile_grid_plot(
                                 ax_full=ax_full,
                                 ax_filtered=ax_filtered,
                                 ylabel=plots_config.quantiles.ylabel if col_start == 0 else None,
+                                xlabel_interval_full=x_interval_full,
+                                xlabel_interval_filtered=x_interval_filtered,
                             )
 
                             # Hide legends except for leftmost column

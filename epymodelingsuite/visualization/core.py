@@ -382,7 +382,7 @@ def plot_calibration_projection(  # noqa: PLR0913
     fitting_window_end: str | pd.Timestamp | datetime | None = None,
     title: str | None = None,
     ax: plt.Axes | None = None,
-    weekly_x_labels: bool = False,
+    xlabel_interval: str | None = None,
     ylabel: str | None = None,
 ) -> tuple[plt.Figure | None, plt.Axes]:
     """
@@ -425,8 +425,9 @@ def plot_calibration_projection(  # noqa: PLR0913
         Plot title, by default None.
     ax : plt.Axes | None, optional
         Matplotlib axes to plot on. If None, creates new figure, by default None.
-    weekly_x_labels : bool, optional
-        If True, use weekly x-axis labels, by default False.
+    xlabel_interval : str | None, optional
+        X-axis label interval as pandas offset string (e.g., 'W-SAT', '2W-SAT', 'MS').
+        None = auto (matplotlib default), by default None.
     ylabel : str | None, optional
         Y-axis label (e.g., 'Hospitalizations'). If None, no label is shown, by default None.
 
@@ -564,11 +565,15 @@ def plot_calibration_projection(  # noqa: PLR0913
     if all_handles:
         ax.legend(all_handles, all_labels, loc="upper left", fontsize=8)
 
-    # Apply weekly x-axis labels if requested
-    if weekly_x_labels:
-        from matplotlib.dates import DateFormatter, WeekdayLocator
+    # Apply x-axis label interval if specified (pandas offset string like 'W-SAT', '2W-SAT', 'MS')
+    if xlabel_interval is not None:
+        from matplotlib.dates import DateFormatter
 
-        ax.xaxis.set_major_locator(WeekdayLocator(byweekday=5))  # Saturday = 5 (epiweek ending)
+        xlim = ax.get_xlim()
+        start = pd.Timestamp.fromordinal(int(xlim[0]))
+        end = pd.Timestamp.fromordinal(int(xlim[1]))
+        ticks = pd.date_range(start=start, end=end, freq=xlabel_interval)
+        ax.set_xticks(ticks)
         ax.xaxis.set_major_formatter(DateFormatter("%m/%d"))
         ax.tick_params(axis="x", rotation=45)
         plt.setp(ax.xaxis.get_majorticklabels(), ha="right")
@@ -598,6 +603,8 @@ def plot_calibration_projection_sidebyside(  # noqa: PLR0913
     ax_full: plt.Axes | None = None,
     ax_filtered: plt.Axes | None = None,
     ylabel: str | None = None,
+    xlabel_interval_full: str | None = None,
+    xlabel_interval_filtered: str | None = None,
 ) -> tuple[plt.Figure, tuple[plt.Axes, plt.Axes]]:
     """
     Create side-by-side quantile plots: [Full Range | Filtered].
@@ -650,6 +657,14 @@ def plot_calibration_projection_sidebyside(  # noqa: PLR0913
         Optional axes for the full panel. If provided, a new figure is not created.
     ax_filtered : plt.Axes | None, optional
         Optional axes for the filtered panel. If provided, a new figure is not created.
+    ylabel : str | None, optional
+        Y-axis label (e.g., 'Hospitalizations'). If None, no label is shown, by default None.
+    xlabel_interval_full : str | None, optional
+        X-axis label interval for full panel as pandas offset string (e.g., 'W-SAT', '2W-SAT', 'MS').
+        None = auto (matplotlib default), by default None.
+    xlabel_interval_filtered : str | None, optional
+        X-axis label interval for filtered panel as pandas offset string (e.g., 'W-SAT', '2W-SAT', 'MS').
+        None = auto (matplotlib default), by default None.
 
     Returns
     -------
@@ -702,6 +717,7 @@ def plot_calibration_projection_sidebyside(  # noqa: PLR0913
         fitting_window_end=fitting_window_end,
         title=title,
         ax=ax_full,
+        xlabel_interval=xlabel_interval_full,
         ylabel=ylabel,
     )
 
@@ -722,6 +738,7 @@ def plot_calibration_projection_sidebyside(  # noqa: PLR0913
         fitting_window_end=fitting_window_end,
         title=title,
         ax=ax_filtered,
+        xlabel_interval=xlabel_interval_filtered,
     )
 
     return fig, (ax_full, ax_filtered)
@@ -744,6 +761,7 @@ def plot_calibration_projection_grid(  # noqa: PLR0913
     panels_per_row: int = 4,
     figsize: tuple[float, float] | None = None,
     ylabel: str | None = None,
+    xlabel_interval: str | None = None,
 ) -> tuple[plt.Figure, np.ndarray]:
     """
     Create multipanel grid of calibration and projection quantile plots.
@@ -785,6 +803,12 @@ def plot_calibration_projection_grid(  # noqa: PLR0913
         Number of panels per row, by default 4.
     figsize : tuple[float, float] | None, optional
         Figure size. If None, auto-calculated as (4*ncols, 3.6*nrows).
+    ylabel : str | None, optional
+        Y-axis label (e.g., 'Hospitalizations'). Only shown on leftmost panels.
+        If None, no label is shown, by default None.
+    xlabel_interval : str | None, optional
+        X-axis label interval as pandas offset string (e.g., 'W-SAT', '2W-SAT', 'MS').
+        None = auto (matplotlib default), by default None.
 
     Returns
     -------
@@ -872,6 +896,7 @@ def plot_calibration_projection_grid(  # noqa: PLR0913
             fitting_window_end=fitting_window_end,
             title=format_location_name(location),
             ax=ax,
+            xlabel_interval=xlabel_interval,
             ylabel=ylabel if c == 0 else None,
         )
 
