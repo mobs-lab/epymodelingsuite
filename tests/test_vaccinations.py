@@ -7,7 +7,11 @@ from datetime import date
 import pandas as pd
 import pytest
 
-from epymodelingsuite.vaccinations import resample_vaccination_schedule, scenario_to_epydemix
+from epymodelingsuite.vaccinations import (
+    _get_vaccination_scaling_factors,
+    resample_vaccination_schedule,
+    scenario_to_epydemix,
+)
 
 
 class TestResampleVaccinationSchedule:
@@ -112,3 +116,75 @@ class TestScenarioToEpydemix:
             # Clean up temporary file
             if os.path.exists(temp_filepath):
                 os.unlink(temp_filepath)
+
+
+class TestGetVaccinationScalingFactors:
+    """Tests for _get_vaccination_scaling_factors function."""
+
+    def test_iso_location_returns_all_ones(self):
+        """Test that ISO (state-level) locations return scaling factors of 1.0."""
+        age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
+
+        result = _get_vaccination_scaling_factors("United_States_Colorado", age_groups)
+
+        assert all(factor == 1.0 for factor in result.values())
+        assert list(result.keys()) == age_groups
+
+    def test_metrocast_location_returns_scaled_factors(self):
+        """Test that sub-state locations return age-stratified scaling factors < 1.0."""
+        age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
+
+        result = _get_vaccination_scaling_factors("metrocast_location_denver", age_groups)
+
+        # Denver is part of Colorado, so all factors should be < 1.0
+        assert all(0 < factor < 1.0 for factor in result.values())
+        # Should have same age groups
+        assert list(result.keys()) == age_groups
+
+    def test_scaling_factors_vary_by_age_group(self):
+        """Test that different age groups can have different scaling factors."""
+        age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
+
+        result = _get_vaccination_scaling_factors("metrocast_location_denver", age_groups)
+
+        # Scaling factors should not all be identical (demographic differences)
+        factors = list(result.values())
+        # At least some variation expected (not all exactly equal)
+        assert len(set(round(f, 4) for f in factors)) > 1
+
+    def test_scaling_factors_sum_is_reasonable(self):
+        """Test that scaling factors are in reasonable range for Denver/Colorado."""
+        age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
+
+        result = _get_vaccination_scaling_factors("metrocast_location_denver", age_groups)
+
+        # Denver is roughly 50% of Colorado's population
+        # Average scaling factor should be around 0.4-0.6
+        avg_factor = sum(result.values()) / len(result)
+        assert 0.3 < avg_factor < 0.7
+
+    def test_unknown_metrocast_location_returns_ones(self):
+        """Test that unknown sub-state location returns 1.0 with warning."""
+        age_groups = ["0-4", "5+"]
+
+        result = _get_vaccination_scaling_factors("metrocast_location_nonexistent", age_groups)
+
+        assert all(factor == 1.0 for factor in result.values())
+
+    def test_boston_massachusetts_scaling(self):
+        """Test scaling factors for Boston (Massachusetts sub-state region)."""
+        age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
+
+        result = _get_vaccination_scaling_factors("metrocast_location_boston", age_groups)
+
+        # Boston is part of Massachusetts, factors should be < 1.0
+        assert all(0 < factor < 1.0 for factor in result.values())
+
+    def test_nc_flu_region_scaling(self):
+        """Test scaling factors for NC flu region (North Carolina sub-state)."""
+        age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
+
+        result = _get_vaccination_scaling_factors("metrocast_location_nenc", age_groups)
+
+        # NENC is part of North Carolina, factors should be < 1.0
+        assert all(0 < factor < 1.0 for factor in result.values())

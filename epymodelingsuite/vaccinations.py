@@ -5,6 +5,7 @@ from collections.abc import Callable
 import pandas as pd
 from epydemix.model import EpiModel
 
+from .utils.location import get_metrocast_population_data, get_parent_region, parse_population_name
 from .utils.populations import aggregate_population_by_age_groups, get_age_group_mapping, validate_age_groups
 
 logger = logging.getLogger(__name__)
@@ -744,6 +745,66 @@ def make_vaccination_rate_function(origin_compartment: str, eligible_compartment
     return compute_vaccination_rate
 
 
+def _get_vaccination_scaling_factors(
+    population_name: str,
+    age_groups: list[str],
+) -> dict[str, float]:
+    """
+    Calculate age-stratified vaccination dose scaling factors for sub-state level locations.
+
+    For sub-state level locations (e.g., HSA regions for Metrocast), returns a dict
+    mapping each age group to its scaling factor (substate_pop[age] / state_pop[age]).
+    For ISO locations (state-level), returns scaling factor of 1.0 for all age groups.
+
+    Parameters
+    ----------
+    population_name : str
+        The model's population name (e.g., "metrocast_location_denver" or "United_States_Colorado")
+    age_groups : list[str]
+        List of age group strings (e.g., ["0-4", "5-17", "18-49", "50-64", "65+"])
+
+    Returns
+    -------
+    dict[str, float]
+        Mapping of age group -> scaling factor
+    """
+    from .utils import convert_location_name_format, get_population_codebook
+
+    location_id, location_type = parse_population_name(population_name)
+
+    # No scaling for ISO locations
+    if location_type != "metrocast_location":
+        return {ag: 1.0 for ag in age_groups}
+
+    # Get metrocast population aggregated by age groups
+    metro_pop_data = get_metrocast_population_data()
+    location_data = metro_pop_data[metro_pop_data["location_name"] == location_id]
+
+    if location_data.empty:
+        logger.warning(f"Metrocast location '{location_id}' not found. No vaccination scaling applied.")
+        return {ag: 1.0 for ag in age_groups}
+
+    metro_pop = aggregate_population_by_age_groups(location_data, age_groups)
+
+    # Get parent state population aggregated by age groups
+    state_iso = get_parent_region(location_id, output_format="ISO")
+    state_epydemix = convert_location_name_format(state_iso, "epydemix_population")
+
+    population_codebook = get_population_codebook()
+    state_pop = aggregate_population_by_age_groups(population_codebook[state_epydemix], age_groups)
+
+    # Calculate scaling factors
+    scaling_factors = {}
+    for ag in age_groups:
+        if state_pop[ag] > 0:
+            scaling_factors[ag] = metro_pop[ag] / state_pop[ag]
+        else:
+            scaling_factors[ag] = 1.0
+
+    logger.info(f"Vaccination scaling factors for {location_id}: {scaling_factors}")
+    return scaling_factors
+
+
 def add_vaccination_schedule(
     model: EpiModel,
     vaccine_rate_function: Callable,
@@ -788,10 +849,18 @@ def add_vaccination_schedule(
 
     vaccination_schedule = vaccination_schedule.query("location == @iso_location").copy()
 
+    # Scale vaccination doses for sub-state level locations (age-stratified)
+    age_groups_model = model.population.Nk_names
+    if age_groups_model is None:
+        raise ValueError("Model population must have Nk_names defined for vaccination scheduling.")
+    scaling_factors = _get_vaccination_scaling_factors(model.population.name, age_groups_model)
+
+    for age_group, factor in scaling_factors.items():
+        if factor != 1.0 and age_group in vaccination_schedule.columns:
+            vaccination_schedule[age_group] = (vaccination_schedule[age_group] * factor).round().astype(int)
+
     # From epydemix v1.0.2, register_transition_kind accepts Callable for rate not probability
     model.register_transition_kind("vaccination", vaccine_rate_function)
-
-    age_groups_model = model.population.Nk_names
     age_groups_data = vaccination_schedule.columns.tolist()
 
     missing = [age for age in age_groups_model if age not in age_groups_data]
