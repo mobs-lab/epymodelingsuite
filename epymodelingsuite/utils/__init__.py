@@ -15,6 +15,7 @@ This package contains utility functions organized by category:
 from .common import parse_timedelta
 from .config import identify_config_type
 from .data import fetch_hhs_hospitalizations
+from .distance import wrmse
 from .distributions import distribution_to_scipy
 from .expression_eval import RetrieveName, SafeEvalVisitor, safe_eval
 from .formatting import format_data_size, format_duration
@@ -28,6 +29,8 @@ __all__ = [
     "identify_config_type",
     # Data utilities
     "fetch_hhs_hospitalizations",
+    # Distance utilities
+    "wrmse",
     # Distribution utilities
     "distribution_to_scipy",
     # Expression evaluation

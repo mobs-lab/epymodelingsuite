@@ -68,9 +68,8 @@ def get_data_in_location(
     if location_format == "ISO":
         # Direct match (current behavior)
         return data[data[location_key] == location_iso]
-    else:
-        # Convert observed data values to ISO using known input format
-        data_iso = data[location_key].apply(
-            lambda x: convert_location_name_format(str(x), "ISO", input_format=location_format)
-        )
-        return data[data_iso == location_iso]
+    # Convert observed data values to ISO using known input format
+    data_iso = data[location_key].apply(
+        lambda x: convert_location_name_format(str(x), "ISO", input_format=location_format)
+    )
+    return data[data_iso == location_iso]
