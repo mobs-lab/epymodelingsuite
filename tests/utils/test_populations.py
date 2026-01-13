@@ -1,8 +1,14 @@
 """Tests for population utilities in utils/populations.py."""
 
 import pandas as pd
+import pytest
 
-from epymodelingsuite.utils.populations import aggregate_population_by_age_groups
+from epymodelingsuite.utils.populations import (
+    aggregate_population_by_age_groups,
+    get_age_group_mapping,
+    get_all_age_map,
+    validate_age_groups,
+)
 
 
 class TestAggregatePopulationByAgeGroups:
@@ -113,3 +119,152 @@ class TestAggregatePopulationByAgeGroups:
 
         assert result["0-2"] == 200  # 100 + 0 + 100
         assert result["3+"] == 0
+
+
+class TestValidateAgeGroups:
+    """Tests for validate_age_groups function."""
+
+    def test_valid_standard_age_groups(self):
+        """Test that standard flu forecasting age groups pass validation."""
+        # Should not raise
+        validate_age_groups(["0-4", "5-17", "18-49", "50-64", "65+"])
+
+    def test_valid_simple_age_groups(self):
+        """Test simple two-group validation."""
+        validate_age_groups(["0-17", "18+"])
+
+    def test_valid_single_year_groups(self):
+        """Test single-year age groups pass validation."""
+        validate_age_groups(["0-0", "1-1", "2+"])
+
+    def test_invalid_first_group_not_starting_at_zero(self):
+        """Test that age groups not starting at 0 raise error."""
+        with pytest.raises(ValueError, match="first age group must start at '0'"):
+            validate_age_groups(["5-17", "18+"])
+
+    def test_invalid_last_group_missing_plus(self):
+        """Test that last age group must end with +."""
+        with pytest.raises(ValueError, match="last age group must end with '\\+'"):
+            validate_age_groups(["0-17", "18-64"])
+
+    def test_invalid_non_contiguous_groups(self):
+        """Test that non-contiguous age groups raise error."""
+        with pytest.raises(ValueError, match="contiguous"):
+            validate_age_groups(["0-4", "10-17", "18+"])  # Gap between 4 and 10
+
+    def test_invalid_overlapping_groups(self):
+        """Test that overlapping age groups raise error."""
+        with pytest.raises(ValueError, match="contiguous"):
+            validate_age_groups(["0-10", "5-17", "18+"])  # 5-10 overlaps
+
+    def test_invalid_format_missing_dash(self):
+        """Test that age groups without dash raise error."""
+        with pytest.raises(ValueError, match="format"):
+            validate_age_groups(["04", "5+"])
+
+
+class TestGetAgeGroupMapping:
+    """Tests for get_age_group_mapping function."""
+
+    def test_simple_two_groups(self):
+        """Test mapping with two age groups."""
+        result = get_age_group_mapping(["0-4", "5+"])
+
+        assert result["0-4"] == ["0", "1", "2", "3", "4"]
+        assert "5" in result["5+"]
+        assert "84+" in result["5+"]
+
+    def test_standard_flu_age_groups(self):
+        """Test mapping with standard flu forecasting age groups."""
+        result = get_age_group_mapping(["0-4", "5-17", "18-49", "50-64", "65+"])
+
+        assert result["0-4"] == ["0", "1", "2", "3", "4"]
+        assert result["5-17"] == [str(i) for i in range(5, 18)]
+        assert result["18-49"] == [str(i) for i in range(18, 50)]
+        assert result["50-64"] == [str(i) for i in range(50, 65)]
+        assert result["65+"] == [str(i) for i in range(65, 84)] + ["84+"]
+
+    def test_plus_group_includes_84_plus(self):
+        """Test that open-ended groups include ages up to 83 plus '84+'."""
+        result = get_age_group_mapping(["0-64", "65+"])
+
+        assert "65+" in result
+        assert "83" in result["65+"]
+        assert "84+" in result["65+"]
+        assert len(result["65+"]) == 20  # 65-83 (19 ages) + "84+"
+
+    def test_single_year_age_groups(self):
+        """Test mapping with single-year age groups."""
+        result = get_age_group_mapping(["0-0", "1-1", "2+"])
+
+        assert result["0-0"] == ["0"]
+        assert result["1-1"] == ["1"]
+        assert "2" in result["2+"]
+
+    def test_returns_dict_of_string_lists(self):
+        """Test that all values in mapping are lists of strings."""
+        result = get_age_group_mapping(["0-4", "5+"])
+
+        for key, value in result.items():
+            assert isinstance(key, str)
+            assert isinstance(value, list)
+            assert all(isinstance(age, str) for age in value)
+
+    def test_preserves_input_order(self):
+        """Test that mapping preserves order of input age groups."""
+        age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
+        result = get_age_group_mapping(age_groups)
+
+        assert list(result.keys()) == age_groups
+
+
+class TestGetAllAgeMap:
+    """Tests for get_all_age_map function."""
+
+    def test_returns_85_age_groups(self):
+        """Test that all age map contains 85 age groups (0-84+)."""
+        result = get_all_age_map()
+
+        assert len(result) == 85
+
+    def test_single_year_groups_have_one_element(self):
+        """Test that each single-year group maps to a single age."""
+        result = get_all_age_map()
+
+        assert result["0-0"] == ["0"]
+        assert result["1-1"] == ["1"]
+        assert result["50-50"] == ["50"]
+        assert result["83-83"] == ["83"]
+
+    def test_84_plus_group(self):
+        """Test that 84+ group maps correctly."""
+        result = get_all_age_map()
+
+        assert "84+" in result
+        assert result["84+"] == ["84+"]
+
+    def test_all_ages_covered(self):
+        """Test that all ages from 0-84+ are covered."""
+        result = get_all_age_map()
+
+        # Check first few
+        for i in range(10):
+            assert f"{i}-{i}" in result
+
+        # Check some middle ages
+        assert "40-40" in result
+        assert "60-60" in result
+
+        # Check last regular age and 84+
+        assert "83-83" in result
+        assert "84+" in result
+
+    def test_returns_dict_of_string_lists(self):
+        """Test that return type is correct."""
+        result = get_all_age_map()
+
+        assert isinstance(result, dict)
+        for key, value in result.items():
+            assert isinstance(key, str)
+            assert isinstance(value, list)
+            assert all(isinstance(age, str) for age in value)
