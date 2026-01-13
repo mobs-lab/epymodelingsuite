@@ -1,72 +1,72 @@
-location,original_location_code,state,state_abb,location_name,population,location_type,hsa_counties,state_iso
-denver,688,Colorado,CO,"Denver, CO",2948626,hsa_nci_id,"Adams, Arapahoe, Clear Creek, Denver, Douglas, Elbert, Gilpin, Grand, Jefferson, Park, Summit",US-CO
-mesa,711,Colorado,CO,"Mesa, CO",298361,hsa_nci_id,"Eagle, Garfield, Mesa, Pitkin, Rio Blanco",US-CO
-colorado-springs,754,Colorado,CO,"Colorado Springs, CO",775090,hsa_nci_id,"Cheyenne, El Paso, Kit Carson, Lincoln, Teller",US-CO
-weld,760,Colorado,CO,"Weld, CO",384657,hsa_nci_id,"Morgan, Washington, Weld, Yuma",US-CO
-boulder,795,Colorado,CO,"Boulder, CO",403427,hsa_nci_id,"Boulder, Broomfield",US-CO
-larimer,796,Colorado,CO,"Larimer, CO",363561,hsa_nci_id,Larimer,US-CO
-colorado,All,Colorado,CO,Colorado,5810774,hsa_nci_id,,US-CO
-savannah,143,Georgia,GA,"Savannah, GA",531382,hsa_nci_id,"Bryan, Chatham, Effingham, Evans, Liberty, Long, Tattnall",US-GA
-floyd,154,Georgia,GA,"Floyd, GA",336814,hsa_nci_id,"Bartow, Chattooga, Floyd, Gordon, Polk",US-GA
-hall,157,Georgia,GA,"Hall, GA",403526,hsa_nci_id,"Banks, Dawson, Habersham, Hall, Lumpkin, Towns, Union, White",US-GA
-marietta,190,Georgia,GA,"Marietta, GA",769152,hsa_nci_id,Cobb,US-GA
-macon,193,Georgia,GA,"Macon, GA",468099,hsa_nci_id,"Bibb, Bleckley, Crawford, Houston, Jones, Monroe, Peach, Pulaski, Taylor, Twiggs, Wilkinson",US-GA
-henry,825,Georgia,GA,"Henry, GA",820822,hsa_nci_id,"Fayette, Forsyth, Henry, Rockdale, Walton",US-GA
-cherokee,826,Georgia,GA,"Cherokee, GA",629169,hsa_nci_id,"Cherokee, Douglas, Paulding, Pickens",US-GA
-athens,829,Georgia,GA,"Athens, GA",385812,hsa_nci_id,"Barrow, Clarke, Jackson, Madison, Oconee, Oglethorpe",US-GA
-south-augusta,830,Georgia,GA,"South Augusta, GA",428239,hsa_nci_id,"Burke, Columbia, Jenkins, Lincoln, McDuffie, Richmond",US-GA
-columbus,893,Georgia,GA,"Columbus, GA",274165,hsa_nci_id,"Chattahoochee, Harris, Marion, Muscogee, Schley, Stewart, Talbot, Webster",US-GA
-la-grange,894,Georgia,GA,"La Grange, GA",252265,hsa_nci_id,"Coweta, Heard, Meriwether, Troup",US-GA
-georgia,All,Georgia,GA,Georgia,10822590,hsa_nci_id,,US-GA
-indianapolis,275,Indiana,IN,"Indianapolis, IN",1486315,hsa_nci_id,"Hendricks, Johnson, Marion, Morgan, Putnam, Rush, Shelby",US-IN
-indiana,All,Indiana,IN,Indiana,6811752,hsa_nci_id,,US-IN
-bangor,17,Maine,ME,"Bangor, ME",258041,hsa_nci_id,"Hancock, Penobscot, Piscataquis, Washington",US-ME
-portland,9,Maine,ME,"Portland, ME",419733,hsa_nci_id,"Cumberland, Knox, Lincoln, Sagadahoc",US-ME
-maine,All,Maine,ME,Maine,1377400,hsa_nci_id,,US-ME
-baltimore,16,Maryland,MD,"Baltimore, MD",2619740,hsa_nci_id,"Anne Arundel, Baltimore, Calvert, Carroll, Howard",US-MD
-frederick,48,Maryland,MD,"Frederick, MD",280341,hsa_nci_id,Frederick,US-MD
-montgomery,869,Maryland,MD,"Montgomery, MD",2296252,hsa_nci_id,"Charles, Montgomery, Prince Georges, St. Marys",US-MD
-harford,875,Maryland,MD,"Harford, MD",366875,hsa_nci_id,"Cecil, Harford",US-MD
-maryland,All,Maryland,MD,Maryland,6170738,hsa_nci_id,,US-MD
-worcester,101,Massachusetts,MA,"Franklin & Worcester Counties, MA",932586,hsa_nci_id,"Franklin, Worcester",US-MA
-pittsfield,112,Massachusetts,MA,"Berkshire County, MA",128047,hsa_nci_id,Berkshire,US-MA
-boston,22,Massachusetts,MA,"Boston Metro, South Shore, Cape & Islands, MA",3926620,hsa_nci_id,"Barnstable, Dukes, Middlesex, Nantucket, Norfolk, Plymouth, Suffolk",US-MA
-springfield,32,Massachusetts,MA,"Hampden & Hampshire Counties, MA",619448,hsa_nci_id,"Hampden, Hampshire",US-MA
-new-bedford,68,Massachusetts,MA,"Bristol County, MA",578436,hsa_nci_id,Bristol,US-MA
-lynn,74,Massachusetts,MA,"Essex County, MA",807258,hsa_nci_id,Essex,US-MA
-massachusetts,All,Massachusetts,MA,Massachusetts,6992395,hsa_nci_id,,US-MA
-st-paul,286,Minnesota,MN,"St. Paul, MN",1316374,hsa_nci_id,"Chisago, Dakota, Ramsey, Washington",US-MN
-duluth,289,Minnesota,MN,"Duluth, MN",339559,hsa_nci_id,"Carlton, Cook, Itasca, Koochiching, Lake, Pine, St. Louis",US-MN
-minneapolis,540,Minnesota,MN,"Minneapolis, MN",2222665,hsa_nci_id,"Anoka, Carver, Hennepin, Le Sueur, McLeod, Scott, Sherburne, Sibley, Wright",US-MN
-st-cloud,588,Minnesota,MN,"St. Cloud, MN",283771,hsa_nci_id,"Benton, Meeker, Morrison, Stearns, Todd",US-MN
-rochester,941,Minnesota,MN,"Rochester, MN",354439,hsa_nci_id,"Dodge, Fillmore, Mower, Olmsted, Steele, Wabasha, Winona",US-MN
-minnesota,All,Minnesota,MN,Minnesota,5713716,hsa_nci_id,,US-MN
-columbia,160,South Carolina,SC,"Columbia, SC",777957,hsa_nci_id,"Fairfield, Lexington, Newberry, Richland",US-SC
-greenville,182,South Carolina,SC,"Greenville, SC",956963,hsa_nci_id,"Anderson, Greenville, Oconee, Pickens",US-SC
-florence,184,South Carolina,SC,"Florence, SC",300052,hsa_nci_id,"Chesterfield, Darlington, Florence, Marlboro, Williamsburg",US-SC
-charleston,212,South Carolina,SC,"Charleston, SC",874934,hsa_nci_id,"Berkeley, Charleston, Colleton, Dorchester, Hampton",US-SC
-rock-hill,244,South Carolina,SC,"Rock Hill, SC",320736,hsa_nci_id,"Chester, York",US-SC
-horry,246,South Carolina,SC,"Horry, SC",433137,hsa_nci_id,"Georgetown, Horry",US-SC
-south-carolina,All,South Carolina,SC,South Carolina,5212774,hsa_nci_id,,US-SC
-houston,408,Texas,TX,"Houston, TX",6538343,hsa_nci_id,"Austin, Chambers, Fort Bend, Harris, Liberty, Montgomery, San Jacinto, Waller",US-TX
-san-antonio,410,Texas,TX,"San Antonio, TX",2493134,hsa_nci_id,"Atascosa, Bandera, Bexar, Frio, Gonzales, Guadalupe, Kendall, La Salle, McMullen, Medina, Wilson, Zavala",US-TX
-beaumont,413,Texas,TX,"Beaumont, TX",461142,hsa_nci_id,"Hardin, Jasper, Jefferson, Newton, Orange, Tyler",US-TX
-el-paso,415,Texas,TX,"El Paso, TX",871841,hsa_nci_id,"Culberson, El Paso, Hudspeth, Loving",US-TX
-austin,425,Texas,TX,"Austin, TX",2144717,hsa_nci_id,"Bastrop, Burnet, Lee, Llano, Travis, Williamson",US-TX
-dallas,453,Texas,TX,"Dallas, TX",4356766,hsa_nci_id,"Collin, Dallas, Ellis, Hopkins, Hunt, Kaufman, Rains, Rockwall",US-TX
-texas,All,Texas,TX,Texas,29640343,hsa_nci_id,,US-TX
-provo,703,Utah,UT,"Provo, UT",762694,hsa_nci_id,"Juab, Millard, Sanpete, Sevier, Utah, Wayne",US-UT
-salt-lake-city,708,Utah,UT,"Salt Lake City, UT",1396244,hsa_nci_id,"Duchesne, Salt Lake, Summit, Tooele, Uintah, Wasatch",US-UT
-ogden,744,Utah,UT,"Ogden, UT",707823,hsa_nci_id,"Box Elder, Davis, Morgan, Rich, Weber",US-UT
-utah,All,Utah,UT,Utah,3331187,hsa_nci_id,,US-UT
-roanoke,14,Virginia,VA,"Roanoke, VA",512683,hsa_nci_id,"Amherst, Appomattox, Botetourt, Campbell, Craig, Floyd, Franklin, Lynchburg, Roanoke, Salem",US-VA
-virginia,All,Virginia,VA,Virginia,8657499,hsa_nci_id,,US-VA
-nyc,94,New York,NY,NYC,8516202,hsa_nci_id,"Bronx, Kings, New York, Queens, Richmond",US-NY
-nenc,1,North Carolina,NC,"Northeastern, NC",941963,nc_flu_region_id,"Beaufort, Bertie, Camden, Chowan, Craven, Currituck, Dare, Edgecombe, Gates, Greene, Halifax, Hertford, Hyde, Jones, Lenoir, Martin, Nash, Northampton, Pamlico, Pasquotank, Perquimans, Pitt, Tyrrell, Washington, Wilson",US-NC
-senc,2,North Carolina,NC,"Southeastern, NC",848621,nc_flu_region_id,"Brunswick, Carteret, Columbus, Duplin, New Hanover, Onslow, Pender",US-NC
-fay-area,3,North Carolina,NC,"Fayetteville Area, NC",1354230,nc_flu_region_id,"Bladen, Cumberland, Harnett, Hoke, Johnston, Lee, Moore, Richmond, Robeson, Sampson, Scotland, Wayne",US-NC
-rtp-area,4,North Carolina,NC,"Research Triangle Park Area, NC",2177229,nc_flu_region_id,"Alamance, Chatham, Durham, Franklin, Granville, Orange, Person, Vance, Wake, Warren",US-NC
-triad-area,5,North Carolina,NC,"Triad Area, NC",1764313,nc_flu_region_id,"Alleghany, Ashe, Caswell, Davidson, Davie, Forsyth, Guilford, Montgomery, Randolph, Rockingham, Stokes, Surry, Watauga, Wilkes, Yadkin",US-NC
-wnc,6,North Carolina,NC,"Western, NC",1008573,nc_flu_region_id,"Avery, Buncombe, Burke, Caldwell, Cherokee, Clay, Graham, Haywood, Henderson, Jackson, Macon, Madison, McDowell, Mitchell, Polk, Rutherford, Swain, Transylvania, Yancey",US-NC
-clt-area,7,North Carolina,NC,"Charlotte Area, NC",2748020,nc_flu_region_id,"Alexander, Anson, Cabarrus, Catawba, Cleveland, Gaston, Iredell, Lincoln, Mecklenburg, Rowan, Stanly, Union",US-NC
-north-carolina,All,North Carolina,NC,North Carolina,10842949,nc_flu_region_id,,US-NC
+location,original_location_code,state,state_abb,location_name,location_name_short,population,location_type,hsa_counties,state_iso
+denver,688,Colorado,CO,"Denver, CO","Denver, CO",2948626,hsa_nci_id,"Adams, Arapahoe, Clear Creek, Denver, Douglas, Elbert, Gilpin, Grand, Jefferson, Park, Summit",US-CO
+mesa,711,Colorado,CO,"Mesa, CO","Mesa, CO",298361,hsa_nci_id,"Eagle, Garfield, Mesa, Pitkin, Rio Blanco",US-CO
+colorado-springs,754,Colorado,CO,"Colorado Springs, CO","Colorado Springs, CO",775090,hsa_nci_id,"Cheyenne, El Paso, Kit Carson, Lincoln, Teller",US-CO
+weld,760,Colorado,CO,"Weld, CO","Weld, CO",384657,hsa_nci_id,"Morgan, Washington, Weld, Yuma",US-CO
+boulder,795,Colorado,CO,"Boulder, CO","Boulder, CO",403427,hsa_nci_id,"Boulder, Broomfield",US-CO
+larimer,796,Colorado,CO,"Larimer, CO","Larimer, CO",363561,hsa_nci_id,Larimer,US-CO
+colorado,All,Colorado,CO,Colorado,Colorado,5810774,hsa_nci_id,,US-CO
+savannah,143,Georgia,GA,"Savannah, GA","Savannah, GA",531382,hsa_nci_id,"Bryan, Chatham, Effingham, Evans, Liberty, Long, Tattnall",US-GA
+floyd,154,Georgia,GA,"Floyd, GA","Floyd, GA",336814,hsa_nci_id,"Bartow, Chattooga, Floyd, Gordon, Polk",US-GA
+hall,157,Georgia,GA,"Hall, GA","Hall, GA",403526,hsa_nci_id,"Banks, Dawson, Habersham, Hall, Lumpkin, Towns, Union, White",US-GA
+marietta,190,Georgia,GA,"Marietta, GA","Marietta, GA",769152,hsa_nci_id,Cobb,US-GA
+macon,193,Georgia,GA,"Macon, GA","Macon, GA",468099,hsa_nci_id,"Bibb, Bleckley, Crawford, Houston, Jones, Monroe, Peach, Pulaski, Taylor, Twiggs, Wilkinson",US-GA
+henry,825,Georgia,GA,"Henry, GA","Henry, GA",820822,hsa_nci_id,"Fayette, Forsyth, Henry, Rockdale, Walton",US-GA
+cherokee,826,Georgia,GA,"Cherokee, GA","Cherokee, GA",629169,hsa_nci_id,"Cherokee, Douglas, Paulding, Pickens",US-GA
+athens,829,Georgia,GA,"Athens, GA","Athens, GA",385812,hsa_nci_id,"Barrow, Clarke, Jackson, Madison, Oconee, Oglethorpe",US-GA
+south-augusta,830,Georgia,GA,"South Augusta, GA","South Augusta, GA",428239,hsa_nci_id,"Burke, Columbia, Jenkins, Lincoln, McDuffie, Richmond",US-GA
+columbus,893,Georgia,GA,"Columbus, GA","Columbus, GA",274165,hsa_nci_id,"Chattahoochee, Harris, Marion, Muscogee, Schley, Stewart, Talbot, Webster",US-GA
+la-grange,894,Georgia,GA,"La Grange, GA","La Grange, GA",252265,hsa_nci_id,"Coweta, Heard, Meriwether, Troup",US-GA
+georgia,All,Georgia,GA,Georgia,Georgia,10822590,hsa_nci_id,,US-GA
+indianapolis,275,Indiana,IN,"Indianapolis, IN","Indianapolis, IN",1486315,hsa_nci_id,"Hendricks, Johnson, Marion, Morgan, Putnam, Rush, Shelby",US-IN
+indiana,All,Indiana,IN,Indiana,Indiana,6811752,hsa_nci_id,,US-IN
+bangor,17,Maine,ME,"Bangor, ME","Bangor, ME",258041,hsa_nci_id,"Hancock, Penobscot, Piscataquis, Washington",US-ME
+portland,9,Maine,ME,"Portland, ME","Portland, ME",419733,hsa_nci_id,"Cumberland, Knox, Lincoln, Sagadahoc",US-ME
+maine,All,Maine,ME,Maine,Maine,1377400,hsa_nci_id,,US-ME
+baltimore,16,Maryland,MD,"Baltimore, MD","Baltimore, MD",2619740,hsa_nci_id,"Anne Arundel, Baltimore, Calvert, Carroll, Howard",US-MD
+frederick,48,Maryland,MD,"Frederick, MD","Frederick, MD",280341,hsa_nci_id,Frederick,US-MD
+montgomery,869,Maryland,MD,"Montgomery, MD","Montgomery, MD",2296252,hsa_nci_id,"Charles, Montgomery, Prince Georges, St. Marys",US-MD
+harford,875,Maryland,MD,"Harford, MD","Harford, MD",366875,hsa_nci_id,"Cecil, Harford",US-MD
+maryland,All,Maryland,MD,Maryland,Maryland,6170738,hsa_nci_id,,US-MD
+worcester,101,Massachusetts,MA,"Franklin & Worcester Counties, MA","Franklin & Worcester Counties, MA",932586,hsa_nci_id,"Franklin, Worcester",US-MA
+pittsfield,112,Massachusetts,MA,"Berkshire County, MA","Berkshire County, MA",128047,hsa_nci_id,Berkshire,US-MA
+boston,22,Massachusetts,MA,"Boston Metro, South Shore, Cape & Islands, MA","Greater Boston, MA",3926620,hsa_nci_id,"Barnstable, Dukes, Middlesex, Nantucket, Norfolk, Plymouth, Suffolk",US-MA
+springfield,32,Massachusetts,MA,"Hampden & Hampshire Counties, MA","Hampden & Hampshire Counties, MA",619448,hsa_nci_id,"Hampden, Hampshire",US-MA
+new-bedford,68,Massachusetts,MA,"Bristol County, MA","Bristol County, MA",578436,hsa_nci_id,Bristol,US-MA
+lynn,74,Massachusetts,MA,"Essex County, MA","Essex County, MA",807258,hsa_nci_id,Essex,US-MA
+massachusetts,All,Massachusetts,MA,Massachusetts,Massachusetts,6992395,hsa_nci_id,,US-MA
+st-paul,286,Minnesota,MN,"St. Paul, MN","St. Paul, MN",1316374,hsa_nci_id,"Chisago, Dakota, Ramsey, Washington",US-MN
+duluth,289,Minnesota,MN,"Duluth, MN","Duluth, MN",339559,hsa_nci_id,"Carlton, Cook, Itasca, Koochiching, Lake, Pine, St. Louis",US-MN
+minneapolis,540,Minnesota,MN,"Minneapolis, MN","Minneapolis, MN",2222665,hsa_nci_id,"Anoka, Carver, Hennepin, Le Sueur, McLeod, Scott, Sherburne, Sibley, Wright",US-MN
+st-cloud,588,Minnesota,MN,"St. Cloud, MN","St. Cloud, MN",283771,hsa_nci_id,"Benton, Meeker, Morrison, Stearns, Todd",US-MN
+rochester,941,Minnesota,MN,"Rochester, MN","Rochester, MN",354439,hsa_nci_id,"Dodge, Fillmore, Mower, Olmsted, Steele, Wabasha, Winona",US-MN
+minnesota,All,Minnesota,MN,Minnesota,Minnesota,5713716,hsa_nci_id,,US-MN
+columbia,160,South Carolina,SC,"Columbia, SC","Columbia, SC",777957,hsa_nci_id,"Fairfield, Lexington, Newberry, Richland",US-SC
+greenville,182,South Carolina,SC,"Greenville, SC","Greenville, SC",956963,hsa_nci_id,"Anderson, Greenville, Oconee, Pickens",US-SC
+florence,184,South Carolina,SC,"Florence, SC","Florence, SC",300052,hsa_nci_id,"Chesterfield, Darlington, Florence, Marlboro, Williamsburg",US-SC
+charleston,212,South Carolina,SC,"Charleston, SC","Charleston, SC",874934,hsa_nci_id,"Berkeley, Charleston, Colleton, Dorchester, Hampton",US-SC
+rock-hill,244,South Carolina,SC,"Rock Hill, SC","Rock Hill, SC",320736,hsa_nci_id,"Chester, York",US-SC
+horry,246,South Carolina,SC,"Horry, SC","Horry, SC",433137,hsa_nci_id,"Georgetown, Horry",US-SC
+south-carolina,All,South Carolina,SC,South Carolina,South Carolina,5212774,hsa_nci_id,,US-SC
+houston,408,Texas,TX,"Houston, TX","Houston, TX",6538343,hsa_nci_id,"Austin, Chambers, Fort Bend, Harris, Liberty, Montgomery, San Jacinto, Waller",US-TX
+san-antonio,410,Texas,TX,"San Antonio, TX","San Antonio, TX",2493134,hsa_nci_id,"Atascosa, Bandera, Bexar, Frio, Gonzales, Guadalupe, Kendall, La Salle, McMullen, Medina, Wilson, Zavala",US-TX
+beaumont,413,Texas,TX,"Beaumont, TX","Beaumont, TX",461142,hsa_nci_id,"Hardin, Jasper, Jefferson, Newton, Orange, Tyler",US-TX
+el-paso,415,Texas,TX,"El Paso, TX","El Paso, TX",871841,hsa_nci_id,"Culberson, El Paso, Hudspeth, Loving",US-TX
+austin,425,Texas,TX,"Austin, TX","Austin, TX",2144717,hsa_nci_id,"Bastrop, Burnet, Lee, Llano, Travis, Williamson",US-TX
+dallas,453,Texas,TX,"Dallas, TX","Dallas, TX",4356766,hsa_nci_id,"Collin, Dallas, Ellis, Hopkins, Hunt, Kaufman, Rains, Rockwall",US-TX
+texas,All,Texas,TX,Texas,Texas,29640343,hsa_nci_id,,US-TX
+provo,703,Utah,UT,"Provo, UT","Provo, UT",762694,hsa_nci_id,"Juab, Millard, Sanpete, Sevier, Utah, Wayne",US-UT
+salt-lake-city,708,Utah,UT,"Salt Lake City, UT","Salt Lake City, UT",1396244,hsa_nci_id,"Duchesne, Salt Lake, Summit, Tooele, Uintah, Wasatch",US-UT
+ogden,744,Utah,UT,"Ogden, UT","Ogden, UT",707823,hsa_nci_id,"Box Elder, Davis, Morgan, Rich, Weber",US-UT
+utah,All,Utah,UT,Utah,Utah,3331187,hsa_nci_id,,US-UT
+roanoke,14,Virginia,VA,"Roanoke, VA","Roanoke, VA",512683,hsa_nci_id,"Amherst, Appomattox, Botetourt, Campbell, Craig, Floyd, Franklin, Lynchburg, Roanoke, Salem",US-VA
+virginia,All,Virginia,VA,Virginia,Virginia,8657499,hsa_nci_id,,US-VA
+nyc,94,New York,NY,NYC,NYC,8516202,hsa_nci_id,"Bronx, Kings, New York, Queens, Richmond",US-NY
+nenc,1,North Carolina,NC,"Northeastern, NC","Northeastern, NC",941963,nc_flu_region_id,"Beaufort, Bertie, Camden, Chowan, Craven, Currituck, Dare, Edgecombe, Gates, Greene, Halifax, Hertford, Hyde, Jones, Lenoir, Martin, Nash, Northampton, Pamlico, Pasquotank, Perquimans, Pitt, Tyrrell, Washington, Wilson",US-NC
+senc,2,North Carolina,NC,"Southeastern, NC","Southeastern, NC",848621,nc_flu_region_id,"Brunswick, Carteret, Columbus, Duplin, New Hanover, Onslow, Pender",US-NC
+fay-area,3,North Carolina,NC,"Fayetteville Area, NC","Fayetteville Area, NC",1354230,nc_flu_region_id,"Bladen, Cumberland, Harnett, Hoke, Johnston, Lee, Moore, Richmond, Robeson, Sampson, Scotland, Wayne",US-NC
+rtp-area,4,North Carolina,NC,"Research Triangle Park Area, NC","Research Triangle Park Area, NC",2177229,nc_flu_region_id,"Alamance, Chatham, Durham, Franklin, Granville, Orange, Person, Vance, Wake, Warren",US-NC
+triad-area,5,North Carolina,NC,"Triad Area, NC","Triad Area, NC",1764313,nc_flu_region_id,"Alleghany, Ashe, Caswell, Davidson, Davie, Forsyth, Guilford, Montgomery, Randolph, Rockingham, Stokes, Surry, Watauga, Wilkes, Yadkin",US-NC
+wnc,6,North Carolina,NC,"Western, NC","Western, NC",1008573,nc_flu_region_id,"Avery, Buncombe, Burke, Caldwell, Cherokee, Clay, Graham, Haywood, Henderson, Jackson, Macon, Madison, McDowell, Mitchell, Polk, Rutherford, Swain, Transylvania, Yancey",US-NC
+clt-area,7,North Carolina,NC,"Charlotte Area, NC","Charlotte Area, NC",2748020,nc_flu_region_id,"Alexander, Anson, Cabarrus, Catawba, Cleveland, Gaston, Iredell, Lincoln, Mecklenburg, Rowan, Stanly, Union",US-NC
+north-carolina,All,North Carolina,NC,North Carolina,North Carolina,10842949,nc_flu_region_id,,US-NC

@@ -10,7 +10,12 @@ import numpy as np
 import pandas as pd
 
 from ..schema.output import FigureOutputTypeEnum, OutputObject
-from ..utils.location import convert_location_name_format, get_metrocast_locations, get_parent_region
+from ..utils.location import (
+    convert_location_name_format,
+    get_metrocast_locations,
+    get_parent_region,
+    parse_population_name,
+)
 
 # Constants
 MEDIAN_QUANTILE = 0.5
@@ -70,18 +75,23 @@ def format_location_name(location: str) -> str:
     """
     Convert location name from epydemix format to clean readable name.
 
+    For metrocast locations, uses short name (e.g., "Greater Boston, MA").
+    For ISO locations, uses standard name (e.g., "Texas").
+
     Parameters
     ----------
     location : str
-        Location name in any format (e.g., "United_States_Texas", "United_States").
+        Location name in any format (e.g., "United_States_Texas", "metrocast_location_denver").
 
     Returns
     -------
     str
-        Clean location name (e.g., "Texas", "United States").
+        Clean location name (e.g., "Texas", "Greater Boston, MA").
     """
     try:
-        # Convert from epydemix format to name format
+        location_name, location_type = parse_population_name(location)
+        if location_type == "metrocast_location":
+            return convert_location_name_format(location_name, "name_short", location_type="metrocast_location")
         return convert_location_name_format(location, "name")
     except (AssertionError, KeyError, IndexError):
         # If conversion fails, return original name with underscores replaced

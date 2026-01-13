@@ -21,8 +21,8 @@ from ..schema.output import (
 )
 from ..telemetry import ExecutionTelemetry
 from ..utils.location import (
-    METROCAST_PREFIX,
     convert_location_name_format,
+    parse_population_name,
 )
 from ..utils.populations import get_total_population
 from ..visualization.generators import (
@@ -54,8 +54,9 @@ def get_hub_location_id(population_name: str) -> str:
     str
         Location ID appropriate for hub CSV output format.
     """
-    if population_name.startswith(METROCAST_PREFIX):
-        return convert_location_name_format(population_name, "metrocast_location_id")
+    location_name, location_type = parse_population_name(population_name)
+    if location_type == "metrocast_location":
+        return location_name
     return convert_location_name_format(population_name, "FIPS")
 
 
@@ -64,7 +65,7 @@ def get_plot_location_label(population_name: str) -> str:
     Convert population name to human-readable label for plot titles.
 
     For ISO locations, returns state name (e.g., "California").
-    For metrocast locations, returns "location_id (state_abb)" (e.g., "denver (CO)").
+    For metrocast locations, returns short name from CSV (e.g., "Greater Boston, MA").
 
     Parameters
     ----------
@@ -77,10 +78,9 @@ def get_plot_location_label(population_name: str) -> str:
     str
         Human-readable location label for plot titles.
     """
-    if population_name.startswith(METROCAST_PREFIX):
-        location_id = convert_location_name_format(population_name, "metrocast_location_id")
-        state_abb = convert_location_name_format(population_name, "abbreviation")
-        return f"{location_id} ({state_abb})"
+    location_name, location_type = parse_population_name(population_name)
+    if location_type == "metrocast_location":
+        return convert_location_name_format(location_name, "name_short", location_type="metrocast_location")
     return convert_location_name_format(population_name, "name")
 
 

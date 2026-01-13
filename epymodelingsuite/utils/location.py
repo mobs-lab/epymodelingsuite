@@ -55,6 +55,7 @@ def convert_location_name_format(
     - "original_location_code" - Original code from source data (e.g., "688", "1")
     - "epydemix_population" - Prefixed location ID (e.g., "metrocast_location_denver")
     - "name" - Human-readable name (e.g., "Denver, CO")
+    - "name_short" - Short name for plots (e.g., "Greater Boston, MA")
     - "hsa_counties" - Counties list (e.g., "Adams, Arapahoe, ...")
     - "state" - Full state name (e.g., "Colorado")
     - "abbreviation" - State abbreviation (e.g., "CO")
@@ -106,6 +107,7 @@ def convert_location_name_format(
         # Formats that require CSV lookup
         csv_column_map = {
             "name": "location_name",
+            "name_short": "location_name_short",
             "hsa_counties": "hsa_counties",
             "state": "state",
             "abbreviation": "state_abb",

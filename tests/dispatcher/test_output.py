@@ -438,18 +438,18 @@ class TestGetPlotLocationLabel:
         result = get_plot_location_label("United_States_Massachusetts")
         assert result == "Massachusetts"
 
-    def test_metrocast_location_returns_id_with_state(self):
-        """Test that metrocast locations return 'location_id (state_abb)' format."""
+    def test_metrocast_location_returns_short_name(self):
+        """Test that metrocast locations return short name from CSV."""
         from epymodelingsuite.dispatcher.output import get_plot_location_label
 
-        # Denver
+        # Denver - same as full name
         result = get_plot_location_label("metrocast_location_denver")
-        assert result == "denver (CO)"
+        assert result == "Denver, CO"
 
-        # Boston
+        # Boston - shortened from "Boston Metro, South Shore, Cape & Islands, MA"
         result = get_plot_location_label("metrocast_location_boston")
-        assert result == "boston (MA)"
+        assert result == "Greater Boston, MA"
 
         # NC flu region
         result = get_plot_location_label("metrocast_location_nenc")
-        assert result == "nenc (NC)"
+        assert result == "Northeastern, NC"
