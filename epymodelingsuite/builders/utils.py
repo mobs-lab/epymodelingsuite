@@ -25,8 +25,12 @@ def get_data_in_window(data: pd.DataFrame, calibration: CalibrationConfig, sort:
     pd.DataFrame
         Filtered data within the specified time window, optionally sorted by date.
     """
-    window_start = calibration.fitting_window.start_date
-    window_end = calibration.fitting_window.end_date
+    if calibration.fitting_window.start_date:
+        window_start = calibration.fitting_window.start_date
+        window_end = calibration.fitting_window.end_date
+    else:
+        window_start = calibration.fitting_window.epiweek_start_date
+        window_end = calibration.fitting_window.epiweek_end_date
 
     date_col_name = calibration.comparison[0].observed_date_column
     date_col = pd.to_datetime(data[date_col_name]).dt.date
