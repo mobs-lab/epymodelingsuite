@@ -25,10 +25,11 @@ class TestGetMetrocastLocations:
         """Test that DataFrame has all required columns."""
         result = get_metrocast_locations()
         required_columns = [
-            "location",
+            "metrocast_location_id",
             "state",
             "state_abb",
             "location_name",
+            "location_name_short",
             "population",
             "location_type",
             "state_iso",
@@ -41,7 +42,7 @@ class TestGetMetrocastLocations:
         result = get_metrocast_locations()
         known_locations = ["denver", "mesa", "boston", "nenc", "houston"]
         for loc in known_locations:
-            assert loc in result["location"].values, f"Missing location: {loc}"
+            assert loc in result["metrocast_location_id"].values, f"Missing location: {loc}"
 
 
 class TestGetMetrocastPopulationData:
@@ -55,20 +56,20 @@ class TestGetMetrocastPopulationData:
     def test_has_required_columns(self):
         """Test that DataFrame has required columns."""
         result = get_metrocast_population_data()
-        required_columns = ["location_name", "age", "population"]
+        required_columns = ["metrocast_location_id", "age", "population"]
         for col in required_columns:
             assert col in result.columns, f"Missing column: {col}"
 
     def test_contains_known_locations(self):
         """Test that DataFrame contains expected locations."""
         result = get_metrocast_population_data()
-        assert "denver" in result["location_name"].values
-        assert "boston" in result["location_name"].values
+        assert "denver" in result["metrocast_location_id"].values
+        assert "boston" in result["metrocast_location_id"].values
 
     def test_age_groups_present(self):
         """Test that multiple age groups are present for each location."""
         result = get_metrocast_population_data()
-        denver_data = result[result["location_name"] == "denver"]
+        denver_data = result[result["metrocast_location_id"] == "denver"]
         assert len(denver_data) > 1  # Should have multiple age groups
 
 

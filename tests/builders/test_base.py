@@ -588,7 +588,7 @@ class TestLoadMetrocastPopulation:
 
         # Load raw data to compare
         raw_data = get_metrocast_population_data()
-        denver_data = raw_data[raw_data["location_name"] == "denver"]
+        denver_data = raw_data[raw_data["metrocast_location_id"] == "denver"]
         expected_total = denver_data["population"].sum()
 
         # Compare total population
@@ -606,7 +606,7 @@ class TestLoadMetrocastPopulation:
 
         # Load raw data to compare
         raw_data = get_metrocast_population_data()
-        boston_data = raw_data[raw_data["location_name"] == "boston"]
+        boston_data = raw_data[raw_data["metrocast_location_id"] == "boston"]
 
         # Define age mapping (same as in load_metrocast_population)
         age_group_ranges = {

@@ -1,4 +1,4 @@
-location,original_location_code,state,state_abb,location_name,location_name_short,population,location_type,hsa_counties,state_iso
+metrocast_location_id,original_location_code,state,state_abb,location_name,location_name_short,population,location_type,hsa_counties,state_iso
 denver,688,Colorado,CO,"Denver, CO","Denver, CO",2948626,hsa_nci_id,"Adams, Arapahoe, Clear Creek, Denver, Douglas, Elbert, Gilpin, Grand, Jefferson, Park, Summit",US-CO
 mesa,711,Colorado,CO,"Mesa, CO","Mesa, CO",298361,hsa_nci_id,"Eagle, Garfield, Mesa, Pitkin, Rio Blanco",US-CO
 colorado-springs,754,Colorado,CO,"Colorado Springs, CO","Colorado Springs, CO",775090,hsa_nci_id,"Cheyenne, El Paso, Kit Carson, Lincoln, Teller",US-CO

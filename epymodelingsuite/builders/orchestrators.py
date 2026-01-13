@@ -121,7 +121,7 @@ def create_model_collection(
                     metrocast_locs = get_metrocast_locations()
                     # Exclude state-level entries where original_location_code is "All"
                     sub_state_locs = metrocast_locs[metrocast_locs["original_location_code"] != "All"]
-                    for loc_name in sub_state_locs["location"].tolist():
+                    for loc_name in sub_state_locs["metrocast_location_id"].tolist():
                         resolved_locations.append((loc_name, LocationTypeEnum.metrocast_location))
                 else:
                     # Auto-detect type
@@ -202,7 +202,7 @@ def setup_vaccination_schedules(
 
     # Convert population names to state ISO codes for vaccination data lookup
     # Metrocast locations use their parent state's vaccination data
-    metrocast_locs = get_metrocast_locations()["location"].values
+    metrocast_locs = get_metrocast_locations()["metrocast_location_id"].values
     state_iso_codes = []
     for name in population_names:
         if name in metrocast_locs:

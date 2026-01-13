@@ -84,7 +84,7 @@ def convert_location_name_format(
         if value.startswith(METROCAST_PREFIX):
             location_type = "metrocast_location"
             input_format = "epydemix_population"
-        elif value in get_metrocast_locations()["location"].values:
+        elif value in get_metrocast_locations()["metrocast_location_id"].values:
             location_type = "metrocast_location"
         else:
             location_type = "iso"
@@ -116,7 +116,7 @@ def convert_location_name_format(
         }
         if output_format in csv_column_map:
             metrocast_locs = get_metrocast_locations()
-            row = metrocast_locs[metrocast_locs["location"] == location_id]
+            row = metrocast_locs[metrocast_locs["metrocast_location_id"] == location_id]
             if not row.empty:
                 return row[csv_column_map[output_format]].iloc[0]
 
@@ -168,8 +168,8 @@ def get_metrocast_locations() -> pd.DataFrame:
     Returns
     -------
     pd.DataFrame
-        DataFrame with columns: location, original_location_code, state, state_abb,
-        location_name, population, location_type, hsa_counties, state_iso
+        DataFrame with columns: metrocast_location_id, original_location_code, state, state_abb,
+        location_name, location_name_short, population, location_type, hsa_counties, state_iso
     """
     filename = os.path.join(os.path.dirname(sys.modules[__name__].__file__), "../data/metrocast_locations.csv")
     return pd.read_csv(filename)
@@ -182,7 +182,7 @@ def get_metrocast_population_data() -> pd.DataFrame:
     Returns
     -------
     pd.DataFrame
-        DataFrame with columns: location_name, age, population
+        DataFrame with columns: metrocast_location_id, age, population
         Age values are single-year ages (0, 1, 2, ..., 83, 84+)
     """
     filename = os.path.join(os.path.dirname(sys.modules[__name__].__file__), "../data/metrocast_population.csv")
@@ -233,14 +233,14 @@ def get_parent_region(
     if location_type == "metrocast_location":
         # Prefixed metrocast location
         metrocast_locs = get_metrocast_locations()
-        location_row = metrocast_locs[metrocast_locs["location"] == parsed_name]
+        location_row = metrocast_locs[metrocast_locs["metrocast_location_id"] == parsed_name]
         if location_row.empty:
             raise ValueError(f"Metrocast location '{parsed_name}' not found")
         state_iso = location_row["state_iso"].iloc[0]
-    elif parsed_name in get_metrocast_locations()["location"].values:
+    elif parsed_name in get_metrocast_locations()["metrocast_location_id"].values:
         # Raw metrocast location name
         metrocast_locs = get_metrocast_locations()
-        location_row = metrocast_locs[metrocast_locs["location"] == parsed_name]
+        location_row = metrocast_locs[metrocast_locs["metrocast_location_id"] == parsed_name]
         state_iso = location_row["state_iso"].iloc[0]
     elif "-" in parsed_name:
         # ISO 3166-2 state code (e.g., "US-MA")
@@ -326,7 +326,7 @@ def validate_metrocast_location(location_id: str) -> str:
         If location is not found in metrocast data
     """
     metrocast_locs = get_metrocast_locations()
-    valid_locations = metrocast_locs["location"].tolist()
+    valid_locations = metrocast_locs["metrocast_location_id"].tolist()
 
     if location_id not in valid_locations:
         raise ValueError(

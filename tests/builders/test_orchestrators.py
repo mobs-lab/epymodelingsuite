@@ -169,7 +169,7 @@ class TestCreateModelCollection:
         # Use real location names (denver, mesa, savannah) to pass schema validation
         mock_metrocast = pd.DataFrame(
             {
-                "location": ["denver", "mesa", "colorado", "savannah", "georgia"],
+                "metrocast_location_id": ["denver", "mesa", "colorado", "savannah", "georgia"],
                 "original_location_code": ["688", "711", "All", "501", "All"],
                 "state": ["Colorado", "Colorado", "Colorado", "Georgia", "Georgia"],
                 "state_abb": ["CO", "CO", "CO", "GA", "GA"],

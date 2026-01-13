@@ -235,7 +235,7 @@ def get_total_population(epydemix_name: str) -> int:
     if epydemix_name.startswith(METROCAST_PREFIX):
         location_name = epydemix_name[len(METROCAST_PREFIX) :]
         metrocast_locs = get_metrocast_locations()
-        location_row = metrocast_locs[metrocast_locs["location"] == location_name]
+        location_row = metrocast_locs[metrocast_locs["metrocast_location_id"] == location_name]
 
         if location_row.empty:
             msg = f"Metrocast location '{location_name}' not found in metrocast locations data"

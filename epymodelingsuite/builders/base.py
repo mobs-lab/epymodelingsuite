@@ -96,7 +96,7 @@ def load_metrocast_population(
     """
     # 1. Load granular age data
     age_data = get_metrocast_population_data()
-    location_data = age_data[age_data["location_name"] == location_name]
+    location_data = age_data[age_data["metrocast_location_id"] == location_name]
 
     if location_data.empty:
         raise ValueError(f"No population data found for metrocast location: {location_name}")

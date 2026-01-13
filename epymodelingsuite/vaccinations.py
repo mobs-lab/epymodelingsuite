@@ -778,7 +778,7 @@ def _get_vaccination_scaling_factors(
 
     # Get metrocast population aggregated by age groups
     metro_pop_data = get_metrocast_population_data()
-    location_data = metro_pop_data[metro_pop_data["location_name"] == location_id]
+    location_data = metro_pop_data[metro_pop_data["metrocast_location_id"] == location_id]
 
     if location_data.empty:
         logger.warning(f"Metrocast location '{location_id}' not found. No vaccination scaling applied.")
