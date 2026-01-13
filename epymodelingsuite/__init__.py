@@ -1,4 +1,10 @@
 # epymodelingsuite/__init__.py
+# ruff: noqa: E402
+
+from .utils.logging import configure_logging, setup_logger
+
+# Initialize logger with NullHandler (library best practice)
+setup_logger()
 
 from .config_loader import (
     load_basemodel_config_from_file,
@@ -18,6 +24,7 @@ from .vaccinations import (
 __all__ = [
     "add_school_closure_interventions",
     "add_vaccination_schedule",
+    "configure_logging",
     "get_seasonal_transmission_balcan",
     "load_basemodel_config_from_file",
     "load_calibration_config_from_file",
@@ -26,6 +33,5 @@ __all__ = [
     "make_school_closure_dict",
     "make_vaccination_rate_function",
     "scenario_to_epydemix",
-    "setup_epimodel_from_config",
     "smh_data_to_epydemix",
 ]
