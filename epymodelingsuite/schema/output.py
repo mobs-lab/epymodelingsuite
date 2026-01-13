@@ -254,7 +254,6 @@ class FlusightHospitalizations(BaseModel):
         description="Target name for the submission file (e.g., 'wk inc flu hosp').",
     )
 
-
 class FlusightForecastOutput(BaseModel):
     """Specifications for outputs in flusight forecast hub format."""
 
