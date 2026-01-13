@@ -170,7 +170,11 @@ def build_basemodel(*, basemodel_config: BasemodelConfig, **_) -> BuilderOutput:
     -------
         BuilderOutput containing id, seed, EpiModel, and arguments for simulation.
     """
-    logger.info("BUILDER: dispatched for single model.")
+    population = basemodel_config.model.population.name
+    logger.info(
+        f"BUILDER: Building single model for {population}",
+        extra={"stage": "builder", "workflow": "basemodel", "population": population},
+    )
 
     # For compactness
     basemodel = basemodel_config.model
@@ -182,7 +186,9 @@ def build_basemodel(*, basemodel_config: BasemodelConfig, **_) -> BuilderOutput:
     if basemodel.name is not None:
         model.name = basemodel.name
 
-    logger.info("BUILDER: setting up single model...")
+    logger.info(
+        f"BUILDER: Setting up model components for {population}", extra={"stage": "builder", "population": population}
+    )
 
     # This workflow uses a single population
     set_population_from_config(model, basemodel.population.name, basemodel.population.age_groups)
@@ -238,7 +244,10 @@ def build_basemodel(*, basemodel_config: BasemodelConfig, **_) -> BuilderOutput:
         resample_frequency=basemodel.simulation.resample_frequency,
     )
 
-    logger.info("BUILDER: completed for single model.")
+    logger.info(
+        f"BUILDER: Completed building single model for {population}",
+        extra={"stage": "builder", "population": population},
+    )
 
     return BuilderOutput(
         primary_id=0,
@@ -267,7 +276,7 @@ def build_sampling(
     """
     from ..sample_generator import generate_samples
 
-    logger.info("BUILDER: dispatched for sampling.")
+    logger.info("BUILDER: Building sampling workflow", extra={"stage": "builder", "workflow": "sampling"})
 
     # Validate references between basemodel and sampling
     validate_cross_config_consistency(basemodel_config, sampling_config)
@@ -308,7 +317,11 @@ def build_sampling(
     # using the earliest start_date before further duplicating the models.
     models = setup_interventions(models, basemodel, intervention_types, sampled_start_timespan)
 
-    logger.info("BUILDER: using sampled values to modify EpiModels")
+    n_models = len(models) * len(sampled_vars)
+    logger.info(
+        f"BUILDER: Applying sampled values to {n_models} models",
+        extra={"stage": "builder", "workflow": "sampling", "n_models": n_models},
+    )
 
     # Create models with sampled/calculated parameters, apply vaccination and interventions
     simulation_args = []
@@ -371,7 +384,10 @@ def build_sampling(
         f"Mismatch: created {len(final_models)} EpiModels and {len(simulation_args)} simulation specifications."
     )
 
-    logger.info("BUILDER: completed for sampling.")
+    logger.info(
+        f"BUILDER: Completed building {len(final_models)} sampling models",
+        extra={"stage": "builder", "workflow": "sampling", "n_models": len(final_models)},
+    )
     return [
         BuilderOutput(
             primary_id=i, seed=basemodel.random_seed, delta_t=basemodel.timespan.delta_t, model=t[0], simulation=t[1]
@@ -398,7 +414,7 @@ def build_calibration(
     """
     from ..utils import distribution_to_scipy
 
-    logger.info("BUILDER: dispatched for calibration.")
+    logger.info("BUILDER: Building calibration workflow", extra={"stage": "builder", "workflow": "calibration"})
 
     # Validate references between basemodel and calibration
     validate_cross_config_consistency(basemodel_config, calibration_config)
@@ -444,7 +460,11 @@ def build_calibration(
         else calibration.distance_function.user_function
     )
 
-    logger.info("BUILDER: setting up ABCSamplers...")
+    n_populations = len(models)
+    logger.info(
+        f"BUILDER: Setting up {n_populations} ABCSamplers",
+        extra={"stage": "builder", "workflow": "calibration", "n_populations": n_populations},
+    )
 
     # Load observed data from CSV
     observed_raw = pd.read_csv(calibration.observed_data_path)
@@ -514,7 +534,10 @@ def build_calibration(
         f"Mismatch: created {len(models)} EpiModels and {len(calibrators)} ABCSamplers."
     )
 
-    logger.info("BUILDER: completed calibration.")
+    logger.info(
+        f"BUILDER: Completed building {len(calibrators)} calibration models",
+        extra={"stage": "builder", "workflow": "calibration", "n_calibrators": len(calibrators)},
+    )
     return [
         BuilderOutput(
             primary_id=i,

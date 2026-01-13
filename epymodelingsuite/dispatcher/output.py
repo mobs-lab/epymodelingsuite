@@ -851,7 +851,7 @@ def generate_simulation_outputs(
     -------
         A dictionary where keys are intended filenames for writing data, and values are gzip-compressed CSV strings.
     """
-    logger.info("OUTPUT GENERATOR: dispatched for simulation")
+    logger.info("OUTPUT: Generating simulation outputs", extra={"stage": "output", "workflow": "simulation"})
     output = output_config.output
     warnings = set()
 
@@ -865,7 +865,7 @@ def generate_simulation_outputs(
 
     ### Quantiles
     if output.quantiles:
-        logger.info("Generating quantile outputs")
+        logger.info("OUTPUT: Generating quantile outputs", extra={"stage": "output", "workflow": "simulation"})
         for simulation in simulations:
             # Compartments
             if output.quantiles.compartments:
@@ -910,7 +910,7 @@ def generate_simulation_outputs(
 
     ### Trajectories
     if output.trajectories:
-        logger.info("Generating trajectory outputs")
+        logger.info("OUTPUT: Generating trajectory outputs", extra={"stage": "output", "workflow": "simulation"})
         for simulation in simulations:
             for i, traj in enumerate(simulation.results.trajectories):
                 # Compartments
@@ -966,7 +966,7 @@ def generate_simulation_outputs(
 
     ### Model Metadata
     if output.model_meta:
-        logger.info("Generating model metadata outputs")
+        logger.info("OUTPUT: Generating model metadata outputs", extra={"stage": "output", "workflow": "simulation"})
         if output.model_meta.projection_parameters:
             warnings.add("OUTPUT_GENERATOR: Requested projection parameter metadata in simulation workflow, ignoring.")
 
@@ -996,7 +996,7 @@ def generate_simulation_outputs(
     for warning in warnings:
         logger.warning(warning)
 
-    logger.info("Formatting tabular outputs")
+    logger.info("OUTPUT: Formatting tabular outputs", extra={"stage": "output", "workflow": "simulation"})
     out_dict = {}
     if not quantiles_compartments.empty:
         qc_name = "quantiles_compartments"
@@ -1032,8 +1032,10 @@ def generate_simulation_outputs(
         mm_objects = [format_tabular_object(model_meta, mm_name, _type) for _type in output.tabular_output_types]
         out_dict[mm_name] = mm_objects
 
-    logger.info("Output generation complete. Generated %d output types", len(out_dict))
-    logger.info("OUTPUT GENERATOR: completed for simulation")
+    logger.info(
+        f"OUTPUT: Completed generating simulation outputs ({len(out_dict)} output types)",
+        extra={"stage": "output", "workflow": "simulation", "n_outputs": len(out_dict)},
+    )
 
     return out_dict
 
@@ -1054,7 +1056,11 @@ def generate_calibration_outputs(
     -------
         A dictionary where keys are intended filenames for writing data, and values are gzip-compressed CSV strings.
     """
-    logger.info("OUTPUT GENERATOR: dispatched for calibration")
+    n_calibrations = len(calibrations)
+    logger.info(
+        f"OUTPUT: Generating calibration outputs for {n_calibrations} calibrations",
+        extra={"stage": "output", "workflow": "calibration", "n_calibrations": n_calibrations},
+    )
     output = output_config.output
     warnings = set()
 
@@ -1074,7 +1080,7 @@ def generate_calibration_outputs(
 
     ### Quantiles
     if output.quantiles:
-        logger.info("Generating quantile outputs")
+        logger.info("OUTPUT: Generating quantile outputs", extra={"stage": "output", "workflow": "calibration"})
         for calibration in calibrations:  # Calibration quantiles (only for calibration comparison target)
             # Calibration quantiles
             if output.quantiles.calibration:
@@ -1191,7 +1197,7 @@ def generate_calibration_outputs(
 
     ### Trajectories
     if output.trajectories:
-        logger.info("Generating trajectory outputs")
+        logger.info("OUTPUT: Generating trajectory outputs", extra={"stage": "output", "workflow": "calibration"})
         for calibration in calibrations:
             # Collect all trajectories
             try:
@@ -1277,7 +1283,7 @@ def generate_calibration_outputs(
 
     ### Posteriors
     if output.posteriors:
-        logger.info("Generating posterior outputs")
+        logger.info("OUTPUT: Generating posterior outputs", extra={"stage": "output", "workflow": "calibration"})
         for calibration in calibrations:
             # Output last generation (default)
             if output.posteriors == True:
@@ -1307,13 +1313,17 @@ def generate_calibration_outputs(
     ### Hub Formats
 
     # FluSight Forecast Hub
-    logger.info(f"DEBUG: output.flusight_format = {output.flusight_format}")
     if output.flusight_format:
-        logger.info("Generating FluSight forecast hub outputs")
+        logger.info(
+            "OUTPUT: Generating FluSight forecast hub outputs", extra={"stage": "output", "workflow": "calibration"}
+        )
 
         # Quantile forecasts (hospitalizations)
         if output.flusight_format.hospitalizations:
-            logger.info("  - Generating FluSight quantile forecasts (hospitalizations)")
+            logger.info(
+                "OUTPUT: Generating FluSight quantile forecasts (hospitalizations)",
+                extra={"stage": "output", "workflow": "calibration"},
+            )
             for calibration in calibrations:
                 try:
                     # FRAGILE: the name 'hospitalizations' is user-supplied in the modelset as the column to look for in the surveillance data.
@@ -1395,7 +1405,9 @@ def generate_calibration_outputs(
 
         # Rate-trend forecasts (only if hospitalizations is enabled)
         if output.flusight_format.rate_trends_source and output.flusight_format.hospitalizations:
-            logger.info("  - Generating FluSight rate-trend forecasts")
+            logger.info(
+                "OUTPUT: Generating FluSight rate-trend forecasts", extra={"stage": "output", "workflow": "calibration"}
+            )
             # Get surveillance source configuration
             if not output.options or not output.options.surveillance:
                 msg = "rate_trends_source specified but no surveillance sources defined in output.options.surveillance"
@@ -1461,7 +1473,7 @@ def generate_calibration_outputs(
 
     ### Model Metadata
     if output.model_meta:
-        logger.info("Generating model metadata outputs")
+        logger.info("OUTPUT: Generating model metadata outputs", extra={"stage": "output", "workflow": "calibration"})
         for calibration in calibrations:
             # Skip calibrations without projections (failed calibrations)
             if not calibration.results.projections:
@@ -1526,7 +1538,7 @@ def generate_calibration_outputs(
     for warning in warnings:
         logger.warning(warning)
 
-    logger.info("Formatting tabular outputs")
+    logger.info("OUTPUT: Formatting tabular outputs", extra={"stage": "output", "workflow": "calibration"})
     out_dict = {}
     if not quantiles_projection_compartments.empty:
         qc_name = "quantiles_projection_compartments"
@@ -1578,7 +1590,7 @@ def generate_calibration_outputs(
 
     ### Visualization plots
     if output.plots:
-        logger.info("Generating visualization plots")
+        logger.info("OUTPUT: Generating visualization plots", extra={"stage": "output", "workflow": "calibration"})
         plots_config = output.plots
 
         # Extract start_date_reference from first calibration (they should all have the same reference date)
@@ -1588,7 +1600,7 @@ def generate_calibration_outputs(
                 start_date_reference = str(calibration.start_date_reference)
                 break
 
-        logger.info("  - Generating quantile plots")
+        logger.info("OUTPUT: Generating quantile plots", extra={"stage": "output", "workflow": "calibration"})
         # Extract surveillance sources from output config if available
         surveillance_sources = None
         if output.options and output.options.surveillance:
@@ -1596,16 +1608,19 @@ def generate_calibration_outputs(
 
         generate_single_quantile_plots(calibrations, plots_config, out_dict, surveillance_sources)
         generate_quantile_grid_plot(calibrations, plots_config, out_dict, surveillance_sources)
-        logger.info("  - Generating posterior plots")
+        logger.info("OUTPUT: Generating posterior plots", extra={"stage": "output", "workflow": "calibration"})
         generate_single_location_posterior_plots(calibrations, plots_config, out_dict, start_date_reference)
         generate_posterior_grid_plot(calibrations, plots_config, out_dict, start_date_reference)
 
         # Generate categorical plots (requires FluSight rate-trend data)
         if plots_config.categorical:
-            logger.info("  - Generating categorical plots")
+            logger.info("OUTPUT: Generating categorical plots", extra={"stage": "output", "workflow": "calibration"})
             generate_categorical_plots(plots_config, out_dict, hub_format_output)
 
-    logger.info("Output generation complete. Generated %d output types", len(out_dict))
+    logger.info(
+        f"OUTPUT: Completed generating calibration outputs ({len(out_dict)} output types)",
+        extra={"stage": "output", "workflow": "calibration", "n_outputs": len(out_dict)},
+    )
     return out_dict
 
 
