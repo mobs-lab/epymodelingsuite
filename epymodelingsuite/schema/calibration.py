@@ -112,16 +112,16 @@ class CalibrationParameter(BaseModel):
 class FittingWindow(BaseModel):
     """Specification for the time window used in calibration fitting."""
 
-    start_date: date | None = Field(description="Start date of fitting window.")
-    end_date: date | None = Field(description="End date of fitting window.")
+    start_date: date | None = Field(default=None, description="Start date of fitting window.")
+    end_date: date | None = Field(default=None, description="End date of fitting window.")
     start_epiweek: int | None = Field(
-        default=None, description="Start epiweek of fitting window (start date will be Sunday of specified epiweek."
+        default=None,
+        description="Start epiweek of fitting window (start date will be Sunday of specified epiweek). Prefix with year, e.g. 202543.",
     )
     end_epiweek: int | None = Field(
-        default=None, description="End epiweek of fitting window (end date will be Saturday of specified epiweek."
+        default=None,
+        description="End epiweek of fitting window (end date will be Saturday of specified epiweek). Prefix with year, e.g. 202601.",
     )
-    start_epiweek_year: int | None = Field(default=None, description="Year of start_epiweek, if using.")
-    end_epiweek_year: int | None = Field(default=None, description="Year of end_epiweek, if using.")
 
     @model_validator(mode="after")
     def validate_field_combinations(self: "FittingWindow") -> "FittingWindow":
@@ -135,21 +135,18 @@ class FittingWindow(BaseModel):
             if self.end_date <= self.start_date:
                 raise ValueError("end_date must be after start_date")
             # Ensure other fields are absent
-            if self.start_epiweek or self.end_epiweek or self.start_epiweek_year or self.end_epiweek_year:
+            if self.start_epiweek or self.end_epiweek:
                 raise ValueError("Cannot use both date fields and epiweek fields")
 
             return self
 
         # Specifying with epiweeks
         # Ensure all fields are present
-        if not (self.start_epiweek and self.end_epiweek and self.start_epiweek_year and self.end_epiweek_year):
-            raise ValueError("Must supply all epiweeek fields if specifying fitting window by epiweeks.")
+        if not (self.start_epiweek and self.end_epiweek):
+            raise ValueError("Must supply both start and end epiweek if specifying fitting window by epiweeks.")
         # Ensure dates are consistent
-        if self.end_epiweek_year < self.start_epiweek_year:
-            raise ValueError("start_epiweek_year cannot be after end_epiweek_year")
-        if self.end_epiweek_year == self.start_epiweek_year:
-            if self.end_epiweek < self.start_epiweek:
-                raise ValueError("start_epiweek cannot be after end_epiweek")
+        if self.end_epiweek < self.start_epiweek:
+            raise ValueError("start_epiweek cannot be after end_epiweek")
 
         return self
 
@@ -159,7 +156,10 @@ class FittingWindow(BaseModel):
         """Return the Sunday of the specified start_epiweek, or the user-supplied start_date if epiweeks are absent."""
         if self.start_date:
             return self.start_date
-        week = Week(year=self.start_epiweek_year, week=self.start_epiweek)
+
+        start_year = int(str(self.start_epiweek)[0:4])
+        start_week = int(str(self.start_epiweek)[4:])
+        week = Week(year=start_year, week=start_week)
         return week.startdate()
 
     @computed_field
@@ -168,7 +168,10 @@ class FittingWindow(BaseModel):
         """Return the Saturday of the specified end_epiweek, or the user-supplied end_date if epiweeks are absent."""
         if self.end_date:
             return self.end_date
-        week = Week(year=self.end_epiweek_year, week=self.end_epiweek)
+
+        end_year = int(str(self.end_epiweek)[0:4])
+        end_week = int(str(self.end_epiweek)[4:])
+        week = Week(year=end_year, week=end_week)
         return week.enddate()
 
 
