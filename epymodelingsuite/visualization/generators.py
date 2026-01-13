@@ -22,7 +22,8 @@ from ..schema.output import (
     QuantilesOutputTypeEnum,
 )
 from .core import (
-    _format_location_name,
+    format_location_name,
+    sort_locations_by_state,
     figure_to_output_object,
     plot_calibration_projection,
     plot_calibration_projection_grid,
@@ -318,7 +319,7 @@ def _create_filtered_plot(
         df_surveillance=df_surv if output_config.show_surveillance else None,
         fitting_window_start=fitting_window_start if output_config.show_fitting_window_line else None,
         fitting_window_end=fitting_window_end if output_config.show_fitting_window_line else None,
-        title=_format_location_name(location),
+        title=format_location_name(location),
     )
 
 
@@ -371,7 +372,7 @@ def _create_full_plot(
         df_surveillance=df_surv if output_config.show_surveillance else None,
         fitting_window_start=fitting_window_start if output_config.show_fitting_window_line else None,
         fitting_window_end=fitting_window_end if output_config.show_fitting_window_line else None,
-        title=_format_location_name(location),
+        title=format_location_name(location),
     )
 
 
@@ -432,7 +433,7 @@ def _create_sidebyside_plot(
         projection_color=plots_config.quantiles.projection.color,
         fitting_window_start=fitting_window_start if output_config.show_fitting_window_line else None,
         fitting_window_end=fitting_window_end if output_config.show_fitting_window_line else None,
-        title=_format_location_name(location),
+        title=format_location_name(location),
         figsize=output_config.figsize,
         spacing=output_config.spacing,
     )
@@ -1028,7 +1029,7 @@ def generate_quantile_grid_plot(
                         locations.update(location_proj_quants_full_sbs.keys())
                     if location_proj_quants_filtered_sbs:
                         locations.update(location_proj_quants_filtered_sbs.keys())
-                    locations = sorted(locations)
+                    locations = sort_locations_by_state(locations)
 
                     if locations:
                         n_locations = len(locations)
@@ -1124,7 +1125,7 @@ def generate_quantile_grid_plot(
                                 projection_color=plots_config.quantiles.projection.color,
                                 fitting_window_start=fitting_window_start,
                                 fitting_window_end=fitting_window_end,
-                                title=_format_location_name(location),
+                                title=format_location_name(location),
                                 ax_full=ax_full,
                                 ax_filtered=ax_filtered,
                             )
@@ -1396,7 +1397,7 @@ def generate_categorical_plots(
 
     # Convert location codes to readable names
     df_rate_trends = df_rate_trends.copy()
-    df_rate_trends["location"] = df_rate_trends["location"].apply(_format_location_name)
+    df_rate_trends["location"] = df_rate_trends["location"].apply(format_location_name)
 
     # Default category labels (prettier display names)
     default_category_labels = {

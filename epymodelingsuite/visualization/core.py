@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 
 from ..schema.output import FigureOutputTypeEnum, OutputObject
-from ..utils.location import convert_location_name_format
+from ..utils.location import convert_location_name_format, get_metrocast_locations, get_parent_region
 
 # Constants
 MEDIAN_QUANTILE = 0.5
@@ -19,7 +19,54 @@ MEDIAN_QUANTILE = 0.5
 # == Helper functions ==
 
 
-def _format_location_name(location: str) -> str:
+def _get_location_sort_key(location: str) -> tuple[str, str]:
+    """
+    Get sort key for a location (state, location_name).
+
+    For metrocast locations, returns (state_abbreviation, location_name).
+    For ISO locations, returns (state_code, location_name).
+    For unknown locations, returns ("ZZZ", location) to sort them last.
+
+    Parameters
+    ----------
+    location : str
+        Location name (e.g., "denver", "US-MA").
+
+    Returns
+    -------
+    tuple[str, str]
+        (state_key, location_name) for sorting.
+    """
+    try:
+        # Try to get parent state abbreviation
+        state_abbrev = get_parent_region(location, output_format="abbreviation")
+        return (state_abbrev, location)
+    except (ValueError, KeyError):
+        # For ISO locations or unknown, extract state code or sort last
+        if "-" in location:
+            # ISO format like "US-MA" -> use "MA" as state key
+            return (location.split("-")[-1], location)
+        return ("ZZZ", location)
+
+
+def sort_locations_by_state(locations: list[str] | set[str]) -> list[str]:
+    """
+    Sort locations by state, then alphabetically within each state.
+
+    Parameters
+    ----------
+    locations : list or set of str
+        Location names to sort.
+
+    Returns
+    -------
+    list of str
+        Sorted location names.
+    """
+    return sorted(locations, key=_get_location_sort_key)
+
+
+def format_location_name(location: str) -> str:
     """
     Convert location name from epydemix format to clean readable name.
 
@@ -285,7 +332,7 @@ def plot_quantiles_grid(  # noqa: PLR0913
             date_col=date_col,
             quantile_col=quantile_col,
             color=color,
-            title=_format_location_name(location),
+            title=format_location_name(location),
             ax=ax,
         )
 
@@ -761,7 +808,7 @@ def plot_calibration_projection_grid(  # noqa: PLR0913
         locations.update(location_calibration_quantiles.keys())
     if location_projection_quantiles is not None:
         locations.update(location_projection_quantiles.keys())
-    locations = sorted(locations)
+    locations = sort_locations_by_state(locations)
 
     if not locations:
         msg = "No locations provided"
@@ -801,7 +848,7 @@ def plot_calibration_projection_grid(  # noqa: PLR0913
             surveillance_size=surveillance_size,
             fitting_window_start=fitting_window_start,
             fitting_window_end=fitting_window_end,
-            title=_format_location_name(location),
+            title=format_location_name(location),
             ax=ax,
         )
 
@@ -1186,8 +1233,8 @@ def plot_categorical_stacked_bars(
     if ax is None:
         fig, ax = plt.subplots(figsize=(10, 3))
 
-    # Get sorted locations list with United States first
-    locations = sorted(df_categorical[location_col].unique())
+    # Get sorted locations list with United States first, then by state
+    locations = sort_locations_by_state(df_categorical[location_col].unique())
     if "United States" in locations:
         locations.remove("United States")
         locations = ["United States"] + locations
@@ -1222,7 +1269,7 @@ def plot_categorical_stacked_bars(
 
     # Format axes
     ax.set_xticks(range(n_locations))
-    ax.set_xticklabels([_format_location_name(loc) for loc in locations], rotation=90)
+    ax.set_xticklabels([format_location_name(loc) for loc in locations], rotation=90)
     ax.set_ylabel("")
     ax.set_ylim(0, 1.0)
     ax.legend(loc="upper left", bbox_to_anchor=(1.02, 1), borderaxespad=0)
