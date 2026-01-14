@@ -575,7 +575,7 @@ def plot_calibration_projection(  # noqa: PLR0913
         end = pd.Timestamp(num2date(xlim[1]))
         ticks = pd.date_range(start=start, end=end, freq=xlabel_interval)
         ax.set_xticks(ticks)
-        ax.xaxis.set_major_formatter(DateFormatter("%m/%d"))
+        ax.xaxis.set_major_formatter(DateFormatter("%Y-%m-%d"))
         ax.tick_params(axis="x", rotation=45)
         plt.setp(ax.xaxis.get_majorticklabels(), ha="right")
 
