@@ -45,6 +45,12 @@ from ..vaccinations import reaggregate_vaccines
 logger = logging.getLogger(__name__)
 
 
+class CalibrationDataError(ValueError):
+    """Raised when calibration data validation fails."""
+
+    pass
+
+
 # ===== Helper Functions =====
 
 
@@ -382,19 +388,36 @@ def build_sampling(
 
 @register_builder({"basemodel_config", "calibration_config"})
 def build_calibration(
-    *, basemodel_config: BasemodelConfig, calibration_config: CalibrationConfig, **_
+    *,
+    basemodel_config: BasemodelConfig,
+    calibration_config: CalibrationConfig,
+    skip_invalid_locations: bool = True,
+    **_,
 ) -> list[BuilderOutput]:
     """
     Construct a set of ABCSamplers and arguments for calibration/projection using a BasemodelConfig and CalibrationConfig parsed from YAML.
 
     Parameters
     ----------
-        basemodel: configuration parsed from YAML
-        calibration: configuration parsed from YAML
+    basemodel_config : BasemodelConfig
+        Configuration parsed from YAML.
+    calibration_config : CalibrationConfig
+        Configuration parsed from YAML.
+    skip_invalid_locations : bool, optional
+        If True (default), skip locations with no data in the fitting window
+        and continue with valid locations. If False, raise CalibrationDataError
+        when any location has no data.
 
     Returns
     -------
+    list[BuilderOutput]
         BuilderOutput containing id, seed, ABCSampler, and arguments for calibration and projection.
+
+    Raises
+    ------
+    CalibrationDataError
+        If all locations have no data, or if skip_invalid_locations is False
+        and any location has no data.
     """
     from ..utils import distribution_to_scipy
 
@@ -450,6 +473,33 @@ def build_calibration(
     observed_raw = pd.read_csv(calibration.observed_data_path)
     # Filter to fitting window and sort by date (oldest to newest) for consistent ABC distance calculations
     observed_in_window = get_data_in_window(observed_raw, calibration)
+
+    # Validate data availability for each location
+    from ..schema.data_validation import validate_calibration_data
+
+    valid_locations, invalid_locations = validate_calibration_data(
+        calibration_config=calibration_config,
+        population_names=population_names,
+        observed_data=observed_in_window,
+    )
+
+    # All locations have no data - fail early
+    if not valid_locations:
+        raise CalibrationDataError(f"No valid data for any location. Invalid: {invalid_locations}")
+
+    # Some locations have no data - skip or fail based on parameter
+    if invalid_locations:
+        if skip_invalid_locations:
+            logger.warning(
+                "Skipping %d location(s) with no data: %s",
+                len(invalid_locations),
+                invalid_locations,
+            )
+            # Filter models to only valid locations
+            models = [m for m in models if m.population.name in valid_locations]
+        else:
+            raise CalibrationDataError(f"Data validation failed for locations: {invalid_locations}")
+
     calibrators = []
     location_column = calibration.comparison[0].observed_location_column
     location_format = calibration.comparison[0].observed_location_format
