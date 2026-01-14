@@ -63,9 +63,10 @@ def extract_builder_metadata(
     calibration_config = configs.get("calibration_config")
     if calibration_config:
         fitting_window = calibration_config.modelset.calibration.fitting_window
+        # Use computed fields which handle both date and epiweek inputs
         metadata["fitting_window"] = (
-            str(fitting_window.start_date),
-            str(fitting_window.end_date),
+            str(fitting_window.epiweek_start_date),
+            str(fitting_window.epiweek_end_date),
         )
         # Extract distance function (convert UserDefinedFunction to string representation)
         distance_func = calibration_config.modelset.calibration.distance_function
