@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 from epymodelingsuite.visualization.core import (
+    plot_calibration_projection,
     plot_categorical_stacked_bars,
     plot_categorical_stacked_bars_multihorizon,
 )
@@ -277,4 +278,68 @@ class TestCategoricalStackedBars:
         assert fig.get_figheight() == custom_figsize[1]
 
         # Clean up
+        plt.close(fig)
+
+
+class TestPlotCalibrationProjection:
+    """Tests for plot_calibration_projection function."""
+
+    @pytest.fixture
+    def sample_quantile_data(self):
+        """Create sample quantile data for testing."""
+        dates = pd.date_range("2024-10-01", "2024-12-31", freq="W-SAT")
+        rows = []
+        for date in dates:
+            for q in [0.025, 0.25, 0.5, 0.75, 0.975]:
+                rows.append({"date": date, "quantile": q, "hospitalizations": 100 + q * 50})
+        return pd.DataFrame(rows)
+
+    @pytest.mark.parametrize("xlabel_interval", ["W-SAT", "2W-SAT", "MS"])
+    def test_xlabel_interval_with_valid_dates(self, sample_quantile_data, xlabel_interval):
+        """Test xlabel_interval correctly converts matplotlib dates to datetime."""
+        fig, ax = plot_calibration_projection(
+            calibration_quantiles=sample_quantile_data,
+            xlabel_interval=xlabel_interval,
+        )
+
+        assert fig is not None
+        assert ax is not None
+
+        # Verify x-axis has ticks set
+        xticks = ax.get_xticks()
+        assert len(xticks) > 0
+
+        plt.close(fig)
+
+    def test_xlabel_interval_with_projection_data(self, sample_quantile_data):
+        """Test xlabel_interval works with projection data."""
+        # Create projection data with later dates
+        proj_dates = pd.date_range("2025-01-01", "2025-03-01", freq="W-SAT")
+        proj_rows = []
+        for date in proj_dates:
+            for q in [0.025, 0.25, 0.5, 0.75, 0.975]:
+                proj_rows.append({"date": date, "quantile": q, "hospitalizations": 150 + q * 50})
+        proj_data = pd.DataFrame(proj_rows)
+
+        fig, ax = plot_calibration_projection(
+            calibration_quantiles=sample_quantile_data,
+            projection_quantiles=proj_data,
+            xlabel_interval="2W-SAT",
+        )
+
+        assert fig is not None
+        assert ax is not None
+
+        plt.close(fig)
+
+    def test_without_xlabel_interval(self, sample_quantile_data):
+        """Test plot works without xlabel_interval (default behavior)."""
+        fig, ax = plot_calibration_projection(
+            calibration_quantiles=sample_quantile_data,
+            xlabel_interval=None,
+        )
+
+        assert fig is not None
+        assert ax is not None
+
         plt.close(fig)
