@@ -129,7 +129,7 @@ class FittingWindow(BaseModel):
         # Specifying with dates
         if self.start_date or self.end_date:
             # Ensure both fields are present
-            if not (bool(self.start_date) and bool(self.end_date)):
+            if self.start_date is None or self.end_date is None:
                 raise ValueError("Must supply both start and end date if specifying fitting window by dates.")
             # Ensure end_date is after start_date
             if self.end_date <= self.start_date:
@@ -142,7 +142,7 @@ class FittingWindow(BaseModel):
 
         # Specifying with epiweeks
         # Ensure all fields are present
-        if not (bool(self.start_epiweek) and bool(self.end_epiweek)):
+        if self.start_epiweek is None or self.end_epiweek is None:
             raise ValueError("Must supply both start and end epiweek if specifying fitting window by epiweeks.")
         # Ensure dates are consistent
         if self.end_epiweek < self.start_epiweek:
