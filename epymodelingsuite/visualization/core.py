@@ -12,7 +12,6 @@ import pandas as pd
 from ..schema.output import FigureOutputTypeEnum, OutputObject
 from ..utils.location import (
     convert_location_name_format,
-    get_metrocast_locations,
     get_parent_region,
     parse_population_name,
 )
@@ -210,9 +209,10 @@ def plot_quantiles(  # noqa: PLR0913
     legend_handles = []
     legend_labels = []
 
-    # Add 95% CrI to legend
+    # Add outer CrI to legend (label based on quantile range)
+    cri_percent = int(round((quantiles[-1] - quantiles[0]) * 100))
     legend_handles.append(mpatches.Patch(color=color, alpha=0.3))
-    legend_labels.append("95% CrI")
+    legend_labels.append(f"{cri_percent}% CrI")
 
     # Plot IQR ribbon (25th-75th percentile) on top if available
     if 0.25 in df_quantile.columns and 0.75 in df_quantile.columns:
