@@ -8,6 +8,7 @@ import pytest
 
 from epymodelingsuite.visualization.core import (
     plot_calibration_projection,
+    plot_calibration_projection_grid,
     plot_categorical_stacked_bars,
     plot_categorical_stacked_bars_multihorizon,
 )
@@ -363,5 +364,45 @@ class TestPlotCalibrationProjection:
         )
 
         assert ax.get_ylabel() == ""
+
+        plt.close(fig)
+
+
+class TestPlotCalibrationProjectionGrid:
+    """Tests for plot_calibration_projection_grid function."""
+
+    @pytest.fixture
+    def sample_location_quantiles(self):
+        """Create sample quantile data for multiple locations."""
+        dates = pd.date_range("2024-10-01", "2024-12-31", freq="W-SAT")
+        location_data = {}
+        for location in ["US-CA", "US-TX"]:
+            rows = []
+            for date in dates:
+                for q in [0.025, 0.25, 0.5, 0.75, 0.975]:
+                    rows.append({"date": date, "quantile": q, "hospitalizations": 100 + q * 50})
+            location_data[location] = pd.DataFrame(rows)
+        return location_data
+
+    def test_suptitle_sets_figure_title(self, sample_location_quantiles):
+        """Test suptitle parameter sets the figure suptitle."""
+        fig, axes = plot_calibration_projection_grid(
+            location_calibration_quantiles=sample_location_quantiles,
+            suptitle="Test Figure Title",
+        )
+
+        assert fig._suptitle is not None
+        assert fig._suptitle.get_text() == "Test Figure Title"
+
+        plt.close(fig)
+
+    def test_suptitle_none_no_title(self, sample_location_quantiles):
+        """Test suptitle=None results in no figure suptitle."""
+        fig, axes = plot_calibration_projection_grid(
+            location_calibration_quantiles=sample_location_quantiles,
+            suptitle=None,
+        )
+
+        assert fig._suptitle is None
 
         plt.close(fig)
