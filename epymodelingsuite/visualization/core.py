@@ -762,6 +762,7 @@ def plot_calibration_projection_grid(  # noqa: PLR0913
     figsize: tuple[float, float] | None = None,
     ylabel: str | None = None,
     xlabel_interval: str | None = None,
+    suptitle: str | None = None,
 ) -> tuple[plt.Figure, np.ndarray]:
     """
     Create multipanel grid of calibration and projection quantile plots.
@@ -809,6 +810,8 @@ def plot_calibration_projection_grid(  # noqa: PLR0913
     xlabel_interval : str | None, optional
         X-axis label interval as pandas offset string (e.g., 'W-SAT', '2W-SAT', 'MS').
         None = auto (matplotlib default), by default None.
+    suptitle : str | None, optional
+        Super title for the entire figure. If None, no super title is shown, by default None.
 
     Returns
     -------
@@ -911,6 +914,9 @@ def plot_calibration_projection_grid(  # noqa: PLR0913
         r = idx // ncols
         c = idx % ncols
         axes[r, c].axis("off")
+
+    if suptitle:
+        fig.suptitle(suptitle)
 
     plt.tight_layout()
 

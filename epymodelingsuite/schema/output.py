@@ -502,6 +502,10 @@ class QuantilesPlotConfig(BaseModel):
         default=None,
         description="Y-axis label for quantile plots (e.g., 'Hospitalizations'). If None, no label is shown.",
     )
+    suptitle: str | None = Field(
+        default=None,
+        description="Super title for grid plots. If None, no super title is shown.",
+    )
 
     @field_validator("grid")
     @classmethod

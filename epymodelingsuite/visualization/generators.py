@@ -954,6 +954,7 @@ def generate_quantile_grid_plot(
                         panels_per_row=plots_config.quantiles.grid.panels_per_row,
                         ylabel=plots_config.quantiles.ylabel,
                         xlabel_interval=output_config.xlabel_interval,
+                        suptitle=plots_config.quantiles.suptitle,
                     )
 
                     # Package output
@@ -1170,6 +1171,9 @@ def generate_quantile_grid_plot(
                             r = idx // ncols
                             c = idx % ncols
                             axes[r, c].axis("off")
+
+                        if plots_config.quantiles.suptitle:
+                            fig.suptitle(plots_config.quantiles.suptitle)
 
                         plt.tight_layout()
 
