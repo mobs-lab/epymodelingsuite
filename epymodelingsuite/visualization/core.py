@@ -567,11 +567,12 @@ def plot_calibration_projection(  # noqa: PLR0913
 
     # Apply x-axis label interval if specified (pandas offset string like 'W-SAT', '2W-SAT', 'MS')
     if xlabel_interval is not None:
-        from matplotlib.dates import DateFormatter
+        from matplotlib.dates import DateFormatter, num2date
 
+        # Use num2date to convert matplotlib date to datetime objects
         xlim = ax.get_xlim()
-        start = pd.Timestamp.fromordinal(int(xlim[0]))
-        end = pd.Timestamp.fromordinal(int(xlim[1]))
+        start = pd.Timestamp(num2date(xlim[0]))
+        end = pd.Timestamp(num2date(xlim[1]))
         ticks = pd.date_range(start=start, end=end, freq=xlabel_interval)
         ax.set_xticks(ticks)
         ax.xaxis.set_major_formatter(DateFormatter("%m/%d"))
