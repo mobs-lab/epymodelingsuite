@@ -343,3 +343,25 @@ class TestPlotCalibrationProjection:
         assert ax is not None
 
         plt.close(fig)
+
+    def test_ylabel_sets_axis_label(self, sample_quantile_data):
+        """Test ylabel parameter sets the y-axis label."""
+        fig, ax = plot_calibration_projection(
+            calibration_quantiles=sample_quantile_data,
+            ylabel="Hospitalizations",
+        )
+
+        assert ax.get_ylabel() == "Hospitalizations"
+
+        plt.close(fig)
+
+    def test_ylabel_none_no_label(self, sample_quantile_data):
+        """Test ylabel=None results in no y-axis label."""
+        fig, ax = plot_calibration_projection(
+            calibration_quantiles=sample_quantile_data,
+            ylabel=None,
+        )
+
+        assert ax.get_ylabel() == ""
+
+        plt.close(fig)
