@@ -655,6 +655,35 @@ class TestFittingWindow:
         assert "fitting_window" in metadata
         assert metadata["fitting_window"] == ("2024-03-01", "2024-06-01")
 
+    def test_extract_builder_metadata_with_epiweek_fitting_window(self):
+        """Test that fitting window is correctly extracted when using epiweeks."""
+        # Create mock calibration config with epiweek-based fitting window
+        calibration_config = MagicMock()
+        calibration_config.modelset.calibration.fitting_window = FittingWindow(start_epiweek=202548, end_epiweek=202601)
+
+        # Create mock basemodel config
+        basemodel_config = MagicMock()
+        basemodel_config.model.population.name = "US-CA"
+        basemodel_config.model.timespan.start_date = date(2025, 9, 1)
+        basemodel_config.model.timespan.end_date = date(2026, 3, 31)
+        basemodel_config.model.timespan.delta_t = 1.0
+        basemodel_config.model.random_seed = 42
+
+        # Create mock builder output
+        builder_output = MagicMock()
+        builder_output.model = None
+        builder_output.calibrator.parameters = {"epimodel": MagicMock(population=MagicMock(name="US-CA"))}
+
+        # Extract metadata
+        configs = {"basemodel_config": basemodel_config, "calibration_config": calibration_config}
+        metadata = extract_builder_metadata([builder_output], configs)
+
+        # Verify fitting window is extracted with computed dates from epiweeks
+        # start_epiweek 202548 -> Sunday 2025-11-23
+        # end_epiweek 202601 -> Saturday 2026-01-10
+        assert "fitting_window" in metadata
+        assert metadata["fitting_window"] == ("2025-11-23", "2026-01-10")
+
     def test_extract_builder_metadata_without_calibration_config(self):
         """Test that fitting window is not present for simulation workflow."""
         # Create mock basemodel config only (no calibration config)

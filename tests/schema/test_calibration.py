@@ -224,3 +224,109 @@ class TestCalibrationStrategyEnum:
         )
         assert strategy.name == "top_fraction"
         assert "max_time" not in strategy.options
+
+
+class TestFittingWindowEpiweekConversion:
+    """Tests for FittingWindow epiweek to date conversion."""
+
+    def test_epiweek_to_date_basic(self):
+        """Test basic epiweek to date conversion."""
+        from datetime import date
+
+        from epymodelingsuite.schema.calibration import FittingWindow
+
+        fw = FittingWindow(start_epiweek=202548, end_epiweek=202601)
+
+        # start_epiweek 202548 -> Sunday 2025-11-23
+        assert fw.epiweek_start_date == date(2025, 11, 23)
+        # end_epiweek 202601 -> Saturday 2026-01-10
+        assert fw.epiweek_end_date == date(2026, 1, 10)
+
+    def test_epiweek_start_is_sunday(self):
+        """Test that epiweek_start_date returns Sunday of the week."""
+        from epymodelingsuite.schema.calibration import FittingWindow
+
+        fw = FittingWindow(start_epiweek=202501, end_epiweek=202504)
+
+        # 2025 week 1 starts on Sunday 2024-12-29
+        start = fw.epiweek_start_date
+        assert start.weekday() == 6  # Sunday
+
+    def test_epiweek_end_is_saturday(self):
+        """Test that epiweek_end_date returns Saturday of the week."""
+        from epymodelingsuite.schema.calibration import FittingWindow
+
+        fw = FittingWindow(start_epiweek=202501, end_epiweek=202504)
+
+        # 2025 week 4 ends on Saturday 2025-01-25
+        end = fw.epiweek_end_date
+        assert end.weekday() == 5  # Saturday
+
+    def test_year_boundary_epiweek(self):
+        """Test epiweek conversion across year boundary."""
+        from datetime import date
+
+        from epymodelingsuite.schema.calibration import FittingWindow
+
+        fw = FittingWindow(start_epiweek=202552, end_epiweek=202602)
+
+        # 2025 week 52 starts on Sunday 2025-12-21
+        assert fw.epiweek_start_date == date(2025, 12, 21)
+        # 2026 week 2 ends on Saturday 2026-01-17
+        assert fw.epiweek_end_date == date(2026, 1, 17)
+
+    def test_week_53_handling(self):
+        """Test that years with week 53 are handled correctly."""
+        from datetime import date
+
+        from epymodelingsuite.schema.calibration import FittingWindow
+
+        # 2025 has a week 53
+        fw = FittingWindow(start_epiweek=202553, end_epiweek=202601)
+
+        # Week 53 of 2025 starts on Sunday 2025-12-28
+        assert fw.epiweek_start_date == date(2025, 12, 28)
+        # Week 1 of 2026 ends on Saturday 2026-01-10
+        assert fw.epiweek_end_date == date(2026, 1, 10)
+
+    def test_date_fields_used_when_provided(self):
+        """Test that start_date/end_date are used when provided directly."""
+        from datetime import date
+
+        from epymodelingsuite.schema.calibration import FittingWindow
+
+        fw = FittingWindow(start_date=date(2025, 3, 1), end_date=date(2025, 6, 30))
+
+        # Should return the provided dates, not compute from epiweeks
+        assert fw.epiweek_start_date == date(2025, 3, 1)
+        assert fw.epiweek_end_date == date(2025, 6, 30)
+
+    def test_validation_both_epiweeks_required(self):
+        """Test that both start_epiweek and end_epiweek must be provided together."""
+        from epymodelingsuite.schema.calibration import FittingWindow
+
+        with pytest.raises(ValueError, match="Must supply both start and end epiweek"):
+            FittingWindow(start_epiweek=202548)
+
+        with pytest.raises(ValueError, match="Must supply both start and end epiweek"):
+            FittingWindow(end_epiweek=202601)
+
+    def test_validation_cannot_mix_date_and_epiweek(self):
+        """Test that date fields and epiweek fields cannot be mixed."""
+        from datetime import date
+
+        from epymodelingsuite.schema.calibration import FittingWindow
+
+        with pytest.raises(ValueError, match="Cannot use both date fields and epiweek fields"):
+            FittingWindow(
+                start_date=date(2025, 1, 1),
+                end_date=date(2025, 6, 30),
+                start_epiweek=202501,
+            )
+
+    def test_validation_end_epiweek_after_start(self):
+        """Test that end_epiweek must be >= start_epiweek."""
+        from epymodelingsuite.schema.calibration import FittingWindow
+
+        with pytest.raises(ValueError, match="start_epiweek cannot be after end_epiweek"):
+            FittingWindow(start_epiweek=202510, end_epiweek=202505)
