@@ -367,6 +367,29 @@ class TestPlotCalibrationProjection:
 
         plt.close(fig)
 
+    def test_xlabel_interval_date_format(self, sample_quantile_data):
+        """Test xlabel_interval uses yyyy-mm-dd date format."""
+        fig, ax = plot_calibration_projection(
+            calibration_quantiles=sample_quantile_data,
+            xlabel_interval="W-SAT",
+        )
+
+        # Draw to populate tick labels
+        fig.canvas.draw()
+
+        # Get tick labels and verify format
+        tick_labels = [t.get_text() for t in ax.get_xticklabels() if t.get_text()]
+        assert len(tick_labels) > 0
+
+        # Check that labels match yyyy-mm-dd format
+        import re
+
+        date_pattern = r"^\d{4}-\d{2}-\d{2}$"
+        for label in tick_labels:
+            assert re.match(date_pattern, label), f"Label '{label}' does not match yyyy-mm-dd format"
+
+        plt.close(fig)
+
 
 class TestPlotCalibrationProjectionGrid:
     """Tests for plot_calibration_projection_grid function."""
