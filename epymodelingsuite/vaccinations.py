@@ -854,14 +854,22 @@ def add_vaccination_schedule(
         The model object to which the vaccination schedule will be added.
         Must have population age groups matching the columns in `vaccination_schedule`.
     vaccine_rate_function : Callable
-        A function defining time-dependent vaccination rates.
+        A function defining time-dependent vaccination rates. Typically created by `make_vaccination_rate_function()`. The function signature should be `(params, data) -> np.ndarray` where params contains the vaccination schedule.
     source_comp : str
         The name of the source compartment (e.g., "S").
     target_comp : str
         The name of the target compartment (e.g., "S_vax").
     vaccination_schedule : pd.DataFrame
-        Vaccination schedule with age groups as columns and time as rows.
-        Must include all age groups used in the model.
+        Vaccination schedule DataFrame with the following structure:
+        - **Required columns**: "dates", "location", and one column per age group
+        - **Age group columns**: Must match model's age groups (e.g., "0-4", "5-17", "65+")
+        - **Values**: Number of doses available for each age group on each day
+
+        Example structure::
+
+            dates       location  0-4   5-17  18-49  50-64  65+
+            2024-10-01  US-CA     100   200   500    300    400
+            2024-10-02  US-CA     110   210   510    310    410
 
     Returns
     -------
@@ -914,8 +922,27 @@ def add_vaccination_schedule(
 
 def remove_vaccination_transitions(model: EpiModel, source_comp: str, target_comp: str) -> EpiModel:
     """
-    Manually remove vaccination transitions from model.
-    This prevents `add_vaccination_schedule` from creating duplicate transitions if it is called multiple times.
+    Remove vaccination transitions from the model.
+
+    This function removes any existing vaccination transitions between source_comp and target_comp. It is called internally by `add_vaccination_schedule` to prevent duplicate transitions when the function is called multiple times (e.g., when reaggregating vaccination schedules for different sampled start dates).
+
+    Parameters
+    ----------
+    model : EpiModel
+        The model from which to remove vaccination transitions.
+    source_comp : str
+        The source compartment of the transition to remove (e.g., "S").
+    target_comp : str
+        The target compartment of the transition to remove (e.g., "S_vax").
+
+    Returns
+    -------
+    EpiModel
+        The model with the specified vaccination transition removed.
+
+    Notes
+    -----
+    This function modifies both `model.transitions_list` and `model.transitions` dict to ensure the transition is fully removed from the model's internal state.
     """
     # Remove from transitions_list
     model.transitions_list = [
