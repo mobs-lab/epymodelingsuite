@@ -117,11 +117,9 @@ def create_model_collection(
                     for iso_name in get_location_codebook()["ISO"].tolist():
                         resolved_locations.append((iso_name, LocationTypeEnum.iso))
                 elif pop == "all-metrocast":
-                    # All metrocast locations (excluding state-level aggregates)
+                    # All metrocast locations (including state-level)
                     metrocast_locs = get_metrocast_locations()
-                    # Exclude state-level entries where original_location_code is "All"
-                    sub_state_locs = metrocast_locs[metrocast_locs["original_location_code"] != "All"]
-                    for loc_name in sub_state_locs["metrocast_location_id"].tolist():
+                    for loc_name in metrocast_locs["metrocast_location_id"].tolist():
                         resolved_locations.append((loc_name, LocationTypeEnum.metrocast_location))
                 else:
                     # Auto-detect type

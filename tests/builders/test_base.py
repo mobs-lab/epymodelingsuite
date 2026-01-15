@@ -686,3 +686,77 @@ class TestLoadMetrocastPopulation:
                 nc_pop.contact_matrices[layer],
                 err_msg=f"Contact matrix mismatch for layer '{layer}' between NENC and North Carolina",
             )
+
+    def test_state_level_location_uses_iso_population(self):
+        """Test that state-level metrocast locations use ISO population data."""
+        age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
+
+        # Load state-level metrocast location
+        colorado_metrocast = load_metrocast_population("colorado", age_groups)
+
+        # Load the corresponding ISO location
+        colorado_iso = load_iso_population("US-CO", age_groups)
+
+        # Both should have the same population values
+        np.testing.assert_array_equal(
+            colorado_metrocast.Nk,
+            colorado_iso.Nk,
+            err_msg="State-level metrocast population should match ISO population",
+        )
+
+    def test_state_level_location_has_metrocast_naming(self):
+        """Test that state-level metrocast locations use metrocast naming convention."""
+        age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
+
+        colorado_pop = load_metrocast_population("colorado", age_groups)
+
+        # Should use metrocast naming convention for output formatting
+        assert colorado_pop.name == "metrocast_location_colorado"
+
+    def test_state_level_location_has_contact_matrices(self):
+        """Test that state-level metrocast locations have contact matrices."""
+        age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
+
+        georgia_pop = load_metrocast_population("georgia", age_groups)
+
+        # Should have contact matrices from the state
+        assert georgia_pop.contact_matrices is not None
+        assert len(georgia_pop.contact_matrices) > 0
+
+    def test_state_level_contact_matrix_matches_iso(self):
+        """Test that state-level metrocast location contact matrices match ISO location."""
+        age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
+
+        massachusetts_metrocast = load_metrocast_population("massachusetts", age_groups)
+        massachusetts_iso = load_iso_population("US-MA", age_groups)
+
+        # Contact matrices should be identical
+        assert set(massachusetts_metrocast.layers) == set(massachusetts_iso.layers)
+
+        for layer in massachusetts_metrocast.layers:
+            np.testing.assert_array_equal(
+                massachusetts_metrocast.contact_matrices[layer],
+                massachusetts_iso.contact_matrices[layer],
+                err_msg=f"Contact matrix mismatch for layer '{layer}'",
+            )
+
+    def test_multiple_state_level_locations(self):
+        """Test multiple state-level locations to verify consistent behavior."""
+        age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
+
+        state_locations = ["colorado", "georgia", "texas", "north-carolina"]
+        iso_codes = ["US-CO", "US-GA", "US-TX", "US-NC"]
+
+        for state_loc, iso_code in zip(state_locations, iso_codes):
+            metrocast_pop = load_metrocast_population(state_loc, age_groups)
+            iso_pop = load_iso_population(iso_code, age_groups)
+
+            # Population values should match
+            np.testing.assert_array_equal(
+                metrocast_pop.Nk,
+                iso_pop.Nk,
+                err_msg=f"Population mismatch for {state_loc}",
+            )
+
+            # Name should use metrocast convention
+            assert metrocast_pop.name == f"metrocast_location_{state_loc}"

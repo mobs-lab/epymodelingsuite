@@ -13,7 +13,12 @@ from ..schema.basemodel import Compartment, Parameter, Transition
 from ..schema.basemodel import Population as PopulationConfig
 from ..utils import convert_location_name_format
 from ..utils.expression_eval import RetrieveName, SafeEvalVisitor, safe_eval
-from ..utils.location import METROCAST_PREFIX, get_metrocast_population_data, get_parent_region
+from ..utils.location import (
+    METROCAST_PREFIX,
+    get_metrocast_population_data,
+    get_parent_region,
+    is_state_level_metrocast_location,
+)
 from ..utils.populations import aggregate_population_by_age_groups
 
 logger = logging.getLogger(__name__)
@@ -82,18 +87,44 @@ def load_metrocast_population(
     contact_matrix_override: str | None = None,
 ) -> Population:
     """
-    Load population for metrocast location from metrocast population CSV.
+    Load population for metrocast location.
+
+    For sub-state metrocast locations (HSAs, NC flu regions), loads population from metrocast_population.csv with parent state's contact matrix.
+
+    For state-level metrocast locations (e.g., "colorado", "georgia"), loads population from epydemix using the state's ISO code but maintains metrocast naming convention for output formatting.
 
     Parameters
     ----------
-        location_name: Metrocast location name (e.g., "denver", "nenc")
+        location_name: Metrocast location name (e.g., "denver", "nenc", "colorado")
         age_groups: List of age group strings to map
         contact_matrix_override: Optional ISO code to use different contact matrix
 
     Returns
     -------
-        epydemix Population object with metrocast population + parent region contact matrix
+        epydemix Population object with metrocast naming
     """
+    # Check if this is a state-level metrocast location
+    if is_state_level_metrocast_location(location_name):
+        # State-level: use ISO population loading with metrocast naming
+        state_iso = get_parent_region(
+            location_name,
+            output_format="ISO",
+            granularity="state",
+        )
+
+        # Load population using ISO method
+        population = load_iso_population(
+            location_name=state_iso,
+            age_groups=age_groups,
+            contact_matrix_override=contact_matrix_override or state_iso,
+        )
+
+        # Override name to use metrocast naming convention for output formatting. Metrocast output expects location names as "colorado", not FIPS code "08" as in FluSight.
+        population.name = f"{METROCAST_PREFIX}{location_name}"
+
+        return population
+
+    # Sub-state locations: load from metrocast population data
     # 1. Load granular age data
     age_data = get_metrocast_population_data()
     location_data = age_data[age_data["metrocast_location_id"] == location_name]

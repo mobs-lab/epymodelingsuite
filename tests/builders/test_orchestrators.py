@@ -163,8 +163,8 @@ class TestCreateModelCollection:
             assert len(models) == len(expected_locations)
             assert resolved_names == expected_locations
 
-    def test_all_metrocast_excludes_state_level_locations(self, base_model_config):
-        """Test that 'all-metrocast' expands to sub-state locations only, excluding state-level."""
+    def test_all_metrocast_includes_state_level_locations(self, base_model_config):
+        """Test that 'all-metrocast' expands to all metrocast locations, including state-level."""
         # Mock metrocast locations with mix of state-level and sub-state entries
         # Use real location names (denver, mesa, savannah) to pass schema validation
         mock_metrocast = pd.DataFrame(
@@ -191,8 +191,8 @@ class TestCreateModelCollection:
             population_names = ["all-metrocast"]
             models, resolved_names = create_model_collection(base_model_config, population_names)
 
-            # Should only include sub-state locations (exclude "colorado" and "georgia")
-            expected_locations = ["denver", "mesa", "savannah"]
+            # Should include ALL locations (including state-level "colorado" and "georgia")
+            expected_locations = ["denver", "mesa", "colorado", "savannah", "georgia"]
 
             assert len(models) == len(expected_locations)
             assert resolved_names == expected_locations

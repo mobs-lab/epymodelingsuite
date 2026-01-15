@@ -190,6 +190,29 @@ def get_metrocast_population_data() -> pd.DataFrame:
     return population_data
 
 
+def is_state_level_metrocast_location(location_name: str) -> bool:
+    """
+    Check if a metrocast location is a state-level aggregate.
+
+    State-level metrocast locations have original_location_code == "All" in metrocast_locations.csv. These locations (e.g., "colorado", "georgia") represent entire states rather than sub-state regions like HSAs.
+
+    Parameters
+    ----------
+    location_name : str
+        Metrocast location name (e.g., "colorado", "denver")
+
+    Returns
+    -------
+    bool
+        True if the location is a state-level aggregate, False otherwise
+    """
+    metrocast_locs = get_metrocast_locations()
+    row = metrocast_locs[metrocast_locs["metrocast_location_id"] == location_name]
+    if row.empty:
+        return False
+    return row["original_location_code"].iloc[0] == "All"
+
+
 def get_parent_region(
     location_name: str,
     output_format: str = "ISO",

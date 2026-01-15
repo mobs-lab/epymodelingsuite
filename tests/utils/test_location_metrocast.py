@@ -7,6 +7,7 @@ from epymodelingsuite.utils.location import (
     get_metrocast_locations,
     get_metrocast_population_data,
     get_parent_region,
+    is_state_level_metrocast_location,
     validate_iso3166,
     validate_location_by_type,
     validate_metrocast_location,
@@ -218,3 +219,28 @@ class TestValidateISO3166:
         """Test that invalid country code raises ValueError."""
         with pytest.raises(ValueError, match="Invalid ISO 3166 code"):
             validate_iso3166("XX")  # XX is not a valid country
+
+
+class TestIsStateLevelMetrocastLocation:
+    """Tests for is_state_level_metrocast_location function."""
+
+    def test_state_level_location_returns_true(self):
+        """Test that state-level locations return True."""
+        # These locations have original_location_code == "All" in metrocast_locations.csv
+        assert is_state_level_metrocast_location("colorado") is True
+        assert is_state_level_metrocast_location("georgia") is True
+        assert is_state_level_metrocast_location("massachusetts") is True
+        assert is_state_level_metrocast_location("north-carolina") is True
+
+    def test_sub_state_location_returns_false(self):
+        """Test that sub-state locations return False."""
+        # These are HSA or NC flu region locations with specific codes
+        assert is_state_level_metrocast_location("denver") is False
+        assert is_state_level_metrocast_location("boston") is False
+        assert is_state_level_metrocast_location("nenc") is False
+        assert is_state_level_metrocast_location("houston") is False
+
+    def test_unknown_location_returns_false(self):
+        """Test that unknown locations return False."""
+        assert is_state_level_metrocast_location("nonexistent") is False
+        assert is_state_level_metrocast_location("invalid_location") is False
