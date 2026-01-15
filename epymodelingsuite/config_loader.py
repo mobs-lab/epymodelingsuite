@@ -3,12 +3,14 @@
 
 import logging
 
+from .schema.aggregation import AggregationConfig, validate_aggregation
 from .schema.basemodel import BasemodelConfig, validate_basemodel
 from .schema.calibration import CalibrationConfig, validate_calibration
 from .schema.output import OutputConfig, validate_output
 from .schema.sampling import SamplingConfig, validate_sampling
 
 __all__ = [
+    "load_aggregation_config_from_file",
     "load_basemodel_config_from_file",
     "load_calibration_config_from_file",
     "load_output_config_from_file",
@@ -111,4 +113,28 @@ def load_output_config_from_file(path: str) -> OutputConfig:
 
     root = validate_output(raw)
     logger.info("Output configuration loaded successfully.")
+    return root
+
+
+def load_aggregation_config_from_file(path: str) -> AggregationConfig:
+    """
+    Load aggregation configuration YAML from the given path and validate against the schema.
+
+    Parameters
+    ----------
+        path: The file path to the YAML configuration file.
+
+    Returns
+    -------
+        The validated configuration object.
+    """
+    from pathlib import Path
+
+    import yaml
+
+    with Path(path).open() as f:
+        raw = yaml.safe_load(f)
+
+    root = validate_aggregation(raw)
+    logger.info("Aggregation configuration loaded successfully.")
     return root
