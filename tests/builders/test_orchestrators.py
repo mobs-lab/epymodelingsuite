@@ -634,17 +634,14 @@ class TestApplyVaccinationForSampledStart:
 
         with (
             patch("epymodelingsuite.builders.orchestrators.reaggregate_vaccines") as mock_reagg,
-            patch("epymodelingsuite.builders.orchestrators.resample_vaccination_schedule") as mock_resample,
             patch("epymodelingsuite.builders.orchestrators.add_vaccination_schedules_from_config") as mock_add,
         ):
             mock_reagg.return_value = {"reaggregated": "data"}
-            mock_resample.return_value = {"resampled": "data"}
 
             apply_vaccination_for_sampled_start(model, basemodel, timespan, earliest_vax, sampled_start_timespan)
 
-            # Should reaggregate, resample, and add
+            # Should reaggregate and add (resampling now happens inside add_vaccination_schedules_from_config)
             mock_reagg.assert_called_once_with(earliest_vax, date(2024, 1, 15))
-            mock_resample.assert_called_once_with({"reaggregated": "data"}, 1.0)
             mock_add.assert_called_once()
 
 
