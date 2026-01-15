@@ -197,6 +197,39 @@ class TestCreateModelCollection:
             assert len(models) == len(expected_locations)
             assert resolved_names == expected_locations
 
+    def test_all_metrocast_excludes_nyc(self, base_model_config):
+        """Test that 'all-metrocast' excludes NYC."""
+        mock_metrocast = pd.DataFrame(
+            {
+                "metrocast_location_id": ["denver", "boston", "nyc"],
+                "original_location_code": ["688", "22", "94"],
+                "state": ["Colorado", "Massachusetts", "New York"],
+                "state_abb": ["CO", "MA", "NY"],
+                "location_name": ["Denver", "Boston", "NYC"],
+                "population": [100000, 200000, 8000000],
+                "location_type": ["hsa", "hsa", "hsa"],
+                "hsa_counties": ["", "", ""],
+                "state_iso": ["US-CO", "US-MA", "US-NY"],
+            }
+        )
+
+        with (
+            patch(
+                "epymodelingsuite.builders.orchestrators.get_metrocast_locations",
+                return_value=mock_metrocast,
+            ),
+            patch("epymodelingsuite.builders.orchestrators.set_population_from_config"),
+        ):
+            population_names = ["all-metrocast"]
+            models, resolved_names = create_model_collection(base_model_config, population_names)
+
+            # Should exclude NYC
+            expected_locations = ["denver", "boston"]
+
+            assert len(models) == len(expected_locations)
+            assert resolved_names == expected_locations
+            assert "nyc" not in resolved_names
+
     def test_all_models_share_compartments(self, base_model_config):
         """Test that all models have the same compartments."""
         population_names = ["US-CA", "US-TX"]
