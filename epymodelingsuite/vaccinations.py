@@ -5,7 +5,12 @@ from collections.abc import Callable
 import pandas as pd
 from epydemix.model import EpiModel
 
-from .utils.location import get_metrocast_population_data, get_parent_region, parse_population_name
+from .utils.location import (
+    get_metrocast_population_data,
+    get_parent_region,
+    is_state_level_metrocast_location,
+    parse_population_name,
+)
 from .utils.populations import aggregate_population_by_age_groups, get_age_group_mapping, validate_age_groups
 
 logger = logging.getLogger(__name__)
@@ -774,7 +779,12 @@ def _get_vaccination_scaling_factors(
 
     # No scaling for ISO locations
     if location_type != "metrocast_location":
-        return {ag: 1.0 for ag in age_groups}
+        return dict.fromkeys(age_groups, 1.0)
+
+    # No scaling for state-level metrocast locations
+    # (Uses the original epydemix population for states directly)
+    if is_state_level_metrocast_location(location_id):
+        return dict.fromkeys(age_groups, 1.0)
 
     # Get metrocast population aggregated by age groups
     metro_pop_data = get_metrocast_population_data()
@@ -782,7 +792,7 @@ def _get_vaccination_scaling_factors(
 
     if location_data.empty:
         logger.warning(f"Metrocast location '{location_id}' not found. No vaccination scaling applied.")
-        return {ag: 1.0 for ag in age_groups}
+        return dict.fromkeys(age_groups, 1.0)
 
     metro_pop = aggregate_population_by_age_groups(location_data, age_groups)
 

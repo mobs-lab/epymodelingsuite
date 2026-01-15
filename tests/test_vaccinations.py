@@ -130,6 +130,23 @@ class TestGetVaccinationScalingFactors:
         assert all(factor == 1.0 for factor in result.values())
         assert list(result.keys()) == age_groups
 
+    def test_state_level_metrocast_location_returns_all_ones(self):
+        """Test that state-level metrocast locations return scaling factors of 1.0.
+
+        State-level metrocast locations (e.g., 'maryland', 'colorado') use the state epydemix population directly, so no vaccination scaling is needed.
+        """
+        age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
+
+        # Test Maryland (state-level metrocast location)
+        result = _get_vaccination_scaling_factors("metrocast_location_maryland", age_groups)
+        assert all(factor == 1.0 for factor in result.values())
+        assert list(result.keys()) == age_groups
+
+        # Test Colorado (state-level metrocast location)
+        result = _get_vaccination_scaling_factors("metrocast_location_colorado", age_groups)
+        assert all(factor == 1.0 for factor in result.values())
+        assert list(result.keys()) == age_groups
+
     def test_metrocast_location_returns_scaled_factors(self):
         """Test that sub-state locations return age-stratified scaling factors < 1.0."""
         age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
