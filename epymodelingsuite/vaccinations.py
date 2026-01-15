@@ -574,7 +574,8 @@ def smh_data_to_epydemix(
     temporary single-scenario files, and calling scenario_to_epydemix for each scenario.
     The results are then combined into a single DataFrame with scenario information.
 
-    Args:
+    Parameters
+    ----------
         input_filepath (str): Path to CSV containing SMH vaccination data with scenario columns.
         start_date (str or Timestamp): Start date of the simulation period.
         end_date (str or Timestamp): End date of the simulation period.
@@ -849,21 +850,28 @@ def add_vaccination_schedule(
 
     Parameters
     ----------
-        model (EpiModel): The model object to which the vaccination schedule will be added. Must have a population
-                          age groups same as the columns in `vaccination_schedule`.
-        vaccine_rate_function (Callable): A function defining time-dependent vaccination rates.
-        vaccination_schedule (pd.DataFrame): Vaccination schedule with age groups as columns and time as rows.
-                                             Must include all age groups used in the model.
-        source_comp (str): The name of the source compartment (e.g., "S").
-        target_comp (str): The name of the target compartment (e.g., "SV").
+    model : EpiModel
+        The model object to which the vaccination schedule will be added.
+        Must have population age groups matching the columns in `vaccination_schedule`.
+    vaccine_rate_function : Callable
+        A function defining time-dependent vaccination rates.
+    source_comp : str
+        The name of the source compartment (e.g., "S").
+    target_comp : str
+        The name of the target compartment (e.g., "S_vax").
+    vaccination_schedule : pd.DataFrame
+        Vaccination schedule with age groups as columns and time as rows.
+        Must include all age groups used in the model.
 
     Returns
     -------
-        EpiModel: The model with the vaccination transition added.
+    EpiModel
+        The model with the vaccination transition added.
 
     Raises
     ------
-        ValueError: If any age groups required by the model are missing from the DataFrame.
+    ValueError
+        If any age groups required by the model are missing from the DataFrame.
     """
     from .utils import convert_location_name_format
 
