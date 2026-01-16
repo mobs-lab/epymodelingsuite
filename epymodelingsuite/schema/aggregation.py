@@ -44,6 +44,9 @@ class AggregationConfiguration(BaseModel):
         description="Identifiers for locating CalibrationOutput objects for aggregation."
     )
     method: AggregationStrategyEnum = Field(description="Strategy for aggregating multistrain results.")
+    sampling: str = Field(
+        "random", description="Strategy for sampling groups of individual trajectories for aggregation."
+    )
     compartments: list[str] | bool = Field(
         False,
         description="Aggregate results for compartments. Set `True` to get all compartments, or provide a list of identifiers (e.g. 'I_total') to select compartments.",

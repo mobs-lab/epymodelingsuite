@@ -71,17 +71,17 @@ def dispatch_aggregator(
 
     # Dispatch to method-specific aggregator
     if aggregation.method == AggregationStrategyEnum.sum:
-        return _aggregate_sum(source_results, aggregation)
+        return aggregate_sum(source_results, aggregation)
     if aggregation.method == AggregationStrategyEnum.weighted_sum:
-        return _aggregate_weighted_sum(source_results, aggregation)
+        return aggregate_weighted_sum(source_results, aggregation)
     if aggregation.method == AggregationStrategyEnum.bootstrap:
-        return _aggregate_bootstrap(source_results, aggregation)
+        return aggregate_bootstrap(source_results, aggregation)
     if aggregation.method == AggregationStrategyEnum.correlated:
-        return _aggregate_correlated(source_results, aggregation)
+        return aggregate_correlated(source_results, aggregation)
     raise ValueError(f"Unknown aggregation method: {aggregation.method}")
 
 
-def _aggregate_sum(
+def aggregate_sum(
     source_results: dict[str, list[CalibrationOutput]], config: AggregationConfiguration
 ) -> list[CalibrationOutput]:
     """
@@ -91,7 +91,7 @@ def _aggregate_sum(
     ----------
     source_results : dict[str, list[CalibrationOutput]]
         Dictionary mapping exp_id to list of CalibrationOutput
-    config : AggregationConfig
+    config : AggregationConfiguration
         Aggregation configuration
 
     Returns
@@ -113,23 +113,24 @@ def _aggregate_sum(
             g. Wrap aggregated CalibrationResults into CalibrationOutput
         3. Return list of N aggregated CalibrationOutput objects
     """
+    return []
 
 
-def _aggregate_weighted_sum(
+def aggregate_weighted_sum(
     source_results: dict[str, list[CalibrationOutput]], config: AggregationConfiguration
 ) -> list[CalibrationOutput]:
     """"""
     raise NotImplementedError("Weighted sum aggregation not yet implemented")
 
 
-def _aggregate_bootstrap(
+def aggregate_bootstrap(
     source_results: dict[str, list[CalibrationOutput]], config: AggregationConfiguration
 ) -> list[CalibrationOutput]:
     """"""
     raise NotImplementedError("Bootstrap aggregation not yet implemented")
 
 
-def _aggregate_correlated(
+def aggregate_correlated(
     source_results: dict[str, list[CalibrationOutput]], config: AggregationConfiguration
 ) -> list[CalibrationOutput]:
     """"""
