@@ -554,3 +554,185 @@ class TestSetupInterventions:
 
             # Result should be the models unchanged
             assert result == models
+
+
+class TestSetupInterventionsIntegration:
+    """Integration tests that verify interventions are actually applied to models."""
+
+    @pytest.fixture
+    def base_model_config(self):
+        """Create a minimal BaseEpiModel configuration for testing."""
+        from epymodelingsuite.schema.basemodel import (
+            BaseEpiModel,
+            Compartment,
+            Parameter,
+            Population,
+            Simulation,
+            Timespan,
+            Transition,
+        )
+
+        compartments = [
+            Compartment(id="S", label="Susceptible", init="default"),
+            Compartment(id="I", label="Infected", init=10),
+            Compartment(id="R", label="Recovered", init=0),
+        ]
+
+        transitions = [
+            Transition(
+                source="S",
+                target="I",
+                type="mediated",
+                rate="beta",
+                mediator="I",
+            ),
+            Transition(
+                source="I",
+                target="R",
+                type="spontaneous",
+                rate="gamma",
+            ),
+        ]
+
+        parameters = {
+            "beta": Parameter(type="scalar", value=0.5),
+            "gamma": Parameter(type="scalar", value=0.1),
+        }
+
+        population = Population(name="US-CA", age_groups=["0-4", "5-17", "18-49", "50-64", "65+"])
+
+        # Use flu season timespan (Oct-May) to include school closures
+        timespan = Timespan(start_date=date(2024, 10, 5), end_date=date(2025, 5, 31), delta_t=1.0)
+
+        simulation = Simulation(n_sims=10, resample_frequency="W-SAT")
+
+        return BaseEpiModel(
+            name="test_model",
+            compartments=compartments,
+            transitions=transitions,
+            parameters=parameters,
+            population=population,
+            timespan=timespan,
+            simulation=simulation,
+        )
+
+    def test_school_closure_interventions_actually_applied(self, base_model_config):
+        """Test that school closure interventions are actually added to models."""
+        from epymodelingsuite.schema.basemodel import Intervention
+
+        base_model_config.interventions = [
+            Intervention(type="school_closure", label="School Closures", scaling_factor=0.344)
+        ]
+
+        models, _ = create_model_collection(base_model_config, ["US-CA"])
+        intervention_types = ["school_closure"]
+
+        # Verify no interventions before
+        assert len(models[0].interventions) == 0
+
+        setup_interventions(
+            models=models,
+            basemodel=base_model_config,
+            intervention_types=intervention_types,
+            sampled_start_timespan=None,
+        )
+
+        # Verify interventions were actually added to the model
+        assert len(models[0].interventions) > 0, "School closure interventions were not applied to the model"
+
+        # Verify specific closures are included (timespan is Oct 2024 - May 2025)
+        intervention_names = [i["name"] for i in models[0].interventions]
+        assert any(
+            "Christmas" in name for name in intervention_names
+        ), f"Christmas break not found in interventions: {intervention_names}"
+        assert any(
+            "Thanksgiving" in name for name in intervention_names
+        ), f"Thanksgiving break not found in interventions: {intervention_names}"
+
+        # Verify holidays are included (added via holidays package)
+        assert any(
+            "Veterans Day" in name for name in intervention_names
+        ), f"Veterans Day not found in interventions: {intervention_names}"
+        assert any(
+            "Martin Luther King" in name for name in intervention_names
+        ), f"MLK Day not found in interventions: {intervention_names}"
+        assert any(
+            "Washington" in name or "Presidents" in name for name in intervention_names
+        ), f"Presidents Day not found in interventions: {intervention_names}"
+
+    def test_state_specific_closures_applied_correctly(self, base_model_config):
+        """Test that state-specific closures are applied to the correct states.
+
+        CA has no Fall Break, AZ has Fall Break (Oct 11-15).
+        This verifies the location-specific lookup is working.
+        """
+        from epymodelingsuite.schema.basemodel import Intervention
+
+        base_model_config.interventions = [
+            Intervention(type="school_closure", label="School Closures", scaling_factor=0.344)
+        ]
+
+        # Create models for CA and AZ
+        ca_models, _ = create_model_collection(base_model_config, ["US-CA"])
+        az_models, _ = create_model_collection(base_model_config, ["US-AZ"])
+
+        intervention_types = ["school_closure"]
+
+        setup_interventions(
+            models=ca_models,
+            basemodel=base_model_config,
+            intervention_types=intervention_types,
+            sampled_start_timespan=None,
+        )
+        setup_interventions(
+            models=az_models,
+            basemodel=base_model_config,
+            intervention_types=intervention_types,
+            sampled_start_timespan=None,
+        )
+
+        ca_names = [i["name"] for i in ca_models[0].interventions]
+        az_names = [i["name"] for i in az_models[0].interventions]
+
+        # AZ has Fall Break, CA does not
+        assert any(
+            "Fall Break" in name for name in az_names
+        ), f"AZ should have Fall Break but got: {az_names}"
+        assert not any(
+            "Fall Break" in name for name in ca_names
+        ), f"CA should NOT have Fall Break but got: {ca_names}"
+
+        # Both should have common closures
+        assert any("Christmas" in name for name in ca_names)
+        assert any("Christmas" in name for name in az_names)
+
+    def test_contact_matrix_interventions_actually_applied(self, base_model_config):
+        """Test that contact matrix interventions are actually added to models."""
+        from epymodelingsuite.schema.basemodel import Intervention
+
+        base_model_config.interventions = [
+            Intervention(
+                type="contact_matrix",
+                label="Contact Matrix Changes",
+                contact_matrix_layer="work",
+                start_date=date(2024, 3, 1),
+                end_date=date(2024, 6, 1),
+                scaling_factor=0.5,
+            )
+        ]
+
+        models, _ = create_model_collection(base_model_config, ["US-CA"])
+        intervention_types = ["contact_matrix"]
+
+        # Verify no interventions before
+        assert len(models[0].interventions) == 0
+
+        setup_interventions(
+            models=models,
+            basemodel=base_model_config,
+            intervention_types=intervention_types,
+            sampled_start_timespan=None,
+        )
+
+        # Verify interventions were actually added to the model
+        assert len(models[0].interventions) > 0, "Contact matrix interventions were not applied to the model"
