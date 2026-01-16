@@ -256,7 +256,9 @@ def pad_array_with_nan(
     if pad_length <= 0:
         return array
 
-    return np.pad(array, (pad_length, 0), constant_values=np.nan)
+    # Ensure float dtype to allow NaN padding (NaN is not valid for integer arrays)
+    float_array = array.astype(float)
+    return np.pad(float_array, (pad_length, 0), constant_values=np.nan)
 
 
 def pad_trajectory_arrays(
