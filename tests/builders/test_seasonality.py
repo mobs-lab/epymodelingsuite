@@ -201,3 +201,141 @@ class TestAddSeasonalityFromConfig:
         assert beta[dec_idx] > beta[jun_idx], (
             f"Winter beta ({beta[dec_idx]}) should be higher than summer ({beta[jun_idx]})"
         )
+
+
+class TestParameterToArrayConversion:
+    """Tests for parameter shape conversion logic in add_seasonality_from_config."""
+
+    @pytest.fixture
+    def seasonality_config(self):
+        """Create a seasonality configuration."""
+        return Seasonality(
+            method="balcan",
+            min_value=0.5,
+            max_value=1.0,
+            target_parameter="beta",
+            seasonality_max_date=date(2025, 12, 31),
+            seasonality_min_date=date(2026, 6, 15),
+        )
+
+    @pytest.fixture
+    def timespan(self):
+        """Create a short timespan for testing."""
+        return Timespan(
+            start_date=date(2025, 12, 1),
+            end_date=date(2025, 12, 31),
+            delta_t=1.0,
+        )
+
+    @pytest.fixture
+    def model_with_population(self):
+        """Create an EpiModel with population set (5 age groups)."""
+        model = EpiModel()
+        set_population_from_config(model, "US-CA", ["0-4", "5-17", "18-49", "50-64", "65+"])
+        return model
+
+    def test_scalar_converts_to_time_varying_array(self, model_with_population, seasonality_config, timespan):
+        """Test that a scalar parameter becomes a (T,) array."""
+        model_with_population.add_parameter("beta", 0.5)
+
+        add_seasonality_from_config(model_with_population, seasonality_config, timespan)
+
+        beta = model_with_population.get_parameter("beta")
+        expected_T = (timespan.end_date - timespan.start_date).days + 1
+
+        assert isinstance(beta, np.ndarray)
+        assert beta.shape == (expected_T,)
+
+    def test_scalar_values_are_multiplied_by_seasonal_factor(self, model_with_population, seasonality_config, timespan):
+        """Test that scalar values are correctly multiplied by seasonal factors."""
+        baseline = 0.5
+        model_with_population.add_parameter("beta", baseline)
+
+        add_seasonality_from_config(model_with_population, seasonality_config, timespan)
+
+        beta = model_with_population.get_parameter("beta")
+
+        # At peak (Dec 31), seasonal factor is 1.0, so beta should equal baseline
+        peak_idx = (seasonality_config.seasonality_max_date - timespan.start_date).days
+        assert np.isclose(beta[peak_idx], baseline * 1.0, rtol=1e-6)
+
+        # At other times, beta should be less than baseline (seasonal factor < 1.0)
+        assert np.all(beta <= baseline + 1e-10)
+
+    def test_age_varying_expands_to_time_age_varying(self, model_with_population, seasonality_config, timespan):
+        """Test that (1, N) array expands to (T, N) array."""
+        n_age_groups = 5
+        age_varying_beta = np.array([[0.3, 0.4, 0.5, 0.4, 0.3]])
+        model_with_population.add_parameter("beta", age_varying_beta)
+
+        add_seasonality_from_config(model_with_population, seasonality_config, timespan)
+
+        beta = model_with_population.get_parameter("beta")
+        expected_T = (timespan.end_date - timespan.start_date).days + 1
+
+        assert beta.shape == (expected_T, n_age_groups)
+
+    def test_age_varying_preserves_relative_differences(self, model_with_population, seasonality_config, timespan):
+        """Test that age-varying values maintain relative differences after seasonality."""
+        n_age_groups = 5
+        age_varying_beta = np.array([[0.2, 0.4, 0.6, 0.4, 0.2]])
+        model_with_population.add_parameter("beta", age_varying_beta)
+
+        add_seasonality_from_config(model_with_population, seasonality_config, timespan)
+
+        beta = model_with_population.get_parameter("beta")
+
+        # At any time t, the ratio between age groups should be preserved
+        # beta[t, i] / beta[t, j] should equal original[i] / original[j]
+        for t in range(beta.shape[0]):
+            # Check ratio of age group 2 (0.6) to age group 0 (0.2) = 3.0
+            ratio = beta[t, 2] / beta[t, 0]
+            expected_ratio = 0.6 / 0.2
+            assert np.isclose(ratio, expected_ratio, rtol=1e-6)
+
+    def test_time_age_varying_multiplied_piecewise(self, model_with_population, seasonality_config, timespan):
+        """Test that (T, N) array is multiplied piecewise by seasonal factors."""
+        n_age_groups = 5
+        expected_T = (timespan.end_date - timespan.start_date).days + 1
+
+        # Create a time-varying and age-varying parameter
+        time_age_beta = np.ones((expected_T, n_age_groups)) * 0.5
+        # Make it vary by age
+        for i in range(n_age_groups):
+            time_age_beta[:, i] *= (i + 1) * 0.1  # 0.05, 0.1, 0.15, 0.2, 0.25
+
+        model_with_population.add_parameter("beta", time_age_beta)
+
+        add_seasonality_from_config(model_with_population, seasonality_config, timespan)
+
+        beta = model_with_population.get_parameter("beta")
+
+        assert beta.shape == (expected_T, n_age_groups)
+
+        # At peak, seasonal factor is 1.0, so values should equal original
+        peak_idx = (seasonality_config.seasonality_max_date - timespan.start_date).days
+        for i in range(n_age_groups):
+            expected = time_age_beta[peak_idx, i]
+            assert np.isclose(beta[peak_idx, i], expected, rtol=1e-6)
+
+    def test_invalid_shape_raises_error(self, model_with_population, seasonality_config, timespan):
+        """Test that unsupported parameter shapes raise ValueError."""
+        # Create a 3D array which is not supported
+        invalid_beta = np.ones((10, 5, 3))
+        model_with_population.add_parameter("beta", invalid_beta)
+
+        with pytest.raises(ValueError, match="Cannot apply seasonality"):
+            add_seasonality_from_config(model_with_population, seasonality_config, timespan)
+
+    def test_wrong_time_dimension_raises_error(self, model_with_population, seasonality_config, timespan):
+        """Test that array with wrong time dimension raises ValueError."""
+        n_age_groups = 5
+        expected_T = (timespan.end_date - timespan.start_date).days + 1
+
+        # Create array with wrong T dimension
+        wrong_T = expected_T + 10
+        wrong_beta = np.ones((wrong_T, n_age_groups)) * 0.5
+        model_with_population.add_parameter("beta", wrong_beta)
+
+        with pytest.raises(ValueError, match="Cannot apply seasonality"):
+            add_seasonality_from_config(model_with_population, seasonality_config, timespan)
