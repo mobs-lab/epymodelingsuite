@@ -611,9 +611,7 @@ class TestBuildCalibration:
         assert hasattr(calibrator, "priors")
         assert "beta" in calibrator.priors
 
-    def test_calibrator_priors_are_scipy_distributions(
-        self, minimal_basemodel_config, calibration_config_factory
-    ):
+    def test_calibrator_priors_are_scipy_distributions(self, minimal_basemodel_config, calibration_config_factory):
         """Test that priors are scipy frozen distribution objects."""
         calibration_config = calibration_config_factory("rejection", {"n_samples": 10, "epsilon": 100})
         result = build_calibration(basemodel_config=minimal_basemodel_config, calibration_config=calibration_config)
@@ -626,9 +624,7 @@ class TestBuildCalibration:
         assert hasattr(beta_prior, "pdf")
         assert callable(beta_prior.rvs)
 
-    def test_calibrator_prior_has_correct_distribution_type(
-        self, minimal_basemodel_config, calibration_config_factory
-    ):
+    def test_calibrator_prior_has_correct_distribution_type(self, minimal_basemodel_config, calibration_config_factory):
         """Test that prior has the correct distribution type (uniform)."""
         calibration_config = calibration_config_factory("rejection", {"n_samples": 10, "epsilon": 100})
         result = build_calibration(basemodel_config=minimal_basemodel_config, calibration_config=calibration_config)
@@ -639,9 +635,7 @@ class TestBuildCalibration:
         # The fixture uses uniform(loc=0, scale=1), so check the distribution name
         assert beta_prior.dist.name == "uniform"
 
-    def test_calibrator_prior_has_correct_parameters(
-        self, minimal_basemodel_config, calibration_config_factory
-    ):
+    def test_calibrator_prior_has_correct_parameters(self, minimal_basemodel_config, calibration_config_factory):
         """Test that prior distribution has correct loc and scale parameters."""
         calibration_config = calibration_config_factory("rejection", {"n_samples": 10, "epsilon": 100})
         result = build_calibration(basemodel_config=minimal_basemodel_config, calibration_config=calibration_config)
@@ -654,9 +648,7 @@ class TestBuildCalibration:
         assert beta_prior.kwds["loc"] == 0
         assert beta_prior.kwds["scale"] == 1
 
-    def test_calibrator_prior_can_generate_samples(
-        self, minimal_basemodel_config, calibration_config_factory
-    ):
+    def test_calibrator_prior_can_generate_samples(self, minimal_basemodel_config, calibration_config_factory):
         """Test that prior can generate random samples in expected range."""
         calibration_config = calibration_config_factory("rejection", {"n_samples": 10, "epsilon": 100})
         result = build_calibration(basemodel_config=minimal_basemodel_config, calibration_config=calibration_config)
