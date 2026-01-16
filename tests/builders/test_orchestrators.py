@@ -666,15 +666,14 @@ class TestApplySeasonalityWithSampledMin:
         model = Mock()
         seasonality_config = Seasonality(
             method="balcan",
-            latitude=40.0,
             min_value=0.5,
             max_value=1.5,
             target_parameter="beta",
-            seasonality_min_date=date(2024, 7, 1),
-            seasonality_max_date=date(2024, 1, 1),
+            seasonality_max_date=date(2025, 12, 31),
+            seasonality_min_date=date(2026, 6, 15),
         )
         basemodel = Mock(seasonality=seasonality_config)
-        timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
+        timespan = Timespan(start_date=date(2025, 10, 1), end_date=date(2026, 5, 31), delta_t=1.0)
         params = {}
 
         with patch("epymodelingsuite.builders.orchestrators.add_seasonality_from_config") as mock_add:
@@ -691,15 +690,14 @@ class TestApplySeasonalityWithSampledMin:
         model = Mock()
         seasonality_config = Seasonality(
             method="balcan",
-            latitude=40.0,
             min_value=0.5,
             max_value=1.5,
             target_parameter="beta",
-            seasonality_min_date=date(2024, 7, 1),
-            seasonality_max_date=date(2024, 1, 1),
+            seasonality_max_date=date(2025, 12, 31),
+            seasonality_min_date=date(2026, 6, 15),
         )
         basemodel = Mock(seasonality=seasonality_config)
-        timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
+        timespan = Timespan(start_date=date(2025, 10, 1), end_date=date(2026, 5, 31), delta_t=1.0)
         params = {"seasonality_min": 0.3}
 
         with patch("epymodelingsuite.builders.orchestrators.add_seasonality_from_config") as mock_add:
@@ -716,15 +714,14 @@ class TestApplySeasonalityWithSampledMin:
         model = Mock()
         seasonality_config = Seasonality(
             method="balcan",
-            latitude=40.0,
             min_value=0.5,
             max_value=1.5,
             target_parameter="beta",
-            seasonality_min_date=date(2024, 7, 1),
-            seasonality_max_date=date(2024, 1, 1),
+            seasonality_max_date=date(2025, 12, 31),
+            seasonality_min_date=date(2026, 6, 15),
         )
         basemodel = Mock(seasonality=seasonality_config)
-        timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
+        timespan = Timespan(start_date=date(2025, 10, 1), end_date=date(2026, 5, 31), delta_t=1.0)
         params = {"seasonality_min": 0.3}
 
         with patch("epymodelingsuite.builders.orchestrators.add_seasonality_from_config"):
