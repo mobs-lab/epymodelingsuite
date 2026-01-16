@@ -409,16 +409,26 @@ def validate_cross_config_consistency(
     # Modelset must contain either sampling or calibration section
     sampling = getattr(modelset, "sampling", None)
     calibration = getattr(modelset, "calibration", None)
+
+    # CalibrationConfig must have calibration section
     if isinstance(modelset_config, CalibrationConfig) and not calibration:
         err_msg = "Calibration modelset must provide a 'calibration' section."
         raise ValueError(err_msg)
 
-    # End validation if no variables are sampled (modelset is used only for population)
-    if sampling is None:
+    # SamplingConfig supports population-only mode (sampling=None), skip remaining validation
+    # Example YAML:
+    #   modelset:
+    #     population_names: ["US-CA", "US-TX"]
+    if isinstance(modelset_config, SamplingConfig) and sampling is None:
         logger.info(
             "Sampling modelset received without sampled variables (only populations). Ensure your modelset does not contain any 'sampled' keywords"
         )
         return
+
+    # Require either sampling or calibration for remaining validation
+    if sampling is None and calibration is None:
+        err_msg = "Modelset must provide a 'sampling' or 'calibration' section."
+        raise ValueError(err_msg)
 
     # Parameter consistency checks
     # - Get sets of parameters for basemodel and modelset
