@@ -11,7 +11,8 @@ logger = logging.getLogger(__name__)
 def make_school_closure_dict(
     years: list[int], interval_reduction_iter: int | None = 5
 ) -> dict[str, set[tuple[dt.date, dt.date, str]]]:
-    """
+    """Create a dictionary of school closures by location.
+
     Create a dictionary where the keys are location abbreviations and the values are sets of named tuples representing closures.
     For example, in normal usage if you want closures for 2024 and 2025 simply call make_school_closure_dict([2024, 2025]).
 
@@ -24,12 +25,15 @@ def make_school_closure_dict(
 
     Parameters
     ----------
-            years: a list of integer years for which to calculate closures
-            interval_reduction_iter: maximum iterations used when merging date intervals for the total US model
+    years : list[int]
+        A list of integer years for which to calculate closures.
+    interval_reduction_iter : int or None, optional
+        Maximum iterations used when merging date intervals for the total US model. Default is 5.
 
     Returns
     -------
-            closure_dict: a dictionary where the keys are location abbreviations and the values are sets of named tuples representing closures
+    closure_dict : dict[str, set[tuple[dt.date, dt.date, str]]]
+        A dictionary where the keys are location abbreviations and the values are sets of named tuples representing closures.
     """
     import datetime as dt
     import os
@@ -243,14 +247,18 @@ def make_school_closure_dict(
 def add_school_closure_interventions(
     model: EpiModel, closure_dict: dict[str, set[tuple[dt.date, dt.date, str]]], reduction_factor: float
 ) -> EpiModel:
-    """
-    Add school closure interventions to a model. Called for effect.
+    """Add school closure interventions to a model.
 
     Parameters
     ----------
-            model: an already defined epydemix EpiModel. This must be using a US population with contact matrices.
-            closure_dict: a dictionary created by calling make_school_closure_dict(...) from this module.
-            reduction_factor: the factor by which to reduce the contact matrix.
+    model : EpiModel
+        An already defined epydemix EpiModel. This must be using a US population
+        with contact matrices.
+    closure_dict : dict[str, set[tuple[dt.date, dt.date, str]]]
+        A dictionary created by calling make_school_closure_dict(...) from this
+        module.
+    reduction_factor : float
+        The factor by which to reduce the contact matrix.
 
     Returns
     -------
