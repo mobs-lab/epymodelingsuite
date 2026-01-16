@@ -5,90 +5,9 @@ from collections.abc import Callable
 import pandas as pd
 from epydemix.model import EpiModel
 
+from .utils.populations import get_age_group_mapping, get_all_age_map, validate_age_groups
+
 logger = logging.getLogger(__name__)
-
-
-def validate_age_groups(target_age_groups: list[str]) -> None:
-    """
-    Validate that a list of age group labels is properly formatted, contiguous, and non-overlapping.
-
-    Rules enforced
-    --------------
-    - The first age group must start at '0'.
-    - The last age group must end with '+' (e.g. '80+').
-    - All intermediate groups must be in the format 'start-end' (e.g. '0-9', '10-24').
-    - Groups must be contiguous: the end of one group plus one must equal the start of the next group.
-
-    Parameters
-    ----------
-    target_age_groups : list[str]
-        List of age group labels to validate.
-
-    Raises
-    ------
-    ValueError
-        If any of the rules above are violated.
-    """
-    logger.info(f"Validating age groups: {target_age_groups}")
-
-    if target_age_groups[-1][-1] != "+":
-        raise ValueError("The last age group must end with '+' e.g. '80+'")
-
-    if target_age_groups[0][0] != "0":
-        raise ValueError("The first age group must start at '0'")
-
-    for i in range(len(target_age_groups) - 1):
-        if "-" not in target_age_groups[i]:
-            raise ValueError("Age groups must be in the format 'start-end' e.g. '0-9', '10-24', '25-32' etc")
-        if "-" not in target_age_groups[i + 1] and i + 1 != len(target_age_groups) - 1:
-            raise ValueError("Age groups must be in the format 'start-end' e.g. '0-9', '10-24', '25-32' etc")
-        i_end = int(target_age_groups[i].split("-")[1].replace("+", ""))
-        i1_start = int(target_age_groups[i + 1].split("-")[0].replace("+", ""))
-        if i_end + 1 != i1_start:
-            raise ValueError("Age groups must be contiguous and not overlapping e.g. '0-9', '10-24', '25-32' etc")
-
-
-def get_age_group_mapping(target_age_groups: list[str]) -> dict[str, list[str]]:
-    """
-    Construct a mapping from model age group labels to the individual ages
-    they encompass.
-
-    Parameters
-    ----------
-    target_age_groups : list[str]
-        List of contiguous, non-overlapping age group labels. Each group
-        should be formatted as:
-        - 'start-end', e.g. '0-9', '10-24', '25-32', etc.
-        - The final group must use an open-ended format with '+', e.g. '80+'.
-
-    Returns
-    -------
-    dict[str, list[str]]
-        A dictionary mapping each age group label to a list of the string
-        representations of ages it covers. The final open-ended group includes
-        all ages from its starting value up to 83, plus the label '84+'.
-    """
-    validate_age_groups(target_age_groups)
-    age_group_map = {}
-    for i, a in enumerate(target_age_groups):
-        if i != len(target_age_groups) - 1:
-            start, end = a.split("-")
-            age_group_map[a] = [str(j) for j in range(int(start), int(end) + 1)]
-        elif "+" in a:
-            start = a.split("+")[0]
-            age_group_map[a] = [str(j) for j in range(int(start), 84)] + ["84+"]
-
-    return age_group_map
-
-
-def get_all_age_map() -> dict[str, list[str]]:
-    """Create a master population age group map from all age groups."""
-    # fmt: off
-    map = get_age_group_mapping(
-        ["0-0", "1-1", "2-2", "3-3", "4-4", "5-5", "6-6", "7-7", "8-8", "9-9", "10-10", "11-11", "12-12", "13-13", "14-14", "15-15", "16-16", "17-17", "18-18", "19-19", "20-20", "21-21", "22-22", "23-23", "24-24", "25-25", "26-26", "27-27", "28-28", "29-29", "30-30", "31-31", "32-32", "33-33", "34-34", "35-35", "36-36", "37-37", "38-38", "39-39", "40-40", "41-41", "42-42", "43-43", "44-44", "45-45", "46-46", "47-47", "48-48", "49-49", "50-50", "51-51", "52-52", "53-53", "54-54", "55-55", "56-56", "57-57", "58-58", "59-59", "60-60", "61-61", "62-62", "63-63", "64-64", "65-65", "66-66", "67-67", "68-68", "69-69", "70-70", "71-71", "72-72", "73-73", "74-74", "75-75", "76-76", "77-77", "78-78", "79-79", "80-80", "81-81", "82-82", "83-83", "84+"]
-    )
-    # fmt: on
-    return map
 
 
 def get_age_groups_from_data(data: pd.DataFrame) -> dict[str, str]:
