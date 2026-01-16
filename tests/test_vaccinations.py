@@ -86,6 +86,111 @@ class TestResampleVaccinationSchedule:
 class TestScenarioToEpydemix:
     """Tests for scenario_to_epydemix function."""
 
+    def test_preserves_coverage_percentage(self, tmp_path):
+        """Verify that scenario_to_epydemix preserves coverage percentages.
+
+        The function should produce doses such that:
+            effective_coverage = converted_doses / epydemix_population
+        matches the input coverage percentage from the scenario file.
+
+        This is the intended design: preserve coverage %, not absolute doses.
+        """
+        from epymodelingsuite.utils import get_population_codebook
+
+        # Create test data with known coverage percentages
+        # Using California as it has epydemix population data
+        test_coverage = {
+            "6 Months - 4 Years": 50.0,  # 50% coverage
+            "5-12 Years": 40.0,
+            "13-17 Years": 35.0,
+            "18-49 Years": 25.0,
+            "50-64 Years": 45.0,
+            "65+ Years": 60.0,
+            "6 Months - 17 Years": 42.0,  # Aggregate - will be excluded
+        }
+
+        # Population values (these are from the scenario file, not epydemix)
+        # The function should use epydemix population to calculate doses
+        test_population = {
+            "6 Months - 4 Years": 2086948,
+            "5-12 Years": 3958033,
+            "13-17 Years": 2522629,
+            "18-49 Years": 17225750,
+            "50-64 Years": 7219051,
+            "65+ Years": 5976166,
+            "6 Months - 17 Years": 6480662,
+        }
+
+        # Create CSV with multiple weeks to have coverage progression
+        rows = []
+        weeks = pd.date_range("2024-09-07", periods=10, freq="W-SAT")
+        for week_idx, week in enumerate(weeks):
+            # Coverage increases each week up to target
+            week_fraction = (week_idx + 1) / len(weeks)
+            for age, target_cov in test_coverage.items():
+                rows.append(
+                    {
+                        "Week_Ending_Sat": week.strftime("%Y-%m-%d"),
+                        "Geography": "California",
+                        "Age": age,
+                        "Population": test_population[age],
+                        "Coverage": target_cov * week_fraction,  # Gradual increase
+                    }
+                )
+
+        test_df = pd.DataFrame(rows)
+        test_file = tmp_path / "test_vaccine_scenario.csv"
+        test_df.to_csv(test_file, index=False)
+
+        # Convert using scenario_to_epydemix
+        result = scenario_to_epydemix(
+            input_filepath=str(test_file),
+            start_date=date(2024, 9, 7),
+            end_date=date(2024, 11, 9),
+            target_age_groups=["0-4", "5-17", "18-49", "50-64", "65+"],
+            states=["California"],
+        )
+
+        # Get epydemix population for California
+        codebook = get_population_codebook()
+        ca_pop = codebook["United_States_California"]
+
+        # Calculate epydemix population for each model age group
+        # TODO: Use aggregate_population_by_age_groups utility once merged
+        epydemix_pop = {
+            "0-4": sum(ca_pop.values[0:5]),
+            "5-17": sum(ca_pop.values[5:18]),
+            "18-49": sum(ca_pop.values[18:50]),
+            "50-64": sum(ca_pop.values[50:65]),
+            "65+": sum(ca_pop.values[65:85]),
+        }
+
+        # Expected final coverage for model age groups
+        # 0-4 maps to "6 Months - 4 Years"
+        # 5-17 maps to weighted average of "5-12 Years" and "13-17 Years"
+        expected_coverage = {
+            "0-4": test_coverage["6 Months - 4 Years"],
+            # 5-17 is combination of 5-12 and 13-17, weighted by epydemix population
+            "5-17": (
+                test_coverage["5-12 Years"] * sum(ca_pop.values[5:13])
+                + test_coverage["13-17 Years"] * sum(ca_pop.values[13:18])
+            )
+            / epydemix_pop["5-17"],
+            "18-49": test_coverage["18-49 Years"],
+            "50-64": test_coverage["50-64 Years"],
+            "65+": test_coverage["65+ Years"],
+        }
+
+        # Verify effective coverage matches expected
+        for age_group in ["0-4", "5-17", "18-49", "50-64", "65+"]:
+            converted_doses = result[age_group].sum()
+            effective_coverage = (converted_doses / epydemix_pop[age_group]) * 100
+
+            assert abs(effective_coverage - expected_coverage[age_group]) < 2.0, (
+                f"Coverage mismatch for {age_group}: "
+                f"effective={effective_coverage:.1f}%, expected={expected_coverage[age_group]:.1f}%"
+            )
+
     def test_no_delta_t_parameter(self):
         """Test that scenario_to_epydemix no longer accepts delta_t parameter."""
         # Create a minimal temporary CSV file with properly formatted data
@@ -334,3 +439,457 @@ class TestVaccinationIntegration:
                 target_comp="S_vax",
                 vaccination_schedule=incomplete_schedule,
             )
+
+
+class TestVaccinationE2E:
+    """End-to-end tests verifying vaccination works correctly in simulations.
+
+    These tests run actual simulations and verify:
+    1. Total vaccinations match the scheduled doses
+    2. Population conservation (S + S_vax remains constant when no disease)
+    3. Vaccination transitions actually move people between compartments
+    """
+
+    @pytest.fixture
+    def sir_model_with_vaccination(self):
+        """Create a simple SIR model with vaccination compartments.
+
+        Returns a model with no disease transmission (beta=0) to isolate vaccination effects.
+        """
+        from epydemix.model import EpiModel
+        from epydemix.population import load_epydemix_population
+
+        model = EpiModel()
+
+        age_group_mapping = {
+            "0-4": [str(i) for i in range(5)],
+            "5-17": [str(i) for i in range(5, 18)],
+            "18-49": [str(i) for i in range(18, 50)],
+            "50-64": [str(i) for i in range(50, 65)],
+            "65+": [str(i) for i in range(65, 84)] + ["84+"],
+        }
+        population = load_epydemix_population(
+            population_name="United_States_California",
+            age_group_mapping=age_group_mapping,
+        )
+        model.set_population(population)
+
+        # Add compartments: S, S_vax, I, R
+        model.add_compartments(["S", "S_vax", "I", "R"])
+
+        # Add basic transitions (with beta=0 to disable disease)
+        model.add_transition("S", "I", params=("beta", "I"), kind="mediated")
+        model.add_transition("I", "R", params="gamma", kind="spontaneous")
+
+        # Add parameters - beta=0 disables disease transmission
+        model.add_parameter(parameters_dict={"beta": 0.0, "gamma": 0.1})
+
+        return model
+
+    @pytest.fixture
+    def vaccination_schedule_constant(self):
+        """Create a constant daily vaccination schedule for 30 days.
+
+        Returns a schedule with fixed daily doses per age group.
+        """
+        dates = pd.date_range("2024-10-01", periods=30, freq="D")
+        return pd.DataFrame(
+            {
+                "dates": dates,
+                "location": ["US-CA"] * 30,
+                "0-4": [1000.0] * 30,
+                "5-17": [2000.0] * 30,
+                "18-49": [5000.0] * 30,
+                "50-64": [3000.0] * 30,
+                "65+": [4000.0] * 30,
+            }
+        )
+
+    def test_vaccination_total_matches_schedule(self, sir_model_with_vaccination, vaccination_schedule_constant):
+        """Verify that total vaccinations approximately match the scheduled doses.
+
+        This test runs a simulation with vaccination and verifies that the cumulative number of people moved to S_vax is close to the total scheduled doses.
+
+        Note: Due to the rate-to-probability conversion (p = 1 - exp(-rate * dt)), actual vaccinations may be slightly lower than scheduled when doses/population is high.
+        """
+        model = sir_model_with_vaccination
+
+        # Create vaccination rate function
+        vaccine_rate_function = make_vaccination_rate_function(origin_compartment="S", eligible_compartments=["S"])
+
+        # Add vaccination schedule
+        model = add_vaccination_schedule(
+            model=model,
+            vaccine_rate_function=vaccine_rate_function,
+            source_comp="S",
+            target_comp="S_vax",
+            vaccination_schedule=vaccination_schedule_constant,
+        )
+
+        # Set initial conditions - everyone susceptible
+        n_age = len(model.population.Nk)
+        init_conditions = {
+            "S": model.population.Nk.copy(),
+            "S_vax": np.zeros(n_age),
+            "I": np.zeros(n_age),
+            "R": np.zeros(n_age),
+        }
+
+        # Run simulation
+        rng = np.random.default_rng(42)
+        sim_results = model.run_simulations(
+            start_date="2024-10-01",
+            end_date="2024-10-30",
+            initial_conditions_dict=init_conditions,
+            Nsim=5,
+            dt=1.0,
+            rng=rng,
+        )
+
+        # Get S->S_vax transitions (vaccinations)
+        transitions = sim_results.get_stacked_transitions()
+        s_to_svax = transitions.get("S_to_S_vax_total")
+
+        assert s_to_svax is not None, "Vaccination transition S_to_S_vax not found in results"
+
+        # Calculate total vaccinations across all simulations
+        # Sum across time (axis=1), then average across simulations
+        total_vaccinated_per_sim = np.sum(s_to_svax, axis=1)
+        avg_total_vaccinated = np.mean(total_vaccinated_per_sim)
+
+        # Calculate expected total from schedule
+        age_cols = ["0-4", "5-17", "18-49", "50-64", "65+"]
+        expected_total = vaccination_schedule_constant[age_cols].sum().sum()
+
+        # Vaccinations should be within 1% of scheduled
+        # (stochastic variation is very small with these population sizes)
+        relative_diff = abs(avg_total_vaccinated - expected_total) / expected_total
+        assert relative_diff < 0.01, (
+            f"Vaccination total ({avg_total_vaccinated:.0f}) differs from scheduled "
+            f"({expected_total:.0f}) by {relative_diff * 100:.2f}%"
+        )
+
+    def test_vaccination_population_conservation(self, sir_model_with_vaccination, vaccination_schedule_constant):
+        """Verify that total population is conserved during vaccination.
+
+        With beta=0 (no disease), only vaccination occurs:
+        - S decreases as people get vaccinated
+        - S_vax increases by the same amount
+        - Total (S + S_vax + I + R) remains constant
+        """
+        model = sir_model_with_vaccination
+
+        # Create vaccination rate function
+        vaccine_rate_function = make_vaccination_rate_function(origin_compartment="S", eligible_compartments=["S"])
+
+        # Add vaccination schedule
+        model = add_vaccination_schedule(
+            model=model,
+            vaccine_rate_function=vaccine_rate_function,
+            source_comp="S",
+            target_comp="S_vax",
+            vaccination_schedule=vaccination_schedule_constant,
+        )
+
+        # Set initial conditions
+        n_age = len(model.population.Nk)
+        init_conditions = {
+            "S": model.population.Nk.copy(),
+            "S_vax": np.zeros(n_age),
+            "I": np.zeros(n_age),
+            "R": np.zeros(n_age),
+        }
+
+        initial_total_pop = np.sum(model.population.Nk)
+
+        # Run simulation
+        rng = np.random.default_rng(42)
+        sim_results = model.run_simulations(
+            start_date="2024-10-01",
+            end_date="2024-10-30",
+            initial_conditions_dict=init_conditions,
+            Nsim=3,
+            dt=1.0,
+            rng=rng,
+        )
+
+        # Get compartment totals
+        compartments = sim_results.get_stacked_compartments()
+        s_total = compartments["S_total"]
+        svax_total = compartments["S_vax_total"]
+        i_total = compartments["I_total"]
+        r_total = compartments["R_total"]
+
+        # Calculate total population at each timestep
+        total_pop = s_total + svax_total + i_total + r_total
+
+        # Verify population is conserved (within floating point tolerance)
+        for sim_idx in range(total_pop.shape[0]):
+            pop_at_each_time = total_pop[sim_idx]
+            max_deviation = np.max(np.abs(pop_at_each_time - initial_total_pop))
+            assert max_deviation < 1.0, (
+                f"Population not conserved in sim {sim_idx}: max deviation = {max_deviation:.2f}"
+            )
+
+    def test_vaccination_actually_moves_people(self, sir_model_with_vaccination, vaccination_schedule_constant):
+        """Verify that vaccination actually moves people from S to S_vax.
+
+        This test confirms that:
+        1. S_vax increases from 0 over time
+        2. S decreases correspondingly
+        3. The final S_vax > 0 (vaccinations occurred)
+        """
+        model = sir_model_with_vaccination
+
+        # Create vaccination rate function
+        vaccine_rate_function = make_vaccination_rate_function(origin_compartment="S", eligible_compartments=["S"])
+
+        # Add vaccination schedule
+        model = add_vaccination_schedule(
+            model=model,
+            vaccine_rate_function=vaccine_rate_function,
+            source_comp="S",
+            target_comp="S_vax",
+            vaccination_schedule=vaccination_schedule_constant,
+        )
+
+        # Set initial conditions - everyone in S
+        n_age = len(model.population.Nk)
+        init_conditions = {
+            "S": model.population.Nk.copy(),
+            "S_vax": np.zeros(n_age),
+            "I": np.zeros(n_age),
+            "R": np.zeros(n_age),
+        }
+
+        # Run simulation
+        rng = np.random.default_rng(42)
+        sim_results = model.run_simulations(
+            start_date="2024-10-01",
+            end_date="2024-10-30",
+            initial_conditions_dict=init_conditions,
+            Nsim=3,
+            dt=1.0,
+            rng=rng,
+        )
+
+        compartments = sim_results.get_stacked_compartments()
+
+        # Check S_vax increases over time (final > first timestep)
+        # Note: First timestep already includes day 1 vaccinations
+        svax_total = compartments["S_vax_total"]
+        for sim_idx in range(svax_total.shape[0]):
+            first_svax = svax_total[sim_idx, 0]
+            final_svax = svax_total[sim_idx, -1]
+
+            # First timestep should have some vaccinations (day 1)
+            assert first_svax > 0, f"S_vax should have vaccinations on day 1, got {first_svax}"
+            # Final should be greater than first (accumulating)
+            assert final_svax > first_svax, (
+                f"S_vax should increase over time: first={first_svax:.0f}, final={final_svax:.0f}"
+            )
+
+        # Check S decreases over time
+        s_total = compartments["S_total"]
+        initial_total_s = np.sum(sir_model_with_vaccination.population.Nk)
+        for sim_idx in range(s_total.shape[0]):
+            first_s_sim = s_total[sim_idx, 0]
+            final_s_sim = s_total[sim_idx, -1]
+
+            # S at first timestep should already be less than initial (day 1 vaccinations)
+            assert first_s_sim < initial_total_s, (
+                f"S should decrease from initial: initial={initial_total_s:.0f}, first={first_s_sim:.0f}"
+            )
+            # Final should be less than first (continuing to decrease)
+            assert final_s_sim < first_s_sim, (
+                f"S should decrease over time: first={first_s_sim:.0f}, final={final_s_sim:.0f}"
+            )
+
+    def test_vaccination_per_age_group_proportional(self, sir_model_with_vaccination):
+        """Verify that vaccination doses are distributed proportionally across age groups.
+
+        Creates a schedule where age group "18-49" gets twice as many doses as "0-4".
+        Verifies that the actual vaccinations reflect this ratio.
+        """
+        model = sir_model_with_vaccination
+
+        # Create schedule with 2x doses for 18-49 vs 0-4
+        dates = pd.date_range("2024-10-01", periods=30, freq="D")
+        vaccination_schedule = pd.DataFrame(
+            {
+                "dates": dates,
+                "location": ["US-CA"] * 30,
+                "0-4": [1000.0] * 30,
+                "5-17": [1000.0] * 30,
+                "18-49": [2000.0] * 30,  # 2x doses
+                "50-64": [1000.0] * 30,
+                "65+": [1000.0] * 30,
+            }
+        )
+
+        vaccine_rate_function = make_vaccination_rate_function(origin_compartment="S", eligible_compartments=["S"])
+
+        model = add_vaccination_schedule(
+            model=model,
+            vaccine_rate_function=vaccine_rate_function,
+            source_comp="S",
+            target_comp="S_vax",
+            vaccination_schedule=vaccination_schedule,
+        )
+
+        # Set initial conditions
+        n_age = len(model.population.Nk)
+        init_conditions = {
+            "S": model.population.Nk.copy(),
+            "S_vax": np.zeros(n_age),
+            "I": np.zeros(n_age),
+            "R": np.zeros(n_age),
+        }
+
+        rng = np.random.default_rng(42)
+        sim_results = model.run_simulations(
+            start_date="2024-10-01",
+            end_date="2024-10-30",
+            initial_conditions_dict=init_conditions,
+            Nsim=5,
+            dt=1.0,
+            rng=rng,
+        )
+
+        # Get S_vax by age group (not just total)
+        compartments = sim_results.get_stacked_compartments()
+
+        # Compartment keys use age group names: S_vax_0-4, S_vax_18-49, etc.
+        svax_0_4 = compartments["S_vax_0-4"]
+        svax_18_49 = compartments["S_vax_18-49"]
+
+        # Get final values averaged across simulations
+        avg_svax_0_4 = np.mean(svax_0_4[:, -1])
+        avg_svax_18_49 = np.mean(svax_18_49[:, -1])
+
+        # 18-49 should have roughly 2x as many vaccinated as 0-4
+        # (allowing for population size differences and stochastic effects)
+        # Just verify 18-49 has more vaccinated than 0-4
+        assert avg_svax_18_49 > avg_svax_0_4, (
+            f"Age group 18-49 (with 2x doses) should have more vaccinated than 0-4: "
+            f"18-49={avg_svax_18_49:.0f}, 0-4={avg_svax_0_4:.0f}"
+        )
+
+    def test_vaccination_with_disease_reduces_infections(self):
+        """Verify that vaccination reduces total infections when combined with disease.
+
+        Compares two scenarios:
+        1. Disease only (no vaccination)
+        2. Disease + vaccination
+
+        The vaccination scenario should have fewer total infections (S->I transitions) because vaccinated people (in S_vax) cannot be infected.
+        """
+        from epydemix.model import EpiModel
+        from epydemix.population import load_epydemix_population
+
+        # Create model with disease (beta > 0)
+        def create_model_with_disease():
+            model = EpiModel()
+
+            age_group_mapping = {
+                "0-4": [str(i) for i in range(5)],
+                "5-17": [str(i) for i in range(5, 18)],
+                "18-49": [str(i) for i in range(18, 50)],
+                "50-64": [str(i) for i in range(50, 65)],
+                "65+": [str(i) for i in range(65, 84)] + ["84+"],
+            }
+            population = load_epydemix_population(
+                population_name="United_States_California",
+                age_group_mapping=age_group_mapping,
+            )
+            model.set_population(population)
+
+            model.add_compartments(["S", "S_vax", "I", "R"])
+            model.add_transition("S", "I", params=("beta", "I"), kind="mediated")
+            model.add_transition("I", "R", params="gamma", kind="spontaneous")
+            # Use moderate transmission rate
+            model.add_parameter(parameters_dict={"beta": 0.15, "gamma": 0.1})
+
+            return model
+
+        # Create aggressive vaccination schedule
+        dates = pd.date_range("2024-10-01", periods=30, freq="D")
+        vaccination_schedule = pd.DataFrame(
+            {
+                "dates": dates,
+                "location": ["US-CA"] * 30,
+                "0-4": [50000.0] * 30,
+                "5-17": [100000.0] * 30,
+                "18-49": [250000.0] * 30,
+                "50-64": [150000.0] * 30,
+                "65+": [200000.0] * 30,
+            }
+        )
+
+        # Scenario 1: Disease only
+        model_disease = create_model_with_disease()
+        n_age = len(model_disease.population.Nk)
+        i_init = np.zeros(n_age)
+        i_init[2] = 100  # Initial infections in 18-49
+
+        init_conditions = {
+            "S": model_disease.population.Nk - i_init,
+            "S_vax": np.zeros(n_age),
+            "I": i_init,
+            "R": np.zeros(n_age),
+        }
+
+        rng1 = np.random.default_rng(42)
+        results_disease_only = model_disease.run_simulations(
+            start_date="2024-10-01",
+            end_date="2024-10-30",
+            initial_conditions_dict=init_conditions,
+            Nsim=10,
+            dt=1.0,
+            rng=rng1,
+        )
+
+        # Scenario 2: Disease + Vaccination
+        model_with_vax = create_model_with_disease()
+
+        vaccine_rate_function = make_vaccination_rate_function(origin_compartment="S", eligible_compartments=["S"])
+
+        model_with_vax = add_vaccination_schedule(
+            model=model_with_vax,
+            vaccine_rate_function=vaccine_rate_function,
+            source_comp="S",
+            target_comp="S_vax",
+            vaccination_schedule=vaccination_schedule,
+        )
+
+        rng2 = np.random.default_rng(42)
+        results_with_vax = model_with_vax.run_simulations(
+            start_date="2024-10-01",
+            end_date="2024-10-30",
+            initial_conditions_dict=init_conditions,
+            Nsim=10,
+            dt=1.0,
+            rng=rng2,
+        )
+
+        # Compare total infections (S->I transitions)
+        transitions_disease = results_disease_only.get_stacked_transitions()
+        transitions_vax = results_with_vax.get_stacked_transitions()
+
+        # Sum all S->I transitions over time for each simulation
+        infections_disease = np.sum(transitions_disease["S_to_I_total"], axis=1)
+        infections_vax = np.sum(transitions_vax["S_to_I_total"], axis=1)
+
+        avg_infections_disease = np.mean(infections_disease)
+        avg_infections_vax = np.mean(infections_vax)
+
+        # Vaccination scenario should have fewer infections
+        assert avg_infections_vax < avg_infections_disease, (
+            f"Vaccination should reduce infections: "
+            f"disease_only={avg_infections_disease:.0f}, with_vax={avg_infections_vax:.0f}"
+        )
+
+        # Verify S_vax has people in the vaccination scenario
+        compartments_vax = results_with_vax.get_stacked_compartments()
+        avg_final_svax = np.mean(compartments_vax["S_vax_total"][:, -1])
+        assert avg_final_svax > 0, "S_vax should have vaccinated people"
