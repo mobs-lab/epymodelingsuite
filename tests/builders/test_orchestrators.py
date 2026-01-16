@@ -792,8 +792,8 @@ class TestFormatCalibrationData:
         assert "data" in result
         assert "date" in result
 
-        # Should pad with 2 zeros at beginning
-        expected_data = np.array([0, 0, 30, 40, 50])
+        # Should pad with 2 NaN at beginning
+        expected_data = np.array([np.nan, np.nan, 30, 40, 50])
         np.testing.assert_array_equal(result["data"], expected_data)
         assert result["date"] == data_dates
 
@@ -915,9 +915,9 @@ class TestFormatProjectionTrajectories:
         assert len(result["date"]) == 3
         # First date should be padded (Jan 6)
         assert result["date"][0] == pd.Timestamp(date(2024, 1, 6))
-        # Hosp should have one zero padded at beginning
-        np.testing.assert_array_equal(result["Hosp"], np.array([0, 10, 20]))
-        np.testing.assert_array_equal(result["S"], np.array([0, 1000, 990]))
+        # Hosp should have one NaN padded at beginning
+        np.testing.assert_array_equal(result["Hosp"], np.array([np.nan, 10, 20]))
+        np.testing.assert_array_equal(result["S"], np.array([np.nan, 1000, 990]))
 
     def test_handles_different_pad_lengths(self):
         """Test that different trajectories pad to same final length."""
@@ -1112,8 +1112,8 @@ class TestFormatProjectionTrajectories:
 
         # Should pad aggregated transition to 3 weeks total
         assert len(result["total_hosp"]) == 3
-        # First value should be zero (padding)
-        np.testing.assert_array_equal(result["total_hosp"], np.array([0, 15, 30]))
+        # First value should be NaN (padding)
+        np.testing.assert_array_equal(result["total_hosp"], np.array([np.nan, 15, 30]))
 
 
 class TestGetAggregatedComparisonTransition:
