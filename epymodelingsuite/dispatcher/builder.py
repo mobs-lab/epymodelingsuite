@@ -475,9 +475,12 @@ def build_calibration(
         )
 
         # Parse priors into scipy functions
+        # Parameters and compartments can be None in calibration config
         priors = {}
-        priors.update({k: distribution_to_scipy(v.prior) for k, v in calibration.parameters.items()})
-        priors.update({k: distribution_to_scipy(v.prior) for k, v in calibration.compartments.items()})
+        if calibration.parameters:
+            priors.update({k: distribution_to_scipy(v.prior) for k, v in calibration.parameters.items()})
+        if calibration.compartments:
+            priors.update({k: distribution_to_scipy(v.prior) for k, v in calibration.compartments.items()})
         if sampled_start_timespan:
             priors["start_date"] = distribution_to_scipy(calibration.start_date.prior)
 
