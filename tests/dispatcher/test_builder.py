@@ -504,7 +504,7 @@ class TestBuildCalibration:
                 observed_value_column="value",
                 observed_date_column="date",
                 observed_location_column="location",
-                simulation=["S_to_I"],
+                simulation=["S_to_I_total"],
             )
 
             calibration = CalibrationConfiguration(
