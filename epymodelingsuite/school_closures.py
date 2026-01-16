@@ -262,7 +262,8 @@ def add_school_closure_interventions(
 
     Returns
     -------
-            None
+    EpiModel
+        The model with school closure interventions added (modified in-place).
     """
     from .utils import convert_location_name_format
 
