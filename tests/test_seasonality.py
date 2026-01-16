@@ -82,10 +82,10 @@ def test_calc_seasonality_balcan_at_date_matches__calc(val_min, val_max, period,
 def test_calc_seasonality_balcan_at_date_derives_period_from_tmin():
     """When date_tmin is given and period is None, period should be 2*|tmin - tmax|."""
     val_min, val_max = 0.6, 1.2
-    date_start = dt.date(2023, 1, 1)
-    date_tmax = dt.date(2023, 3, 1)
-    date_tmin = dt.date(2023, 9, 1)  # roughly 184 days after tmax -> expected period ~ 368
-    date_t = dt.date(2023, 6, 1)
+    date_start = dt.date(2025, 10, 1)
+    date_tmax = dt.date(2025, 12, 31)  # Peak in late December
+    date_tmin = dt.date(2026, 6, 15)  # Trough in mid-June -> period ~ 332 days
+    date_t = dt.date(2026, 3, 1)
 
     # Calculate seasonality without period (automatic derivation with 2*|t_min - t_max|)
     v = calc_seasonality_balcan_at_date(
@@ -113,11 +113,11 @@ def test_calc_seasonality_balcan_at_date_derives_period_from_tmin():
 def test_calc_seasonality_balcan_at_date_period_overrides_tmin():
     """If both period and date_tmin are provided, the explicit period must be used (override)."""
     val_min, val_max = 0.4, 1.6
-    date_start = dt.date(2022, 1, 1)
-    date_tmax = dt.date(2022, 2, 1)
-    date_tmin = dt.date(2022, 8, 1)  # would imply its own period if used
+    date_start = dt.date(2025, 10, 1)
+    date_tmax = dt.date(2025, 12, 31)  # Peak in late December
+    date_tmin = dt.date(2026, 6, 15)  # Trough in mid-June (would imply its own period if used)
     forced_period = 200
-    date_t = dt.date(2022, 5, 1)
+    date_t = dt.date(2026, 2, 1)
 
     v = calc_seasonality_balcan_at_date(
         date_t=date_t,
@@ -157,13 +157,13 @@ def test_generate_seasonal_values_inclusive_range_and_calls_func():
 def test_get_seasonal_transmission_balcan_end_to_end():
     """End-to-end test with realistic flu season dates.
 
-    Flu transmission peaks in winter (January) and troughs in summer (June/July).
+    Flu transmission peaks in winter (late December) and troughs in summer (mid-June).
     """
-    # Flu season timespan: Oct 2024 - May 2025
-    date_start = dt.date(2024, 10, 1)
-    date_stop = dt.date(2025, 5, 31)
-    date_tmax = dt.date(2025, 1, 15)  # Peak transmission in mid-January
-    date_tmin = dt.date(2025, 6, 15)  # Trough in mid-June (outside range, used for period calc)
+    # Flu season timespan: Oct 2025 - May 2026
+    date_start = dt.date(2025, 10, 1)
+    date_stop = dt.date(2026, 5, 31)
+    date_tmax = dt.date(2025, 12, 31)  # Peak transmission in late December
+    date_tmin = dt.date(2026, 6, 15)  # Trough in mid-June (outside range, used for period calc)
     val_min, val_max = 0.7, 1.3
 
     dates, values = get_seasonal_transmission_balcan(
@@ -186,5 +186,5 @@ def test_get_seasonal_transmission_balcan_end_to_end():
     assert math.isclose(values[idx_tmax], 1.0, rel_tol=0, abs_tol=1e-12), "Value at tmax is not as expected"
     assert values[idx_tmax] == pytest.approx(max(values), abs=1e-12), "Value at tmax is not the maximum"
 
-    # Verify transmission is lower at start of season (October) than at peak (January)
-    assert values[0] < values[idx_tmax], "October transmission should be lower than January peak"
+    # Verify transmission is lower at start of season (October) than at peak (December)
+    assert values[0] < values[idx_tmax], "October transmission should be lower than December peak"
