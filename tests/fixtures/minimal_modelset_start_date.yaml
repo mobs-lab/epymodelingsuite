@@ -1,0 +1,58 @@
+# Minimal modelset config with start_date sampling for E2E testing
+modelset:
+  meta:
+    description: "Minimal calibration config with start_date sampling"
+    author: "Test"
+    version: "1.0.0"
+
+  population_names:
+    - US-MA
+
+  calibration:
+    strategy:
+      name: rejection
+      options:
+        num_particles: 30
+        epsilon: 100000
+
+    distance_function: rmse
+    # observed_data_path is set dynamically in test
+
+    comparison:
+      - observed_date_column: date
+        observed_value_column: value
+        observed_location_column: location
+        simulation:
+          - I_to_R_total
+
+    fitting_window:
+      start_date: "2025-01-04"
+      end_date: "2025-02-22"
+
+    compartments:
+      I:
+        prior:
+          type: scipy
+          name: randint
+          args:
+            - 50
+            - 200
+
+    parameters:
+      beta:
+        prior:
+          type: scipy
+          name: uniform
+          args:
+            - 0.1
+            - 0.4
+
+    # Start date sampling: reference_date + sampled offset (epidemic start)
+    start_date:
+      reference_date: "2025-01-01"
+      prior:
+        type: scipy
+        name: randint
+        args:
+          - 0
+          - 14  # 0 to 14 days offset from reference

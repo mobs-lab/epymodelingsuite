@@ -398,3 +398,65 @@ class TestCalibrationPipelineE2E:
 
         posterior_df = result.results.get_posterior_distribution()
         assert len(posterior_df) > 0, f"No posterior samples with {distance_function}"
+
+    def test_start_date_sampling(self, synthetic_observed_data, tmp_path):
+        """Verify start_date sampling works in calibration.
+
+        Tests that when start_date is configured with reference_date and prior:
+        - Calibration executes successfully
+        - start_date appears in posterior distribution
+        - Sampled start_date values are within prior bounds
+        - CalibrationOutput has start_date_reference set
+        """
+        import yaml
+
+        # Load basemodel config with calibrated start_date
+        basemodel_config = load_basemodel_config_from_file(str(FIXTURES_DIR / "minimal_basemodel_start_date.yaml"))
+
+        # Load calibration config and set observed_data_path
+        with open(FIXTURES_DIR / "minimal_modelset_start_date.yaml") as f:
+            calibration_raw = yaml.safe_load(f)
+
+        calibration_raw["modelset"]["calibration"]["observed_data_path"] = synthetic_observed_data
+
+        modified_config_path = tmp_path / "calibration_start_date.yaml"
+        with open(modified_config_path, "w") as f:
+            yaml.dump(calibration_raw, f)
+
+        calibration_config = load_calibration_config_from_file(str(modified_config_path))
+
+        # Verify configs loaded correctly
+        # calibration.start_date defines epidemic start sampling
+        assert calibration_config.modelset.calibration.start_date is not None
+        assert calibration_config.modelset.calibration.start_date.reference_date is not None
+        assert calibration_config.modelset.calibration.start_date.prior is not None
+
+        # Build and run calibration
+        builder_outputs = dispatch_builder(
+            basemodel_config=basemodel_config,
+            calibration_config=calibration_config,
+        )
+
+        builder_output = builder_outputs[0]
+
+        # Verify start_date is in priors
+        assert "start_date" in builder_output.calibrator.priors
+
+        result = dispatch_runner(builder_output)
+
+        # Verify calibration completed
+        assert isinstance(result, CalibrationOutput)
+        assert result.results is not None
+
+        # Verify start_date_reference is set in output
+        assert result.start_date_reference is not None
+
+        # Verify start_date appears in posterior distribution
+        posterior_df = result.results.get_posterior_distribution()
+        assert len(posterior_df) > 0, "No posterior samples produced"
+        assert "start_date" in posterior_df.columns, "start_date not in posteriors"
+
+        # Verify sampled start_date values are within prior bounds [0, 14)
+        start_date_values = posterior_df["start_date"].values
+        assert np.all(start_date_values >= 0), "start_date below prior minimum"
+        assert np.all(start_date_values < 14), "start_date above prior maximum"

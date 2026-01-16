@@ -1,0 +1,53 @@
+# Minimal SIR model with calibrated start_date for E2E testing
+model:
+  meta:
+    name: "minimal_sir_start_date"
+    version: "1.0.0"
+    date: "2025-01-01"
+    description: "Minimal SIR model with start_date sampling"
+
+  timespan:
+    start_date: "2025-01-01"  # Simulation timespan is fixed
+    end_date: "2025-03-01"
+    delta_t: 1.0
+
+  simulation:
+    resample_frequency: W-SAT
+
+  random_seed: 42
+
+  population:
+    age_groups:
+      - "0-4"
+      - "5-17"
+      - "18-49"
+      - "50-64"
+      - "65+"
+
+  compartments:
+    - id: S
+      label: "Susceptible"
+      init: default
+    - id: I
+      label: "Infectious"
+      init: calibrated
+    - id: R
+      label: "Recovered"
+
+  transitions:
+    - type: mediated
+      source: S
+      target: I
+      mediator: I
+      rate: beta
+    - type: spontaneous
+      source: I
+      target: R
+      rate: mu
+
+  parameters:
+    beta:
+      type: calibrated  # Calibrated transmission rate
+    mu:
+      type: scalar
+      value: 0.1
