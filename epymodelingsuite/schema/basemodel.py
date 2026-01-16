@@ -260,10 +260,10 @@ class Seasonality(BaseModel):
     @field_validator("min_value")
     @classmethod
     def check_scaling_minimum(cls, v: float, info: Any) -> float:
-        """Ensure minimum post-scaling seasonal parameter value is lesser than maximum value."""
+        """Ensure minimum scaling factor is less than maximum scaling factor."""
         max_val = info.data.get("max_value")
         if max_val and v > max_val:
-            raise ValueError("Seasonality min_value must be lesser than max_value")
+            raise ValueError("Seasonality min_value must be less than max_value")
         return v
 
 
