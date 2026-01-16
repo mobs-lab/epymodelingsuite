@@ -660,3 +660,159 @@ class TestBuildCalibration:
         samples = beta_prior.rvs(size=100, random_state=42)
         assert len(samples) == 100
         assert all(0 <= s <= 1 for s in samples)
+
+    @pytest.fixture
+    def calibration_config_with_distance_function_factory(self, tmp_path):
+        """Factory fixture to create CalibrationConfig with customizable distance function."""
+        import pandas as pd
+
+        from epymodelingsuite.schema.calibration import (
+            CalibrationConfig,
+            CalibrationConfiguration,
+            CalibrationModelset,
+            CalibrationParameter,
+            CalibrationStrategy,
+            ComparisonSpec,
+            FittingWindow,
+        )
+        from epymodelingsuite.schema.common import Distribution
+
+        def _create_config(distance_function):
+            # Create temporary observed data file
+            observed_data = pd.DataFrame(
+                {
+                    "date": pd.date_range(start="2024-01-01", periods=12, freq="W-SAT"),
+                    "location": ["United_States_California"] * 12,
+                    "value": np.random.randint(10, 100, size=12),
+                }
+            )
+            observed_path = tmp_path / "observed_distfunc.csv"
+            observed_data.to_csv(observed_path, index=False)
+
+            strategy = CalibrationStrategy(name="top_fraction", options={"n_samples": 10, "top_fraction": 0.1})
+            fitting_window = FittingWindow(start_date=date(2024, 1, 1), end_date=date(2024, 2, 1))
+
+            comparison = ComparisonSpec(
+                observed_value_column="value",
+                observed_date_column="date",
+                observed_location_column="location",
+                simulation=["S_to_I_total"],
+            )
+
+            calibration = CalibrationConfiguration(
+                strategy=strategy,
+                fitting_window=fitting_window,
+                observed_data_path=str(observed_path),
+                distance_function=distance_function,
+                comparison=[comparison],
+                parameters={
+                    "beta": CalibrationParameter(prior=Distribution(name="uniform", kwargs={"loc": 0, "scale": 1}))
+                },
+                compartments={},
+            )
+
+            modelset = CalibrationModelset(population_names=["US-CA"], calibration=calibration)
+
+            return CalibrationConfig(modelset=modelset)
+
+        return _create_config
+
+    @pytest.mark.parametrize("dist_func_name", ["rmse", "wrmse", "mae", "mape", "wmape"])
+    def test_distance_function_from_config_passed_to_calibrator(
+        self, minimal_basemodel_config, calibration_config_with_distance_function_factory, dist_func_name
+    ):
+        """Test that distance_function string in config selects correct function."""
+        calibration_config = calibration_config_with_distance_function_factory(dist_func_name)
+        result = build_calibration(basemodel_config=minimal_basemodel_config, calibration_config=calibration_config)
+
+        calibrator = result[0].calibrator
+        assert calibrator is not None
+        assert hasattr(calibrator, "distance_function")
+
+        # Use test data where different distance functions produce distinguishable results.
+        # With data=[1,2,3] and sim=[2,2,2], differences=[1,0,1]:
+        #   rmse = sqrt(2/3) ≈ 0.816
+        #   mae = 2/3 ≈ 0.667
+        #   mape, wmape, wrmse all produce different values
+        data_dict = {"data": np.array([1.0, 2.0, 3.0])}
+        sim_dict = {"data": np.array([2.0, 2.0, 2.0])}
+
+        wrapped_result = calibrator.distance_function(data_dict, sim_dict)
+
+        # Verify it returns a valid distance value
+        assert isinstance(wrapped_result, (int, float, np.floating))
+
+        # Verify the calibrator uses the exact function specified in config
+        # by comparing against the expected function from dist_func_dict
+        expected_result = dist_func_dict[dist_func_name](data_dict, sim_dict)
+        assert np.isclose(wrapped_result, expected_result), (
+            f"Expected {dist_func_name} to return {expected_result}, got {wrapped_result}"
+        )
+
+    def test_custom_distance_function_passed_to_calibrator(
+        self, minimal_basemodel_config, calibration_config_with_distance_function_factory, tmp_path
+    ):
+        """Test that user-defined distance function is passed to ABCSampler."""
+        from epymodelingsuite.schema.calibration import UserDefinedFunction
+
+        # Create a temporary script with a custom distance function
+        custom_script = tmp_path / "custom_distance.py"
+        custom_script.write_text(
+            """
+def custom_dist(data, simulation):
+    '''Custom distance function that returns sum of absolute differences.'''
+    import numpy as np
+    return np.sum(np.abs(data['data'] - simulation['data']))
+"""
+        )
+
+        # Create a UserDefinedFunction pointing to our custom script
+        udf = UserDefinedFunction(
+            user_script_path=str(custom_script),
+            user_function_name="custom_dist",
+        )
+
+        calibration_config = calibration_config_with_distance_function_factory(udf)
+        result = build_calibration(basemodel_config=minimal_basemodel_config, calibration_config=calibration_config)
+
+        calibrator = result[0].calibrator
+        assert calibrator is not None
+        assert hasattr(calibrator, "distance_function")
+
+        # Test the custom function behavior (sum of absolute differences)
+        data_dict = {"data": np.array([1.0, 2.0, 3.0])}
+        sim_dict = {"data": np.array([2.0, 3.0, 4.0])}
+
+        result_value = calibrator.distance_function(data_dict, sim_dict)
+
+        # Expected: |1-2| + |2-3| + |3-4| = 1 + 1 + 1 = 3
+        assert result_value == 3.0
+
+    def test_distance_function_wrapped_with_nan_alignment(
+        self, minimal_basemodel_config, calibration_config_with_distance_function_factory
+    ):
+        """Test that distance function is wrapped with dist_func_date_alignment_wrapper."""
+        calibration_config = calibration_config_with_distance_function_factory("rmse")
+        result = build_calibration(basemodel_config=minimal_basemodel_config, calibration_config=calibration_config)
+
+        calibrator = result[0].calibrator
+        dist_func = calibrator.distance_function
+
+        # The wrapper should truncate prepended NaNs in simulated data
+        # Test: simulated data has NaNs at start, observed data is complete
+        data_dict = {"data": np.array([1.0, 2.0, 3.0, 4.0, 5.0])}
+        sim_dict_with_nans = {"data": np.array([np.nan, np.nan, 3.0, 4.0, 5.0])}
+
+        # If properly wrapped, it should truncate first 2 elements from both arrays
+        # and compute RMSE on [3,4,5] vs [3,4,5] = 0
+        result_with_nans = dist_func(data_dict, sim_dict_with_nans)
+
+        # Perfect match after NaN alignment should give 0 (or very close to 0)
+        assert np.isclose(result_with_nans, 0.0, atol=1e-10)
+
+        # Compare with case where simulation exactly matches observed (no NaNs)
+        sim_dict_no_nans = {"data": np.array([1.0, 2.0, 3.0, 4.0, 5.0])}
+        result_no_nans = dist_func(data_dict, sim_dict_no_nans)
+
+        # Also should be 0 since it's a perfect match
+        assert np.isclose(result_no_nans, 0.0, atol=1e-10)
