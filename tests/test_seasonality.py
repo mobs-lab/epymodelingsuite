@@ -1,6 +1,5 @@
 # Unit tests for seasonality.py
 import datetime as dt
-import math
 
 import numpy as np
 import pytest
@@ -28,7 +27,7 @@ def test__calc_seasonality_balcan_at_t_peak_and_min():
 
     # Peak value should be 1.0 at t_max
     val_peak = _calc_seasonality_balcan_at_t(t_max, t_max, val_min, val_max, period)
-    assert math.isclose(val_peak, 1.0, rel_tol=0, abs_tol=1e-8), "Peak value does not match 1.0"
+    assert np.isclose(val_peak, 1.0, rtol=0, atol=1e-8), "Peak value does not match 1.0"
 
     # Minimum date should be at half-period away from t_max
     t_min_sim = np.argmin(vals)
@@ -39,7 +38,7 @@ def test__calc_seasonality_balcan_at_t_peak_and_min():
     output_min = min(vals)
     output_max = max(vals)
     expected_min = val_min / val_max
-    assert math.isclose(output_min, expected_min, rel_tol=0, abs_tol=1e-4), "Minimum value does not match expected"
+    assert np.isclose(output_min, expected_min, rtol=0, atol=1e-4), "Minimum value does not match expected"
 
     # All values over a full period lie within [val_min/val_max, 1.0]
     assert output_min >= expected_min - 1e-12, "Minimum value is below expected range [val_min/val_max, 1.0]"
@@ -74,9 +73,7 @@ def test_calc_seasonality_balcan_at_date_matches__calc(val_min, val_max, period,
     t_max_days = (date_tmax - date_start).days
     v_expected = _calc_seasonality_balcan_at_t(t_days, t_max_days, val_min, val_max, period)
 
-    assert math.isclose(v_date, v_expected, rel_tol=0, abs_tol=1e-12), (
-        "calc_seasonality_balcan_at_date did not match expected"
-    )
+    assert np.isclose(v_date, v_expected, rtol=0, atol=1e-12), "calc_seasonality_balcan_at_date did not match expected"
 
 
 def test_calc_seasonality_balcan_at_date_derives_period_from_tmin():
@@ -105,9 +102,7 @@ def test_calc_seasonality_balcan_at_date_derives_period_from_tmin():
     derived_period = 2 * abs(t_min_days - t_max_days)
 
     v_expected = _calc_seasonality_balcan_at_t(t_days, t_max_days, val_min, val_max, derived_period)
-    assert math.isclose(v, v_expected, rel_tol=0, abs_tol=1e-12), (
-        "calc_seasonality_balcan_at_date did not match expected"
-    )
+    assert np.isclose(v, v_expected, rtol=0, atol=1e-12), "calc_seasonality_balcan_at_date did not match expected"
 
 
 def test_calc_seasonality_balcan_at_date_period_overrides_tmin():
@@ -132,9 +127,7 @@ def test_calc_seasonality_balcan_at_date_period_overrides_tmin():
     t_days = (date_t - date_start).days
     t_max_days = (date_tmax - date_start).days
     v_expected = _calc_seasonality_balcan_at_t(t_days, t_max_days, val_min, val_max, forced_period)
-    assert math.isclose(v, v_expected, rel_tol=0, abs_tol=1e-12), (
-        "calc_seasonality_balcan_at_date did not match expected"
-    )
+    assert np.isclose(v, v_expected, rtol=0, atol=1e-12), "calc_seasonality_balcan_at_date did not match expected"
 
 
 def test_generate_seasonal_values_inclusive_range_and_calls_func():
@@ -183,8 +176,8 @@ def test_get_seasonal_transmission_balcan_end_to_end():
 
     # Peak check: the value at tmax index should be (almost) the global maximum ~ 1.0
     idx_tmax = (date_tmax - date_start).days
-    assert math.isclose(values[idx_tmax], 1.0, rel_tol=0, abs_tol=1e-12), "Value at tmax is not as expected"
-    assert values[idx_tmax] == pytest.approx(max(values), abs=1e-12), "Value at tmax is not the maximum"
+    assert np.isclose(values[idx_tmax], 1.0, rtol=0, atol=1e-12), "Value at tmax is not as expected"
+    assert np.isclose(values[idx_tmax], max(values), rtol=0, atol=1e-12), "Value at tmax is not the maximum"
 
     # Verify transmission is lower at start of season (October) than at peak (December)
     assert values[0] < values[idx_tmax], "October transmission should be lower than December peak"
