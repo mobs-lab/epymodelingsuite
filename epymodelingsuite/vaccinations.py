@@ -29,9 +29,9 @@ def get_age_groups_from_data(data: pd.DataFrame) -> dict[str, str]:
         and standardized model age group labels.
     """
     age_groups_data = data.Age.unique().tolist()  # Get unique age groups
-    age_groups_data.remove(
-        "6 Months - 17 Years"
-    )  # Remove 6 Months - 17 Years because because data includes finer resolution age groups which cover this range
+    # Remove 6 Months - 17 Years because data includes finer resolution age groups which cover this range
+    if "6 Months - 17 Years" in age_groups_data:
+        age_groups_data.remove("6 Months - 17 Years")
 
     age_groups_data_cleaned = []
     for a in age_groups_data:
