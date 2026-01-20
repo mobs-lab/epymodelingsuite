@@ -31,15 +31,15 @@ def extract_builder_metadata(
 
     basemodel = basemodel_config.model
 
-    # Get population names and count
+    # Get population names and count, ordered by primary_id for task mapping
     if isinstance(builder_outputs, list):
-        # For sampling/calibration, extract unique population names from models
-        populations = list(
-            {
-                bo.model.population.name if bo.model else bo.calibrator.parameters["epimodel"].population.name
-                for bo in builder_outputs
-            }
-        )
+        # For sampling/calibration, extract population names ordered by primary_id
+        # This ensures populations[i] corresponds to task i (primary_id=i)
+        sorted_outputs = sorted(builder_outputs, key=lambda bo: bo.primary_id)
+        populations = [
+            bo.model.population.name if bo.model else bo.calibrator.parameters["epimodel"].population.name
+            for bo in sorted_outputs
+        ]
         n_models = len(builder_outputs)
     else:
         # For single model
