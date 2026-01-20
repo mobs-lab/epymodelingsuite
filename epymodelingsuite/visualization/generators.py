@@ -35,6 +35,9 @@ from .core import (
 
 logger = logging.getLogger(__name__)
 
+# Columns that are metadata/identifiers and should be excluded when extracting parameter names
+POSTERIOR_METADATA_COLUMNS = {"sim_id", "location", "population", "primary_id", "seed"}
+
 
 def _fetch_quantiles_for_location(
     calibration: CalibrationOutput,
@@ -1240,7 +1243,7 @@ def generate_single_location_posterior_plots(
             posterior_df = calibration.results.get_posterior_distribution()
 
             # Get parameters to plot (exclude metadata columns)
-            params = [col for col in posterior_df.columns if col not in ["sim_id", "location"]]
+            params = [col for col in posterior_df.columns if col not in POSTERIOR_METADATA_COLUMNS]
 
             if not params:
                 logger.warning("No parameters to plot for %s", location)
@@ -1338,7 +1341,7 @@ def generate_posterior_grid_plot(
             posterior_df = calibration.results.get_posterior_distribution()
             if not posterior_df.empty:
                 location_posteriors[loc] = posterior_df
-                all_params.update(col for col in posterior_df.columns if col not in ["sim_id", "location"])
+                all_params.update(col for col in posterior_df.columns if col not in POSTERIOR_METADATA_COLUMNS)
             else:
                 logger.warning("Skipping posterior plot for %s: posterior data is empty", loc)
         except (ValueError, AttributeError) as e:
