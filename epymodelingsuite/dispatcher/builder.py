@@ -475,16 +475,21 @@ def build_calibration(
         )
 
         # Parse priors into scipy functions
+        # Parameters and compartments can be None in calibration config
         priors = {}
-        priors.update({k: distribution_to_scipy(v.prior) for k, v in calibration.parameters.items()})
-        priors.update({k: distribution_to_scipy(v.prior) for k, v in calibration.compartments.items()})
+        if calibration.parameters:
+            priors.update({k: distribution_to_scipy(v.prior) for k, v in calibration.parameters.items()})
+        if calibration.compartments:
+            priors.update({k: distribution_to_scipy(v.prior) for k, v in calibration.compartments.items()})
         if sampled_start_timespan:
             priors["start_date"] = distribution_to_scipy(calibration.start_date.prior)
 
         fixed_parameters = {k: v for k, v in model.parameters.items() if v is not None}
-        fixed_parameters.update(
-            {"end_date": calibration.fitting_window.end_date, "projection": False, "epimodel": model}
-        )
+        if calibration.fitting_window.end_date:
+            fit_end = calibration.fitting_window.end_date
+        else:
+            fit_end = calibration.fitting_window.epiweek_end_date
+        fixed_parameters.update({"end_date": fit_end, "projection": False, "epimodel": model})
 
         # ABCSamplers are the main outputs
         abc_sampler = ABCSampler(

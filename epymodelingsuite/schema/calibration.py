@@ -5,6 +5,7 @@ from datetime import date, timedelta
 from enum import Enum
 from typing import Any
 
+from epiweeks import Week
 from pydantic import BaseModel, Field, computed_field, field_validator, model_validator
 
 from ..utils import parse_timedelta, validate_iso3166
@@ -123,17 +124,67 @@ class CalibrationParameter(BaseModel):
 class FittingWindow(BaseModel):
     """Specification for the time window used in calibration fitting."""
 
-    start_date: date = Field(description="Start date of fitting window.")
-    end_date: date = Field(description="End date of fitting window.")
+    start_date: date | None = Field(default=None, description="Start date of fitting window.")
+    end_date: date | None = Field(default=None, description="End date of fitting window.")
+    start_epiweek: int | None = Field(
+        default=None,
+        description="Start epiweek of fitting window (start date will be Sunday of specified epiweek). Prefix with year, e.g. 202543.",
+    )
+    end_epiweek: int | None = Field(
+        default=None,
+        description="End epiweek of fitting window (end date will be Saturday of specified epiweek). Prefix with year, e.g. 202601.",
+    )
 
     @model_validator(mode="after")
-    def validate_date_order(self: "FittingWindow") -> "FittingWindow":
-        """Ensure end_date is after start_date."""
-        # Note: DateParameter can be a string date or have a prior distribution
-        # Only validate if both are actual date strings
-        if self.end_date <= self.start_date:
-            raise ValueError("end_date must be after start_date")
+    def validate_field_combinations(self: "FittingWindow") -> "FittingWindow":
+        """Ensure fields are specified consistently."""
+        # Specifying with dates
+        if self.start_date or self.end_date:
+            # Ensure both fields are present
+            if self.start_date is None or self.end_date is None:
+                raise ValueError("Must supply both start and end date if specifying fitting window by dates.")
+            # Ensure end_date is after start_date
+            if self.end_date <= self.start_date:
+                raise ValueError("end_date must be after start_date")
+            # Ensure other fields are absent
+            if self.start_epiweek or self.end_epiweek:
+                raise ValueError("Cannot use both date fields and epiweek fields")
+
+            return self
+
+        # Specifying with epiweeks
+        # Ensure all fields are present
+        if self.start_epiweek is None or self.end_epiweek is None:
+            raise ValueError("Must supply both start and end epiweek if specifying fitting window by epiweeks.")
+        # Ensure dates are consistent
+        if self.end_epiweek < self.start_epiweek:
+            raise ValueError("start_epiweek cannot be after end_epiweek")
+
         return self
+
+    @computed_field
+    @property
+    def epiweek_start_date(self) -> date:
+        """Return the Sunday of the specified start_epiweek, or the user-supplied start_date if epiweeks are absent."""
+        if self.start_date:
+            return self.start_date
+
+        start_year = int(str(self.start_epiweek)[0:4])
+        start_week = int(str(self.start_epiweek)[4:])
+        week = Week(year=start_year, week=start_week)
+        return week.startdate()
+
+    @computed_field
+    @property
+    def epiweek_end_date(self) -> date:
+        """Return the Saturday of the specified end_epiweek, or the user-supplied end_date if epiweeks are absent."""
+        if self.end_date:
+            return self.end_date
+
+        end_year = int(str(self.end_epiweek)[0:4])
+        end_week = int(str(self.end_epiweek)[4:])
+        week = Week(year=end_year, week=end_week)
+        return week.enddate()
 
 
 class UserDefinedFunction(BaseModel):
@@ -295,7 +346,7 @@ class CalibrationConfiguration(BaseModel):
 
         prior = self.start_date.prior
         reference_date = self.start_date.reference_date
-        fitting_window_end = self.fitting_window.end_date
+        fitting_window_end = self.fitting_window.epiweek_end_date
 
         # Determine max offset based on distribution type
         max_offset = None

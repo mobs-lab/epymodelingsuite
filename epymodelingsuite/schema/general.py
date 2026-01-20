@@ -1,5 +1,5 @@
 import logging
-from datetime import timedelta
+from datetime import date, timedelta
 
 from ..utils.common import parse_transition_name, strip_agegroup_suffix, to_set
 from .basemodel import BasemodelConfig
@@ -324,6 +324,55 @@ def _compare_prop_ed_window_against_calibration_window(
             raise ValueError(msg)
 
 
+def _ensure_fitting_window_within_timespan(
+    basemodel: "BasemodelConfig",
+    calibration: CalibrationConfiguration | None,
+) -> None:
+    """
+    Validate fitting window is contained within simulation timespan.
+
+    Parameters
+    ----------
+    basemodel : BasemodelConfig
+        Base model configuration.
+    calibration : CalibrationConfiguration or None
+        Calibration configuration, if present.
+
+    Raises
+    ------
+    ValueError
+        Raised when fitting window extends beyond simulation timespan.
+    """
+    if calibration is None:
+        return
+
+    fitting_window = calibration.fitting_window
+    timespan = basemodel.model.timespan
+
+    # Use computed fields that handle both date and epiweek specifications
+    fit_start = fitting_window.epiweek_start_date
+    fit_end = fitting_window.epiweek_end_date
+
+    # Validate fitting_window end <= timespan.end_date
+    if fit_end > timespan.end_date:
+        msg = (
+            f"Fitting window end_date ({fit_end}) exceeds "
+            f"simulation timespan end_date ({timespan.end_date}). "
+            "The fitting window must be contained within the simulation timespan."
+        )
+        raise ValueError(msg)
+
+    # Validate fitting_window start >= timespan.start_date
+    # (only when timespan.start_date is a concrete date)
+    if isinstance(timespan.start_date, date) and fit_start < timespan.start_date:
+        msg = (
+            f"Fitting window start_date ({fit_start}) is before "
+            f"simulation timespan start_date ({timespan.start_date}). "
+            "The fitting window must be contained within the simulation timespan."
+        )
+        raise ValueError(msg)
+
+
 def validate_cross_config_consistency(
     base_config: BasemodelConfig,
     modelset_config: SamplingConfig | CalibrationConfig,
@@ -398,6 +447,10 @@ def validate_cross_config_consistency(
     # - Ensure all transitions used in calibration comparison exist in basemodel
     base_transitions = {f"{t.source}_to_{t.target}_total" for t in basemodel.transitions or []}
     _ensure_transitions_valid(base_transitions, calibration)
+
+    # Fitting window consistency checks
+    # - Ensure fitting window is within simulation timespan
+    _ensure_fitting_window_within_timespan(base_config, calibration)
 
     # Output config consistency checks
     # - Validate output config references if provided

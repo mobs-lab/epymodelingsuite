@@ -1350,7 +1350,6 @@ def generate_calibration_outputs(
             # Output last generation (default)
             if output.posteriors == True:
                 post_df = calibration.results.get_posterior_distribution()
-                posteriors_list.append(post_df)
             # Output selected generations
             elif output.posteriors.generations:
                 post_df_list = []
@@ -1364,11 +1363,16 @@ def generate_calibration_outputs(
                             f"OUTPUT GENERATOR: failed to obtain posterior for generation {g} from model with primary_id={calibration.primary_id}, continuing."
                         )
                 post_df = pd.concat(post_df_list, ignore_index=True) if post_df_list else pd.DataFrame()
-                posteriors_list.append(post_df)
             # Undefined behavior
             else:
                 msg = f"Received unexpected value for posteriors output config (should be bool or list of int): {output.posteriors}"
                 raise ValueError(msg)
+            # Record identifiers and add to list
+            if not post_df.empty:
+                post_df.insert(0, "primary_id", calibration.primary_id)
+                post_df.insert(1, "seed", calibration.seed)
+                post_df.insert(2, "population", calibration.population)
+                posteriors_list.append(post_df)
 
     posteriors = pd.concat(posteriors_list, ignore_index=True) if posteriors_list else pd.DataFrame()
 
