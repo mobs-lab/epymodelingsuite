@@ -910,6 +910,21 @@ def _merge_stage_telemetries(
     if runner_telemetry:
         workflow.runner = runner_telemetry.runner.copy()
 
+    # Detect missing tasks by comparing expected vs completed
+    if builder_telemetry and runner_telemetry:
+        n_expected = builder_telemetry.configuration.get("n_populations", 0)
+        populations = builder_telemetry.configuration.get("populations", [])
+        completed_ids = {m["primary_id"] for m in runner_telemetry.runner.get("models", [])}
+        expected_ids = set(range(n_expected))
+        missing_ids = sorted(expected_ids - completed_ids)
+
+        workflow.runner["total_tasks"] = n_expected
+        workflow.runner["completed_tasks"] = len(completed_ids)
+        workflow.runner["missing_tasks"] = [
+            {"task_id": tid, "population": populations[tid] if tid < len(populations) else "unknown"}
+            for tid in missing_ids
+        ]
+
     if output_telemetry:
         workflow.output = output_telemetry.output.copy()
         # Combine warnings
