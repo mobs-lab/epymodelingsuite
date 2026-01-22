@@ -27,6 +27,16 @@ Installs into whatever environment is currently active (conda, venv, system Pyth
 - `uv.lock` is the single source of truth; `requirements.lock.txt` is exported from it.
 - Run `make lock` to update after changing `pyproject.toml`.
 
+### Jupyter Kernels
+
+If you installed with uv (option 1) and want to use Jupyter notebooks:
+- **Using notebooks in VSCode**: VSCode auto-detects the `.venv` directory. Select it as the Python interpreter/kernel.
+- **Running JupyterLab from uv**: Start new JupyterLab with `uv run --with jupyterlab jupyter lab`. The kernel is available automatically.
+- **Using an existing JupyterLab installation**: If you have JupyterLab set up separately, register the kernel manually:
+  ```bash
+  uv run python -m ipykernel install --user --name epymodelingsuite --display-name "epymodelingsuite"
+  ```
+
 ## Documentation
 
 
