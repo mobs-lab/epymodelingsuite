@@ -17,7 +17,6 @@ from ..schema.output import (
     OutputConfig,
     OutputObject,
     TabularOutputTypeEnum,
-    get_flusight_quantiles,
 )
 from ..telemetry import ExecutionTelemetry
 from ..utils.location import convert_location_name_format, get_flusight_population
@@ -1322,7 +1321,7 @@ def generate_calibration_outputs(
                 try:
                     # FRAGILE: the name 'hospitalizations' is user-supplied in the modelset as the column to look for in the surveillance data.
                     quanf_df = calibration.results.get_projection_quantiles(
-                        quantiles=get_flusight_quantiles(), variables=["date", "quantile", "hospitalizations"]
+                        quantiles=output.flusight_format.quantiles, variables=["date", "quantile", "hospitalizations"]
                     )
                 except ValueError:
                     warnings.add(
@@ -1348,7 +1347,7 @@ def generate_calibration_outputs(
                 for calibration in calibrations:
                     try:
                         quancalflu_df = calibration.results.get_calibration_quantiles(
-                            quantiles=get_flusight_quantiles(), variables=["data", "date"]
+                            quantiles=output.flusight_format.quantiles, variables=["data", "date"]
                         )
                         quancalflu_df.insert(0, "primary_id", calibration.primary_id)
                         quancalflu_df.insert(1, "seed", calibration.seed)
@@ -1366,7 +1365,7 @@ def generate_calibration_outputs(
                 for calibration in calibrations:
                     try:
                         quanproj_df = calibration.results.get_projection_quantiles(
-                            quantiles=get_flusight_quantiles(), variables=["date", "quantile", transition_name]
+                            quantiles=output.flusight_format.quantiles, variables=["date", "quantile", transition_name]
                         )
                         quanproj_df.insert(0, "primary_id", calibration.primary_id)
                         quanproj_df.insert(1, "seed", calibration.seed)

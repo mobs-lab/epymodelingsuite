@@ -262,6 +262,11 @@ class FlusightForecastOutput(BaseModel):
         None,
         description="Add 'wk inc flu prop ed visits' target to submission file.",
     )
+    quantiles: list[float] | None = Field(
+        default_factory=get_flusight_quantiles,
+        description="Desired quantiles for hospitalizations and prop_ed expressed as floats.",
+        validate_default=True,
+    )
 
 
 class QuantilesOutput(BaseModel):
