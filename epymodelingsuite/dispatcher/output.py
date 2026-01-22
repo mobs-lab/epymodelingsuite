@@ -732,10 +732,10 @@ def make_prop_ed_flusightforecast(
                     "location",
                     "reference_date",
                     "horizon",
+                    "target_end_date",
                     "target",
                     "output_type",
                     "output_type_id",
-                    "target_end_date",
                     "value",
                 ]
             ]
