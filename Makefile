@@ -11,4 +11,4 @@ install-dev-pip:
 # Update lock files
 # uv.lock is the single source of truth; requirements.lock.txt is generated from it. 
 lock:
-	uv lock && uv export --frozen > requirements.lock.txt
+	uv lock && uv export --frozen --extra dev > requirements.lock.txt
