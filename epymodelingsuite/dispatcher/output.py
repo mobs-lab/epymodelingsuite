@@ -357,8 +357,20 @@ def make_rate_trends_flusightforecast(
     obs_date = reference_date - timedelta(weeks=1)
     print(f"obs_date: {obs_date}\nref_date: {reference_date}")
 
+    # Validate that observation date exists in surveillance data
+    obs_rows = observed[observed.date == pd.Timestamp(obs_date)]
+    if obs_rows.empty:
+        available_dates = sorted(observed.date.unique())
+        msg = (
+            f"Rate trends require observed data for reference_date - 1 week ({obs_date}), "
+            f"but this date is not in the surveillance data. "
+            f"Available dates range from {available_dates[0].date() if available_dates else 'N/A'} "
+            f"to {available_dates[-1].date() if available_dates else 'N/A'}."
+        )
+        raise ValueError(msg)
+
     # Observed value and rate
-    obs_val = observed[observed.date == pd.Timestamp(obs_date)].value.iloc[0]
+    obs_val = obs_rows.value.iloc[0]
     obs_rate = rate_population_scale * obs_val / population
     print(f"obs_val: {obs_val}\nobs_rate: {obs_rate}")
 
@@ -1462,10 +1474,10 @@ def generate_calibration_outputs(
                     trends_df.insert(0, "reference_date", output.flusight_format.reference_date)
                     trends_df.insert(0, "location", convert_location_name_format(calibration.population, "FIPS"))
                     hub_format_output_list.append(trends_df)
-                except (IndexError, KeyError) as e:
+                except (ValueError, IndexError, KeyError) as e:
                     warnings.add(
                         f"OUTPUT GENERATOR: Failed to generate rate trends for {calibration.population} "
-                        f"(primary_id={calibration.primary_id}): {e}, continuing to next output."
+                        f"(primary_id={calibration.primary_id}): {e}"
                     )
                     continue
 
