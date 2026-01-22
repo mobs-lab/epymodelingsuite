@@ -48,8 +48,6 @@ logger = logging.getLogger(__name__)
 class CalibrationDataError(ValueError):
     """Raised when calibration data validation fails."""
 
-    pass
-
 
 # ===== Helper Functions =====
 
