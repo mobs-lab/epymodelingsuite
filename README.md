@@ -8,12 +8,14 @@ To install directly from GitHub (recommended for normal usage), run `pip install
 
 ## Development
 
+### Environment Setup
+
 **Option 1: uv**
 ```bash
 make install-dev    # Creates isolated .venv in project directory
 uv run pytest       # Run commands via uv
 ```
-uv manages its own `.venv` - no need to activate anything.
+uv manages its own `.venv`. There is no need to activate anything.
 
 **Option 2: pip/conda**
 ```bash
@@ -23,7 +25,8 @@ pytest                  # Run commands directly
 ```
 Installs into whatever environment is currently active (conda, venv, system Python).
 
-**Lock files**
+### Lock Files
+
 - `uv.lock` is the single source of truth; `requirements.lock.txt` is exported from it.
 - Run `make lock` to update after changing `pyproject.toml`.
 
