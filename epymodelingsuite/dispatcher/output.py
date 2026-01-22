@@ -1281,7 +1281,14 @@ def generate_calibration_outputs(
         for calibration in calibrations:
             # Output last generation (default)
             if output.posteriors == True:
-                post_df = calibration.results.get_posterior_distribution()
+                try:
+                    post_df = calibration.results.get_posterior_distribution()
+                except Exception as e:
+                    warnings.add(
+                        f"OUTPUT GENERATOR: Failed to obtain posterior distribution for CalibrationOutput with "
+                        f"primary_id={calibration.primary_id}, continuing to next output. Message: {e}"
+                    )
+                    continue
             # Output selected generations
             elif output.posteriors.generations:
                 post_df_list = []
@@ -1387,15 +1394,19 @@ def generate_calibration_outputs(
             hosp_forecast = (
                 pd.concat(hub_format_output_list, ignore_index=True) if hub_format_output_list else pd.DataFrame()
             )
-            prop_ed_df, rescaling_factors = make_prop_ed_flusightforecast(
-                hosp_forecast,
-                output.flusight_format.prop_ed,
-                output.options.surveillance if output.options else {},
-                quantiles_calibration_flusight,
-                quantiles_projection_flusight,
-                output.flusight_format.reference_date,
-            )
-            hub_format_output_list.append(prop_ed_df)
+            try:
+                prop_ed_df, rescaling_factors = make_prop_ed_flusightforecast(
+                    hosp_forecast,
+                    output.flusight_format.prop_ed,
+                    output.options.surveillance if output.options else {},
+                    quantiles_calibration_flusight,
+                    quantiles_projection_flusight,
+                    output.flusight_format.reference_date,
+                )
+                hub_format_output_list.append(prop_ed_df)
+            except (ValueError, AssertionError, KeyError, IndexError) as e:
+                warnings.add(f"OUTPUT GENERATOR: Failed to generate prop ED forecasts: {e}, skipping prop ED output.")
+                rescaling_factors = pd.DataFrame()
 
         # Rate-trend forecasts (only if hospitalizations is enabled)
         if output.flusight_format.rate_trends_source and output.flusight_format.hospitalizations:
@@ -1438,18 +1449,25 @@ def generate_calibration_outputs(
 
                 # Calculate rate-trend forecasts and add to output
                 # FRAGILE: use of name 'hospitalizations'
-                trends_df = make_rate_trends_flusightforecast(
-                    reference_date=output.flusight_format.reference_date,
-                    proj_dates=traj["date"],
-                    proj_values=traj["hospitalizations"],
-                    observed=surv,
-                    population=get_flusight_population(calibration.population),
-                )
-                trends_df.insert(0, "target", "wk flu hosp rate change")
-                trends_df.insert(0, "output_type", "pmf")
-                trends_df.insert(0, "reference_date", output.flusight_format.reference_date)
-                trends_df.insert(0, "location", convert_location_name_format(calibration.population, "FIPS"))
-                hub_format_output_list.append(trends_df)
+                try:
+                    trends_df = make_rate_trends_flusightforecast(
+                        reference_date=output.flusight_format.reference_date,
+                        proj_dates=traj["date"],
+                        proj_values=traj["hospitalizations"],
+                        observed=surv,
+                        population=get_flusight_population(calibration.population),
+                    )
+                    trends_df.insert(0, "target", "wk flu hosp rate change")
+                    trends_df.insert(0, "output_type", "pmf")
+                    trends_df.insert(0, "reference_date", output.flusight_format.reference_date)
+                    trends_df.insert(0, "location", convert_location_name_format(calibration.population, "FIPS"))
+                    hub_format_output_list.append(trends_df)
+                except (IndexError, KeyError) as e:
+                    warnings.add(
+                        f"OUTPUT GENERATOR: Failed to generate rate trends for {calibration.population} "
+                        f"(primary_id={calibration.primary_id}): {e}, continuing to next output."
+                    )
+                    continue
 
         hub_format_output = (
             pd.concat(hub_format_output_list, ignore_index=True) if hub_format_output_list else pd.DataFrame()
