@@ -98,6 +98,25 @@ def get_flusight_quantiles() -> list[float]:
     ]
 
 
+def get_metrocast_quantiles() -> list[float]:
+    """
+    Return a list containing the quantiles needed for FluSight metrocast submissions.
+
+    The set of quantiles is defined at https://github.com/reichlab/flu-metrocast/tree/main/model-output#output_type_id
+    """
+    return [
+        0.025,
+        0.05,
+        0.1,
+        0.25,
+        0.5,
+        0.75,
+        0.9,
+        0.95,
+        0.975,
+    ]
+
+
 def get_quantile_ribbon_default() -> list[float]:
     """Return a list containing default quantiles for plotting ribbons."""
     return [0.025, 0.25, 0.5, 0.75, 0.975]
