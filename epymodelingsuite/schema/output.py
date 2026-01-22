@@ -267,6 +267,7 @@ class FlusightForecastOutput(BaseModel):
         description="Desired quantiles for hospitalizations and prop_ed expressed as floats.",
         validate_default=True,
     )
+    metrocast: bool | None = Field(False, description="Treat outputs as metrocast.")
 
 
 class QuantilesOutput(BaseModel):

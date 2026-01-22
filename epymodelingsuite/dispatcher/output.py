@@ -621,6 +621,7 @@ def make_prop_ed_flusightforecast(
     calibration_quantiles: pd.DataFrame | None = None,
     projection_quantiles: pd.DataFrame | None = None,
     reference_date: date | None = None,
+    metrocast: bool = False,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Create FluSight prop ed forecasts from hosp forecast and surveillance data.
@@ -639,6 +640,8 @@ def make_prop_ed_flusightforecast(
         Quantiles from the projection phase (if config.strategy is 'transition')
     reference_date: date | None
         Reference date for calculating horizons (required if pred_hosp is empty)
+    metrocast: bool
+        Use horizons for metrocast (0-3)
 
     Returns
     -------
@@ -687,7 +690,7 @@ def make_prop_ed_flusightforecast(
             formatted = copy.deepcopy(projection_quantiles)
 
             # Horizons required for quantile outputs
-            flusight_horizons = range(-1, 4)
+            horizons = range(4) if metrocast == True else range(-1, 4)
 
             # Get the reference date from parameter or pred_hosp
             if reference_date is None:
@@ -707,7 +710,7 @@ def make_prop_ed_flusightforecast(
                 .apply(lambda x: x / np.timedelta64(1, "W"))
                 .astype(int),
             )
-            formatted = formatted[formatted.horizon.isin(flusight_horizons)]
+            formatted = formatted[formatted.horizon.isin(horizons)]
 
             # Rename and format columns
             formatted.rename(
