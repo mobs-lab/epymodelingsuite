@@ -148,13 +148,13 @@ def make_reweighting_factors(
         )  # list of len(data_age_groups) to store reweighting factors for each data age group
 
         # Bounded model group (e.g., "0-9", "50-64")
-        if i != len(model_age_groups) - 1:
+        if "-" in a:
             start_model, end_model = a.split("-")
             start_model = int(start_model)
             end_model = int(end_model)
             for j, b in enumerate(data_age_groups):
                 # Bounded data group (e.g., "0-9")
-                if j != len(data_age_groups) - 1:
+                if "-" in b:
                     start_data, end_data = b.split("-")
                     start_data = int(start_data)
                     end_data = int(end_data)
