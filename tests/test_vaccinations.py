@@ -360,8 +360,8 @@ class TestSmhDataCoverageValidation:
         """Scenario coverage below 0 should raise."""
         base_df = _make_base_scenario_df()
         base_df = base_df.drop(columns=["Coverage"])
-        base_df["sc_high"] = -5.0
-        base_df["sc_low"] = 25.0
+        base_df["flu.coverage.rd2526.sc_A"] = -5.0
+        base_df["flu.coverage.rd2526.sc_B"] = 25.0
 
         test_file = tmp_path / "smh_coverage_below_zero.csv"
         base_df.to_csv(test_file, index=False)
@@ -379,8 +379,8 @@ class TestSmhDataCoverageValidation:
         """Scenario coverage above 100 should raise."""
         base_df = _make_base_scenario_df()
         base_df = base_df.drop(columns=["Coverage"])
-        base_df["sc_high"] = 110.0
-        base_df["sc_low"] = 25.0
+        base_df["flu.coverage.rd2526.sc_A"] = 110.0
+        base_df["flu.coverage.rd2526.sc_B"] = 25.0
 
         test_file = tmp_path / "smh_coverage_above_100.csv"
         base_df.to_csv(test_file, index=False)
