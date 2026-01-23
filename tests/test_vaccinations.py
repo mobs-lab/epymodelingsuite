@@ -10,10 +10,52 @@ import pytest
 
 from epymodelingsuite.vaccinations import (
     add_vaccination_schedule,
+    get_age_groups_from_data,
+    make_reweighting_factors,
     make_vaccination_rate_function,
+    reaggregate_vaccines,
+    remove_vaccination_transitions,
     resample_vaccination_schedule,
     scenario_to_epydemix,
+    smh_data_to_epydemix,
 )
+
+
+def _make_base_scenario_df(coverage_override: dict[str, float] | None = None) -> pd.DataFrame:
+    """Create a minimal scenario dataset with full age coverage."""
+    coverage_override = coverage_override or {}
+    base_coverage = {
+        "6 Months - 4 Years": 50.0,
+        "5-12 Years": 40.0,
+        "13-17 Years": 35.0,
+        "18-49 Years": 25.0,
+        "50-64 Years": 45.0,
+        "65+ Years": 60.0,
+        "6 Months - 17 Years": 42.0,
+    }
+    base_population = {
+        "6 Months - 4 Years": 2086948,
+        "5-12 Years": 3958033,
+        "13-17 Years": 2522629,
+        "18-49 Years": 17225750,
+        "50-64 Years": 7219051,
+        "65+ Years": 5976166,
+        "6 Months - 17 Years": 6480662,
+    }
+
+    rows = []
+    week = pd.Timestamp("2024-09-07")
+    for age, coverage in base_coverage.items():
+        rows.append(
+            {
+                "Week_Ending_Sat": week.strftime("%Y-%m-%d"),
+                "Geography": "California",
+                "Age": age,
+                "Population": base_population[age],
+                "Coverage": coverage_override.get(age, coverage),
+            }
+        )
+    return pd.DataFrame(rows)
 
 
 class TestResampleVaccinationSchedule:
@@ -223,6 +265,134 @@ class TestScenarioToEpydemix:
             # Clean up temporary file
             if os.path.exists(temp_filepath):
                 os.unlink(temp_filepath)
+
+
+class TestCoverageValidation:
+    """Coverage validation tests for scenario_to_epydemix."""
+
+    def test_coverage_below_zero_raises_error(self, tmp_path):
+        """Coverage values below 0 should raise."""
+        test_df = _make_base_scenario_df({"6 Months - 4 Years": -5.0})
+        test_file = tmp_path / "coverage_below_zero.csv"
+        test_df.to_csv(test_file, index=False)
+
+        with pytest.raises(ValueError, match="Coverage values must be between 0 and 100"):
+            scenario_to_epydemix(
+                input_filepath=str(test_file),
+                start_date=date(2024, 9, 1),
+                end_date=date(2024, 9, 7),
+                target_age_groups=["0-4", "5-17", "18-49", "50-64", "65+"],
+                states=["California"],
+            )
+
+    def test_coverage_above_100_raises_error(self, tmp_path):
+        """Coverage values above 100 should raise."""
+        test_df = _make_base_scenario_df({"5-12 Years": 105.0})
+        test_file = tmp_path / "coverage_above_100.csv"
+        test_df.to_csv(test_file, index=False)
+
+        with pytest.raises(ValueError, match="Coverage values must be between 0 and 100"):
+            scenario_to_epydemix(
+                input_filepath=str(test_file),
+                start_date=date(2024, 9, 1),
+                end_date=date(2024, 9, 7),
+                target_age_groups=["0-4", "5-17", "18-49", "50-64", "65+"],
+                states=["California"],
+            )
+
+    def test_coverage_exactly_zero_is_valid(self, tmp_path):
+        """Coverage of 0 should be valid."""
+        test_df = _make_base_scenario_df({"18-49 Years": 0.0})
+        test_file = tmp_path / "coverage_zero.csv"
+        test_df.to_csv(test_file, index=False)
+
+        result = scenario_to_epydemix(
+            input_filepath=str(test_file),
+            start_date=date(2024, 9, 1),
+            end_date=date(2024, 9, 7),
+            target_age_groups=["0-4", "5-17", "18-49", "50-64", "65+"],
+            states=["California"],
+        )
+
+        assert not result.empty
+
+    def test_coverage_exactly_100_is_valid(self, tmp_path):
+        """Coverage of 100 should be valid."""
+        test_df = _make_base_scenario_df({"65+ Years": 100.0})
+        test_file = tmp_path / "coverage_100.csv"
+        test_df.to_csv(test_file, index=False)
+
+        result = scenario_to_epydemix(
+            input_filepath=str(test_file),
+            start_date=date(2024, 9, 1),
+            end_date=date(2024, 9, 7),
+            target_age_groups=["0-4", "5-17", "18-49", "50-64", "65+"],
+            states=["California"],
+        )
+
+        assert not result.empty
+
+    def test_error_message_shows_invalid_value_range(self, tmp_path):
+        """Error message should include min/max of invalid values."""
+        test_df = _make_base_scenario_df({"6 Months - 4 Years": -1.0})
+        test_file = tmp_path / "coverage_error_message.csv"
+        test_df.to_csv(test_file, index=False)
+
+        with pytest.raises(ValueError) as excinfo:
+            scenario_to_epydemix(
+                input_filepath=str(test_file),
+                start_date=date(2024, 9, 1),
+                end_date=date(2024, 9, 7),
+                target_age_groups=["0-4", "5-17", "18-49", "50-64", "65+"],
+                states=["California"],
+            )
+
+        message = str(excinfo.value)
+        assert "min=" in message
+        assert "max=" in message
+        assert "-1.0" in message
+
+
+class TestSmhDataCoverageValidation:
+    """Coverage validation tests for smh_data_to_epydemix."""
+
+    def test_scenario_coverage_below_zero_raises_error(self, tmp_path):
+        """Scenario coverage below 0 should raise."""
+        base_df = _make_base_scenario_df()
+        base_df = base_df.drop(columns=["Coverage"])
+        base_df["sc_high"] = -5.0
+        base_df["sc_low"] = 25.0
+
+        test_file = tmp_path / "smh_coverage_below_zero.csv"
+        base_df.to_csv(test_file, index=False)
+
+        with pytest.raises(ValueError, match="Coverage values must be between 0 and 100"):
+            smh_data_to_epydemix(
+                input_filepath=str(test_file),
+                start_date=date(2024, 9, 1),
+                end_date=date(2024, 9, 7),
+                target_age_groups=["0-4", "5-17", "18-49", "50-64", "65+"],
+                states=["California"],
+            )
+
+    def test_scenario_coverage_above_100_raises_error(self, tmp_path):
+        """Scenario coverage above 100 should raise."""
+        base_df = _make_base_scenario_df()
+        base_df = base_df.drop(columns=["Coverage"])
+        base_df["sc_high"] = 110.0
+        base_df["sc_low"] = 25.0
+
+        test_file = tmp_path / "smh_coverage_above_100.csv"
+        base_df.to_csv(test_file, index=False)
+
+        with pytest.raises(ValueError, match="Coverage values must be between 0 and 100"):
+            smh_data_to_epydemix(
+                input_filepath=str(test_file),
+                start_date=date(2024, 9, 1),
+                end_date=date(2024, 9, 7),
+                target_age_groups=["0-4", "5-17", "18-49", "50-64", "65+"],
+                states=["California"],
+            )
 
 
 class TestVaccinationIntegration:
