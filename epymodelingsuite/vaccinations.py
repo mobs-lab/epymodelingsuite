@@ -98,6 +98,36 @@ def resample_vaccination_schedule(df: pd.DataFrame, delta_t: float) -> pd.DataFr
     return vaccines_fine
 
 
+def _calculate_overlap_weight(
+    population: list, overlap_start: int, overlap_end: int, start_data: int, end_data: int
+) -> float:
+    """
+    Calculate the reweighting factor based on population overlap between age ranges.
+
+    Formula: weight = population(overlap) / population(data_group)
+
+    Parameters
+    ----------
+    population : array-like
+        Single-year population counts indexed by age (0-84).
+    overlap_start : int
+        Start age of the overlap region.
+    overlap_end : int
+        End age of the overlap region (inclusive).
+    start_data : int
+        Start age of the data age group.
+    end_data : int
+        End age of the data age group (inclusive).
+
+    Returns
+    -------
+    float
+        Reweighting factor, capped at 1.0.
+    """
+    weight = sum(population[overlap_start : overlap_end + 1]) / sum(population[start_data : end_data + 1])
+    return min(weight, 1.0)
+
+
 def make_reweighting_factors(
     population_dict_model: dict[str, int], data_age_groups: list[str], loc_epydemix: str
 ) -> dict[str, list[float]]:
@@ -182,10 +212,9 @@ def make_reweighting_factors(
                         overlap_start = start_model
                         overlap_end = end_model
 
-                    factor = sum(population[overlap_start : overlap_end + 1]) / sum(
-                        population[start_data : end_data + 1]
+                    reweighting_factors[j] = _calculate_overlap_weight(
+                        population, overlap_start, overlap_end, start_data, end_data
                     )
-                    reweighting_factors[j] = np.min([factor, 1.0])
 
                 # Open-ended data group (e.g., "65+")
                 elif "+" in b:
@@ -206,10 +235,9 @@ def make_reweighting_factors(
                         overlap_start = start_model
                         overlap_end = end_model
 
-                    factor = sum(population[overlap_start : overlap_end + 1]) / sum(
-                        population[start_data : end_data + 1]
+                    reweighting_factors[j] = _calculate_overlap_weight(
+                        population, overlap_start, overlap_end, start_data, end_data
                     )
-                    reweighting_factors[j] = np.min([factor, 1.0])
 
         # Open-ended model group (e.g., "65+")
         elif "+" in a:
@@ -230,8 +258,9 @@ def make_reweighting_factors(
                 overlap_start = start_model
                 overlap_end = end_model
 
-            factor = sum(population[overlap_start : overlap_end + 1]) / sum(population[start_data : end_data + 1])
-            reweighting_factors[j] = np.min([factor, 1.0])
+            reweighting_factors[j] = _calculate_overlap_weight(
+                population, overlap_start, overlap_end, start_data, end_data
+            )
 
         reweighting_factors_dict[a] = reweighting_factors
 
