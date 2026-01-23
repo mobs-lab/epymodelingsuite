@@ -167,29 +167,25 @@ def make_reweighting_factors(
                     # Calculate weight based on 4 overlap cases:
                     # Data starts inside model, extends beyond
                     if start_data > start_model and end_data > end_model:
-                        factor = sum(population[start_data : end_model + 1]) / sum(
-                            population[start_data : end_data + 1]
-                        )
-                        reweighting_factors[j] = np.min([factor, 1.0])
-
+                        overlap_start = start_data
+                        overlap_end = end_model
                     # Data fully inside model
-                    if start_data > start_model and end_data <= end_model:
-                        factor = sum(population[start_data : end_data + 1]) / sum(population[start_data : end_data + 1])
-                        reweighting_factors[j] = np.min([factor, 1.0])
-
+                    elif start_data > start_model and end_data <= end_model:
+                        overlap_start = start_data
+                        overlap_end = end_data
                     # Data starts before model, ends inside model
-                    if start_data <= start_model and end_data <= end_model:
-                        factor = sum(population[start_model : end_data + 1]) / sum(
-                            population[start_data : end_data + 1]
-                        )
-                        reweighting_factors[j] = np.min([factor, 1.0])
-
+                    elif start_data <= start_model and end_data <= end_model:
+                        overlap_start = start_model
+                        overlap_end = end_data
                     # Model fully inside data
-                    if start_data <= start_model and end_data > end_model:
-                        factor = sum(population[start_model : end_model + 1]) / sum(
-                            population[start_data : end_data + 1]
-                        )
-                        reweighting_factors[j] = np.min([factor, 1.0])
+                    else:
+                        overlap_start = start_model
+                        overlap_end = end_model
+
+                    factor = sum(population[overlap_start : overlap_end + 1]) / sum(
+                        population[start_data : end_data + 1]
+                    )
+                    reweighting_factors[j] = np.min([factor, 1.0])
 
                 # Open-ended data group (e.g., "65+")
                 elif "+" in b:
@@ -198,26 +194,22 @@ def make_reweighting_factors(
 
                     # Same 4 overlap cases as above
                     if start_data > start_model and end_data > end_model:
-                        factor = sum(population[start_data : end_model + 1]) / sum(
-                            population[start_data : end_data + 1]
-                        )
-                        reweighting_factors[j] = np.min([factor, 1.0])
+                        overlap_start = start_data
+                        overlap_end = end_model
+                    elif start_data > start_model and end_data <= end_model:
+                        overlap_start = start_data
+                        overlap_end = end_data
+                    elif start_data <= start_model and end_data <= end_model:
+                        overlap_start = start_model
+                        overlap_end = end_data
+                    else:  # start_data <= start_model and end_data > end_model
+                        overlap_start = start_model
+                        overlap_end = end_model
 
-                    if start_data > start_model and end_data <= end_model:
-                        factor = sum(population[start_data : end_data + 1]) / sum(population[start_data : end_data + 1])
-                        reweighting_factors[j] = np.min([factor, 1.0])
-
-                    if start_data <= start_model and end_data <= end_model:
-                        factor = sum(population[start_model : end_data + 1]) / sum(
-                            population[start_data : end_data + 1]
-                        )
-                        reweighting_factors[j] = np.min([factor, 1.0])
-
-                    if start_data <= start_model and end_data > end_model:
-                        factor = sum(population[start_model : end_model + 1]) / sum(
-                            population[start_data : end_data + 1]
-                        )
-                        reweighting_factors[j] = np.min([factor, 1.0])
+                    factor = sum(population[overlap_start : overlap_end + 1]) / sum(
+                        population[start_data : end_data + 1]
+                    )
+                    reweighting_factors[j] = np.min([factor, 1.0])
 
         # Open-ended model group (e.g., "65+")
         elif "+" in a:
@@ -226,20 +218,20 @@ def make_reweighting_factors(
             end_model = 84
 
             if start_data > start_model and end_data > end_model:
-                factor = sum(population[start_data : end_model + 1]) / sum(population[start_data : end_data + 1])
-                reweighting_factors[j] = np.min([factor, 1.0])
+                overlap_start = start_data
+                overlap_end = end_model
+            elif start_data > start_model and end_data <= end_model:
+                overlap_start = start_data
+                overlap_end = end_data
+            elif start_data <= start_model and end_data <= end_model:
+                overlap_start = start_model
+                overlap_end = end_data
+            else:  # start_data <= start_model and end_data > end_model
+                overlap_start = start_model
+                overlap_end = end_model
 
-            if start_data > start_model and end_data <= end_model:
-                factor = sum(population[start_data : end_data + 1]) / sum(population[start_data : end_data + 1])
-                reweighting_factors[j] = np.min([factor, 1.0])
-
-            if start_data <= start_model and end_data <= end_model:
-                factor = sum(population[start_model : end_data + 1]) / sum(population[start_data : end_data + 1])
-                reweighting_factors[j] = np.min([factor, 1.0])
-
-            if start_data <= start_model and end_data > end_model:
-                factor = sum(population[start_model : end_model + 1]) / sum(population[start_data : end_data + 1])
-                reweighting_factors[j] = np.min([factor, 1.0])
+            factor = sum(population[overlap_start : overlap_end + 1]) / sum(population[start_data : end_data + 1])
+            reweighting_factors[j] = np.min([factor, 1.0])
 
         reweighting_factors_dict[a] = reweighting_factors
 
