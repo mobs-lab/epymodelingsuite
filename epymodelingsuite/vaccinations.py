@@ -498,27 +498,35 @@ def smh_data_to_epydemix(
     states: list[str] | None = None,
 ) -> pd.DataFrame:
     """
-    Process age-specific influenza vaccine coverage data from the scenario modeling hub into
-    daily vaccination schedules by age group for ALL scenarios and ALL locations.
+    Process age-specific SMH vaccine coverage data into daily vaccination schedules for all scenarios.
 
-    This function handles multiple scenarios by extracting them from the input data, creating
-    temporary single-scenario files, and calling scenario_to_epydemix for each scenario.
-    The results are then combined into a single DataFrame with scenario information.
+    This function handles multiple scenarios by extracting columns containing 'sc_' from the input data, processing each scenario through scenario_to_epydemix, and combining results into a single DataFrame with scenario information.
 
     Parameters
     ----------
-        input_filepath (str): Path to CSV containing SMH vaccination data with scenario columns.
-        start_date (str or Timestamp): Start date of the simulation period.
-        end_date (str or Timestamp): End date of the simulation period.
-        target_age_groups (list[str]): Age groups to map the data to for the output schedule.
-        output_filepath (str, optional): If provided, the output DataFrame will be saved as a CSV.
-        states (list[str], optional): If provided, only data for these specific states/locations will be processed.
+    input_filepath : str
+        Path to CSV containing SMH vaccination data. Scenario columns must contain 'sc_'
+        (e.g., 'flu.coverage.rd2526.sc_A', 'flu.coverage.rd2526.sc_B').
+    start_date : str or pd.Timestamp
+        Start date of the simulation period.
+    end_date : str or pd.Timestamp
+        End date of the simulation period.
+    target_age_groups : list of str, default ["0-4", "5-17", "18-49", "50-64", "65+"]
+        Age groups to map the data to for the output schedule.
+    output_filepath : str, optional
+        If provided, the output DataFrame will be saved as a CSV at this path.
+    states : list of str, optional
+        If provided, only data for these specific states/locations will be processed.
 
     Returns
     -------
-        pd.DataFrame: DataFrame with columns ['dates', 'scenario', 'location', <age groups>] giving the
-                      daily vaccination counts per age group for each scenario across all geographies.
-                      Returns daily vaccination schedules (dt=1.0).
+    pd.DataFrame
+        DataFrame containing daily vaccination counts per age group for each scenario. Returns daily schedules (dt=1.0).
+        Columns:
+        - 'dates'
+        - 'scenario'
+        - 'location'
+        - [each age groups]
     """
     import os
     import tempfile
