@@ -1063,3 +1063,152 @@ class TestVaccinationE2E:
         compartments_vax = results_with_vax.get_stacked_compartments()
         avg_final_svax = np.mean(compartments_vax["S_vax_total"][:, -1])
         assert avg_final_svax > 0, "S_vax should have vaccinated people"
+
+
+class TestReaggregateVaccines:
+    """Unit tests for reaggregate_vaccines function."""
+
+    @pytest.fixture
+    def sample_schedule(self):
+        """Create a sample vaccination schedule starting on a Monday (2025-09-29).
+
+        The schedule runs from Monday 2025-09-29 to Sunday 2025-10-19. First Saturday is 2025-10-04.
+        """
+        # 2025-09-29 is a Monday
+        dates = pd.date_range("2025-09-29", periods=21, freq="D")
+        return pd.DataFrame(
+            {
+                "dates": dates,
+                "location": ["US-CA"] * 21,
+                "0-4": [100] * 21,  # 100 doses/day for 21 days = 2100 total
+                "5-17": [200] * 21,  # 200 doses/day for 21 days = 4200 total
+                "65+": [300] * 21,  # 300 doses/day for 21 days = 6300 total
+            }
+        )
+
+    def test_reaggregate_preserves_total_doses(self, sample_schedule):
+        """Total doses before and after reaggregation are equal."""
+        age_groups = ["0-4", "5-17", "65+"]
+
+        # Calculate total doses before
+        total_before = sample_schedule[age_groups].sum().sum()
+
+        # Reaggregate starting from 2025-10-01 (Wednesday)
+        actual_start_date = pd.Timestamp("2025-10-01")
+        reaggregated = reaggregate_vaccines(sample_schedule, actual_start_date)
+
+        # Calculate total doses after
+        total_after = reaggregated[age_groups].sum().sum()
+
+        assert total_before == total_after, (
+            f"Total doses should be preserved: before={total_before}, after={total_after}"
+        )
+
+    def test_reaggregate_redistributes_to_next_saturday(self, sample_schedule):
+        """Doses are evenly distributed from start_date to next Saturday."""
+        # Start on Wednesday 2025-10-01, next Saturday is 2025-10-04
+        actual_start_date = pd.Timestamp("2025-10-01")
+        reaggregated = reaggregate_vaccines(sample_schedule, actual_start_date)
+
+        # Check that the first date in reaggregated schedule is actual_start_date
+        first_date = reaggregated["dates"].min()
+        assert first_date == actual_start_date, f"First date should be {actual_start_date}, got {first_date}"
+
+        # Check dates before actual_start_date are excluded
+        dates_before_start = reaggregated[reaggregated["dates"] < actual_start_date]
+        assert len(dates_before_start) == 0, "No dates before actual_start_date should exist"
+
+        # Verify doses are distributed across Wed-Sat (4 days: Oct 2, 3, 4, 5)
+        # Original doses from Sep 30 to Oct 5 (6 days): 6 * 100 = 600 for 0-4
+        # Redistributed across Oct 2-5 (4 days): 600 / 4 = 150 per day
+        redistributed_period = reaggregated[
+            (reaggregated["dates"] >= actual_start_date) & (reaggregated["dates"] <= pd.Timestamp("2025-10-04"))
+        ]
+        assert len(redistributed_period) == 4, (
+            f"Should have 4 days in redistribution period, got {len(redistributed_period)}"
+        )
+
+    def test_reaggregate_unchanged_when_start_equals_min(self, sample_schedule):
+        """Returns unchanged schedule if actual_start_date == date_min."""
+        actual_start_date = sample_schedule["dates"].min()
+        result = reaggregate_vaccines(sample_schedule, actual_start_date)
+
+        # Should return the same schedule
+        pd.testing.assert_frame_equal(result, sample_schedule)
+
+    def test_reaggregate_raises_for_out_of_range_date(self, sample_schedule):
+        """Raises ValueError if start_date outside schedule range."""
+        # Test date before schedule range
+        with pytest.raises(ValueError, match="Start date must be between"):
+            reaggregate_vaccines(sample_schedule, pd.Timestamp("2025-08-31"))
+
+        # Test date after schedule range
+        with pytest.raises(ValueError, match="Start date must be between"):
+            reaggregate_vaccines(sample_schedule, pd.Timestamp("2025-10-31"))
+
+    def test_reaggregate_handles_scenario_column(self):
+        """Preserves scenario column if present in schedule."""
+        dates = pd.date_range("2025-09-29", periods=14, freq="D")
+        schedule_with_scenario = pd.DataFrame(
+            {
+                "dates": dates,
+                "scenario": ["high_coverage"] * 14,
+                "location": ["US-CA"] * 14,
+                "0-4": [100] * 14,
+                "5-17": [200] * 14,
+            }
+        )
+
+        actual_start_date = pd.Timestamp("2025-10-01")
+        result = reaggregate_vaccines(schedule_with_scenario, actual_start_date)
+
+        # Verify scenario column is preserved
+        assert "scenario" in result.columns, "scenario column should be preserved"
+        assert all(result["scenario"] == "high_coverage"), "scenario values should be preserved"
+
+    def test_reaggregate_handles_start_on_saturday(self):
+        """Correctly handles when start_date is already a Saturday."""
+        # Create schedule starting Saturday 2025-10-04
+        dates = pd.date_range("2025-10-04", periods=14, freq="D")
+        schedule = pd.DataFrame(
+            {
+                "dates": dates,
+                "location": ["US-CA"] * 14,
+                "0-4": [100] * 14,
+                "5-17": [200] * 14,
+            }
+        )
+
+        # Start on the next Saturday (2025-10-11) - should redistribute Oct 5-11 to Oct 12
+        actual_start_date = pd.Timestamp("2025-10-11")
+        result = reaggregate_vaccines(schedule, actual_start_date)
+
+        # First date should be actual_start_date
+        first_date = result["dates"].min()
+        assert first_date == actual_start_date
+
+        # Total doses should be preserved
+        total_before = schedule[["0-4", "5-17"]].sum().sum()
+        total_after = result[["0-4", "5-17"]].sum().sum()
+        assert total_before == total_after
+
+    def test_reaggregate_distributes_remainder_to_first_days(self):
+        """Remainder doses go to first days when total doesn't divide evenly."""
+        # Create schedule: 10 doses/day for Sun-Thu (5 days), total = 50
+        # Fri-Sat have 0 doses
+        schedule = pd.DataFrame({
+            "dates": pd.date_range("2025-08-31", periods=7, freq="D"),  # Sun-Sat
+            "location": "US-CA",
+            "0-4": [10, 10, 10, 10, 10, 0, 0],  # 50 total through Thu
+        })
+
+        # Start Wed (2025-09-03), redistribute to Sat (2025-09-06) = 4 days
+        # 50 doses / 4 days = 12 base, 2 remainder
+        # Expected: [13, 13, 12, 12]
+        result = reaggregate_vaccines(schedule, pd.Timestamp("2025-09-03"))
+
+        redistributed = result[result["dates"] <= pd.Timestamp("2025-09-06")]
+        doses = redistributed["0-4"].tolist()
+
+        assert doses == [13, 13, 12, 12], f"Expected [13, 13, 12, 12], got {doses}"
+
