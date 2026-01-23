@@ -1212,3 +1212,105 @@ class TestReaggregateVaccines:
 
         assert doses == [13, 13, 12, 12], f"Expected [13, 13, 12, 12], got {doses}"
 
+
+class TestGetAgeGroupsFromData:
+    """Unit tests for get_age_groups_from_data function."""
+
+    def test_extracts_age_groups_from_dataframe(self):
+        """Correctly extracts and cleans age groups from data."""
+        # Create DataFrame with typical vaccination data age groups
+        data = pd.DataFrame(
+            {
+                "Age": [
+                    "6 Months - 4 Years",
+                    "5-12 Years",
+                    "13-17 Years",
+                    "18-49 Years",
+                    "50-64 Years",
+                    "65+ Years",
+                    "6 Months - 17 Years",  # This should be removed
+                ],
+                "Coverage": [10, 20, 30, 40, 50, 60, 35],
+            }
+        )
+
+        result = get_age_groups_from_data(data)
+
+        # Result is a dict mapping cleaned age groups to lists of single-year ages
+        assert isinstance(result, dict)
+        # Should have 6 age groups (excluding "6 Months - 17 Years")
+        assert len(result) == 6
+
+    def test_removes_overlapping_6_months_17_years(self):
+        """Removes '6 Months - 17 Years' which overlaps finer groups."""
+        # Need valid contiguous age groups with a '+' ending group
+        data = pd.DataFrame(
+            {
+                "Age": [
+                    "6 Months - 4 Years",
+                    "5-12 Years",
+                    "13-17 Years",
+                    "18-49 Years",
+                    "50-64 Years",
+                    "65+ Years",
+                    "6 Months - 17 Years",  # Overlaps with finer groups - should be excluded
+                ],
+            }
+        )
+
+        result = get_age_groups_from_data(data)
+
+        # The overlapping group should be excluded
+        # Cleaned labels should be "0-4", "5-12", "13-17", "18-49", "50-64", "65+"
+        expected_keys = {"0-4", "5-12", "13-17", "18-49", "50-64", "65+"}
+        assert set(result.keys()) == expected_keys
+        # Verify "6 Months - 17 Years" is not present (would be "0-17" if cleaned)
+        assert "0-17" not in result.keys()
+
+    def test_cleans_age_group_labels(self):
+        """Converts '6 Months - 4 Years' → '0-4', removes ' Years'."""
+        data = pd.DataFrame(
+            {
+                "Age": [
+                    "6 Months - 4 Years",
+                    "5-12 Years",
+                    "13-17 Years",
+                    "18-49 Years",
+                    "50-64 Years",
+                    "65+ Years",
+                    "6 Months - 17 Years",  # Will be removed
+                ],
+            }
+        )
+
+        result = get_age_groups_from_data(data)
+
+        # Check cleaned keys
+        assert "0-4" in result.keys()
+        assert "5-12" in result.keys()
+        assert "65+" in result.keys()
+        # Original format should not be present
+        assert "6 Months - 4 Years" not in result.keys()
+        assert "5-12 Years" not in result.keys()
+
+    def test_handles_missing_aggregate_age_group(self):
+        """Does not error if '6 Months - 17 Years' is missing."""
+        data = pd.DataFrame(
+            {
+                "Age": [
+                    "6 Months - 4 Years",
+                    "5-12 Years",
+                    "13-17 Years",
+                    "18-49 Years",
+                    "50-64 Years",
+                    "65+ Years",
+                ],
+            }
+        )
+
+        result = get_age_groups_from_data(data)
+
+        expected_keys = {"0-4", "5-12", "13-17", "18-49", "50-64", "65+"}
+        assert set(result.keys()) == expected_keys
+
+
