@@ -5,7 +5,7 @@ from collections.abc import Callable
 import pandas as pd
 from epydemix.model import EpiModel
 
-from .utils.populations import get_age_group_mapping, get_all_age_map, validate_age_groups
+from .utils.populations import get_age_group_mapping, validate_age_groups
 
 logger = logging.getLogger(__name__)
 
