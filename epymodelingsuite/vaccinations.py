@@ -128,6 +128,36 @@ def _calculate_overlap_weight(
     return min(weight, 1.0)
 
 
+def _parse_age_group_bounds(group_str: str, max_age: int = 84) -> tuple[int, int]:
+    """
+    Parse an age group string into (start, end) tuple.
+
+    Parameters
+    ----------
+    group_str : str
+        Age group in format "start-end" (e.g., "0-9") or "start+" (e.g., "65+").
+    max_age : int, default 84
+        Maximum age to use for open-ended groups.
+
+    Returns
+    -------
+    tuple[int, int]
+        (start_age, end_age) tuple.
+
+    Raises
+    ------
+    ValueError
+        If group_str is not in a recognized format.
+    """
+    if "-" in group_str:
+        start, end = group_str.split("-")
+        return int(start), int(end)
+    if "+" in group_str:
+        return int(group_str.split("+")[0]), max_age
+    msg = f"Invalid age group format: {group_str}. Expected 'start-end' or 'start+'."
+    raise ValueError(msg)
+
+
 def make_reweighting_factors(
     population_dict_model: dict[str, int], data_age_groups: list[str], loc_epydemix: str
 ) -> dict[str, list[float]]:
@@ -167,70 +197,30 @@ def make_reweighting_factors(
     # Get single-year population data (index 0-84 for ages 0-84)
     population_codebook = get_population_codebook()
     population = population_codebook[loc_epydemix].values
+    max_age = len(population) - 1  # 84
+
     model_age_groups = list(population_dict_model.keys())
-    reweighting_factors_dict = {}  # dict of lists of len(model_age_groups) to store reweighting factors for each model age group,
+    reweighting_factors_dict = {}
 
     # For each model age group, calculate weights from all data age groups
     # Formula: weight = population(overlap) / population(data_group)
     for model_group in model_age_groups:
-        reweighting_factors = np.tile(
-            0.0, len(data_age_groups)
-        )  # list of len(data_age_groups) to store reweighting factors for each data age group
+        reweighting_factors = np.zeros(len(data_age_groups))
+        start_model, end_model = _parse_age_group_bounds(model_group, max_age)
 
-        # Bounded model group (e.g., "0-9", "50-64")
-        if "-" in model_group:
-            start_model, end_model = model_group.split("-")
-            start_model = int(start_model)
-            end_model = int(end_model)
-            for data_idx, data_group in enumerate(data_age_groups):
-                # Bounded data group (e.g., "0-9")
-                if "-" in data_group:
-                    start_data, end_data = data_group.split("-")
-                    start_data = int(start_data)
-                    end_data = int(end_data)
-                # Open-ended data group (e.g., "65+")
-                elif "+" in data_group:
-                    start_data = int(data_group.split("+")[0])
-                    end_data = 84
-                else:
-                    continue
+        for data_idx, data_group in enumerate(data_age_groups):
+            start_data, end_data = _parse_age_group_bounds(data_group, max_age)
 
-                # Skip if no overlap
-                if start_data > end_model or end_data < start_model:
-                    continue
+            # Skip if no overlap
+            if start_data > end_model or end_data < start_model:
+                continue
 
-                overlap_start = max(start_data, start_model)
-                overlap_end = min(end_data, end_model)
-                reweighting_factors[data_idx] = _calculate_overlap_weight(
-                    population, overlap_start, overlap_end, start_data, end_data
-                )
+            overlap_start = max(start_data, start_model)
+            overlap_end = min(end_data, end_model)
 
-        # Open-ended model group (e.g., "65+")
-        elif "+" in model_group:
-            start_model = int(model_group.split("+")[0])
-            end_model = 84
-            for data_idx, data_group in enumerate(data_age_groups):
-                # Bounded data group (e.g., "0-9")
-                if "-" in data_group:
-                    start_data, end_data = data_group.split("-")
-                    start_data = int(start_data)
-                    end_data = int(end_data)
-                # Open-ended data group (e.g., "65+")
-                elif "+" in data_group:
-                    start_data = int(data_group.split("+")[0])
-                    end_data = 84
-                else:
-                    continue
-
-                # Skip if no overlap
-                if start_data > end_model or end_data < start_model:
-                    continue
-
-                overlap_start = max(start_data, start_model)
-                overlap_end = min(end_data, end_model)
-                reweighting_factors[data_idx] = _calculate_overlap_weight(
-                    population, overlap_start, overlap_end, start_data, end_data
-                )
+            reweighting_factors[data_idx] = _calculate_overlap_weight(
+                population, overlap_start, overlap_end, start_data, end_data
+            )
 
         reweighting_factors_dict[model_group] = reweighting_factors
 
