@@ -643,9 +643,9 @@ def reaggregate_vaccines(schedule: pd.DataFrame, actual_start_date: dt.date | pd
     # e.g. ['0-4', '5-17', '18-49', '50-64', '65+']
     age_groups = [c for c in schedule.columns if "-" in c or "+" in c]
 
-    # Aggregate doses for the period before the next Saturday
-    before_saturday = schedule.query("dates < @next_saturday")
-    aggregated_doses = before_saturday[age_groups].sum(axis=0)
+    # Aggregate doses for the period up to and including next Saturday
+    up_to_saturday = schedule.query("dates <= @next_saturday")
+    aggregated_doses = up_to_saturday[age_groups].sum(axis=0)
 
     # Create a new date range for the redistribution period
     new_dates = pd.date_range(start=actual_start_date, end=next_saturday, freq="D")
