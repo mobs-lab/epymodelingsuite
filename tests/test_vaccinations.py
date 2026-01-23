@@ -1314,6 +1314,239 @@ class TestGetAgeGroupsFromData:
         assert set(result.keys()) == expected_keys
 
 
+class TestMakeReweightingFactors:
+    """Unit tests for make_reweighting_factors using uniform mock population.
+
+    Maps vaccination doses from DATA age groups to MODEL age groups.
+    Formula: weight = population(overlap) / population(data_group)
+
+    Terminology:
+    - Bounded: Age group with both lower and upper limits, e.g., "0-9", "50-64"
+    - Open-ended: Age group with no upper limit (uses "+"), e.g., "65+"
+
+    Uses uniform mock population (1000 per single-year age 0-84) for deterministic calculations.
+    """
+
+    @pytest.fixture(autouse=True)
+    def mock_uniform_population(self, monkeypatch):
+        """Mock population: 1000 people per single-year age (0-84).
+
+        This allows deterministic weight calculations:
+        - pop("0-4") = 5,000 (5 ages)
+        - pop("0-9") = 10,000 (10 ages)
+        - pop("65+") = 20,000 (ages 65-84, = 20 ages)
+        """
+        import pandas as pd
+
+        # Import the module first to ensure it's loaded
+        import epymodelingsuite.utils.populations  # noqa: F401
+
+        # Create uniform population: 1000 per single-year age
+        uniform_pop = pd.Series([1000] * 85, index=range(85))
+
+        def mock_get_population_codebook():
+            return {"United_States_California": uniform_pop}
+
+        # Patch at multiple locations to ensure coverage
+        monkeypatch.setattr(
+            "epymodelingsuite.utils.populations.get_population_codebook",
+            mock_get_population_codebook,
+        )
+        monkeypatch.setattr(
+            "epymodelingsuite.utils.get_population_codebook",
+            mock_get_population_codebook,
+        )
+
+    # =========================================================================
+    # 1. Bounded data → Bounded model
+    # =========================================================================
+
+    @pytest.mark.parametrize(
+        "model_groups,data_groups,expected",
+        [
+            # Exact match: model 0-9 ← data 0-9
+            (
+                ["0-9", "10-84"],
+                ["0-9", "10-84"],
+                {"0-9": [1.0, 0.0]},
+            ),
+            # Partial overlap: model 5-14 spans two data groups
+            # - Overlaps with data 0-9 at ages 5-9 (5/10 = 0.5)
+            # - Overlaps with data 10-19 at ages 10-14 (5/10 = 0.5)
+            (
+                ["0-4", "5-14", "15-84"],
+                ["0-9", "10-19", "20-84"],
+                {"5-14": [0.5, 0.5, 0.0]},
+            ),
+            # Model subset of data: model 0-4 is subset of data 0-9
+            (
+                ["0-4", "5-84"],
+                ["0-9", "10-84"],
+                {"0-4": [0.5, 0.0]},  # 5 ages / 10 ages = 0.5
+            ),
+            # Multiple model groups receive from one data group
+            (
+                ["0-4", "5-9", "10-84"],
+                ["0-9", "10-84"],
+                {"0-4": [0.5, 0.0], "5-9": [0.5, 0.0]},
+            ),
+        ],
+        ids=[
+            "exact_match",
+            "partial_overlap",
+            "model_subset_of_data",
+            "multiple_models_one_data",
+        ],
+    )
+    def test_bounded_data_to_bounded_model(self, model_groups, data_groups, expected):
+        """Bounded data → Bounded model: should work correctly."""
+        population_dict_model = dict.fromkeys(model_groups, 1000000)
+        result = make_reweighting_factors(population_dict_model, data_groups, "United_States_California")
+
+        for model_group, expected_weights in expected.items():
+            actual_weights = result[model_group]
+            for i, (actual, exp) in enumerate(zip(actual_weights, expected_weights, strict=False)):
+                assert np.isclose(actual, exp, atol=0.01), (
+                    f"Model '{model_group}' ← Data '{data_groups[i]}': expected {exp}, got {actual}"
+                )
+
+    # =========================================================================
+    # 2. Open-ended data → Bounded model
+    # =========================================================================
+
+    @pytest.mark.parametrize(
+        "model_groups,data_groups,expected",
+        [
+            # Model 50-64 receives from data 50+ (open-ended)
+            # Overlap: ages 50-64 (15 ages) out of 50-84 (35 ages) → 15/35 ≈ 0.429
+            (
+                ["0-49", "50-64", "65+"],
+                ["0-49", "50+"],
+                {"50-64": [0.0, 15 / 35]},
+            ),
+            # Model 0-19 receives from data 10+ (open-ended)
+            # Overlap: ages 10-19 (10 ages) out of 10-84 (75 ages) → 10/75 ≈ 0.133
+            (
+                ["0-19", "20+"],
+                ["0-4", "5-9", "10+"],
+                {"0-19": [1.0, 1.0, 10 / 75]},
+            ),
+        ],
+        ids=[
+            "model_50-64_from_data_50+",
+            "model_0-19_from_data_10+",
+        ],
+    )
+    def test_open_data_to_bounded_model(self, model_groups, data_groups, expected):
+        """Open-ended data → Bounded model: should work correctly."""
+        population_dict_model = dict.fromkeys(model_groups, 1000000)
+        result = make_reweighting_factors(population_dict_model, data_groups, "United_States_California")
+
+        for model_group, expected_weights in expected.items():
+            actual_weights = result[model_group]
+            for i, (actual, exp) in enumerate(zip(actual_weights, expected_weights, strict=False)):
+                assert np.isclose(actual, exp, atol=0.01), (
+                    f"Model '{model_group}' ← Data '{data_groups[i]}': expected {exp}, got {actual}"
+                )
+
+    # =========================================================================
+    # 3. Bounded data → Open-ended model
+    # =========================================================================
+
+    @pytest.mark.parametrize(
+        "model_groups,data_groups,expected",
+        [
+            # Model 65+ receives from bounded data 50-74
+            # Overlap: ages 65-74 (10 ages) out of 50-74 (25 ages) → 10/25 = 0.4
+            (
+                ["0-49", "50-64", "65+"],
+                ["0-49", "50-74", "75-84"],
+                {"65+": [0.0, 0.4, 1.0]},
+            ),
+        ],
+        ids=[
+            "model_65+_from_bounded_data",
+        ],
+    )
+    def test_bounded_data_to_open_model(self, model_groups, data_groups, expected):
+        """Bounded data → Open-ended model."""
+        population_dict_model = dict.fromkeys(model_groups, 1000000)
+        result = make_reweighting_factors(population_dict_model, data_groups, "United_States_California")
+
+        for model_group, expected_weights in expected.items():
+            actual_weights = result[model_group]
+            for i, (actual, exp) in enumerate(zip(actual_weights, expected_weights, strict=False)):
+                assert np.isclose(actual, exp, atol=0.01), (
+                    f"Model '{model_group}' ← Data '{data_groups[i]}': expected {exp}, got {actual}"
+                )
+
+    # =========================================================================
+    # 4. Open-ended data → Open-ended model
+    # =========================================================================
+
+    @pytest.mark.parametrize(
+        "model_groups,data_groups,expected",
+        [
+            # Exact match: model 65+ ← data 65+
+            (
+                ["0-64", "65+"],
+                ["0-64", "65+"],
+                {"65+": [0.0, 1.0]},
+            ),
+            # No overlap case
+            (
+                ["0-49", "50-64", "65+"],
+                ["0-49", "50-64", "65+"],
+                {"65+": [0.0, 0.0, 1.0]},
+            ),
+            # Partial overlap: model 65+ should get 0.4 from data 50-74
+            (
+                ["0-49", "50-64", "65+"],
+                ["0-49", "50-74", "75+"],
+                {"65+": [0.0, 0.4, 1.0]},
+            ),
+        ],
+        ids=[
+            "exact_match_passes_by_accident",
+            "no_overlap_passes_by_accident",
+            "partial_overlap_fails",
+        ],
+    )
+    def test_open_data_to_open_model(self, model_groups, data_groups, expected):
+        """Open-ended data → Open-ended model."""
+        population_dict_model = dict.fromkeys(model_groups, 1000000)
+        result = make_reweighting_factors(population_dict_model, data_groups, "United_States_California")
+
+        for model_group, expected_weights in expected.items():
+            actual_weights = result[model_group]
+            for i, (actual, exp) in enumerate(zip(actual_weights, expected_weights, strict=False)):
+                assert np.isclose(actual, exp, atol=0.01), (
+                    f"Model '{model_group}' ← Data '{data_groups[i]}': expected {exp}, got {actual}"
+                )
+
+    # =========================================================================
+    # 5. Conservation test
+    # =========================================================================
+
+    def test_weights_sum_to_one(self):
+        """When model groups fully cover a data group, weights should sum to 1.0.
+
+        Example: Data 0-9 split between model 0-4 and 5-9
+        Weights: 0.5 + 0.5 = 1.0 (all doses accounted for)
+        """
+        population_dict_model = {"0-4": 1000000, "5-9": 1000000, "10-84": 1000000}
+        data_age_groups = ["0-9", "10-84"]
+
+        result = make_reweighting_factors(population_dict_model, data_age_groups, "United_States_California")
+
+        weight_0_4 = result["0-4"][0]
+        weight_5_9 = result["5-9"][0]
+        total = weight_0_4 + weight_5_9
+
+        assert np.isclose(total, 1.0, atol=0.01), (
+            f"Weights from data 0-9 should sum to 1.0: {weight_0_4} + {weight_5_9} = {total}"
+        )
+
 
 class TestSmhDataToEpydemix:
     """Unit tests for smh_data_to_epydemix function."""
