@@ -1198,11 +1198,13 @@ class TestReaggregateVaccines:
         """Remainder doses go to first days when total doesn't divide evenly."""
         # Create schedule: 10 doses/day for Sun-Thu (5 days), total = 50
         # Fri-Sat have 0 doses
-        schedule = pd.DataFrame({
-            "dates": pd.date_range("2025-08-31", periods=7, freq="D"),  # Sun-Sat
-            "location": "US-CA",
-            "0-4": [10, 10, 10, 10, 10, 0, 0],  # 50 total through Thu
-        })
+        schedule = pd.DataFrame(
+            {
+                "dates": pd.date_range("2025-08-31", periods=7, freq="D"),  # Sun-Sat
+                "location": "US-CA",
+                "0-4": [10, 10, 10, 10, 10, 0, 0],  # 50 total through Thu
+            }
+        )
 
         # Start Wed (2025-09-03), redistribute to Sat (2025-09-06) = 4 days
         # 50 doses / 4 days = 12 base, 2 remainder
