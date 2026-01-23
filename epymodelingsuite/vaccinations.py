@@ -868,7 +868,7 @@ def add_vaccination_schedule(
 
     vaccine_schedule = (vaccination_schedule[age_groups_model].values,)
 
-    # Usage:
+    # Remove existing vaccination transitions first to avoid duplicates
     model = remove_vaccination_transitions(model, source_comp, target_comp)
     model.add_transition(source_comp, target_comp, params=vaccine_schedule, kind="vaccination")
 
