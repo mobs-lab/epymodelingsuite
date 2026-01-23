@@ -829,7 +829,7 @@ def add_vaccination_schedule(
     Returns
     -------
     EpiModel
-        The model with the vaccination transition added.
+        The same model instance with the vaccination transition added (modified in-place).
 
     Raises
     ------
@@ -893,7 +893,7 @@ def remove_vaccination_transitions(model: EpiModel, source_comp: str, target_com
     Returns
     -------
     EpiModel
-        The model with the specified vaccination transition removed.
+        The same model instance with the specified vaccination transition removed (modified in-place).
 
     Notes
     -----

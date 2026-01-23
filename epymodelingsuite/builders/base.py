@@ -81,7 +81,7 @@ def add_model_compartments_from_config(model: EpiModel, compartments: list[Compa
 
     Returns
     -------
-        EpiModel instance with compartments added.
+        The same EpiModel instance with compartments added (modified in-place).
     """
     # Add compartments to the model
     try:
@@ -105,7 +105,7 @@ def add_model_transitions_from_config(model: EpiModel, transitions: list[Transit
 
     Returns
     -------
-        EpiModel instance with compartment transitions added.
+        The same EpiModel instance with compartment transitions added (modified in-place).
     """
     # Check that required attributes of model configuration are not None
     if transitions is None:
@@ -149,7 +149,7 @@ def add_model_parameters_from_config(model: EpiModel, parameters: dict[str, Para
 
     Returns
     -------
-        EpiModel instance with parameters added.
+        The same EpiModel instance with parameters added (modified in-place).
     """
     # Add parameters to the model
     parameters_dict = {}
