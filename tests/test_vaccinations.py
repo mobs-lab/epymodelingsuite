@@ -1314,6 +1314,39 @@ class TestGetAgeGroupsFromData:
         assert set(result.keys()) == expected_keys
 
 
+class TestCalculateOverlapWeight:
+    """Tests for _calculate_overlap_weight helper function."""
+
+    @pytest.fixture
+    def uniform_population(self):
+        """Uniform population: 1000 people per single-year age (0-84)."""
+        return [1000] * 85
+
+    def test_full_overlap(self, uniform_population):
+        """When overlap equals data range, weight is 1.0."""
+        # overlap: 0-9, data: 0-9
+        weight = _calculate_overlap_weight(uniform_population, 0, 9, 0, 9)
+        assert weight == 1.0
+
+    def test_partial_overlap(self, uniform_population):
+        """When overlap is subset of data, weight < 1.0."""
+        # overlap: 5-9 (5 ages), data: 0-9 (10 ages) → 5/10 = 0.5
+        weight = _calculate_overlap_weight(uniform_population, 5, 9, 0, 9)
+        assert weight == 0.5
+
+    def test_small_overlap(self, uniform_population):
+        """Small overlap fraction."""
+        # overlap: 0-1 (2 ages), data: 0-9 (10 ages) → 2/10 = 0.2
+        weight = _calculate_overlap_weight(uniform_population, 0, 1, 0, 9)
+        assert weight == 0.2
+
+    def test_capped_at_one(self, uniform_population):
+        """Weight is capped at 1.0 even if overlap > data (shouldn't happen in practice)."""
+        # overlap: 0-19, data: 5-9 → would be 20/5 = 4.0, but capped at 1.0
+        weight = _calculate_overlap_weight(uniform_population, 0, 19, 5, 9)
+        assert weight == 1.0
+
+
 class TestMakeReweightingFactors:
     """Unit tests for make_reweighting_factors using uniform mock population.
 
