@@ -44,7 +44,7 @@ def _make_base_scenario_df(coverage_override: dict[str, float] | None = None) ->
     }
 
     rows = []
-    week = pd.Timestamp("2024-09-07")
+    week = pd.Timestamp("2025-09-06")
     for age, coverage in base_coverage.items():
         rows.append(
             {
@@ -66,7 +66,7 @@ class TestResampleVaccinationSchedule:
         # Create daily schedule with location column
         daily_schedule = pd.DataFrame(
             {
-                "dates": pd.date_range("2024-10-01", periods=3, freq="D"),
+                "dates": pd.date_range("2025-09-30", periods=3, freq="D"),
                 "location": ["US-MA", "US-MA", "US-MA"],
                 "0-4": [100.0, 200.0, 300.0],
                 "5-17": [150.0, 250.0, 350.0],
@@ -88,7 +88,7 @@ class TestResampleVaccinationSchedule:
         """Test that dt=1.0 returns a copy without resampling."""
         daily_schedule = pd.DataFrame(
             {
-                "dates": pd.date_range("2024-10-01", periods=3, freq="D"),
+                "dates": pd.date_range("2025-09-30", periods=3, freq="D"),
                 "location": ["US-MA", "US-MA", "US-MA"],
                 "0-4": [100.0, 200.0, 300.0],
                 "5-17": [150.0, 250.0, 350.0],
@@ -105,7 +105,7 @@ class TestResampleVaccinationSchedule:
         """Test that resampling preserves location and column structure."""
         daily_schedule = pd.DataFrame(
             {
-                "dates": pd.date_range("2024-10-01", periods=7, freq="D"),
+                "dates": pd.date_range("2025-09-30", periods=7, freq="D"),
                 "location": ["US-MA"] * 7,
                 "0-4": [100.0] * 7,
                 "5-17": [150.0] * 7,
@@ -165,7 +165,7 @@ class TestScenarioToEpydemix:
 
         # Create CSV with multiple weeks to have coverage progression
         rows = []
-        weeks = pd.date_range("2024-09-07", periods=10, freq="W-SAT")
+        weeks = pd.date_range("2025-09-06", periods=10, freq="W-SAT")
         for week_idx, week in enumerate(weeks):
             # Coverage increases each week up to target
             week_fraction = (week_idx + 1) / len(weeks)
@@ -187,8 +187,8 @@ class TestScenarioToEpydemix:
         # Convert using scenario_to_epydemix
         result = scenario_to_epydemix(
             input_filepath=str(test_file),
-            start_date=date(2024, 9, 7),
-            end_date=date(2024, 11, 9),
+            start_date=date(2025, 9, 6),
+            end_date=date(2025, 11, 8),
             target_age_groups=["0-4", "5-17", "18-49", "50-64", "65+"],
             states=["California"],
         )
@@ -238,7 +238,7 @@ class TestScenarioToEpydemix:
         # Create a minimal temporary CSV file with properly formatted data
         vaccination_data = pd.DataFrame(
             {
-                "Week_Ending_Sat": ["2024-10-05", "2024-10-05", "2024-10-05"],
+                "Week_Ending_Sat": ["2025-10-04", "2025-10-04", "2025-10-04"],
                 "Geography": ["California", "California", "California"],
                 "Age": ["6 Months - 4 Years", "5-17 Years", "6 Months - 17 Years"],
                 "Population": [500000, 1000000, 1500000],
@@ -255,8 +255,8 @@ class TestScenarioToEpydemix:
             with pytest.raises(TypeError, match="delta_t"):
                 scenario_to_epydemix(
                     input_filepath=temp_filepath,
-                    start_date=date(2024, 10, 1),
-                    end_date=date(2024, 10, 7),
+                    start_date=date(2025, 9, 30),
+                    end_date=date(2025, 10, 6),
                     target_age_groups=["0-4", "5-17", "18+"],
                     delta_t=0.5,  # This should cause an error
                 )
@@ -279,8 +279,8 @@ class TestCoverageValidation:
         with pytest.raises(ValueError, match="Coverage values must be between 0 and 100"):
             scenario_to_epydemix(
                 input_filepath=str(test_file),
-                start_date=date(2024, 9, 1),
-                end_date=date(2024, 9, 7),
+                start_date=date(2025, 8, 31),
+                end_date=date(2025, 9, 6),
                 target_age_groups=["0-4", "5-17", "18-49", "50-64", "65+"],
                 states=["California"],
             )
@@ -294,8 +294,8 @@ class TestCoverageValidation:
         with pytest.raises(ValueError, match="Coverage values must be between 0 and 100"):
             scenario_to_epydemix(
                 input_filepath=str(test_file),
-                start_date=date(2024, 9, 1),
-                end_date=date(2024, 9, 7),
+                start_date=date(2025, 8, 31),
+                end_date=date(2025, 9, 6),
                 target_age_groups=["0-4", "5-17", "18-49", "50-64", "65+"],
                 states=["California"],
             )
@@ -308,8 +308,8 @@ class TestCoverageValidation:
 
         result = scenario_to_epydemix(
             input_filepath=str(test_file),
-            start_date=date(2024, 9, 1),
-            end_date=date(2024, 9, 7),
+            start_date=date(2025, 8, 31),
+            end_date=date(2025, 9, 6),
             target_age_groups=["0-4", "5-17", "18-49", "50-64", "65+"],
             states=["California"],
         )
@@ -324,8 +324,8 @@ class TestCoverageValidation:
 
         result = scenario_to_epydemix(
             input_filepath=str(test_file),
-            start_date=date(2024, 9, 1),
-            end_date=date(2024, 9, 7),
+            start_date=date(2025, 8, 31),
+            end_date=date(2025, 9, 6),
             target_age_groups=["0-4", "5-17", "18-49", "50-64", "65+"],
             states=["California"],
         )
@@ -341,8 +341,8 @@ class TestCoverageValidation:
         with pytest.raises(ValueError) as excinfo:
             scenario_to_epydemix(
                 input_filepath=str(test_file),
-                start_date=date(2024, 9, 1),
-                end_date=date(2024, 9, 7),
+                start_date=date(2025, 8, 31),
+                end_date=date(2025, 9, 6),
                 target_age_groups=["0-4", "5-17", "18-49", "50-64", "65+"],
                 states=["California"],
             )
@@ -369,8 +369,8 @@ class TestSmhDataCoverageValidation:
         with pytest.raises(ValueError, match="Coverage values must be between 0 and 100"):
             smh_data_to_epydemix(
                 input_filepath=str(test_file),
-                start_date=date(2024, 9, 1),
-                end_date=date(2024, 9, 7),
+                start_date=date(2025, 8, 31),
+                end_date=date(2025, 9, 6),
                 target_age_groups=["0-4", "5-17", "18-49", "50-64", "65+"],
                 states=["California"],
             )
@@ -388,8 +388,8 @@ class TestSmhDataCoverageValidation:
         with pytest.raises(ValueError, match="Coverage values must be between 0 and 100"):
             smh_data_to_epydemix(
                 input_filepath=str(test_file),
-                start_date=date(2024, 9, 1),
-                end_date=date(2024, 9, 7),
+                start_date=date(2025, 8, 31),
+                end_date=date(2025, 9, 6),
                 target_age_groups=["0-4", "5-17", "18-49", "50-64", "65+"],
                 states=["California"],
             )
@@ -423,7 +423,7 @@ class TestVaccinationIntegration:
     @pytest.fixture
     def vaccination_schedule(self):
         """Create a simple vaccination schedule DataFrame."""
-        dates = pd.date_range("2024-10-01", periods=30, freq="D")
+        dates = pd.date_range("2025-09-30", periods=30, freq="D")
         return pd.DataFrame(
             {
                 "dates": dates,
@@ -594,7 +594,7 @@ class TestVaccinationIntegration:
         # Create schedule with missing age groups
         incomplete_schedule = pd.DataFrame(
             {
-                "dates": pd.date_range("2024-10-01", periods=10, freq="D"),
+                "dates": pd.date_range("2025-09-30", periods=10, freq="D"),
                 "location": ["US-CA"] * 10,
                 "0-4": [100.0] * 10,
                 # Missing other age groups
@@ -662,7 +662,7 @@ class TestVaccinationE2E:
 
         Returns a schedule with fixed daily doses per age group.
         """
-        dates = pd.date_range("2024-10-01", periods=30, freq="D")
+        dates = pd.date_range("2025-09-30", periods=30, freq="D")
         return pd.DataFrame(
             {
                 "dates": dates,
@@ -708,8 +708,8 @@ class TestVaccinationE2E:
         # Run simulation
         rng = np.random.default_rng(42)
         sim_results = model.run_simulations(
-            start_date="2024-10-01",
-            end_date="2024-10-30",
+            start_date="2025-09-30",
+            end_date="2025-10-29",
             initial_conditions_dict=init_conditions,
             Nsim=5,
             dt=1.0,
@@ -775,8 +775,8 @@ class TestVaccinationE2E:
         # Run simulation
         rng = np.random.default_rng(42)
         sim_results = model.run_simulations(
-            start_date="2024-10-01",
-            end_date="2024-10-30",
+            start_date="2025-09-30",
+            end_date="2025-10-29",
             initial_conditions_dict=init_conditions,
             Nsim=3,
             dt=1.0,
@@ -835,8 +835,8 @@ class TestVaccinationE2E:
         # Run simulation
         rng = np.random.default_rng(42)
         sim_results = model.run_simulations(
-            start_date="2024-10-01",
-            end_date="2024-10-30",
+            start_date="2025-09-30",
+            end_date="2025-10-29",
             initial_conditions_dict=init_conditions,
             Nsim=3,
             dt=1.0,
@@ -884,7 +884,7 @@ class TestVaccinationE2E:
         model = sir_model_with_vaccination
 
         # Create schedule with 2x doses for 18-49 vs 0-4
-        dates = pd.date_range("2024-10-01", periods=30, freq="D")
+        dates = pd.date_range("2025-09-30", periods=30, freq="D")
         vaccination_schedule = pd.DataFrame(
             {
                 "dates": dates,
@@ -918,8 +918,8 @@ class TestVaccinationE2E:
 
         rng = np.random.default_rng(42)
         sim_results = model.run_simulations(
-            start_date="2024-10-01",
-            end_date="2024-10-30",
+            start_date="2025-09-30",
+            end_date="2025-10-29",
             initial_conditions_dict=init_conditions,
             Nsim=5,
             dt=1.0,
@@ -983,7 +983,7 @@ class TestVaccinationE2E:
             return model
 
         # Create aggressive vaccination schedule
-        dates = pd.date_range("2024-10-01", periods=30, freq="D")
+        dates = pd.date_range("2025-09-30", periods=30, freq="D")
         vaccination_schedule = pd.DataFrame(
             {
                 "dates": dates,
@@ -1011,8 +1011,8 @@ class TestVaccinationE2E:
 
         rng1 = np.random.default_rng(42)
         results_disease_only = model_disease.run_simulations(
-            start_date="2024-10-01",
-            end_date="2024-10-30",
+            start_date="2025-09-30",
+            end_date="2025-10-29",
             initial_conditions_dict=init_conditions,
             Nsim=10,
             dt=1.0,
@@ -1034,8 +1034,8 @@ class TestVaccinationE2E:
 
         rng2 = np.random.default_rng(42)
         results_with_vax = model_with_vax.run_simulations(
-            start_date="2024-10-01",
-            end_date="2024-10-30",
+            start_date="2025-09-30",
+            end_date="2025-10-29",
             initial_conditions_dict=init_conditions,
             Nsim=10,
             dt=1.0,
