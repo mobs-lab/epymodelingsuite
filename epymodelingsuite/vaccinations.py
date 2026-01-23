@@ -125,54 +125,69 @@ def make_reweighting_factors(
 
     from .utils import get_population_codebook
 
+    # Get single-year population data (index 0-84 for ages 0-84)
     population_codebook = get_population_codebook()
     population = population_codebook[loc_epydemix].values
     model_age_groups = list(population_dict_model.keys())
     reweighting_factors_dict = {}  # dict of lists of len(model_age_groups) to store reweighting factors for each model age group,
+
+    # For each model age group, calculate weights from all data age groups
+    # Formula: weight = population(overlap) / population(data_group)
     for i, a in enumerate(model_age_groups):
         reweighting_factors = np.tile(
             0.0, len(data_age_groups)
         )  # list of len(data_age_groups) to store reweighting factors for each data age group
+
+        # Bounded model group (e.g., "0-9", "50-64")
         if i != len(model_age_groups) - 1:
             start_model, end_model = a.split("-")
             start_model = int(start_model)
             end_model = int(end_model)
             for j, b in enumerate(data_age_groups):
+                # Bounded data group (e.g., "0-9")
                 if j != len(data_age_groups) - 1:
                     start_data, end_data = b.split("-")
                     start_data = int(start_data)
                     end_data = int(end_data)
+                    # Skip if no overlap
                     if start_data > end_model:
                         continue
                     if end_data < start_model:
                         continue
 
+                    # Calculate weight based on 4 overlap cases:
+                    # Data starts inside model, extends beyond
                     if start_data > start_model and end_data > end_model:
                         factor = sum(population[start_data : end_model + 1]) / sum(
                             population[start_data : end_data + 1]
                         )
                         reweighting_factors[j] = np.min([factor, 1.0])
 
+                    # Data fully inside model
                     if start_data > start_model and end_data <= end_model:
                         factor = sum(population[start_data : end_data + 1]) / sum(population[start_data : end_data + 1])
                         reweighting_factors[j] = np.min([factor, 1.0])
 
+                    # Data starts before model, ends inside model
                     if start_data <= start_model and end_data <= end_model:
                         factor = sum(population[start_model : end_data + 1]) / sum(
                             population[start_data : end_data + 1]
                         )
                         reweighting_factors[j] = np.min([factor, 1.0])
 
+                    # Model fully inside data
                     if start_data <= start_model and end_data > end_model:
                         factor = sum(population[start_model : end_model + 1]) / sum(
                             population[start_data : end_data + 1]
                         )
                         reweighting_factors[j] = np.min([factor, 1.0])
 
+                # Open-ended data group (e.g., "65+")
                 elif "+" in b:
                     start_data = int(b.split("+")[0])
                     end_data = 84
 
+                    # Same 4 overlap cases as above
                     if start_data > start_model and end_data > end_model:
                         factor = sum(population[start_data : end_model + 1]) / sum(
                             population[start_data : end_data + 1]
@@ -194,6 +209,8 @@ def make_reweighting_factors(
                             population[start_data : end_data + 1]
                         )
                         reweighting_factors[j] = np.min([factor, 1.0])
+
+        # Open-ended model group (e.g., "65+")
         elif "+" in a:
             start_model = a.split("+")[0]
             start_model = int(start_model)
