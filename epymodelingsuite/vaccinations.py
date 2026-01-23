@@ -262,7 +262,9 @@ def scenario_to_epydemix(
     Raises
     ------
     ValueError
-        If required columns are missing from the input CSV or if age groups are invalid.
+        - if required columns are missing from the input CSV, or
+        - if age groups are invalid, or
+        - if Coverage values are not within the [0, 100] range
 
     Notes
     -----
