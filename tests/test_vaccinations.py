@@ -1314,3 +1314,99 @@ class TestGetAgeGroupsFromData:
         assert set(result.keys()) == expected_keys
 
 
+
+class TestSmhDataToEpydemix:
+    """Unit tests for smh_data_to_epydemix function."""
+
+    @pytest.fixture
+    def smh_data_file(self, tmp_path):
+        """Create a temporary SMH-format vaccination data file with multiple scenarios."""
+        # SMH format has scenario columns containing "sc_"
+        data = pd.DataFrame(
+            {
+                "Week_Ending_Sat": ["2025-10-04", "2025-10-11"] * 7,
+                "Geography": ["California"] * 14,
+                "Age": [
+                    "6 Months - 4 Years",
+                    "5-12 Years",
+                    "13-17 Years",
+                    "18-49 Years",
+                    "50-64 Years",
+                    "65+ Years",
+                    "6 Months - 17 Years",
+                ]
+                * 2,
+                "Population": [2000000, 4000000, 2500000, 17000000, 7000000, 6000000, 6500000] * 2,
+                "flu.coverage.rd2526.sc_A": [10.0, 15.0, 12.0, 8.0, 20.0, 30.0, 12.5] * 2,
+                "flu.coverage.rd2526.sc_B": [5.0, 7.5, 6.0, 4.0, 10.0, 15.0, 6.25] * 2,
+            }
+        )
+        filepath = tmp_path / "smh_vaccines.csv"
+        data.to_csv(filepath, index=False)
+        return filepath
+
+    def test_handles_multiple_scenarios(self, smh_data_file):
+        """Processes all columns containing 'sc_' into scenarios."""
+        result = smh_data_to_epydemix(
+            input_filepath=str(smh_data_file),
+            start_date=date(2025, 9, 30),
+            end_date=date(2025, 10, 11),
+            target_age_groups=["0-4", "5-17", "18-49", "50-64", "65+"],
+            states=["California"],
+        )
+
+        # Should have data for both scenarios
+        scenarios = result["scenario"].unique()
+        assert len(scenarios) == 2, f"Expected 2 scenarios, got {len(scenarios)}"
+        assert "A" in scenarios, "Should have 'A' scenario"
+        assert "B" in scenarios, "Should have 'B' scenario"
+
+    def test_adds_scenario_column_to_output(self, smh_data_file):
+        """Output DataFrame includes scenario identifier."""
+        result = smh_data_to_epydemix(
+            input_filepath=str(smh_data_file),
+            start_date=date(2025, 9, 30),
+            end_date=date(2025, 10, 11),
+            target_age_groups=["0-4", "5-17", "18-49", "50-64", "65+"],
+            states=["California"],
+        )
+
+        # Verify scenario column exists
+        assert "scenario" in result.columns, "Output should have 'scenario' column"
+
+        # Verify each row has a scenario value
+        assert result["scenario"].notna().all(), "All rows should have scenario values"
+
+    def test_raises_for_missing_scenario_columns(self, tmp_path):
+        """Raises ValueError if no sc_ columns found."""
+        # Create file without scenario columns
+        data = pd.DataFrame(
+            {
+                "Week_Ending_Sat": ["2025-10-04"] * 7,
+                "Geography": ["California"] * 7,
+                "Age": [
+                    "6 Months - 4 Years",
+                    "5-12 Years",
+                    "13-17 Years",
+                    "18-49 Years",
+                    "50-64 Years",
+                    "65+ Years",
+                    "6 Months - 17 Years",
+                ],
+                "Population": [2000000, 4000000, 2500000, 17000000, 7000000, 6000000, 6500000],
+                "Coverage": [10.0, 15.0, 12.0, 8.0, 20.0, 30.0, 12.5],  # No sc_ prefix
+            }
+        )
+        filepath = tmp_path / "no_scenarios.csv"
+        data.to_csv(filepath, index=False)
+
+        with pytest.raises(ValueError, match="No scenario columns found"):
+            smh_data_to_epydemix(
+                input_filepath=str(filepath),
+                start_date=date(2025, 9, 30),
+                end_date=date(2025, 10, 11),
+                target_age_groups=["0-4", "5-17", "18-49", "50-64", "65+"],
+                states=["California"],
+            )
+
+
