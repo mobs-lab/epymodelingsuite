@@ -528,33 +528,29 @@ def smh_data_to_epydemix(
     # ========== LOAD AND EXTRACT SCENARIOS ==========
     vaccines = pd.read_csv(input_filepath)
 
-    # Extract scenario columns directly (keep full column names)
-    scenario_columns = [name for name in vaccines.columns if name.find("sc_") > -1]
-    scenario_columns = [name.split("sc_")[-1] for name in scenario_columns if name.find("sc_") > -1]
+    # Extract scenario names from columns containing "sc_"
+    sc_columns = [name for name in vaccines.columns if "sc_" in name]
+    scenario_names = [name.split("sc_")[-1] for name in sc_columns]
 
-    vaccines = vaccines.rename(
-        columns={name: name.split("sc_")[-1] for name in list(vaccines.columns) if name.find("sc_") > -1}
-    )
+    # Rename columns: "sc_A" -> "A"
+    vaccines = vaccines.rename(columns=dict(zip(sc_columns, scenario_names)))
 
-    if not scenario_columns:
-        raise ValueError("No scenario columns found in the input data. Expected columns with 'sc_' prefix.")
+    if not scenario_names:
+        raise ValueError("No scenario columns found in the input data. Expected columns containing 'sc_'.")
 
     # ========== PROCESS EACH SCENARIO ==========
     all_scenarios_df = pd.DataFrame()
 
-    for scenario_column in scenario_columns:
-        # Extract scenario name for labeling
-        scenario_name = scenario_column
-
+    for scenario_name in scenario_names:
         # Create a temporary dataset for this scenario with single Coverage column
         scenario_data = vaccines.copy()
 
         # Rename the scenario column to "Coverage" (expected by scenario_to_epydemix)
-        scenario_data["Coverage"] = scenario_data[scenario_column]
+        scenario_data["Coverage"] = scenario_data[scenario_name]
 
         # Remove all other scenario columns to avoid confusion
-        other_scenario_columns = [col for col in scenario_columns if col != scenario_column]
-        scenario_data = scenario_data.drop(columns=other_scenario_columns)
+        other_scenario_names = [col for col in scenario_names if col != scenario_name]
+        scenario_data = scenario_data.drop(columns=other_scenario_names)
 
         # Create temporary file for this scenario
         with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as temp_file:
