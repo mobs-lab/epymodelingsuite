@@ -172,20 +172,20 @@ def make_reweighting_factors(
 
     # For each model age group, calculate weights from all data age groups
     # Formula: weight = population(overlap) / population(data_group)
-    for i, a in enumerate(model_age_groups):
+    for model_group in model_age_groups:
         reweighting_factors = np.tile(
             0.0, len(data_age_groups)
         )  # list of len(data_age_groups) to store reweighting factors for each data age group
 
         # Bounded model group (e.g., "0-9", "50-64")
-        if "-" in a:
-            start_model, end_model = a.split("-")
+        if "-" in model_group:
+            start_model, end_model = model_group.split("-")
             start_model = int(start_model)
             end_model = int(end_model)
-            for j, b in enumerate(data_age_groups):
+            for data_idx, data_group in enumerate(data_age_groups):
                 # Bounded data group (e.g., "0-9")
-                if "-" in b:
-                    start_data, end_data = b.split("-")
+                if "-" in data_group:
+                    start_data, end_data = data_group.split("-")
                     start_data = int(start_data)
                     end_data = int(end_data)
                     # Skip if no overlap
@@ -212,13 +212,13 @@ def make_reweighting_factors(
                         overlap_start = start_model
                         overlap_end = end_model
 
-                    reweighting_factors[j] = _calculate_overlap_weight(
+                    reweighting_factors[data_idx] = _calculate_overlap_weight(
                         population, overlap_start, overlap_end, start_data, end_data
                     )
 
                 # Open-ended data group (e.g., "65+")
-                elif "+" in b:
-                    start_data = int(b.split("+")[0])
+                elif "+" in data_group:
+                    start_data = int(data_group.split("+")[0])
                     end_data = 84
 
                     # Same 4 overlap cases as above
@@ -235,18 +235,18 @@ def make_reweighting_factors(
                         overlap_start = start_model
                         overlap_end = end_model
 
-                    reweighting_factors[j] = _calculate_overlap_weight(
+                    reweighting_factors[data_idx] = _calculate_overlap_weight(
                         population, overlap_start, overlap_end, start_data, end_data
                     )
 
         # Open-ended model group (e.g., "65+")
-        elif "+" in a:
-            start_model = int(a.split("+")[0])
+        elif "+" in model_group:
+            start_model = int(model_group.split("+")[0])
             end_model = 84
-            for j, b in enumerate(data_age_groups):
+            for data_idx, data_group in enumerate(data_age_groups):
                 # Bounded data group (e.g., "0-9")
-                if "-" in b:
-                    start_data, end_data = b.split("-")
+                if "-" in data_group:
+                    start_data, end_data = data_group.split("-")
                     start_data = int(start_data)
                     end_data = int(end_data)
                     # Skip if no overlap
@@ -273,13 +273,13 @@ def make_reweighting_factors(
                         overlap_start = start_model
                         overlap_end = end_model
 
-                    reweighting_factors[j] = _calculate_overlap_weight(
+                    reweighting_factors[data_idx] = _calculate_overlap_weight(
                         population, overlap_start, overlap_end, start_data, end_data
                     )
 
                 # Open-ended data group (e.g., "65+")
-                elif "+" in b:
-                    start_data = int(b.split("+")[0])
+                elif "+" in data_group:
+                    start_data = int(data_group.split("+")[0])
                     end_data = 84
 
                     # Same 4 overlap cases as above
@@ -300,11 +300,11 @@ def make_reweighting_factors(
                         overlap_start = start_model
                         overlap_end = end_model
 
-                    reweighting_factors[j] = _calculate_overlap_weight(
+                    reweighting_factors[data_idx] = _calculate_overlap_weight(
                         population, overlap_start, overlap_end, start_data, end_data
                     )
 
-        reweighting_factors_dict[a] = reweighting_factors
+        reweighting_factors_dict[model_group] = reweighting_factors
 
     return reweighting_factors_dict
 
