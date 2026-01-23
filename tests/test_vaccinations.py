@@ -9,6 +9,8 @@ import pandas as pd
 import pytest
 
 from epymodelingsuite.vaccinations import (
+    _calculate_overlap_weight,
+    _parse_age_group_bounds,
     add_vaccination_schedule,
     get_age_groups_from_data,
     make_reweighting_factors,
@@ -1312,6 +1314,28 @@ class TestGetAgeGroupsFromData:
 
         expected_keys = {"0-4", "5-12", "13-17", "18-49", "50-64", "65+"}
         assert set(result.keys()) == expected_keys
+
+
+class TestParseAgeGroupBounds:
+    """Tests for _parse_age_group_bounds helper function."""
+
+    def test_bounded_group(self):
+        """Parse bounded age group like '0-9'."""
+        assert _parse_age_group_bounds("0-9") == (0, 9)
+        assert _parse_age_group_bounds("50-64") == (50, 64)
+
+    def test_open_ended_group_default_max(self):
+        """Parse open-ended age group like '65+' with default max_age."""
+        assert _parse_age_group_bounds("65+") == (65, 84)
+
+    def test_open_ended_group_custom_max(self):
+        """Parse open-ended age group with custom max_age."""
+        assert _parse_age_group_bounds("65+", max_age=100) == (65, 100)
+
+    def test_invalid_format_raises(self):
+        """Invalid format raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid age group format"):
+            _parse_age_group_bounds("65")
 
 
 class TestCalculateOverlapWeight:
