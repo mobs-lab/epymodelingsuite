@@ -301,6 +301,16 @@ def scenario_to_epydemix(
             f"Input data must contain the following columns: {required_columns}. Missing columns: {missing_columns}"
         )
 
+    # Validate Coverage values are within [0, 100]
+    invalid_coverage = vaccines.query("Coverage < 0 or Coverage > 100")
+    if not invalid_coverage.empty:
+        invalid_values = invalid_coverage["Coverage"]
+        raise ValueError(
+            f"Coverage values must be between 0 and 100 (percentage). "
+            f"Found {len(invalid_coverage)} invalid rows "
+            f"(min={invalid_values.min():.1f}, max={invalid_values.max():.1f})."
+        )
+
     # Get age groups from data
     data_age_groups_dict = get_age_groups_from_data(vaccines)
     data_age_groups = list(data_age_groups_dict.keys())
