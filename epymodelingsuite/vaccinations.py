@@ -590,8 +590,14 @@ def smh_data_to_epydemix(
 
 def reaggregate_vaccines(schedule: pd.DataFrame, actual_start_date: dt.date | pd.Timestamp) -> pd.DataFrame:
     """
-    Reaggregate a vaccination schedule so that it begins at the specified
-    actual start date.
+    Reaggregate a vaccination schedule so that it begins at the specified actual start date.
+
+    When a simulation starts mid-week, this function redistributes vaccination doses so the total
+    weekly doses are preserved but compressed into the remaining days of the week.
+
+    The function sums all doses from the beginning of the schedule up to and including the next
+    Saturday after `actual_start_date`, then redistributes them evenly across just the days from
+    `actual_start_date` to that Saturday.
 
     Parameters
     ----------
@@ -610,16 +616,23 @@ def reaggregate_vaccines(schedule: pd.DataFrame, actual_start_date: dt.date | pd
     -------
     pd.DataFrame
         A reaggregated vaccination schedule where:
-        - Doses from the actual start date up to the next Saturday are
-        redistributed evenly across that period.
+        - Doses from the start of the schedule up to the next Saturday are redistributed evenly from `actual_start_date` to that Saturday.
         - All subsequent rows from the original schedule are preserved.
-        - Returned DataFrame is sorted by 'dates'.
 
     Raises
     ------
     ValueError
         If `actual_start_date` is earlier than the first date or later
         than the last date in `schedule['dates']`.
+
+    Example
+    -------
+    If the original schedule has 100 doses/day from Sept 1 (Sun) to Sept 7 (Sat),
+    and `actual_start_date` is Sept 4 (Wed):
+
+    - Total doses for the week: 100 * 7 = 700
+    - Days remaining (Wed-Sat): 4
+    - Redistributed: 700 / 4 = 175 doses/day for Sept 4-7
     """
     # Normalize type
     actual_start_date = pd.Timestamp(actual_start_date)
