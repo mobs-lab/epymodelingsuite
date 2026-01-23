@@ -109,9 +109,10 @@ def make_reweighting_factors(
     ----------
     population_dict_model : dict[str, int]
         Dictionary mapping model age group names (e.g., "0-4", "5-17") to their populations.
+        Typically obtained from EpiModel.population (dict keyed by age group).
     data_age_groups : list[str]
-        Ordered list of data age group labels, with ranges given as "start-end"
-        or "start+" for the final open-ended group.
+        Ordered list of data age group labels from vaccination data source.
+        Typically obtained via get_age_groups_from_data().
     loc_epydemix : str
         Key used to select the population distribution from the Epydemix codebook.
 
@@ -120,6 +121,14 @@ def make_reweighting_factors(
     dict[str, list[float]]
         A dictionary mapping each model age group name to a list of reweighting factors,
         one for each data age group. Each list is the same length as `data_age_groups`.
+
+    Notes
+    -----
+    Age groups must be in one of two formats:
+    - Bounded: "start-end" (e.g., "0-4", "5-17", "50-64")
+    - Open-ended: "start+" (e.g., "65+")
+
+    Single ages (e.g., "65") are not supported. Use "65-65" for a single-year group.
     """
     import numpy as np
 
