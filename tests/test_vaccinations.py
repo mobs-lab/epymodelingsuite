@@ -1507,9 +1507,9 @@ class TestMakeReweightingFactors:
             ),
         ],
         ids=[
-            "exact_match_passes_by_accident",
-            "no_overlap_passes_by_accident",
-            "partial_overlap_fails",
+            "exact_match",
+            "no_overlap",
+            "partial_overlap",
         ],
     )
     def test_open_data_to_open_model(self, model_groups, data_groups, expected):
