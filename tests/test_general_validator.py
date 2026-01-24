@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import date
 from types import SimpleNamespace
 from typing import Any
@@ -28,65 +27,6 @@ from epymodelingsuite.schema.output import (
     QuantilesOutput,
     TrajectoriesOutput,
 )
-
-
-@dataclass
-class DummyCompartment:
-    id: str
-
-
-@dataclass
-class DummyTransition:
-    id: str
-    source: str
-    target: str
-
-
-@dataclass
-class DummyPopulation:
-    name: str | None = None
-
-
-@dataclass
-class DummyModel:
-    parameters: dict[str, Any]
-    compartments: list[DummyCompartment]
-    transitions: list[DummyTransition]
-    population: DummyPopulation | None = None
-
-
-@dataclass
-class DummyBaseConfig:
-    model: DummyModel | None
-
-
-@dataclass
-class DummySampling:
-    parameters: dict[str, Any]
-    compartments: dict[str, Any] | None = None
-
-
-@dataclass
-class DummyComparison:
-    simulation: list[str]
-
-
-@dataclass
-class DummyCalibration:
-    parameters: dict[str, Any]
-    comparison: list[DummyComparison] | None = None
-
-
-@dataclass
-class DummyModelset:
-    population_names: list[str] | None = None
-    sampling: DummySampling | None = None
-    calibration: DummyCalibration | None = None
-
-
-@dataclass
-class DummyModelsetConfig:
-    modelset: DummyModelset | None
 
 
 class TestEnsureParametersPresent:
@@ -172,111 +112,141 @@ class TestEnsureTransitionsValid:
 
 
 class TestValidateModelsetConsistency:
-    def create_base_config(self) -> DummyBaseConfig:
-        compartments = [
-            DummyCompartment(id="S"),
-            DummyCompartment(id="I"),
-            DummyCompartment(id="R"),
-        ]
+    def _create_base_config(
+        self,
+        compartment_ids: list[str] | None = None,
+        parameters: dict[str, Any] | None = None,
+        population_name: str | None = "US",
+        start_date: date | str = date(2024, 1, 1),
+        end_date: date = date(2024, 12, 31),
+    ) -> SimpleNamespace:
+        """Create a mock base config with model."""
+        compartment_ids = compartment_ids or ["S", "I", "R"]
+        compartments = [SimpleNamespace(id=cid) for cid in compartment_ids]
         transitions = [
-            DummyTransition(id="inf", source="S", target="I"),
-            DummyTransition(id="rec", source="I", target="R"),
+            SimpleNamespace(id="inf", source="S", target="I"),
+            SimpleNamespace(id="rec", source="I", target="R"),
         ]
-        parameters = {"beta": object(), "gamma": object()}
-        population = DummyPopulation(name="US")
-        model = DummyModel(
-            parameters=parameters, compartments=compartments, transitions=transitions, population=population
+        parameters = parameters or {"beta": object(), "gamma": object()}
+        population = SimpleNamespace(name=population_name)
+        timespan = SimpleNamespace(start_date=start_date, end_date=end_date)
+        model = SimpleNamespace(
+            parameters=parameters,
+            compartments=compartments,
+            transitions=transitions,
+            population=population,
+            timespan=timespan,
         )
-        return DummyBaseConfig(model=model)
+        return SimpleNamespace(model=model)
 
-    def create_sampling_config(
+    def _create_sampling_config(
         self,
         population_names: list[str] | None = None,
         sampling_params: dict[str, Any] | None = None,
         compartments: dict[str, Any] | None = None,
-    ) -> DummyModelsetConfig:
-        sampling = DummySampling(parameters=sampling_params or {"beta": object()}, compartments=compartments)
-        modelset = DummyModelset(population_names=population_names or ["US"], sampling=sampling)
-        return DummyModelsetConfig(modelset=modelset)
+    ) -> SimpleNamespace:
+        """Create a mock modelset config with sampling."""
+        sampling = SimpleNamespace(
+            parameters=sampling_params or {"beta": object()},
+            compartments=compartments,
+        )
+        modelset = SimpleNamespace(
+            population_names=population_names or ["US"],
+            sampling=sampling,
+            calibration=None,
+        )
+        return SimpleNamespace(modelset=modelset)
 
-    def create_calibration_config(
+    def _create_calibration_config(
         self,
         population_names: list[str] | None = None,
         calibration_params: dict[str, Any] | None = None,
-        comparisons: list[DummyComparison] | None = None,
-    ) -> DummyModelsetConfig:
-        calibration = DummyCalibration(
-            parameters=calibration_params or {"beta": object()},
-            comparison=comparisons or [DummyComparison(simulation=["S_to_I_total"])],
+        comparisons: list[SimpleNamespace] | None = None,
+    ) -> SimpleNamespace:
+        """Create a mock modelset config with calibration."""
+        fitting_window = SimpleNamespace(
+            start_date=date(2024, 1, 1),
+            end_date=date(2024, 6, 30),
+            epiweek_start_date=date(2024, 1, 1),
+            epiweek_end_date=date(2024, 6, 30),
         )
-        modelset = DummyModelset(population_names=population_names or ["US"], calibration=calibration)
-        return DummyModelsetConfig(modelset=modelset)
+        calibration = SimpleNamespace(
+            parameters=calibration_params or {"beta": object()},
+            comparison=comparisons or [SimpleNamespace(simulation=["S_to_I_total"])],
+            fitting_window=fitting_window,
+        )
+        modelset = SimpleNamespace(
+            population_names=population_names or ["US"],
+            sampling=None,
+            calibration=calibration,
+        )
+        return SimpleNamespace(modelset=modelset)
 
     def test_valid_sampling(self):
-        base_config = self.create_base_config()
-        sampling_config = self.create_sampling_config()
+        base_config = self._create_base_config()
+        sampling_config = self._create_sampling_config()
         validate_cross_config_consistency(base_config, sampling_config)
 
     def test_valid_calibration(self):
-        base_config = self.create_base_config()
-        calibration_config = self.create_calibration_config()
+        base_config = self._create_base_config()
+        calibration_config = self._create_calibration_config()
         validate_cross_config_consistency(base_config, calibration_config)
 
     def test_missing_base_model(self):
-        base_config = DummyBaseConfig(model=None)
-        sampling_config = self.create_sampling_config()
+        base_config = SimpleNamespace(model=None)
+        sampling_config = self._create_sampling_config()
         with pytest.raises(ValueError, match="Both base model and modelset must be defined"):
             validate_cross_config_consistency(base_config, sampling_config)
 
     def test_missing_modelset(self):
-        base_config = self.create_base_config()
-        sampling_config = DummyModelsetConfig(modelset=None)
+        base_config = self._create_base_config()
+        sampling_config = SimpleNamespace(modelset=None)
         with pytest.raises(ValueError, match="Both base model and modelset must be defined"):
             validate_cross_config_consistency(base_config, sampling_config)
 
     def test_no_sampling_or_calibration(self):
-        base_config = self.create_base_config()
-        modelset = DummyModelset(population_names=["US"], sampling=None, calibration=None)
-        sampling_config = DummyModelsetConfig(modelset=modelset)
+        base_config = self._create_base_config()
+        modelset = SimpleNamespace(population_names=["US"], sampling=None, calibration=None)
+        modelset_config = SimpleNamespace(modelset=modelset)
         with pytest.raises(ValueError, match="Modelset must provide a 'sampling' or 'calibration' section"):
-            validate_cross_config_consistency(base_config, sampling_config)
+            validate_cross_config_consistency(base_config, modelset_config)
 
     def test_missing_parameters(self):
-        base_config = self.create_base_config()
-        sampling_config = self.create_sampling_config(sampling_params={"delta": object()})
+        base_config = self._create_base_config()
+        sampling_config = self._create_sampling_config(sampling_params={"delta": object()})
         with pytest.raises(ValueError, match="Parameters in modelset not defined in base model"):
             validate_cross_config_consistency(base_config, sampling_config)
 
     def test_invalid_compartments(self):
-        base_config = self.create_base_config()
-        sampling_config = self.create_sampling_config(compartments={"X": object()})
+        base_config = self._create_base_config()
+        sampling_config = self._create_sampling_config(compartments={"X": object()})
         with pytest.raises(ValueError, match="Compartments in modelset not defined in base model"):
             validate_cross_config_consistency(base_config, sampling_config)
 
     def test_invalid_populations(self):
-        base_config = self.create_base_config()
-        sampling_config = self.create_sampling_config(population_names=["CA"])
+        base_config = self._create_base_config()
+        sampling_config = self._create_sampling_config(population_names=["CA"])
         with pytest.raises(ValueError, match="Populations in modelset not matching base model"):
             validate_cross_config_consistency(base_config, sampling_config)
 
     def test_invalid_transitions_in_calibration(self):
-        base_config = self.create_base_config()
-        comparison = DummyComparison(simulation=["death"])
-        calibration_config = self.create_calibration_config(comparisons=[comparison])
+        base_config = self._create_base_config()
+        comparison = SimpleNamespace(simulation=["death"])
+        calibration_config = self._create_calibration_config(comparisons=[comparison])
         with pytest.raises(ValueError, match="Transitions in calibration comparison not defined in base model"):
             validate_cross_config_consistency(base_config, calibration_config)
 
     def test_with_valid_output_config(self):
-        base_config = self.create_base_config()
-        sampling_config = self.create_sampling_config()
+        base_config = self._create_base_config()
+        sampling_config = self._create_sampling_config()
         output_config = OutputConfig(
             output=OutputConfiguration(quantiles=QuantilesOutput(compartments=["S_total", "I_total"]))
         )
         validate_cross_config_consistency(base_config, sampling_config, output_config)
 
     def test_with_invalid_output_config(self):
-        base_config = self.create_base_config()
-        sampling_config = self.create_sampling_config()
+        base_config = self._create_base_config()
+        sampling_config = self._create_sampling_config()
         output_config = OutputConfig(output=OutputConfiguration(quantiles=QuantilesOutput(compartments=["Hosp_total"])))
         with pytest.raises(ValueError, match="Compartments in .* not defined"):
             validate_cross_config_consistency(base_config, sampling_config, output_config)
