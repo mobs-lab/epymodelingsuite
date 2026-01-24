@@ -1702,3 +1702,96 @@ class TestSmhDataToEpydemix:
             )
 
 
+class TestRemoveVaccinationTransitions:
+    """Unit tests for remove_vaccination_transitions function."""
+
+    @pytest.fixture
+    def model_with_vaccination(self):
+        """Create a model with a vaccination transition."""
+        from epydemix.model import EpiModel
+
+        from epymodelingsuite.builders.base import set_population_from_config
+
+        model = EpiModel()
+        # Use complete age groups (must end with '+')
+        set_population_from_config(model, "US-CA", ["0-4", "5-17", "18-49", "50-64", "65+"])
+
+        model.add_compartments(["S", "S_vax", "I", "R"])
+        model.add_transition("S", "I", params=("beta", "I"), kind="mediated")
+        model.add_transition("I", "R", params="gamma", kind="spontaneous")
+        model.add_parameter(parameters_dict={"beta": 0.3, "gamma": 0.1})
+
+        # Add vaccination
+        vaccine_rate_function = make_vaccination_rate_function(origin_compartment="S", eligible_compartments=["S"])
+        model.register_transition_kind("vaccination", vaccine_rate_function)
+
+        # Create a simple vaccination schedule
+        dates = pd.date_range("2025-09-30", periods=10, freq="D")
+        vaccination_schedule = pd.DataFrame(
+            {
+                "dates": dates,
+                "location": ["US-CA"] * 10,
+                "0-4": [100.0] * 10,
+                "5-17": [200.0] * 10,
+                "18-49": [500.0] * 10,
+                "50-64": [300.0] * 10,
+                "65+": [400.0] * 10,
+            }
+        )
+        vaccine_schedule = (vaccination_schedule[["0-4", "5-17", "18-49", "50-64", "65+"]].values,)
+        model.add_transition("S", "S_vax", params=vaccine_schedule, kind="vaccination")
+
+        return model
+
+    def test_removes_from_transitions_list(self, model_with_vaccination):
+        """Removes vaccination transition from model.transitions_list."""
+        model = model_with_vaccination
+
+        # Verify vaccination transition exists
+        vax_transitions_before = [t for t in model.transitions_list if t.kind == "vaccination"]
+        assert len(vax_transitions_before) == 1, "Should have vaccination transition before removal"
+
+        # Remove vaccination transition
+        model = remove_vaccination_transitions(model, "S", "S_vax")
+
+        # Verify it's removed
+        vax_transitions_after = [t for t in model.transitions_list if t.kind == "vaccination"]
+        assert len(vax_transitions_after) == 0, "Vaccination transition should be removed"
+
+    def test_removes_from_transitions_dict(self, model_with_vaccination):
+        """Removes vaccination transition from model.transitions dict."""
+        model = model_with_vaccination
+
+        # Verify vaccination transition exists in transitions dict
+        s_transitions_before = [t for t in model.transitions.get("S", []) if t.kind == "vaccination"]
+        assert len(s_transitions_before) == 1, "Should have vaccination transition in S transitions"
+
+        # Remove vaccination transition
+        model = remove_vaccination_transitions(model, "S", "S_vax")
+
+        # Verify it's removed from transitions dict
+        s_transitions_after = [t for t in model.transitions.get("S", []) if t.kind == "vaccination"]
+        assert len(s_transitions_after) == 0, "Vaccination transition should be removed from transitions dict"
+
+    def test_no_error_when_no_matching_transition(self):
+        """Does nothing if no matching transition exists."""
+        from epydemix.model import EpiModel
+
+        from epymodelingsuite.builders.base import set_population_from_config
+
+        model = EpiModel()
+        # Use complete age groups (must end with '+')
+        set_population_from_config(model, "US-CA", ["0-4", "5-17", "18-49", "50-64", "65+"])
+
+        model.add_compartments(["S", "S_vax", "I", "R"])
+        model.add_transition("S", "I", params=("beta", "I"), kind="mediated")
+        model.add_transition("I", "R", params="gamma", kind="spontaneous")
+        model.add_parameter(parameters_dict={"beta": 0.3, "gamma": 0.1})
+
+        transitions_before = len(model.transitions_list)
+
+        # Should not raise error even though no vaccination transition exists
+        model = remove_vaccination_transitions(model, "S", "S_vax")
+
+        transitions_after = len(model.transitions_list)
+        assert transitions_before == transitions_after, "No transitions should be removed"
