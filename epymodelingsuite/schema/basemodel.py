@@ -245,8 +245,12 @@ class Seasonality(BaseModel):
     method: SeasonalityMethodEnum = Field(description="Method for defining a seasonally varying function")
     seasonality_max_date: date = Field(description="Date of seasonality peak (max transmissibility)")
     seasonality_min_date: date | None = Field(None, description="Date of seasonality trough (min transmissibility)")
-    max_value: float = Field(description="Maximum value that the parameter can take after scaling.")
-    min_value: float = Field(description="Minimum value that the parameter can take after scaling.")
+    max_value: float = Field(
+        description="Together with min_value, determines the trough as min_value/max_value. Typically set to 1.0. The output always peaks at 1.0 regardless of this value."
+    )
+    min_value: float = Field(
+        description="Together with max_value, determines the trough as min_value/max_value. When max_value=1.0, this directly equals the trough factor (e.g., 0.2 = 20% of peak)."
+    )
 
     @field_validator("seasonality_min_date")
     @classmethod
