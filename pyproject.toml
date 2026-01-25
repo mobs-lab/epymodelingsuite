@@ -103,3 +103,11 @@ ignore = [
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"
+
+[tool.pytest.ini_options]
+markers = [
+    "dynamics: tests that verify epidemic dynamics behavior",
+    "slow: tests that take a long time to run",
+    "nightly: tests that take longer than 'slow' tests, including statistical validation tests (run nightly or manually)",
+]
+addopts = "-m 'not nightly'"
