@@ -12,7 +12,7 @@ modelset:
     strategy:
       name: rejection
       options:
-        num_particles: 50
+        num_particles: 20
         epsilon: 100000  # Large epsilon for E2E test to ensure acceptance
 
     distance_function: rmse

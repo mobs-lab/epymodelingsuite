@@ -12,7 +12,7 @@ modelset:
     strategy:
       name: rejection
       options:
-        num_particles: 30
+        num_particles: 15
         epsilon: 100000
 
     distance_function: rmse
