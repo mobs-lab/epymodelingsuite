@@ -17,7 +17,7 @@ from ..schema.output import (
     OutputConfig,
     OutputObject,
     TabularOutputTypeEnum,
-    get_flusight_quantiles,
+    get_metrocast_quantiles,
 )
 from ..telemetry import ExecutionTelemetry
 from ..utils.location import (
@@ -687,6 +687,7 @@ def make_prop_ed_flusightforecast(
     calibration_quantiles: pd.DataFrame | None = None,
     projection_quantiles: pd.DataFrame | None = None,
     reference_date: date | None = None,
+    metrocast: bool = False,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Create FluSight prop ed forecasts from hosp forecast and surveillance data.
@@ -705,6 +706,8 @@ def make_prop_ed_flusightforecast(
         Quantiles from the projection phase (if config.strategy is 'transition')
     reference_date: date | None
         Reference date for calculating horizons (required if pred_hosp is empty)
+    metrocast: bool
+        Use horizons for metrocast (0-3)
 
     Returns
     -------
@@ -758,7 +761,7 @@ def make_prop_ed_flusightforecast(
             formatted = copy.deepcopy(projection_quantiles)
 
             # Horizons required for quantile outputs
-            flusight_horizons = range(-1, 4)
+            horizons = range(4) if metrocast == True else range(-1, 4)
 
             # Get the reference date from parameter or pred_hosp
             if reference_date is None:
@@ -778,7 +781,7 @@ def make_prop_ed_flusightforecast(
                 .apply(lambda x: x / np.timedelta64(1, "W"))
                 .astype(int),
             )
-            formatted = formatted[formatted.horizon.isin(flusight_horizons)]
+            formatted = formatted[formatted.horizon.isin(horizons)]
 
             # Rename and format columns
             formatted.rename(
@@ -800,10 +803,10 @@ def make_prop_ed_flusightforecast(
                     "location",
                     "reference_date",
                     "horizon",
+                    "target_end_date",
                     "target",
                     "output_type",
                     "output_type_id",
-                    "target_end_date",
                     "value",
                 ]
             ]
@@ -1383,6 +1386,12 @@ def generate_calibration_outputs(
     if output.flusight_format:
         logger.info("Generating FluSight forecast hub outputs")
 
+        # Get quantile selection
+        if output.flusight_format.metrocast:
+            flusight_quantiles = get_metrocast_quantiles()
+        else:
+            flusight_quantiles = output.flusight_format.quantiles
+
         # Quantile forecasts (hospitalizations)
         if output.flusight_format.hospitalizations:
             logger.info("  - Generating FluSight quantile forecasts (hospitalizations)")
@@ -1390,7 +1399,7 @@ def generate_calibration_outputs(
                 try:
                     # FRAGILE: the name 'hospitalizations' is user-supplied in the modelset as the column to look for in the surveillance data.
                     quanf_df = calibration.results.get_projection_quantiles(
-                        quantiles=get_flusight_quantiles(), variables=["date", "quantile", "hospitalizations"]
+                        quantiles=flusight_quantiles, variables=["date", "quantile", "hospitalizations"]
                     )
                 except ValueError:
                     warnings.add(
@@ -1420,7 +1429,7 @@ def generate_calibration_outputs(
                 for calibration in calibrations:
                     try:
                         quancalflu_df = calibration.results.get_calibration_quantiles(
-                            quantiles=get_flusight_quantiles(), variables=["data", "date"]
+                            quantiles=flusight_quantiles, variables=["data", "date"]
                         )
                         quancalflu_df.insert(0, "primary_id", calibration.primary_id)
                         quancalflu_df.insert(1, "seed", calibration.seed)
@@ -1438,7 +1447,7 @@ def generate_calibration_outputs(
                 for calibration in calibrations:
                     try:
                         quanproj_df = calibration.results.get_projection_quantiles(
-                            quantiles=get_flusight_quantiles(), variables=["date", "quantile", transition_name]
+                            quantiles=flusight_quantiles, variables=["date", "quantile", transition_name]
                         )
                         quanproj_df.insert(0, "primary_id", calibration.primary_id)
                         quanproj_df.insert(1, "seed", calibration.seed)

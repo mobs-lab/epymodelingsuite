@@ -126,11 +126,11 @@ def validate_calibration_data_for_config_set(
         passed and error_message contains the error if validation failed.
     """
     try:
+        from ..builders.utils import get_data_in_window
         from ..config_loader import (
             load_basemodel_config_from_file,
             load_calibration_config_from_file,
         )
-        from ..builders.utils import get_data_in_window
         from ..utils import get_location_codebook
 
         # Load configs
