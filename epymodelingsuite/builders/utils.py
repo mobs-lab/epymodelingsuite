@@ -4,6 +4,7 @@ import pandas as pd
 
 from ..schema.calibration import CalibrationConfig
 from ..utils import convert_location_name_format
+from ..utils.location import parse_population_name
 
 
 def get_data_in_window(data: pd.DataFrame, calibration: CalibrationConfig, sort: bool = True) -> pd.DataFrame:
@@ -45,7 +46,10 @@ def get_data_in_window(data: pd.DataFrame, calibration: CalibrationConfig, sort:
 
 
 def get_data_in_location(
-    data: pd.DataFrame, population_name: str, location_key: str, location_format: str = "ISO"
+    data: pd.DataFrame,
+    population_name: str,
+    location_key: str,
+    data_location_format: str = "ISO",
 ) -> pd.DataFrame:
     """
     Get data for a specific location.
@@ -55,25 +59,33 @@ def get_data_in_location(
     data : pd.DataFrame
         The full dataset to filter.
     population_name : str
-        Name of the population/location.
+        Population name in epydemix format.
+        - For ISO locations, use epydemix format (e.g., "United_States_Massachusetts").
+        - For metrocast locations, use prefixed format (e.g., "metrocast_location_denver").
     location_key : str
-        The column name containing location identifiers.
-    location_format : str
-        Format of location identifiers in the data. Options: ISO, FIPS, abbreviation, name, epydemix_population.
-        Default is "ISO".
+        The column name containing location identifiers in the data.
+    data_location_format : str
+        Format of location identifiers in the data. Defaults to "ISO".
+        Options for ISO locations: ISO, FIPS, abbreviation, name, epydemix_population
+        Options for metrocast locations: metrocast_location_id, original_location_code, name
 
     Returns
     -------
     pd.DataFrame
         Filtered data for the location.
     """
-    location_iso = convert_location_name_format(population_name, "ISO")
+    location_name, location_type = parse_population_name(population_name)
 
-    if location_format == "ISO":
-        # Direct match (current behavior)
-        return data[data[location_key] == location_iso]
-    # Convert observed data values to ISO using known input format
-    data_iso = data[location_key].apply(
-        lambda x: convert_location_name_format(str(x), "ISO", input_format=location_format)
-    )
-    return data[data_iso == location_iso]
+    if location_type == "iso":
+        location_iso = convert_location_name_format(location_name, "ISO")
+        if data_location_format == "ISO":
+            return data[data[location_key] == location_iso]
+        # Convert data values to ISO and match
+        data_iso = data[location_key].apply(
+            lambda x: convert_location_name_format(str(x), "ISO", input_format=data_location_format)
+        )
+        return data[data_iso == location_iso]
+
+    # Metrocast location: convert location_name to the format used in data
+    target_value = convert_location_name_format(location_name, data_location_format, location_type="metrocast_location")
+    return data[data[location_key] == target_value]
