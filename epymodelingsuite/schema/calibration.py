@@ -1,4 +1,5 @@
 import logging
+import warnings
 from collections.abc import Callable
 from datetime import date, timedelta
 from enum import Enum
@@ -8,6 +9,7 @@ from epiweeks import Week
 from pydantic import BaseModel, Field, computed_field, field_validator, model_validator
 
 from ..utils import parse_timedelta, validate_iso3166
+from ..utils.location import validate_location_by_type
 from .common import DateParameter, Distribution, Meta
 
 logger = logging.getLogger(__name__)
@@ -98,9 +100,19 @@ class ComparisonSpec(BaseModel):
     )
     observed_location_format: str = Field(
         default="ISO",
-        description="Format of location identifiers in observed data. Options: ISO, FIPS, abbreviation, name, epydemix_population",
+        description="Format of location identifiers in observed data. Options: ISO, FIPS, abbreviation, name, epydemix_population, metrocast_location_id",
     )
     simulation: list[str] = Field(description="List of transition names to sum for comparison (e.g. I_to_R)")
+
+    @field_validator("observed_location_format")
+    @classmethod
+    def validate_observed_location_format(cls, v: str) -> str:
+        """Ensure observed_location_format is a valid option."""
+        valid_formats = {"ISO", "FIPS", "abbreviation", "name", "epydemix_population", "metrocast_location_id"}
+        if v not in valid_formats:
+            msg = f"observed_location_format must be one of {valid_formats}, got '{v}'"
+            raise ValueError(msg)
+        return v
 
 
 class CalibrationParameter(BaseModel):
@@ -384,19 +396,53 @@ class CalibrationModelset(BaseModel):
     """Modelset configuration for calibration."""
 
     meta: Meta | None = Field(None, description="General metadata.")
-    population_names: list[str] = Field(description="List of population names")
+    population_names: list[str | dict[str, str]] = Field(
+        description="List of population names (strings or dicts with 'name' and 'type' fields)"
+    )
     calibration: CalibrationConfiguration = Field(description="Calibration configuration")
 
     @field_validator("population_names")
     @classmethod
     def validate_populations(cls, v):
-        """Validate each population name in the list."""
+        """
+        Validate each population name in the list.
+
+        Supports:
+        - String format (auto-detect type): "US-MA", "denver"
+        - Dict format (explicit type): {"name": "denver", "type": "metrocast_location"}
+        - Keywords: "all", "all-states", "all-metrocast"
+        """
         validated_populations = []
         for population in v:
-            if population == "all":
+            if isinstance(population, str):
+                # String format - keywords or auto-detect
+                if population == "all":
+                    warnings.warn(
+                        "The 'all' keyword is deprecated. Use 'all-states' instead.",
+                        DeprecationWarning,
+                        stacklevel=2,
+                    )
+                    validated_populations.append(population)
+                elif population in ("all-states", "all-metrocast"):
+                    validated_populations.append(population)
+                else:
+                    # Auto-detect: try ISO validation first
+                    try:
+                        validated_populations.append(validate_iso3166(population))
+                    except ValueError:
+                        # If not ISO, try metrocast location validation
+                        validated_populations.append(validate_location_by_type(population, "metrocast_location"))
+            elif isinstance(population, dict):
+                # Dict format - explicit type
+                name = population.get("name")
+                loc_type = population.get("type", "iso")
+                if not name:
+                    raise ValueError("population dict must have 'name' field")
+                validate_location_by_type(name, loc_type)
                 validated_populations.append(population)
             else:
-                validated_populations.append(validate_iso3166(population))
+                raise ValueError(f"Invalid population format: {population}")
+
         return validated_populations
 
 

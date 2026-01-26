@@ -81,7 +81,7 @@ class TestOutputConfigurationSurveillanceValidation:
                 options=OutputOptions(
                     surveillance={
                         "hosp": ObservedValuesConfig(
-                            data_path="/fake/path.csv",
+                            data_path="/tmp/data.csv",
                             value_column="value",
                             date_column="date",
                             location_column="location",
@@ -106,7 +106,7 @@ class TestOutputConfigurationSurveillanceValidation:
             options=OutputOptions(
                 surveillance={
                     "prop_ed": ObservedValuesConfig(
-                        data_path="/fake/path.csv",
+                        data_path="/tmp/data.csv",
                         value_column="value",
                         date_column="date",
                         location_column="location",
@@ -169,3 +169,76 @@ class TestCategoricalPlotConfigValidation:
             # colors will use default which also has 5 elements
         )
         assert len(config.categories) == len(config.colors)
+
+
+class TestObservedValuesConfigLocationFormat:
+    """Tests for ObservedValuesConfig location_format validation."""
+
+    def test_default_location_format_is_iso(self):
+        """Test that default location_format is ISO."""
+        config = ObservedValuesConfig(
+            data_path="/tmp/data.csv",
+            value_column="value",
+            date_column="date",
+            location_column="location",
+        )
+        assert config.location_format == "ISO"
+
+    def test_iso_location_format_is_valid(self):
+        """Test that ISO location format is accepted."""
+        config = ObservedValuesConfig(
+            data_path="/tmp/data.csv",
+            value_column="value",
+            date_column="date",
+            location_column="location",
+            location_format="ISO",
+        )
+        assert config.location_format == "ISO"
+
+    def test_fips_location_format_is_valid(self):
+        """Test that FIPS location format is accepted."""
+        config = ObservedValuesConfig(
+            data_path="/tmp/data.csv",
+            value_column="value",
+            date_column="date",
+            location_column="location",
+            location_format="FIPS",
+        )
+        assert config.location_format == "FIPS"
+
+    def test_metrocast_location_id_format_is_valid(self):
+        """Test that metrocast_location_id location format is accepted.
+
+        This is a regression test to ensure metrocast location format
+        is properly supported in output configs.
+        """
+        config = ObservedValuesConfig(
+            data_path="/tmp/data.csv",
+            value_column="value",
+            date_column="date",
+            location_column="location",
+            location_format="metrocast_location_id",
+        )
+        assert config.location_format == "metrocast_location_id"
+
+    def test_epydemix_population_format_is_valid(self):
+        """Test that epydemix_population location format is accepted."""
+        config = ObservedValuesConfig(
+            data_path="/tmp/data.csv",
+            value_column="value",
+            date_column="date",
+            location_column="location",
+            location_format="epydemix_population",
+        )
+        assert config.location_format == "epydemix_population"
+
+    def test_invalid_location_format_raises_error(self):
+        """Test that invalid location format raises ValueError."""
+        with pytest.raises(ValueError, match="location_format must be one of"):
+            ObservedValuesConfig(
+                data_path="/tmp/data.csv",
+                value_column="value",
+                date_column="date",
+                location_column="location",
+                location_format="invalid_format",
+            )
