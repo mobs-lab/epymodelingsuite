@@ -22,7 +22,8 @@ from ..schema.output import (
     QuantilesOutputTypeEnum,
 )
 from .core import (
-    _format_location_name,
+    format_location_name,
+    sort_locations_by_state,
     figure_to_output_object,
     plot_calibration_projection,
     plot_calibration_projection_grid,
@@ -121,7 +122,10 @@ def _prepare_surveillance_for_location(
         return df_surv_full, df_surv_filtered, surveillance_start_date
 
     surv = get_data_in_location(
-        surveillance, location, surveillance_config.location_column, surveillance_config.location_format
+        surveillance,
+        location,
+        surveillance_config.location_column,
+        surveillance_config.location_format,
     )
 
     # Full surveillance (no filtering)
@@ -318,7 +322,9 @@ def _create_filtered_plot(
         df_surveillance=df_surv if output_config.show_surveillance else None,
         fitting_window_start=fitting_window_start if output_config.show_fitting_window_line else None,
         fitting_window_end=fitting_window_end if output_config.show_fitting_window_line else None,
-        title=_format_location_name(location),
+        title=format_location_name(location),
+        xlabel_interval=output_config.xlabel_interval,
+        ylabel=plots_config.quantiles.ylabel,
     )
 
 
@@ -371,7 +377,9 @@ def _create_full_plot(
         df_surveillance=df_surv if output_config.show_surveillance else None,
         fitting_window_start=fitting_window_start if output_config.show_fitting_window_line else None,
         fitting_window_end=fitting_window_end if output_config.show_fitting_window_line else None,
-        title=_format_location_name(location),
+        title=format_location_name(location),
+        xlabel_interval=output_config.xlabel_interval,
+        ylabel=plots_config.quantiles.ylabel,
     )
 
 
@@ -421,6 +429,10 @@ def _create_sidebyside_plot(
     tuple
         (fig, (ax_full, ax_filtered)) matplotlib figure and tuple of axes
     """
+    # Get xlabel_interval for each panel from panel configs
+    xlabel_interval_full = output_config.full_panel.xlabel_interval if output_config.full_panel else None
+    xlabel_interval_filtered = output_config.filtered_panel.xlabel_interval if output_config.filtered_panel else None
+
     return plot_calibration_projection_sidebyside(
         calibration_quantiles=cal_quant if output_config.show_calibration else None,
         projection_quantiles_full=proj_quant_full if output_config.show_projection else None,
@@ -432,9 +444,12 @@ def _create_sidebyside_plot(
         projection_color=plots_config.quantiles.projection.color,
         fitting_window_start=fitting_window_start if output_config.show_fitting_window_line else None,
         fitting_window_end=fitting_window_end if output_config.show_fitting_window_line else None,
-        title=_format_location_name(location),
+        title=format_location_name(location),
         figsize=output_config.figsize,
         spacing=output_config.spacing,
+        ylabel=plots_config.quantiles.ylabel,
+        xlabel_interval_full=xlabel_interval_full,
+        xlabel_interval_filtered=xlabel_interval_filtered,
     )
 
 
@@ -940,6 +955,9 @@ def generate_quantile_grid_plot(
                             location_fitting_window_ends if output_config.show_fitting_window_line else None
                         ),
                         panels_per_row=plots_config.quantiles.grid.panels_per_row,
+                        ylabel=plots_config.quantiles.ylabel,
+                        xlabel_interval=output_config.xlabel_interval,
+                        suptitle=plots_config.quantiles.suptitle,
                     )
 
                     # Package output
@@ -1028,7 +1046,7 @@ def generate_quantile_grid_plot(
                         locations.update(location_proj_quants_full_sbs.keys())
                     if location_proj_quants_filtered_sbs:
                         locations.update(location_proj_quants_filtered_sbs.keys())
-                    locations = sorted(locations)
+                    locations = sort_locations_by_state(locations)
 
                     if locations:
                         n_locations = len(locations)
@@ -1113,6 +1131,14 @@ def generate_quantile_grid_plot(
                             )
 
                             # Use core helper to draw both panels on provided axes
+                            # Get xlabel_interval for each panel from panel configs
+                            x_interval_full = (
+                                output_config.full_panel.xlabel_interval if output_config.full_panel else None
+                            )
+                            x_interval_filtered = (
+                                output_config.filtered_panel.xlabel_interval if output_config.filtered_panel else None
+                            )
+
                             plot_calibration_projection_sidebyside(
                                 calibration_quantiles=cal_quant,
                                 projection_quantiles_full=proj_quant_full,
@@ -1124,9 +1150,12 @@ def generate_quantile_grid_plot(
                                 projection_color=plots_config.quantiles.projection.color,
                                 fitting_window_start=fitting_window_start,
                                 fitting_window_end=fitting_window_end,
-                                title=_format_location_name(location),
+                                title=format_location_name(location),
                                 ax_full=ax_full,
                                 ax_filtered=ax_filtered,
+                                ylabel=plots_config.quantiles.ylabel if col_start == 0 else None,
+                                xlabel_interval_full=x_interval_full,
+                                xlabel_interval_filtered=x_interval_filtered,
                             )
 
                             # Hide legends except for leftmost column
@@ -1145,6 +1174,9 @@ def generate_quantile_grid_plot(
                             r = idx // ncols
                             c = idx % ncols
                             axes[r, c].axis("off")
+
+                        if plots_config.quantiles.suptitle:
+                            fig.suptitle(plots_config.quantiles.suptitle)
 
                         plt.tight_layout()
 
@@ -1396,7 +1428,7 @@ def generate_categorical_plots(
 
     # Convert location codes to readable names
     df_rate_trends = df_rate_trends.copy()
-    df_rate_trends["location"] = df_rate_trends["location"].apply(_format_location_name)
+    df_rate_trends["location"] = df_rate_trends["location"].apply(format_location_name)
 
     # Default category labels (prettier display names)
     default_category_labels = {

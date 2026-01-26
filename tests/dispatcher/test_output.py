@@ -389,3 +389,67 @@ class TestGenerateCategoricalPlots:
         # Assert: warning mentions "rate-trend categorical forecasts"
         assert any("No rate-trend categorical forecasts found" in rec.message for rec in caplog.records)
         assert any("flusight_format.rate_trends" in rec.message for rec in caplog.records)
+
+
+class TestGetHubLocationId:
+    """Tests for get_hub_location_id function."""
+
+    def test_iso_location_returns_fips(self):
+        """Test that ISO locations return FIPS codes."""
+        from epymodelingsuite.dispatcher.output import get_hub_location_id
+
+        # California
+        result = get_hub_location_id("United_States_California")
+        assert result == "06"
+
+        # Texas
+        result = get_hub_location_id("United_States_Texas")
+        assert result == "48"
+
+    def test_metrocast_location_returns_location_id(self):
+        """Test that metrocast locations return metrocast_location_id."""
+        from epymodelingsuite.dispatcher.output import get_hub_location_id
+
+        # Denver
+        result = get_hub_location_id("metrocast_location_denver")
+        assert result == "denver"
+
+        # Boston
+        result = get_hub_location_id("metrocast_location_boston")
+        assert result == "boston"
+
+        # NC flu region
+        result = get_hub_location_id("metrocast_location_nenc")
+        assert result == "nenc"
+
+
+class TestGetPlotLocationLabel:
+    """Tests for get_plot_location_label function."""
+
+    def test_iso_location_returns_name(self):
+        """Test that ISO locations return human-readable names."""
+        from epymodelingsuite.dispatcher.output import get_plot_location_label
+
+        # California
+        result = get_plot_location_label("United_States_California")
+        assert result == "California"
+
+        # Massachusetts
+        result = get_plot_location_label("United_States_Massachusetts")
+        assert result == "Massachusetts"
+
+    def test_metrocast_location_returns_short_name(self):
+        """Test that metrocast locations return short name from CSV."""
+        from epymodelingsuite.dispatcher.output import get_plot_location_label
+
+        # Denver - same as full name
+        result = get_plot_location_label("metrocast_location_denver")
+        assert result == "Denver, CO"
+
+        # Boston - shortened from "Boston Metro, South Shore, Cape & Islands, MA"
+        result = get_plot_location_label("metrocast_location_boston")
+        assert result == "Greater Boston, MA"
+
+        # NC flu region
+        result = get_plot_location_label("metrocast_location_nenc")
+        assert result == "Northeastern, NC"

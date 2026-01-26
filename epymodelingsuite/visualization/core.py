@@ -10,7 +10,11 @@ import numpy as np
 import pandas as pd
 
 from ..schema.output import FigureOutputTypeEnum, OutputObject
-from ..utils.location import convert_location_name_format
+from ..utils.location import (
+    convert_location_name_format,
+    get_parent_region,
+    parse_population_name,
+)
 
 # Constants
 MEDIAN_QUANTILE = 0.5
@@ -19,22 +23,74 @@ MEDIAN_QUANTILE = 0.5
 # == Helper functions ==
 
 
-def _format_location_name(location: str) -> str:
+def _get_location_sort_key(location: str) -> tuple[str, str]:
     """
-    Convert location name from epydemix format to clean readable name.
+    Get sort key for a location (state, location_name).
+
+    For metrocast locations, returns (state_abbreviation, location_name).
+    For ISO locations, returns (state_code, location_name).
+    For unknown locations, returns ("ZZZ", location) to sort them last.
 
     Parameters
     ----------
     location : str
-        Location name in any format (e.g., "United_States_Texas", "United_States").
+        Location name (e.g., "denver", "US-MA").
+
+    Returns
+    -------
+    tuple[str, str]
+        (state_key, location_name) for sorting.
+    """
+    try:
+        # Try to get parent state abbreviation
+        state_abbrev = get_parent_region(location, output_format="abbreviation")
+        return (state_abbrev, location)
+    except (ValueError, KeyError):
+        # For ISO locations or unknown, extract state code or sort last
+        if "-" in location:
+            # ISO format like "US-MA" -> use "MA" as state key
+            return (location.split("-")[-1], location)
+        return ("ZZZ", location)
+
+
+def sort_locations_by_state(locations: list[str] | set[str]) -> list[str]:
+    """
+    Sort locations by state, then alphabetically within each state.
+
+    Parameters
+    ----------
+    locations : list or set of str
+        Location names to sort.
+
+    Returns
+    -------
+    list of str
+        Sorted location names.
+    """
+    return sorted(locations, key=_get_location_sort_key)
+
+
+def format_location_name(location: str) -> str:
+    """
+    Convert location name from epydemix format to clean readable name.
+
+    For metrocast locations, uses short name (e.g., "Greater Boston, MA").
+    For ISO locations, uses standard name (e.g., "Texas").
+
+    Parameters
+    ----------
+    location : str
+        Location name in any format (e.g., "United_States_Texas", "metrocast_location_denver").
 
     Returns
     -------
     str
-        Clean location name (e.g., "Texas", "United States").
+        Clean location name (e.g., "Texas", "Greater Boston, MA").
     """
     try:
-        # Convert from epydemix format to name format
+        location_name, location_type = parse_population_name(location)
+        if location_type == "metrocast_location":
+            return convert_location_name_format(location_name, "name_short", location_type="metrocast_location")
         return convert_location_name_format(location, "name")
     except (AssertionError, KeyError, IndexError):
         # If conversion fails, return original name with underscores replaced
@@ -54,6 +110,7 @@ def plot_quantiles(  # noqa: PLR0913
     ax: plt.Axes | None = None,
     marker: str | None = None,
     zorder: float = 2,
+    ylabel: str | None = None,
 ) -> tuple[plt.Figure | None, plt.Axes]:
     """
     Plot quantile ribbons from quantile DataFrame.
@@ -85,6 +142,8 @@ def plot_quantiles(  # noqa: PLR0913
         Marker style for median line points (e.g., 'o', 's', '^'). If None, no markers, by default None.
     zorder : float, optional
         Z-order for layering (higher values are on top), by default 2.
+    ylabel : str | None, optional
+        Y-axis label (e.g., 'Hospitalizations'). If None, no label is shown, by default None.
 
     Returns
     -------
@@ -150,9 +209,10 @@ def plot_quantiles(  # noqa: PLR0913
     legend_handles = []
     legend_labels = []
 
-    # Add 95% CrI to legend
+    # Add outer CrI to legend (label based on quantile range)
+    cri_percent = int(round((quantiles[-1] - quantiles[0]) * 100))
     legend_handles.append(mpatches.Patch(color=color, alpha=0.3))
-    legend_labels.append("95% CrI")
+    legend_labels.append(f"{cri_percent}% CrI")
 
     # Plot IQR ribbon (25th-75th percentile) on top if available
     if 0.25 in df_quantile.columns and 0.75 in df_quantile.columns:
@@ -198,7 +258,7 @@ def plot_quantiles(  # noqa: PLR0913
     if title is not None:
         ax.set_title(title)
     ax.set_xlabel("")
-    ax.set_ylabel("")
+    ax.set_ylabel(ylabel or "")
     ax.grid(visible=True, linestyle="--", alpha=0.3, linewidth=0.5)
 
     # Add legend
@@ -285,7 +345,7 @@ def plot_quantiles_grid(  # noqa: PLR0913
             date_col=date_col,
             quantile_col=quantile_col,
             color=color,
-            title=_format_location_name(location),
+            title=format_location_name(location),
             ax=ax,
         )
 
@@ -322,7 +382,8 @@ def plot_calibration_projection(  # noqa: PLR0913
     fitting_window_end: str | pd.Timestamp | datetime | None = None,
     title: str | None = None,
     ax: plt.Axes | None = None,
-    weekly_x_labels: bool = False,
+    xlabel_interval: str | None = None,
+    ylabel: str | None = None,
 ) -> tuple[plt.Figure | None, plt.Axes]:
     """
     Plot calibration and projection quantiles on top of each other for a single location.
@@ -364,6 +425,11 @@ def plot_calibration_projection(  # noqa: PLR0913
         Plot title, by default None.
     ax : plt.Axes | None, optional
         Matplotlib axes to plot on. If None, creates new figure, by default None.
+    xlabel_interval : str | None, optional
+        X-axis label interval as pandas offset string (e.g., 'W-SAT', '2W-SAT', 'MS').
+        None = auto (matplotlib default), by default None.
+    ylabel : str | None, optional
+        Y-axis label (e.g., 'Hospitalizations'). If None, no label is shown, by default None.
 
     Returns
     -------
@@ -480,6 +546,7 @@ def plot_calibration_projection(  # noqa: PLR0913
 
     if title is not None:
         ax.set_title(title)
+    ax.set_ylabel(ylabel or "")
 
     # Recreate combined legend with both projection and calibration
     all_handles = []
@@ -498,12 +565,17 @@ def plot_calibration_projection(  # noqa: PLR0913
     if all_handles:
         ax.legend(all_handles, all_labels, loc="upper left", fontsize=8)
 
-    # Apply weekly x-axis labels if requested
-    if weekly_x_labels:
-        from matplotlib.dates import DateFormatter, WeekdayLocator
+    # Apply x-axis label interval if specified (pandas offset string like 'W-SAT', '2W-SAT', 'MS')
+    if xlabel_interval is not None:
+        from matplotlib.dates import DateFormatter, num2date
 
-        ax.xaxis.set_major_locator(WeekdayLocator(byweekday=5))  # Saturday = 5 (epiweek ending)
-        ax.xaxis.set_major_formatter(DateFormatter("%m/%d"))
+        # Use num2date to convert matplotlib date to datetime objects
+        xlim = ax.get_xlim()
+        start = pd.Timestamp(num2date(xlim[0]))
+        end = pd.Timestamp(num2date(xlim[1]))
+        ticks = pd.date_range(start=start, end=end, freq=xlabel_interval)
+        ax.set_xticks(ticks)
+        ax.xaxis.set_major_formatter(DateFormatter("%Y-%m-%d"))
         ax.tick_params(axis="x", rotation=45)
         plt.setp(ax.xaxis.get_majorticklabels(), ha="right")
 
@@ -531,6 +603,9 @@ def plot_calibration_projection_sidebyside(  # noqa: PLR0913
     spacing: float = 0.3,
     ax_full: plt.Axes | None = None,
     ax_filtered: plt.Axes | None = None,
+    ylabel: str | None = None,
+    xlabel_interval_full: str | None = None,
+    xlabel_interval_filtered: str | None = None,
 ) -> tuple[plt.Figure, tuple[plt.Axes, plt.Axes]]:
     """
     Create side-by-side quantile plots: [Full Range | Filtered].
@@ -583,6 +658,14 @@ def plot_calibration_projection_sidebyside(  # noqa: PLR0913
         Optional axes for the full panel. If provided, a new figure is not created.
     ax_filtered : plt.Axes | None, optional
         Optional axes for the filtered panel. If provided, a new figure is not created.
+    ylabel : str | None, optional
+        Y-axis label (e.g., 'Hospitalizations'). If None, no label is shown, by default None.
+    xlabel_interval_full : str | None, optional
+        X-axis label interval for full panel as pandas offset string (e.g., 'W-SAT', '2W-SAT', 'MS').
+        None = auto (matplotlib default), by default None.
+    xlabel_interval_filtered : str | None, optional
+        X-axis label interval for filtered panel as pandas offset string (e.g., 'W-SAT', '2W-SAT', 'MS').
+        None = auto (matplotlib default), by default None.
 
     Returns
     -------
@@ -635,6 +718,8 @@ def plot_calibration_projection_sidebyside(  # noqa: PLR0913
         fitting_window_end=fitting_window_end,
         title=title,
         ax=ax_full,
+        xlabel_interval=xlabel_interval_full,
+        ylabel=ylabel,
     )
 
     # Right panel: Filtered
@@ -654,6 +739,7 @@ def plot_calibration_projection_sidebyside(  # noqa: PLR0913
         fitting_window_end=fitting_window_end,
         title=title,
         ax=ax_filtered,
+        xlabel_interval=xlabel_interval_filtered,
     )
 
     return fig, (ax_full, ax_filtered)
@@ -675,6 +761,9 @@ def plot_calibration_projection_grid(  # noqa: PLR0913
     location_fitting_window_ends: dict[str, datetime] | None = None,
     panels_per_row: int = 4,
     figsize: tuple[float, float] | None = None,
+    ylabel: str | None = None,
+    xlabel_interval: str | None = None,
+    suptitle: str | None = None,
 ) -> tuple[plt.Figure, np.ndarray]:
     """
     Create multipanel grid of calibration and projection quantile plots.
@@ -716,6 +805,14 @@ def plot_calibration_projection_grid(  # noqa: PLR0913
         Number of panels per row, by default 4.
     figsize : tuple[float, float] | None, optional
         Figure size. If None, auto-calculated as (4*ncols, 3.6*nrows).
+    ylabel : str | None, optional
+        Y-axis label (e.g., 'Hospitalizations'). Only shown on leftmost panels.
+        If None, no label is shown, by default None.
+    xlabel_interval : str | None, optional
+        X-axis label interval as pandas offset string (e.g., 'W-SAT', '2W-SAT', 'MS').
+        None = auto (matplotlib default), by default None.
+    suptitle : str | None, optional
+        Super title for the entire figure. If None, no super title is shown, by default None.
 
     Returns
     -------
@@ -761,7 +858,7 @@ def plot_calibration_projection_grid(  # noqa: PLR0913
         locations.update(location_calibration_quantiles.keys())
     if location_projection_quantiles is not None:
         locations.update(location_projection_quantiles.keys())
-    locations = sorted(locations)
+    locations = sort_locations_by_state(locations)
 
     if not locations:
         msg = "No locations provided"
@@ -801,8 +898,10 @@ def plot_calibration_projection_grid(  # noqa: PLR0913
             surveillance_size=surveillance_size,
             fitting_window_start=fitting_window_start,
             fitting_window_end=fitting_window_end,
-            title=_format_location_name(location),
+            title=format_location_name(location),
             ax=ax,
+            xlabel_interval=xlabel_interval,
+            ylabel=ylabel if c == 0 else None,
         )
 
         # Hide legend for non-leftmost columns (c != 0)
@@ -816,6 +915,9 @@ def plot_calibration_projection_grid(  # noqa: PLR0913
         r = idx // ncols
         c = idx % ncols
         axes[r, c].axis("off")
+
+    if suptitle:
+        fig.suptitle(suptitle)
 
     plt.tight_layout()
 
@@ -1186,8 +1288,8 @@ def plot_categorical_stacked_bars(
     if ax is None:
         fig, ax = plt.subplots(figsize=(10, 3))
 
-    # Get sorted locations list with United States first
-    locations = sorted(df_categorical[location_col].unique())
+    # Get sorted locations list with United States first, then by state
+    locations = sort_locations_by_state(df_categorical[location_col].unique())
     if "United States" in locations:
         locations.remove("United States")
         locations = ["United States"] + locations
@@ -1222,7 +1324,7 @@ def plot_categorical_stacked_bars(
 
     # Format axes
     ax.set_xticks(range(n_locations))
-    ax.set_xticklabels([_format_location_name(loc) for loc in locations], rotation=90)
+    ax.set_xticklabels([format_location_name(loc) for loc in locations], rotation=90)
     ax.set_ylabel("")
     ax.set_ylim(0, 1.0)
     ax.legend(loc="upper left", bbox_to_anchor=(1.02, 1), borderaxespad=0)

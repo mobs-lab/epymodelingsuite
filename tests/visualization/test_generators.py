@@ -72,19 +72,23 @@ class TestSurveillanceDataFiltering:
         return calibration
 
     @pytest.fixture
-    def plots_config_with_surveillance(self, surveillance_csv_data):
-        """Create a PlotsConfig with surveillance data enabled."""
-        surveillance_config = QuantilesSurveillanceConfig(
-            show=True,
-            data_path=str(surveillance_csv_data),
-            value_column="hospitalizations",
-            date_column="date",
-            location_column="location",
-        )
+    def surveillance_sources(self, surveillance_csv_data):
+        """Create surveillance sources dict with ObservedValuesConfig."""
+        return {
+            "hosp": ObservedValuesConfig(
+                data_path=str(surveillance_csv_data),
+                value_column="hospitalizations",
+                date_column="date",
+                location_column="location",
+                location_format="ISO",
+            )
+        }
 
+    @pytest.fixture
+    def plots_config_with_surveillance(self):
+        """Create a PlotsConfig with surveillance data enabled."""
         quantiles_config = QuantilesPlotConfig(
             single=True,  # Enable single plots
-            surveillance=surveillance_config,
         )
 
         return PlotsConfig(
@@ -92,7 +96,9 @@ class TestSurveillanceDataFiltering:
             quantiles=quantiles_config,
         )
 
-    def test_surveillance_filtered_to_timespan_start(self, mock_calibration_output, plots_config_with_surveillance):
+    def test_surveillance_filtered_to_timespan_start(
+        self, mock_calibration_output, plots_config_with_surveillance, surveillance_sources
+    ):
         """Test that surveillance data is filtered to start from projection timespan start in filtered plot."""
         out_dict = {}
 
@@ -104,6 +110,7 @@ class TestSurveillanceDataFiltering:
                 calibrations=[mock_calibration_output],
                 plots_config=plots_config_with_surveillance,
                 out_dict=out_dict,
+                surveillance_sources=surveillance_sources,
             )
 
             # Verify plot_calibration_projection was called twice (filtered and full)
@@ -140,7 +147,7 @@ class TestSurveillanceDataFiltering:
             assert max_date_full.date() == date(2024, 2, 15)
 
     def test_surveillance_filtering_when_no_calibration_quantiles(
-        self, surveillance_csv_data, plots_config_with_surveillance
+        self, plots_config_with_surveillance, surveillance_sources
     ):
         """Test that surveillance is filtered by surveillance_points even when calibration quantiles are not available."""
         # Create calibration output with no calibration quantiles
@@ -159,6 +166,7 @@ class TestSurveillanceDataFiltering:
                 calibrations=[calibration],
                 plots_config=plots_config_with_surveillance,
                 out_dict=out_dict,
+                surveillance_sources=surveillance_sources,
             )
 
             # Verify plot was called twice (filtered and full)
@@ -185,7 +193,7 @@ class TestSurveillanceDataFiltering:
             assert len(df_surv_full) == 77  # All dates from 2023-12-01 to 2024-02-15
 
     def test_surveillance_filtering_falls_back_to_calibration_quantiles(
-        self, calibration_quantiles, surveillance_csv_data, plots_config_with_surveillance
+        self, calibration_quantiles, plots_config_with_surveillance, surveillance_sources
     ):
         """Test that surveillance falls back to calibration quantiles when no projection quantiles available."""
         # Create calibration output with only calibration quantiles (no projection)
@@ -204,6 +212,7 @@ class TestSurveillanceDataFiltering:
                 calibrations=[calibration],
                 plots_config=plots_config_with_surveillance,
                 out_dict=out_dict,
+                surveillance_sources=surveillance_sources,
             )
 
             # Verify plot was called twice (filtered and full)
@@ -228,7 +237,7 @@ class TestSurveillanceDataFiltering:
             assert min_date_full.date() == date(2023, 12, 1)
 
     def test_surveillance_filtering_with_empty_location_data(
-        self, mock_calibration_output, plots_config_with_surveillance
+        self, mock_calibration_output, plots_config_with_surveillance, surveillance_sources
     ):
         """Test behavior when surveillance data has no matching location."""
         # Create calibration for a different location
@@ -243,6 +252,7 @@ class TestSurveillanceDataFiltering:
                 calibrations=[mock_calibration_output],
                 plots_config=plots_config_with_surveillance,
                 out_dict=out_dict,
+                surveillance_sources=surveillance_sources,
             )
 
             # Verify plot was called twice (filtered and full)
