@@ -152,9 +152,7 @@ class TextFormatter(TelemetryFormatter):
             if n_missing > 0:
                 lines.append(f"Tasks: {completed_tasks}/{total_tasks} completed ({n_missing} missing)")
                 # List missing tasks with their populations
-                missing_str = ", ".join(
-                    f"{m['task_id']} ({m['population']})" for m in missing_tasks
-                )
+                missing_str = ", ".join(f"{m['task_id']} ({m['population']})" for m in missing_tasks)
                 lines.append(f"Missing: {missing_str}")
             else:
                 lines.append(f"Tasks: {completed_tasks}/{total_tasks} completed")

@@ -3,6 +3,7 @@
 import copy
 import datetime as dt
 import logging
+import warnings
 from collections.abc import Callable
 from typing import Any, TypedDict
 
@@ -13,10 +14,11 @@ from epydemix.model import EpiModel
 from numpy.random import Generator
 
 from ..builders.utils import get_data_in_location, get_data_in_window
-from ..schema.basemodel import BaseEpiModel, BasemodelConfig, Parameter, Timespan
+from ..schema.basemodel import BaseEpiModel, BasemodelConfig, LocationTypeEnum, Parameter, Population, Timespan
 from ..schema.calibration import CalibrationConfig, ComparisonSpec
 from ..school_closures import make_school_closure_dict
-from ..utils import get_location_codebook, make_dummy_population
+from ..utils import get_location_codebook, make_dummy_population, validate_iso3166
+from ..utils.location import get_metrocast_locations, get_parent_region
 from ..vaccinations import reaggregate_vaccines, scenario_to_epydemix
 from .base import (
     add_model_compartments_from_config,
@@ -97,16 +99,59 @@ def create_model_collection(
 
     # Create models with populations set
     if population_names:
-        if "all" in population_names:
-            resolved_names = get_location_codebook()["location_name_epydemix"].tolist()
-        else:
-            resolved_names = population_names
-        for name in resolved_names:
+        # Resolve keywords and normalize to (name, type) tuples
+        resolved_locations = []
+        for pop in population_names:
+            if isinstance(pop, str):
+                if pop == "all":
+                    # Legacy (deprecated): all states + US
+                    warnings.warn(
+                        "The 'all' keyword is deprecated. Use 'all-states' instead.",
+                        DeprecationWarning,
+                        stacklevel=2,
+                    )
+                    for iso_name in get_location_codebook()["ISO"].tolist():
+                        resolved_locations.append((iso_name, LocationTypeEnum.iso))
+                elif pop == "all-states":
+                    # All states + US
+                    for iso_name in get_location_codebook()["ISO"].tolist():
+                        resolved_locations.append((iso_name, LocationTypeEnum.iso))
+                elif pop == "all-metrocast":
+                    # All metrocast locations (including state-level, excluding NYC)
+                    metrocast_locs = get_metrocast_locations()
+                    excluded_locations = {"nyc"}
+                    for loc_name in metrocast_locs["metrocast_location_id"].tolist():
+                        if loc_name not in excluded_locations:
+                            resolved_locations.append((loc_name, LocationTypeEnum.metrocast_location))
+                else:
+                    # Auto-detect type
+                    try:
+                        validate_iso3166(pop)
+                        resolved_locations.append((pop, LocationTypeEnum.iso))
+                    except ValueError:
+                        # Assume metrocast
+                        resolved_locations.append((pop, LocationTypeEnum.metrocast_location))
+            elif isinstance(pop, dict):
+                # Explicit type from dict
+                name = pop["name"]
+                loc_type = LocationTypeEnum(pop.get("type", "iso"))
+                resolved_locations.append((name, loc_type))
+
+        # Create models for each location
+        resolved_names = []
+        for name, location_type in resolved_locations:
             m = copy.deepcopy(init_model)
-            set_population_from_config(m, name, basemodel.population.age_groups)
+            pop_config = Population(
+                name=name,
+                location_type=location_type,
+                age_groups=basemodel.population.age_groups,
+                contact_matrix=basemodel.population.contact_matrix,
+            )
+            set_population_from_config(m, pop_config)
             models.append(m)
+            resolved_names.append(name)
     else:
-        set_population_from_config(init_model, basemodel.population.name, basemodel.population.age_groups)
+        set_population_from_config(init_model, basemodel.population)
         models.append(init_model)
         resolved_names = [basemodel.population.name]
 
@@ -155,6 +200,20 @@ def setup_vaccination_schedules(
     if not basemodel.vaccination:
         return models, None
 
+    # Convert population names to state ISO codes for vaccination data lookup
+    # Metrocast locations use their parent state's vaccination data
+    metrocast_locs = get_metrocast_locations()["metrocast_location_id"].values
+    state_iso_codes = []
+    for name in population_names:
+        if name in metrocast_locs:
+            # Metrocast location: get parent state ISO
+            state_iso_codes.append(get_parent_region(name, output_format="ISO"))
+        else:
+            # ISO location: use as-is
+            state_iso_codes.append(name)
+    # Remove duplicates while preserving order
+    state_iso_codes = list(dict.fromkeys(state_iso_codes))
+
     # If start_date is sampled, precalculate schedule with earliest start for later reaggregation
     if sampled_start_timespan:
         earliest_vax = scenario_to_epydemix(
@@ -162,7 +221,7 @@ def setup_vaccination_schedules(
             start_date=sampled_start_timespan.start_date,
             end_date=sampled_start_timespan.end_date,
             target_age_groups=basemodel.population.age_groups,
-            states=population_names,
+            states=state_iso_codes,
         )
         return models, earliest_vax
 
