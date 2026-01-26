@@ -5,7 +5,6 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from ..utils import validate_iso3166
 from .common import Meta
 
 logger = logging.getLogger(__name__)
@@ -55,21 +54,40 @@ class Simulation(BaseModel):
     )
 
 
+class LocationTypeEnum(str, Enum):
+    """Types of location identifiers."""
+
+    iso = "iso"
+    metrocast_location = "metrocast_location"
+
+
 class Population(BaseModel):
     """Population configuration."""
 
     name: str | None = Field(
         None,
-        description="Location code in ISO 3166. Use ISO 3166-2 for states (e.g., 'US-NY') and ISO 3166-1 alpha 2 for countries (e.g., 'US')",
+        description="Location identifier (ISO 3166 code or metrocast location name). Use ISO 3166-2 for states (e.g., 'US-NY') and ISO 3166-1 alpha 2 for countries (e.g., 'US'). For metrocast locations, use the location name (e.g., 'denver').",
+    )
+    location_type: LocationTypeEnum = Field(
+        LocationTypeEnum.iso,
+        description="Location type (iso or metrocast_location)",
+    )
+    contact_matrix: str | None = Field(
+        None,
+        description="Override contact matrix source (ISO code, e.g., US-MA)",
     )
     age_groups: list[str] = Field(
         description="List of age groups in the population (e.g., ['0-4', '5-17', '18-49', '50-64', '65+'])"
     )
 
-    @field_validator("name")
-    @classmethod
-    def validate_name(cls, v: str):
-        return validate_iso3166(v)
+    @model_validator(mode="after")
+    def validate_location(self):
+        """Validate location using type-specific validator."""
+        from ..utils.location import validate_location_by_type
+
+        if self.name:
+            validate_location_by_type(self.name, self.location_type)
+        return self
 
 
 class Compartment(BaseModel):

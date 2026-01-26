@@ -43,6 +43,7 @@ dev = [
     "sphinx-pyproject",
     "autodoc_pydantic",
     "myst-parser",
+    "ipykernel",
 ]
 
 [project.urls]

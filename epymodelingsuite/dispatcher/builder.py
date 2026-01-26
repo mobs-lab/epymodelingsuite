@@ -48,8 +48,6 @@ logger = logging.getLogger(__name__)
 class CalibrationDataError(ValueError):
     """Raised when calibration data validation fails."""
 
-    pass
-
 
 # ===== Helper Functions =====
 
@@ -191,7 +189,7 @@ def build_basemodel(*, basemodel_config: BasemodelConfig, **_) -> BuilderOutput:
     logger.info("BUILDER: setting up single model...")
 
     # This workflow uses a single population
-    set_population_from_config(model, basemodel.population.name, basemodel.population.age_groups)
+    set_population_from_config(model, basemodel.population)
 
     # Compartments and transitions
     add_model_compartments_from_config(model, basemodel.compartments)
