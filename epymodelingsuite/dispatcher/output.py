@@ -22,6 +22,7 @@ from ..schema.output import (
 from ..telemetry import ExecutionTelemetry
 from ..utils.location import (
     convert_location_name_format,
+    get_flusight_population,
     parse_population_name,
 )
 from ..utils.populations import get_total_population
