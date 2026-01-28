@@ -329,12 +329,21 @@ def build_sampling(
                 delta_t=basemodel.timespan.delta_t,
             )
 
+            # Initial conditions
+            compartment_init = calculate_compartment_initial_conditions(
+                compartments=basemodel.compartments,
+                population_array=m.population.Nk,
+                params_dict=varset.get("compartments"),
+            )
+
             # Sampled/calculated parameters
             if "parameters" in varset.keys():
                 parameters = {k: Parameter(type="scalar", value=v) for k, v in varset["parameters"].items()}
                 add_model_parameters_from_config(m, parameters)
             if "calculated" in [param_args.type.value for param, param_args in (basemodel.parameters).items()]:
-                calculate_parameters_from_config(m, basemodel.parameters)
+                calculate_parameters_from_config(
+                    model=m, parameters=basemodel.parameters, compartment_init=compartment_init
+                )
 
             # Vaccination (if start_date is sampled)
             if basemodel.vaccination and sampled_start_timespan:
@@ -350,13 +359,6 @@ def build_sampling(
             # Parameter interventions
             if basemodel.interventions and "parameter" in intervention_types:
                 add_parameter_interventions_from_config(m, basemodel.interventions, timespan)
-
-            # Initial conditions
-            compartment_init = calculate_compartment_initial_conditions(
-                compartments=basemodel.compartments,
-                population_array=m.population.Nk,
-                params_dict=varset.get("compartments"),
-            )
 
             sim_args = SimulationArguments(
                 start_date=timespan.start_date,
