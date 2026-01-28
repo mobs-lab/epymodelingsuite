@@ -336,7 +336,6 @@ def calculate_parameters_from_config(
     calc_params = {name: param.value for name, param in parameters.items() if param.type == "calculated"}
 
     # Build a dictionary of calculated values
-    parameters_dict = {}
     for name, expr in calc_params.items():
         parameter_dict = {}
         logger.info(f"Calculating parameter {name} using expression: {expr}")
