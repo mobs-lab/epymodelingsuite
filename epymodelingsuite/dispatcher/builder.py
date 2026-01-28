@@ -199,10 +199,16 @@ def build_basemodel(*, basemodel_config: BasemodelConfig, **_) -> BuilderOutput:
     if basemodel.vaccination:
         add_vaccination_schedules_from_config(model, basemodel.transitions, basemodel.vaccination, basemodel.timespan)
 
+    # Initial conditions
+    compartment_inits = calculate_compartment_initial_conditions(
+        compartments=basemodel.compartments,
+        population_array=model.population.Nk,
+    )
+
     # Parameters
     add_model_parameters_from_config(model, basemodel.parameters)
     if "calculated" in [param_args.type.value for param, param_args in (basemodel.parameters).items()]:
-        calculate_parameters_from_config(model, basemodel.parameters)
+        calculate_parameters_from_config(model, basemodel.parameters, compartment_inits)
 
     # Seasonality (this must occur before interventions to preserve parameter overrides)
     if basemodel.seasonality:
@@ -226,12 +232,6 @@ def build_basemodel(*, basemodel_config: BasemodelConfig, **_) -> BuilderOutput:
         # Parameter
         if "parameter" in intervention_types:
             add_parameter_interventions_from_config(model, basemodel.interventions, basemodel.timespan)
-
-    # Initial conditions
-    compartment_inits = calculate_compartment_initial_conditions(
-        compartments=basemodel.compartments,
-        population_array=model.population.Nk,
-    )
 
     simulation_args = SimulationArguments(
         start_date=basemodel.timespan.start_date,
