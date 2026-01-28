@@ -160,16 +160,19 @@ class SafeEvalVisitor(ast.NodeVisitor):
 
 class RetrieveName(ast.NodeTransformer):
     """
-    A NodeTransformer for substituting terms in an expression with parameter values or contact matrix eigenvalue from an EpiModel.
+    A NodeTransformer for substituting terms in an expression with parameter values or contact matrix eigenvalue from an EpiModel,
+    or .
     Used for calculated parameters.
-    Constructor requires an EpiModel with contact matrices.
+    Constructor requires an EpiModel with contact matrices, and optionally a dict with initial conditions.
     """
 
-    def __init__(self, model: EpiModel):
+    def __init__(self, model: EpiModel, compartment_init: dict[str, np.ndarray] | None):
         self.model = model
+        self.compartment_init = compartment_init
 
     def visit_Name(self, node):
         if node.id not in _allowed_modules:
+            # Eigenvalue of contact matrix
             if node.id == "eigenvalue":
                 try:
                     C = np.sum([c for _, c in self.model.population.contact_matrices.items()], axis=0)
@@ -177,6 +180,27 @@ class RetrieveName(ast.NodeTransformer):
                     return ast.fix_missing_locations(ast.Constant(value=float(eigenvalue)))
                 except Exception as e:
                     raise ValueError(f"Error calculating eigenvalue of contact matrix: {e}")
+
+            # Proportion of population in compartment from initial conditions
+            elif node.id in self.model.compartments:
+                if self.compartment_init is None:
+                    raise ValueError(
+                        f"Parameter calculation received compartment id {node.id} but initial conditions were not provided."
+                    )
+                if node.id not in self.compartment_init:
+                    raise ValueError(
+                        f"Parameter calculation received compartment id {node.id} but compartment is missing from provided initial conditions."
+                    )
+                try:
+                    init_count = self.compartment_init.get(node.id).sum()
+                    proportion = init_count / model.population.Nk.sum()
+                    return ast.fix_missing_locations(ast.Constant(value=float(proportion)))
+                except Exception as e:
+                    raise ValueError(
+                        f"Error calculating proportion of population in compartment from initial conditions: {e}"
+                    )
+
+            # Model parameter
             else:
                 try:
                     value = self.model.get_parameter(node.id)
