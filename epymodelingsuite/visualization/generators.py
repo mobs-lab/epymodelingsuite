@@ -22,15 +22,15 @@ from ..schema.output import (
     QuantilesOutputTypeEnum,
 )
 from .core import (
-    format_location_name,
-    sort_locations_by_state,
     figure_to_output_object,
+    format_location_name,
     plot_calibration_projection,
     plot_calibration_projection_grid,
     plot_calibration_projection_sidebyside,
     plot_categorical_stacked_bars_multihorizon,
     plot_posterior_histogram,
     plot_posterior_histogram_grid,
+    sort_locations_by_state,
 )
 
 logger = logging.getLogger(__name__)
