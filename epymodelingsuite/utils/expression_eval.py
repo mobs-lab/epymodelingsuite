@@ -193,11 +193,11 @@ class RetrieveName(ast.NodeTransformer):
                     )
                 try:
                     init_count = self.compartment_init.get(node.id).sum()
-                    proportion = init_count / model.population.Nk.sum()
+                    proportion = init_count / self.model.population.Nk.sum()
                     return ast.fix_missing_locations(ast.Constant(value=float(proportion)))
                 except Exception as e:
                     raise ValueError(
-                        f"Error calculating proportion of population in compartment from initial conditions: {e}"
+                        f"Error calculating proportion of population in compartment{node.id} from initial conditions: {e}"
                     )
 
             # Model parameter
