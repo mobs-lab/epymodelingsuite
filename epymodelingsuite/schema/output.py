@@ -117,6 +117,15 @@ def get_metrocast_quantiles() -> list[float]:
     ]
 
 
+def get_metrocast_horizons() -> range:
+    """
+    Return the forecast horizons for metrocast submissions.
+
+    Metrocast uses horizons 0-3, while standard FluSight uses -1 to 3.
+    """
+    return range(4)
+
+
 def get_quantile_ribbon_default() -> list[float]:
     """Return a list containing default quantiles for plotting ribbons."""
     return [0.025, 0.25, 0.5, 0.75, 0.975]
