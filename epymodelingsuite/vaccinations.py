@@ -16,6 +16,128 @@ from .utils.populations import aggregate_population_by_age_groups, get_age_group
 logger = logging.getLogger(__name__)
 
 
+def validate_age_groups(target_age_groups: list[str]) -> None:
+    """
+    Validate that a list of age group labels is properly formatted, contiguous, and non-overlapping.
+
+    Rules enforced
+    --------------
+    - The first age group must start at '0'.
+    - The last age group must end with '+' (e.g. '80+').
+    - All intermediate groups must be in the format 'start-end' (e.g. '0-9', '10-24').
+    - Groups must be contiguous: the end of one group plus one must equal the start of the next group.
+
+    Parameters
+    ----------
+    target_age_groups : list[str]
+        List of age group labels to validate.
+
+    Raises
+    ------
+    ValueError
+        If any of the rules above are violated.
+    """
+    logger.info(f"Validating age groups: {target_age_groups}")
+
+    if target_age_groups[-1][-1] != "+":
+        raise ValueError("The last age group must end with '+' e.g. '80+'")
+
+    if target_age_groups[0][0] != "0":
+        raise ValueError("The first age group must start at '0'")
+
+    for i in range(len(target_age_groups) - 1):
+        if "-" not in target_age_groups[i]:
+            raise ValueError("Age groups must be in the format 'start-end' e.g. '0-9', '10-24', '25-32' etc")
+        if "-" not in target_age_groups[i + 1] and i + 1 != len(target_age_groups) - 1:
+            raise ValueError("Age groups must be in the format 'start-end' e.g. '0-9', '10-24', '25-32' etc")
+        i_end = int(target_age_groups[i].split("-")[1].replace("+", ""))
+        i1_start = int(target_age_groups[i + 1].split("-")[0].replace("+", ""))
+        if i_end + 1 != i1_start:
+            raise ValueError("Age groups must be contiguous and not overlapping e.g. '0-9', '10-24', '25-32' etc")
+
+
+def get_age_group_mapping(target_age_groups: list[str]) -> dict[str, list[str]]:
+    """
+    Construct a mapping from model age group labels to the individual ages
+    they encompass.
+
+    Parameters
+    ----------
+    target_age_groups : list[str]
+        List of contiguous, non-overlapping age group labels. Each group
+        should be formatted as:
+        - 'start-end', e.g. '0-9', '10-24', '25-32', etc.
+        - The final group must use an open-ended format with '+', e.g. '80+'.
+
+    Returns
+    -------
+    dict[str, list[str]]
+        A dictionary mapping each age group label to a list of the string
+        representations of ages it covers. The final open-ended group includes
+        all ages from its starting value up to 83, plus the label '84+'.
+    """
+    validate_age_groups(target_age_groups)
+    age_group_map = {}
+    for i, a in enumerate(target_age_groups):
+        if i != len(target_age_groups) - 1:
+            start, end = a.split("-")
+            age_group_map[a] = [str(j) for j in range(int(start), int(end) + 1)]
+        elif "+" in a:
+            start = a.split("+")[0]
+            age_group_map[a] = [str(j) for j in range(int(start), 84)] + ["84+"]
+
+    return age_group_map
+
+
+def get_all_age_map() -> dict[str, list[str]]:
+    """Create a master population age group map from all age groups."""
+    # fmt: off
+    map = get_age_group_mapping(
+        ["0-0", "1-1", "2-2", "3-3", "4-4", "5-5", "6-6", "7-7", "8-8", "9-9", "10-10", "11-11", "12-12", "13-13", "14-14", "15-15", "16-16", "17-17", "18-18", "19-19", "20-20", "21-21", "22-22", "23-23", "24-24", "25-25", "26-26", "27-27", "28-28", "29-29", "30-30", "31-31", "32-32", "33-33", "34-34", "35-35", "36-36", "37-37", "38-38", "39-39", "40-40", "41-41", "42-42", "43-43", "44-44", "45-45", "46-46", "47-47", "48-48", "49-49", "50-50", "51-51", "52-52", "53-53", "54-54", "55-55", "56-56", "57-57", "58-58", "59-59", "60-60", "61-61", "62-62", "63-63", "64-64", "65-65", "66-66", "67-67", "68-68", "69-69", "70-70", "71-71", "72-72", "73-73", "74-74", "75-75", "76-76", "77-77", "78-78", "79-79", "80-80", "81-81", "82-82", "83-83", "84+"]
+    )
+    # fmt: on
+    return map
+
+def normalize_age_column_for_legacy_function(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Normalize the 'Age' column values to match the format expected by get_age_groups_from_data.
+    
+    The existing get_age_groups_from_data function uses case-sensitive string replacements:
+        b = a.replace(" Years", "").replace("6 Months ", "0").replace(" ", "")
+    
+    This only works for strings like "6 Months - 17 Years" (with specific capitalization).
+    For files with different formats like "6 months-17 years" or "18-49 years", 
+    we need to convert them to the expected format first.
+    
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame with an 'Age' column.
+        
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with normalized 'Age' column values.
+    """
+    df = df.copy()
+    
+    def normalize_age_string(age_str: str) -> str:
+        """Convert any age string format to the format expected by get_age_groups_from_data."""
+        lower, upper = parse_age_group_string(age_str)
+        
+        if upper == float('inf'):
+            # "65+" format
+            return f"{int(lower)}+ Years"
+        elif lower == 0:
+            # "6 Months - X Years" format for youth groups
+            return f"6 Months - {int(upper)} Years"
+        else:
+            # "X-Y Years" format for adult groups
+            return f"{int(lower)}-{int(upper)} Years"
+    
+    df['Age'] = df['Age'].apply(normalize_age_string)
+    return df
+
 def get_age_groups_from_data(data: pd.DataFrame) -> dict[str, str]:
     """
     Extract and clean age group labels from a dataset, returning a mapping from
@@ -24,9 +146,10 @@ def get_age_groups_from_data(data: pd.DataFrame) -> dict[str, str]:
     Parameters
     ----------
     data : pd.DataFrame
-        DataFrame containing an 'Age' column with age group labels. The label
-        "6 Months - 17 Years" is excluded, since it overlaps with finer-grained
-        groups in the data.
+        DataFrame containing an 'Age' column with age group labels. The combined
+        youth group (e.g., "6 Months - 17 Years") is only excluded when finer-
+        grained youth groups (e.g., "0-4", "5-12", "13-17") are present. If it
+        is the only youth group, it is kept so that age groups start at 0.
 
     Returns
     -------
@@ -35,9 +158,25 @@ def get_age_groups_from_data(data: pd.DataFrame) -> dict[str, str]:
         and standardized model age group labels.
     """
     age_groups_data = data.Age.unique().tolist()  # Get unique age groups
-    age_groups_data.remove(
-        "6 Months - 17 Years"
-    )  # Remove 6 Months - 17 Years because because data includes finer resolution age groups which cover this range
+    # Only remove combined youth (0-17) when finer resolution youth groups exist.
+    # If it's the only youth group, we must keep it so age groups start at 0.
+    combined_in_data = [ag for ag in age_groups_data if is_combined_youth_group(ag)]
+    if combined_in_data:
+        # Check if we have finer resolution youth groups (0-4, 5-12, 13-17, etc.)
+        has_finer_youth = False
+        for ag in age_groups_data:
+            if ag in combined_in_data:
+                continue
+            try:
+                lower, upper = parse_age_group_string(ag)
+                if upper <= 17 and lower < 18 and upper != float("inf"):
+                    has_finer_youth = True
+                    break
+            except ValueError:
+                continue
+        if has_finer_youth:
+            for ag in combined_in_data:
+                age_groups_data.remove(ag)
 
     age_groups_data_cleaned = []
     for a in age_groups_data:
@@ -276,6 +415,7 @@ def scenario_to_epydemix(
       and maps input age groups to the target model age groups using population reweighting.
     - Location names are converted to ISO codes for compatibility with Epydemix.
     - Always returns daily schedules. Use resample_dataframe() to adjust temporal resolution for simulation timesteps.
+    - The function automatically handles different age group naming conventions (e.g., "18-49 years" vs "18-49 Years").
     """
     import numpy as np
     from epydemix.utils import compute_simulation_dates
@@ -307,12 +447,55 @@ def scenario_to_epydemix(
             f"Input data must contain the following columns: {required_columns}. Missing columns: {missing_columns}"
         )
 
-    # Get age groups from data
-    data_age_groups_dict = get_age_groups_from_data(vaccines)
-    data_age_groups = list(data_age_groups_dict.keys())
+    # ========== DYNAMICALLY DETECT AGE GROUPS ==========
+    # Get age groups from data, excluding combined youth if finer resolution exists
+    # This uses our new flexible parsing that handles different naming conventions
+    data_age_groups_original = get_data_age_groups(vaccines, exclude_combined_youth=True)
+    
+    # Build dynamic mappings based on detected age groups
+    column_rename_map = build_column_rename_mapping(data_age_groups_original)
+    
+    # Get normalized data age group names for later use
+    data_age_groups_normalized = [normalize_age_group_name(ag) for ag in data_age_groups_original]
+    
+    # Identify combined youth groups to exclude from processing
+    combined_youth_groups = [ag for ag in vaccines['Age'].unique() if is_combined_youth_group(ag)]
+    # Only exclude if we have finer resolution
+    if len(data_age_groups_original) >= len(vaccines['Age'].unique()):
+        combined_youth_groups = []
+
+    # Filter out combined youth groups from the data BEFORE calling get_age_groups_from_data
+    # This is necessary because get_age_groups_from_data calls validate_age_groups internally,
+    # which will fail if both combined (0-17) and finer (0-4, 5-12, 13-17) groups are present
+    if combined_youth_groups:
+        vaccines_filtered = vaccines[~vaccines['Age'].isin(combined_youth_groups)].copy()
+    else:
+        vaccines_filtered = vaccines.copy()
+
+    # Sort the DataFrame by age group lower bound before calling get_age_groups_from_data
+    # This is necessary because get_age_groups_from_data uses df['Age'].unique() which
+    # returns groups in the order they first appear, but validate_age_groups expects
+    # groups to be sorted starting from age 0
+    vaccines_filtered = sort_dataframe_by_age(vaccines_filtered)
+
+    # Normalize age column values to match the format expected by get_age_groups_from_data
+    # The existing function uses case-sensitive replacements like .replace(" Years", "")
+    # which only work for specific formats like "6 Months - 17 Years"
+    vaccines_filtered = normalize_age_column_for_legacy_function(vaccines_filtered)
+
+    # Get age group mapping for population data (using existing helper from the module)
+    # This returns a dict like {"0-17": ["0", "1", ..., "17"], "18-49": ["18", ...], ...}
+    data_age_groups_dict = get_age_groups_from_data(vaccines_filtered)
 
     # Filter for date range
+    data_max_date = vaccines["Week_Ending_Sat"].max()
     vaccines = vaccines.query("Week_Ending_Sat >= @start_date")
+
+    if vaccines.empty:
+        raise ValueError(
+            f"No data in date range. Requested start_date={start_date.date()}, but data ends {data_max_date.date()}. "
+            f"Use a start_date that overlaps with the data (e.g., start_date <= {data_max_date.date()})."
+        )
 
     first_sat = vaccines["Week_Ending_Sat"].min()
     if end_date + pd.Timedelta(days=6) < first_sat:
@@ -321,7 +504,6 @@ def scenario_to_epydemix(
         )
 
     # ========== PROCESS ALL GEOGRAPHIES ==========
-    # all_locations_data = []
     all_locations_df = pd.DataFrame()
 
     for location in vaccines["Geography"].unique():
@@ -330,25 +512,38 @@ def scenario_to_epydemix(
         location_data = vaccines.query("Geography == @location").copy()
         loc_epydemix = convert_location_name_format(location, "epydemix_population")
 
-        # Keep other age groups and combine with aggregated youth data
-        vaccine_schedule = location_data.query("Age not in ['6 Months - 17 Years']")
+        # Filter out combined youth groups if finer resolution exists
+        if combined_youth_groups:
+            vaccine_schedule = location_data[~location_data['Age'].isin(combined_youth_groups)]
+        else:
+            vaccine_schedule = location_data.copy()
+            
         vaccine_schedule = vaccine_schedule.sort_values(["Week_Ending_Sat", "Age"]).reset_index(drop=True)
 
         # ========== MAP TO MODEL POPULATION ==========
-        age_to_index = {
-            "6 Months - 4 Years": 0,
-            "5-12 Years": 1,
-            "13-17 Years": 2,
-            "18-49 Years": 3,
-            "50-64 Years": 4,
-            "65+ Years": 5,
-        }
-        pop_by_agegroup = aggregate_population_by_age_groups(population_codebook[loc_epydemix], data_age_groups)
+        age_group_map_data = get_age_group_mapping(list(data_age_groups_dict.keys()))
+        
+        population_data = {}
+        for key, val in age_group_map_data.items():
+            vals = [int(v.replace("+", "")) for v in val]
+            population_data[key] = sum(population_codebook[loc_epydemix][vals].values)
 
+        # Create mapping from original age strings to normalized names for population lookup
+        original_to_normalized = {ag: normalize_age_group_name(ag) for ag in data_age_groups_original}
+        
         # Add model population and calculate cumulative doses
-        vaccine_schedule["population_data"] = vaccine_schedule["Age"].map(
-            lambda age: list(pop_by_agegroup.values())[age_to_index[age]] if age in age_to_index else 0
-        )
+        def get_population_for_age(age: str) -> int:
+            """Get population for an age group, handling different naming conventions."""
+            normalized = normalize_age_group_name(age)
+            if normalized in population_data:
+                return population_data[normalized]
+            # Try to find matching key
+            for key in population_data:
+                if normalize_age_group_name(key) == normalized:
+                    return population_data[key]
+            return 0
+        
+        vaccine_schedule["population_data"] = vaccine_schedule["Age"].map(get_population_for_age)
 
         vaccine_schedule["cumulative_doses"] = (
             vaccine_schedule["Coverage"] / 100 * vaccine_schedule["population_data"]
@@ -418,29 +613,22 @@ def scenario_to_epydemix(
         ).reset_index()
 
         this_location_wide.columns.name = None
-        this_location_wide.rename(
-            columns={
-                "6 Months - 4 Years": "0-4",
-                "5-12 Years": "5-12",
-                "13-17 Years": "13-17",
-                "18-49 Years": "18-49",
-                "50-64 Years": "50-64",
-                "65+ Years": "65+",
-            },
-            inplace=True,
-        )
+        
+        # Dynamic column renaming based on detected age groups
+        this_location_wide.rename(columns=column_rename_map, inplace=True)
 
         # Format locations as ISO codes
-        # this_location_wide["location"] = [
-        #     convert_location_name_format(loc, "ISO") for loc in this_location_wide.location
-        # ]
         this_location_wide["location"] = convert_location_name_format(location, "ISO")
 
-        daily_vaccines_wide_subset = this_location_wide[data_age_groups]
+        daily_vaccines_wide_subset = this_location_wide[data_age_groups_normalized]
 
-        pop_by_agegroup_model = aggregate_population_by_age_groups(population_codebook[loc_epydemix], target_age_groups)
+        age_group_map_model = get_age_group_mapping(target_age_groups)
+        population_dict_model = {}
+        for key, val in age_group_map_model.items():
+            vals = [int(v.replace("+", "")) for v in val]
+            population_dict_model[key] = sum(population_codebook[loc_epydemix][vals].values)
 
-        reweighting_factors_dict = make_reweighting_factors(pop_by_agegroup_model, data_age_groups, loc_epydemix)
+        reweighting_factors_dict = make_reweighting_factors(population_dict_model, data_age_groups_normalized, loc_epydemix)
         new_coverages = {}
         for target_group, weights in reweighting_factors_dict.items():
             # linear combination
@@ -462,7 +650,6 @@ def scenario_to_epydemix(
         daily_vaccines_transformed.insert(1, "location", this_location_wide["location"].iloc[0])
 
         all_locations_df = pd.concat([all_locations_df, daily_vaccines_transformed], ignore_index=True)
-        # all_locations_data.extend(daily_vaccines_list)
 
     # ========== WRITE OUTPUT CSV ==========
     if output_filepath:
@@ -470,6 +657,241 @@ def scenario_to_epydemix(
 
     return all_locations_df
 
+def parse_age_group_string(age_str: str) -> tuple[float, float]:
+    """
+    Parse an age group string and extract the numeric lower and upper bounds.
+    
+    Handles various formats like:
+    - "6 Months - 4 Years", "6 months-17 years"
+    - "18-49 Years", "18-49 years"  
+    - "65+ Years", "65+ years"
+    - "5-12 Years"
+    
+    Parameters
+    ----------
+    age_str : str
+        The age group string to parse.
+        
+    Returns
+    -------
+    tuple[float, float]
+        (lower_bound, upper_bound) in years. For 65+, upper bound is float('inf').
+        For groups starting with months (e.g., "6 Months"), lower bound is 0.
+        
+    Examples
+    --------
+    >>> parse_age_group_string("6 Months - 4 Years")
+    (0, 4)
+    >>> parse_age_group_string("18-49 years")
+    (18, 49)
+    >>> parse_age_group_string("65+ Years")
+    (65, inf)
+    """
+    import re
+    # Normalize the string: lowercase and remove extra spaces
+    normalized = age_str.lower().strip()
+    
+    # Handle "65+" or "65+ years" pattern
+    plus_match = re.match(r'(\d+)\s*\+', normalized)
+    if plus_match:
+        lower = int(plus_match.group(1))
+        return (lower, float('inf'))
+    
+    # Handle patterns with months (e.g., "6 months - 4 years", "6 months-17 years")
+    # These represent pediatric groups where we treat months as essentially 0 years
+    months_match = re.match(r'(\d+)\s*months?\s*[-–]\s*(\d+)\s*(years?)?', normalized)
+    if months_match:
+        upper = int(months_match.group(2))
+        return (0, upper)
+    
+    # Handle standard year ranges (e.g., "18-49 years", "5-12 Years")
+    range_match = re.match(r'(\d+)\s*[-–]\s*(\d+)', normalized)
+    if range_match:
+        lower = int(range_match.group(1))
+        upper = int(range_match.group(2))
+        return (lower, upper)
+    
+    raise ValueError(f"Could not parse age group string: '{age_str}'")
+
+
+def normalize_age_group_name(age_str: str) -> str:
+    """
+    Convert an age group string to a standardized output format.
+    
+    Parameters
+    ----------
+    age_str : str
+        The age group string to normalize.
+        
+    Returns
+    -------
+    str
+        Normalized age group name in format like "0-4", "5-17", "18-49", "50-64", "65+".
+    """
+    lower, upper = parse_age_group_string(age_str)
+    lower_int = int(lower)
+    if upper == float('inf'):
+        return f"{lower_int}+"
+    upper_int = int(upper)
+    return f"{lower_int}-{upper_int}"
+
+
+def is_combined_youth_group(age_str: str) -> bool:
+    """
+    Check if the age group is a combined youth group (e.g., "6 Months - 17 Years").
+    
+    These groups are typically excluded when finer resolution groups are available.
+    
+    Parameters
+    ----------
+    age_str : str
+        The age group string to check.
+        
+    Returns
+    -------
+    bool
+        True if this is a combined youth group spanning from infancy to late teens.
+    """
+    try:
+        lower, upper = parse_age_group_string(age_str)
+        # Combined youth groups start at 0 (months) and go to 17
+        return lower == 0 and upper == 17
+    except ValueError:
+        return False
+
+
+def get_data_age_groups(df: pd.DataFrame, exclude_combined_youth: bool = True) -> list[str]:
+    """
+    Extract the unique age groups from the data, optionally excluding combined youth groups.
+    
+    When the data contains both a combined youth group (e.g., "6 Months - 17 Years") and 
+    finer resolution groups (e.g., "0-4", "5-12", "13-17"), this function can exclude 
+    the combined group to avoid double-counting.
+    
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame containing an 'Age' column.
+    exclude_combined_youth : bool, default True
+        If True and finer resolution youth groups exist, exclude the combined 
+        youth group (e.g., "6 Months - 17 Years").
+        
+    Returns
+    -------
+    list[str]
+        List of age group strings from the data.
+    """
+    all_age_groups = df['Age'].unique().tolist()
+    
+    if not exclude_combined_youth:
+        return all_age_groups
+    
+    # Check if we have combined youth groups (spanning 0-17)
+    combined_youth = [ag for ag in all_age_groups if is_combined_youth_group(ag)]
+    
+    if combined_youth:
+        # Check if we have finer resolution groups that are subsets of the combined group
+        non_combined = [ag for ag in all_age_groups if not is_combined_youth_group(ag)]
+        
+        has_finer_youth = False
+        for ag in non_combined:
+            try:
+                lower, upper = parse_age_group_string(ag)
+                # A finer youth group would have upper <= 17, lower < 18, and not be 65+
+                if upper <= 17 and lower < 18 and upper != float('inf'):
+                    has_finer_youth = True
+                    break
+            except ValueError:
+                continue
+        
+        if has_finer_youth:
+            return non_combined
+    
+    return all_age_groups
+
+
+def build_age_to_index_mapping(age_groups: list[str]) -> dict[str, int]:
+    """
+    Build a mapping from age group strings to indices, sorted by lower age bound.
+    
+    Parameters
+    ----------
+    age_groups : list[str]
+        List of age group strings.
+        
+    Returns
+    -------
+    dict[str, int]
+        Mapping from age group string to index (0-based, sorted by age).
+    """
+    # Parse and sort by lower bound
+    parsed = [(ag, parse_age_group_string(ag)) for ag in age_groups]
+    sorted_groups = sorted(parsed, key=lambda x: (x[1][0], x[1][1]))
+    
+    return {ag: idx for idx, (ag, _) in enumerate(sorted_groups)}
+
+
+def build_column_rename_mapping(age_groups: list[str]) -> dict[str, str]:
+    """
+    Build a mapping from original age group names to normalized output names.
+    
+    Parameters
+    ----------
+    age_groups : list[str]
+        List of age group strings from the input data.
+        
+    Returns
+    -------
+    dict[str, str]
+        Mapping from original name to normalized name (e.g., "6 Months - 4 Years" -> "0-4").
+    """
+    return {ag: normalize_age_group_name(ag) for ag in age_groups}
+
+
+def get_age_lower_bound(age_str: str) -> int:
+    """
+    Extract the lower bound of an age group for sorting purposes.
+    
+    Parameters
+    ----------
+    age_str : str
+        The age group string.
+        
+    Returns
+    -------
+    int
+        The lower bound of the age range (used for sorting).
+    """
+    try:
+        lower, _ = parse_age_group_string(age_str)
+        return int(lower)
+    except ValueError:
+        return 999  # Fallback for unparseable strings
+
+
+def sort_dataframe_by_age(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Sort a DataFrame so that age groups appear in ascending order by lower bound.
+    
+    This is necessary because get_age_groups_from_data extracts age groups using
+    df['Age'].unique(), which returns groups in the order they first appear.
+    validate_age_groups expects groups to be sorted (starting from 0).
+    
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame with an 'Age' column.
+        
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame sorted by age group lower bound.
+    """
+    df = df.copy()
+    df['_age_sort_key'] = df['Age'].apply(get_age_lower_bound)
+    df = df.sort_values(['_age_sort_key', 'Geography', 'Week_Ending_Sat'])
+    df = df.drop(columns=['_age_sort_key'])
+    return df
 
 def smh_data_to_epydemix(
     input_filepath: str,
@@ -627,7 +1049,7 @@ def reaggregate_vaccines(schedule: pd.DataFrame, actual_start_date: dt.date | pd
     age_groups = [c for c in schedule.columns if "-" in c or "+" in c]
 
     # Aggregate doses for the period before the next Saturday
-    before_saturday = schedule.query("dates < @next_saturday")
+    before_saturday = schedule.query("dates <= @next_saturday")
     aggregated_doses = before_saturday[age_groups].sum(axis=0)
 
     # Create a new date range for the redistribution period
