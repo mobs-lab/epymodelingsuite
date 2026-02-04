@@ -358,7 +358,7 @@ def calculate_parameters_from_config(
 
         try:
             model.add_parameter(parameters_dict=parameter_dict)
-            logger.info(f"Added parameters: {list(parameter_dict.keys())}")
+            logger.info(f"Added parameter: {list(parameter_dict.keys())}")
         except Exception as e:
             raise ValueError(f"Error adding parameters to model: {e}")
 
