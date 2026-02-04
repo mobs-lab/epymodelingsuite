@@ -17,6 +17,7 @@ from ..schema.output import (
     OutputConfig,
     OutputObject,
     TabularOutputTypeEnum,
+    get_metrocast_horizons,
     get_metrocast_quantiles,
 )
 from ..telemetry import ExecutionTelemetry
@@ -210,7 +211,10 @@ def filter_failed_calibration_trajectories(calibration_results: CalibrationResul
 
 
 def format_quantiles_flusightforecast(
-    quantiles_df: pd.DataFrame, reference_date: date, target: str = "wk inc flu hosp"
+    quantiles_df: pd.DataFrame,
+    reference_date: date,
+    target: str = "wk inc flu hosp",
+    metrocast: bool = False,
 ) -> pd.DataFrame:
     """
     Create FluSight forecast formatted quantile outputs for a single model. Rate-trends are handled separately.
@@ -223,6 +227,8 @@ def format_quantiles_flusightforecast(
         Reference date for calculating forecast horizons
     target : str
         Target name for the submission file (default: "wk inc flu hosp")
+    metrocast : bool
+        Use horizons for metrocast (0-3) instead of standard FluSight horizons (-1 to 3)
 
     Returns
     -------
@@ -231,8 +237,8 @@ def format_quantiles_flusightforecast(
     """
     formatted = copy.deepcopy(quantiles_df)
 
-    # Horizons required for quantile outputs
-    flusight_horizons = range(-1, 4)
+    # Horizons required for quantile outputs (metrocast excludes horizon -1)
+    horizons = get_metrocast_horizons() if metrocast else range(-1, 4)
 
     # Create horizon column and filter for appropriate horizons
     formatted.insert(
@@ -240,7 +246,7 @@ def format_quantiles_flusightforecast(
         "horizon",
         (formatted.date - pd.to_datetime(reference_date)).apply(lambda x: x / np.timedelta64(1, "W")).astype(int),
     )
-    formatted = formatted[formatted.horizon.isin(flusight_horizons)]
+    formatted = formatted[formatted.horizon.isin(horizons)]
 
     # Name and format remaining fields
     # FRAGILE: the name 'hospitalizations' is user-supplied in the modelset as the column to look for in the surveillance data.
@@ -774,7 +780,7 @@ def make_prop_ed_flusightforecast(
             formatted = copy.deepcopy(projection_quantiles)
 
             # Horizons required for quantile outputs
-            horizons = range(4) if metrocast == True else range(-1, 4)
+            horizons = get_metrocast_horizons() if metrocast else range(-1, 4)
 
             # Get the reference date from parameter or pred_hosp
             if reference_date is None:
@@ -1435,6 +1441,7 @@ def generate_calibration_outputs(
                     quanf_df,
                     output.flusight_format.reference_date,
                     target=output.flusight_format.hospitalizations.target,
+                    metrocast=output.flusight_format.metrocast,
                 )
                 quanf_df.insert(0, "reference_date", output.flusight_format.reference_date)
                 quanf_df.insert(0, "location", get_hub_location_id(calibration.population))
@@ -1503,6 +1510,7 @@ def generate_calibration_outputs(
                     quantiles_calibration_flusight,
                     quantiles_projection_flusight,
                     output.flusight_format.reference_date,
+                    metrocast=output.flusight_format.metrocast,
                 )
                 hub_format_output_list.append(prop_ed_df)
             except (ValueError, AssertionError, KeyError, IndexError) as e:
