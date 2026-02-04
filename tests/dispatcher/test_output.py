@@ -453,3 +453,97 @@ class TestGetPlotLocationLabel:
         # NC flu region
         result = get_plot_location_label("metrocast_location_nenc")
         assert result == "Northeastern, NC"
+
+
+class TestFormatQuantilesFlusightforecast:
+    """Tests for format_quantiles_flusightforecast function."""
+
+    @pytest.fixture
+    def sample_quantiles_df(self):
+        """Create sample quantiles DataFrame spanning horizons -1 to 3."""
+        reference_date = date(2025, 11, 29)  # Saturday
+        # Create dates for horizons -1, 0, 1, 2, 3 (each 7 days apart)
+        dates = [
+            pd.Timestamp("2025-11-22"),  # horizon -1
+            pd.Timestamp("2025-11-29"),  # horizon 0
+            pd.Timestamp("2025-12-06"),  # horizon 1
+            pd.Timestamp("2025-12-13"),  # horizon 2
+            pd.Timestamp("2025-12-20"),  # horizon 3
+        ]
+        quantiles = [0.25, 0.5, 0.75]
+        data = []
+        for d in dates:
+            for q in quantiles:
+                data.append({"date": d, "quantile": q, "hospitalizations": 100.0})
+        return pd.DataFrame(data), reference_date
+
+    def test_standard_flusight_includes_horizon_minus_one(self, sample_quantiles_df):
+        """Test that standard FluSight (metrocast=False) includes horizon -1."""
+        from epymodelingsuite.dispatcher.output import format_quantiles_flusightforecast
+
+        df, reference_date = sample_quantiles_df
+        result = format_quantiles_flusightforecast(df, reference_date, metrocast=False)
+
+        horizons = result["horizon"].unique()
+        assert -1 in horizons
+        assert set(horizons) == {-1, 0, 1, 2, 3}
+
+    def test_metrocast_excludes_horizon_minus_one(self, sample_quantiles_df):
+        """Test that metrocast=True excludes horizon -1."""
+        from epymodelingsuite.dispatcher.output import format_quantiles_flusightforecast
+
+        df, reference_date = sample_quantiles_df
+        result = format_quantiles_flusightforecast(df, reference_date, metrocast=True)
+
+        horizons = result["horizon"].unique()
+        assert -1 not in horizons
+        assert set(horizons) == {0, 1, 2, 3}
+
+    def test_output_has_correct_columns(self, sample_quantiles_df):
+        """Test that output DataFrame has correct FluSight columns."""
+        from epymodelingsuite.dispatcher.output import format_quantiles_flusightforecast
+
+        df, reference_date = sample_quantiles_df
+        result = format_quantiles_flusightforecast(df, reference_date)
+
+        expected_columns = {"horizon", "target", "output_type", "output_type_id", "target_end_date", "value"}
+        assert set(result.columns) == expected_columns
+
+    def test_output_type_is_quantile(self, sample_quantiles_df):
+        """Test that output_type column is 'quantile' for all rows."""
+        from epymodelingsuite.dispatcher.output import format_quantiles_flusightforecast
+
+        df, reference_date = sample_quantiles_df
+        result = format_quantiles_flusightforecast(df, reference_date)
+
+        assert (result["output_type"] == "quantile").all()
+
+    def test_custom_target_name(self, sample_quantiles_df):
+        """Test that custom target name is used."""
+        from epymodelingsuite.dispatcher.output import format_quantiles_flusightforecast
+
+        df, reference_date = sample_quantiles_df
+        custom_target = "custom target name"
+        result = format_quantiles_flusightforecast(df, reference_date, target=custom_target)
+
+        assert (result["target"] == custom_target).all()
+
+    def test_default_target_name(self, sample_quantiles_df):
+        """Test that default target name is 'wk inc flu hosp'."""
+        from epymodelingsuite.dispatcher.output import format_quantiles_flusightforecast
+
+        df, reference_date = sample_quantiles_df
+        result = format_quantiles_flusightforecast(df, reference_date)
+
+        assert (result["target"] == "wk inc flu hosp").all()
+
+    def test_hospitalizations_rounded_to_integer(self, sample_quantiles_df):
+        """Test that hospitalization values are rounded to integers."""
+        from epymodelingsuite.dispatcher.output import format_quantiles_flusightforecast
+
+        df, reference_date = sample_quantiles_df
+        # Modify to have non-integer values
+        df["hospitalizations"] = 100.7
+        result = format_quantiles_flusightforecast(df, reference_date)
+
+        assert (result["value"] == 101).all()
