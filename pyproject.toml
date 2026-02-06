@@ -12,7 +12,7 @@ authors = [
 ]
 description = "Models and calibrators for forecasting and scenario modeling. A codebase for large workloads with epydemix and expanded functionality."
 dependencies = [
-    "epydemix",
+    "epydemix @ git+https://github.com/mobs-lab/epydemix.git",
     "pandas",
     "numpy",
     "scipy",

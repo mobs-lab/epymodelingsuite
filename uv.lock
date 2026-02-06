@@ -950,7 +950,7 @@ wheels = [
 [[package]]
 name = "epydemix"
 version = "1.0.2"
-source = { registry = "https://pypi.org/simple" }
+source = { git = "https://github.com/mobs-lab/epydemix.git#0cf233958a9ad4e65f8fbffad1bddef7211b65a6" }
 dependencies = [
     { name = "evalidate" },
     { name = "matplotlib", version = "3.9.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
@@ -965,10 +965,6 @@ dependencies = [
     { name = "scipy", version = "1.17.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "seaborn" },
     { name = "setuptools" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/95/9c/597ece0120b4a41585b49f9c0c7888da97276b484182b2e6301e74da9900/epydemix-1.0.2.tar.gz", hash = "sha256:90633fa5b3329fef9db7d62361108cc5771c9b5d035b7a9253f50275b5b70684", size = 97939, upload-time = "2025-10-30T13:45:04.915Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/ca/19/73c7ba741aec09b1b4608035144f4c61a1ccd417708a5266ea12d430964e/epydemix-1.0.2-py3-none-any.whl", hash = "sha256:09a67c7478723ce27d903b0ac4acee5a6834bda5ef6166e6e2848e2aaa66aee9", size = 102611, upload-time = "2025-10-30T13:45:03.929Z" },
 ]
 
 [[package]]
@@ -1020,7 +1016,7 @@ dev = [
 requires-dist = [
     { name = "autodoc-pydantic", marker = "extra == 'dev'" },
     { name = "epiweeks" },
-    { name = "epydemix" },
+    { name = "epydemix", git = "https://github.com/mobs-lab/epydemix.git" },
     { name = "holidays" },
     { name = "ipykernel", marker = "extra == 'dev'" },
     { name = "matplotlib" },
