@@ -477,28 +477,32 @@ def build_calibration(
     # Validate data availability for each location
     from ..schema.data_validation import validate_calibration_data
 
-    valid_locations, invalid_locations = validate_calibration_data(
+    # valid/invalid_population_names are subsets of population_names (e.g., "denver", "US-MA")
+    valid_population_names, invalid_population_names = validate_calibration_data(
         calibration_config=calibration_config,
         population_names=population_names,
         observed_data=observed_in_window,
     )
 
     # All locations have no data - fail early
-    if not valid_locations:
-        raise CalibrationDataError(f"No valid data for any location. Invalid: {invalid_locations}")
+    if not valid_population_names:
+        raise CalibrationDataError(f"No valid data for any location. Invalid: {invalid_population_names}")
 
     # Some locations have no data - skip or fail based on parameter
-    if invalid_locations:
+    if invalid_population_names:
         if skip_invalid_locations:
             logger.warning(
                 "Skipping %d location(s) with no data: %s",
-                len(invalid_locations),
-                invalid_locations,
+                len(invalid_population_names),
+                invalid_population_names,
             )
-            # Filter models to only valid locations
-            models = [m for m in models if m.population.name in valid_locations]
+            # Filter using population_names (e.g., "denver", "US-MA")
+            # This is different from EpiModel.population.name (e.g., "metrocast_location_denver")
+            valid_set = set(valid_population_names)
+            models = [model for model, name in zip(models, population_names) if name in valid_set]
+            population_names = [name for name in population_names if name in valid_set]
         else:
-            raise CalibrationDataError(f"Data validation failed for locations: {invalid_locations}")
+            raise CalibrationDataError(f"Data validation failed for locations: {invalid_population_names}")
 
     calibrators = []
     location_column = calibration.comparison[0].observed_location_column
