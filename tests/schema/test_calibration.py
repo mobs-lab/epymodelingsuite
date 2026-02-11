@@ -6,7 +6,6 @@ import pytest
 
 from epymodelingsuite.schema.calibration import (
     CalibrationConfig,
-    CalibrationModelset,
     CalibrationStrategy,
     ComparisonSpec,
 )

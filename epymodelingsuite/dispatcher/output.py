@@ -26,7 +26,6 @@ from ..utils.location import (
     get_flusight_population,
     parse_population_name,
 )
-from ..utils.populations import get_total_population
 from ..visualization.generators import (
     generate_categorical_plots,
     generate_posterior_grid_plot,
