@@ -98,6 +98,34 @@ def get_flusight_quantiles() -> list[float]:
     ]
 
 
+def get_metrocast_quantiles() -> list[float]:
+    """
+    Return a list containing the quantiles needed for FluSight metrocast submissions.
+
+    The set of quantiles is defined at https://github.com/reichlab/flu-metrocast/tree/main/model-output#output_type_id
+    """
+    return [
+        0.025,
+        0.05,
+        0.1,
+        0.25,
+        0.5,
+        0.75,
+        0.9,
+        0.95,
+        0.975,
+    ]
+
+
+def get_metrocast_horizons() -> range:
+    """
+    Return the forecast horizons for metrocast submissions.
+
+    Metrocast uses horizons 0-3, while standard FluSight uses -1 to 3.
+    """
+    return range(4)
+
+
 def get_quantile_ribbon_default() -> list[float]:
     """Return a list containing default quantiles for plotting ribbons."""
     return [0.025, 0.25, 0.5, 0.75, 0.975]
@@ -273,6 +301,12 @@ class FlusightForecastOutput(BaseModel):
         None,
         description="Add 'wk inc flu prop ed visits' target to submission file.",
     )
+    quantiles: list[float] | None = Field(
+        default_factory=get_flusight_quantiles,
+        description="Desired quantiles for hospitalizations and prop_ed expressed as floats.",
+        validate_default=True,
+    )
+    metrocast: bool | None = Field(False, description="Treat outputs as metrocast.")
 
 
 class QuantilesOutput(BaseModel):

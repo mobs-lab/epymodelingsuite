@@ -311,57 +311,65 @@ def add_model_parameters_from_config(model: EpiModel, parameters: dict[str, Para
         raise ValueError(f"Error adding parameters to model: {e}")
 
 
-def calculate_parameters_from_config(model: EpiModel, parameters: dict[str, Parameter]) -> EpiModel:
+def calculate_parameters_from_config(
+    model: EpiModel, parameters: dict[str, Parameter], compartment_init: dict[str, np.ndarray] | None
+) -> EpiModel:
     """
     Add calculated parameters to the EpiModel, assuming all non-calculated parameters are already in the model.
 
     Parameters
     ----------
-        model: The EpiModel instance to which calculated parameters will be added.
-        parameters: Dictionary mapping parameter names to Parameter objects.
+    model: EpiModel
+            The EpiModel instance to which calculated parameters will be added.
+    parameters: dict[str, Parameter]
+            Dictionary mapping parameter names to Parameter objects.
+    compartment_init: dict[str, np.ndarray] | None
+            Dictionary mapping compartment names to initial condition arrays,
+            or None if no initial conditions are specified.
 
     Returns
     -------
-        EpiModel instance with calculated parameters added.
+    EpiModel
+            EpiModel instance with calculated parameters added.
     """
     # Extract parameter names and expressions
     calc_params = {name: param.value for name, param in parameters.items() if param.type == "calculated"}
 
     # Build a dictionary of calculated values
-    parameters_dict = {}
     for name, expr in calc_params.items():
+        parameter_dict = {}
         logger.info(f"Calculating parameter {name} using expression: {expr}")
         try:
             # Parse the expression into a tree
             tree = ast.parse(expr, mode="eval")
 
             # Substitute retrieved parameter values or contact matrix eigenvalue into the tree
-            RetrieveName(model).visit(tree)
+            RetrieveName(model, compartment_init).visit(tree)
 
             # Validate the expression
             SafeEvalVisitor().visit(tree)
 
             # Evaluate the expression
             code = compile(tree, filename="<calc_eval>", mode="eval")
-            parameters_dict[name] = eval(code, {"__builtins__": None, "np": np, "scipy": scipy}, {})
-            logger.info(f"Calculated parameter {name}: {parameters_dict[name]}")
+            parameter_dict[name] = eval(code, {"__builtins__": None, "np": np, "scipy": scipy}, {})
+            logger.info(f"Calculated parameter {name}: {parameter_dict[name]}")
         except Exception as e:
             raise ValueError(f"Error calculating parameter {name}: {e}")
 
-    try:
-        model.add_parameter(parameters_dict=parameters_dict)
-        logger.info(f"Calculated parameters: {list(parameters_dict.keys())}")
+        try:
+            model.add_parameter(parameters_dict=parameter_dict)
+            logger.info(f"Added parameter: {list(parameter_dict.keys())}")
+        except Exception as e:
+            raise ValueError(f"Error adding parameters to model: {e}")
 
-        return model
-    except Exception as e:
-        raise ValueError(f"Error adding parameters to model: {e}")
+    return model
 
 
 def calculate_compartment_initial_conditions(
     compartments: list,
     population_array: np.ndarray,
     params_dict: dict | None = None,
-) -> dict | None:
+) -> dict[str, np.ndarray] | None:
     """
     Calculate initial conditions for compartments based on their initialization values.
 
@@ -385,15 +393,14 @@ def calculate_compartment_initial_conditions(
 
     Returns
     -------
-    dict | None
+    dict[str, np.ndarray] | None
         Dictionary mapping compartment names to initial condition arrays,
         or None if no initial conditions are specified.
 
     Raises
     ------
     ValueError
-        If multiple compartments are marked as default, or if initialization
-        logic produces invalid values.
+        If initialization logic produces invalid values.
 
     Examples
     --------

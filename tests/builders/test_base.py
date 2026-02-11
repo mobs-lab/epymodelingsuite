@@ -481,7 +481,7 @@ class TestParseAgeGroup:
         """Test parsing '0+' which represents all ages."""
         result = _parse_age_group("0+")
         # Should return ["0", "1", ..., "83", "84+"]
-        expected = [str(i) for i in range(0, 84)] + ["84+"]
+        expected = [str(i) for i in range(84)] + ["84+"]
         assert result == expected
         assert len(result) == 85  # 0-83 (84 ages) + "84+"
 

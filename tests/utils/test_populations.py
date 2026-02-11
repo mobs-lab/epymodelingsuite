@@ -57,7 +57,7 @@ class TestAggregatePopulationByAgeGroups:
 
     def test_dict_input(self):
         """Test aggregation with dict input."""
-        pop_dict = {i: 100 for i in range(10)}  # ages 0-9, 100 each
+        pop_dict = dict.fromkeys(range(10), 100)  # ages 0-9, 100 each
 
         result = aggregate_population_by_age_groups(pop_dict, ["0-4", "5+"])
 

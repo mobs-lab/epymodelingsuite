@@ -664,6 +664,7 @@ def apply_calibrated_parameters(
     model: EpiModel,
     params: dict,
     parameter_config: dict[str, Parameter],
+    compartment_init: dict[str, np.ndarray] | None,
 ) -> None:
     """
     Apply calibrated and calculated parameters to model.
@@ -679,6 +680,9 @@ def apply_calibrated_parameters(
             Dictionary containing calibrated parameter values from ABC sampler.
     parameter_config : dict[str, Parameter]
             Parameter configuration from basemodel.
+    compartment_init: dict[str, np.ndarray] | None
+            Dictionary mapping compartment names to initial condition arrays,
+            or None if no initial conditions are specified.
     """
     # Extract calibrated parameters
     calibrated_params = {
@@ -693,7 +697,7 @@ def apply_calibrated_parameters(
     # Recalculate derived parameters if any exist
     has_calculated = any(param.type.value == "calculated" for param in parameter_config.values())
     if has_calculated:
-        calculate_parameters_from_config(model, parameter_config)
+        calculate_parameters_from_config(model=model, parameters=parameter_config, compartment_init=compartment_init)
 
 
 def compute_simulation_start_date(
@@ -876,10 +880,20 @@ def make_simulate_wrapper(
             reference_start_date=reference_start_date,
         )
         timespan = Timespan(start_date=start_date, end_date=params["end_date"], delta_t=basemodel.timespan.delta_t)
-        # 3. Apply calibrated parameters
-        apply_calibrated_parameters(model=model, params=params, parameter_config=basemodel.parameters)
 
-        # 4. Apply vaccination (reaggregating if start_date is sampled)
+        # 3. Calculate compartment initial conditions
+        compartment_init = calculate_compartment_initial_conditions(
+            compartments=basemodel.compartments,
+            population_array=model.population.Nk,
+            params_dict=params,
+        )
+
+        # 4. Apply calibrated parameters
+        apply_calibrated_parameters(
+            model=model, params=params, parameter_config=basemodel.parameters, compartment_init=compartment_init
+        )
+
+        # 5. Apply vaccination (reaggregating if start_date is sampled)
         apply_vaccination_for_sampled_start(
             model=model,
             basemodel=basemodel,
@@ -888,23 +902,16 @@ def make_simulate_wrapper(
             sampled_start_timespan=sampled_start_timespan,
         )
 
-        # 5. Apply seasonality (this must occur before parameter interventions to preserve parameter overrides)
+        # 6. Apply seasonality (this must occur before parameter interventions to preserve parameter overrides)
         apply_seasonality_with_sampled_min(model=model, basemodel=basemodel, timespan=timespan, params=params)
 
-        # 6. Add parameter interventions
+        # 7. Add parameter interventions
         if basemodel.interventions and "parameter" in intervention_types:
             add_parameter_interventions_from_config(
                 model=model, interventions=basemodel.interventions, timespan=timespan
             )
 
-        # 7. Calculate compartment initial conditions
-        compartment_init = calculate_compartment_initial_conditions(
-            compartments=basemodel.compartments,
-            population_array=model.population.Nk,
-            params_dict=params,
-        )
-
-        # 8 Handle random state
+        # 8. Handle random state
         if "random_state" in params.keys():
             rng.bit_generator.state = params["random_state"]
         random_state = rng.bit_generator.state

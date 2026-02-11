@@ -287,3 +287,28 @@ class TestMakeRateTrendsFlusightforecast:
             horizon_data = result[result["horizon"] == horizon]
             stable_prob = horizon_data[horizon_data["output_type_id"] == "stable"]["value"].iloc[0]
             assert stable_prob == 1.0
+
+    def test_missing_observation_date_raises_error(self, basic_setup):
+        """Missing observation date in surveillance data raises ValueError with helpful message."""
+        import pandas as pd
+
+        # Create observed data that doesn't include the required date (reference_date - 1 week)
+        # reference_date is 2024-01-15, so obs_date would be 2024-01-08
+        observed_missing_date = pd.DataFrame(
+            {
+                "date": [pd.Timestamp("2024-01-01"), pd.Timestamp("2024-01-15")],  # Missing 2024-01-08
+                "value": [80, 120],
+            }
+        )
+
+        proj_dates = np.array([basic_setup["proj_dates"]])
+        proj_values = np.array([[100, 100, 100, 100]])
+
+        with pytest.raises(ValueError, match="reference_date - 1 week"):
+            make_rate_trends_flusightforecast(
+                reference_date=basic_setup["reference_date"],
+                proj_dates=proj_dates,
+                proj_values=proj_values,
+                observed=observed_missing_date,
+                population=basic_setup["population"],
+            )
