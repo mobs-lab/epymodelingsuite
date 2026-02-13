@@ -6,7 +6,7 @@ import time
 import numpy as np
 import pandas as pd
 from epydemix.calibration import ae, mae, mape, rmse, wmape
-from ..filtering import filter_projections_on_data_point
+# from ..filtering import filter_projections_on_data_point
 
 from ..schema.dispatcher import BuilderOutput, CalibrationOutput, SimulationOutput
 from ..telemetry import ExecutionTelemetry
