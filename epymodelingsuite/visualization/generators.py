@@ -39,6 +39,75 @@ logger = logging.getLogger(__name__)
 POSTERIOR_METADATA_COLUMNS = {"sim_id", "location", "population", "primary_id", "seed"}
 
 
+def _check_incomplete_generations(calibration: CalibrationOutput) -> str | None:
+    """Return a note string if fewer generations completed than requested.
+
+    ABC-SMC from epydemix can return fewer generations than requested if it reaches the stopping criterion (e.g., max_time) before completing all generations. It discards the incomplete generation and returns the previously completed generation as the final result (CalibrationResults).
+
+    This function checks if the number of completed generations in the results is fewer than the number requested in the calibration strategy, and if so, returns a note string to indicate this. If all generations completed or if the necessary information is unavailable, it returns None.
+
+    Parameters
+    ----------
+    calibration : CalibrationOutput
+        Calibration output with optional calibration_strategy and results.
+
+    Returns
+    -------
+    str or None
+        A note string if calibration completed fewer generations than requested,
+        or None if all generations completed or info is unavailable.
+    """
+    # Check number of generations requested
+    strategy = getattr(calibration, "calibration_strategy", None)
+    requested = strategy.options.get("num_generations") if strategy else None
+    if requested is None or calibration.results is None:
+        return None
+
+    # Check number of completed generations
+    posterior_dists = getattr(calibration.results, "posterior_distributions", None)
+    if posterior_dists is None:
+        return None
+    completed = len(posterior_dists)
+
+    # Compare
+    if completed < requested:
+        return f"Completed {completed} of {requested} requested generations"
+    return None
+
+
+def _format_plot_notes(notes: list[str]) -> tuple[str, str]:
+    """Return (title_suffix, footnote_text) from a list of notes.
+
+    Parameters
+    ----------
+    notes : list of str
+        List of note strings to format.
+
+    Returns
+    -------
+    tuple of (str, str)
+        (title_suffix, footnote_text). Empty strings if no notes.
+    """
+    if not notes:
+        return ("", "")
+    return ("*", "* " + "; ".join(notes))
+
+
+def _add_footnote(fig: plt.Figure, footnote: str) -> None:
+    """Add footnote text to bottom of figure if non-empty.
+
+    Parameters
+    ----------
+    fig : matplotlib.figure.Figure
+        Figure to add footnote to.
+    footnote : str
+        Footnote text. If empty, no action is taken.
+    """
+    if footnote:
+        fig.subplots_adjust(bottom=fig.subplotpars.bottom + 0.03)
+        fig.text(0.5, 0.01, footnote, ha="center", fontsize=8, style="italic")
+
+
 def _fetch_quantiles_for_location(
     calibration: CalibrationOutput,
     plots_config: PlotsConfig,
