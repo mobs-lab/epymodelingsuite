@@ -958,7 +958,9 @@ def generate_simulation_outputs(
         for simulation in simulations:
             # Compartments
             if output.quantiles.compartments:
-                quanc_df = simulation.results.get_quantiles_compartments(quantiles=output.quantiles.selections)
+                quanc_df = simulation.results.get_quantiles_compartments(
+                    quantiles=output.quantiles.selections, ignore_nan=True
+                )
                 if hasattr(output.quantiles.compartments, "__len__"):
                     try:
                         columns_to_select = ["date", "quantile"]
@@ -975,7 +977,9 @@ def generate_simulation_outputs(
 
             # Transitions
             if output.quantiles.transitions:
-                quant_df = simulation.results.get_quantiles_transitions(quantiles=output.quantiles.selections)
+                quant_df = simulation.results.get_quantiles_transitions(
+                    quantiles=output.quantiles.selections, ignore_nan=True
+                )
                 if hasattr(output.quantiles.transitions, "__len__"):
                     try:
                         columns_to_select = ["date", "quantile"]
@@ -1203,7 +1207,9 @@ def generate_calibration_outputs(
 
             # Projection quantiles
             try:
-                quan_df = calibration.results.get_projection_quantiles(quantiles=output.quantiles.selections)
+                quan_df = calibration.results.get_projection_quantiles(
+                    quantiles=output.quantiles.selections, ignore_nan=True
+                )
             except ValueError:
                 warnings.add(
                     f"OUTPUT GENERATOR: failed to obtain projection quantiles for model with primary_id={calibration.primary_id}, continuing to next model."
@@ -1429,7 +1435,9 @@ def generate_calibration_outputs(
                 try:
                     # FRAGILE: the name 'hospitalizations' is user-supplied in the modelset as the column to look for in the surveillance data.
                     quanf_df = calibration.results.get_projection_quantiles(
-                        quantiles=flusight_quantiles, variables=["date", "quantile", "hospitalizations"]
+                        quantiles=flusight_quantiles,
+                        variables=["date", "quantile", "hospitalizations"],
+                        ignore_nan=True,
                     )
                 except ValueError:
                     warnings.add(
@@ -1480,7 +1488,9 @@ def generate_calibration_outputs(
                 for calibration in calibrations:
                     try:
                         quanproj_df = calibration.results.get_projection_quantiles(
-                            quantiles=flusight_quantiles, variables=["date", "quantile", transition_name]
+                            quantiles=flusight_quantiles,
+                            variables=["date", "quantile", transition_name],
+                            ignore_nan=True,
                         )
                         quanproj_df.insert(0, "primary_id", calibration.primary_id)
                         quanproj_df.insert(1, "seed", calibration.seed)
