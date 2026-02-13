@@ -38,6 +38,26 @@ from .vaccination import add_vaccination_schedules_from_config
 
 logger = logging.getLogger(__name__)
 
+MONTH_RATE_PARAMETERS = {"omega", "eta"}
+"""Parameters sampled in months that must be converted to daily rates."""
+
+_DAYS_PER_MONTH = 30
+
+
+def _convert_months_to_daily_rate(months_value: float | int, param_name: str) -> float:
+    """Convert a parameter provided in months to a daily rate."""
+    try:
+        months_float = float(months_value)
+    except (TypeError, ValueError) as exc:
+        msg = f"Calibrated parameter '{param_name}' must be numeric; got {months_value!r}."
+        raise ValueError(msg) from exc
+
+    if months_float <= 0:
+        msg = f"Calibrated parameter '{param_name}' must be > 0 months to compute a rate."
+        raise ValueError(msg)
+
+    return 1.0 / (months_float * _DAYS_PER_MONTH)
+
 
 def create_model_collection(
     basemodel: BaseEpiModel,
@@ -670,7 +690,8 @@ def apply_calibrated_parameters(
     Apply calibrated and calculated parameters to model.
 
     Modifies model in-place by adding calibrated parameter values
-    and recalculating derived parameters.
+    (including conversions for month-based priors) and recalculating
+    derived parameters.
 
     Parameters
     ----------
@@ -685,11 +706,15 @@ def apply_calibrated_parameters(
             or None if no initial conditions are specified.
     """
     # Extract calibrated parameters
-    calibrated_params = {
-        k: Parameter(type="scalar", value=v)
-        for k, v in params.items()
-        if k in parameter_config and parameter_config[k].type == "calibrated"
-    }
+    calibrated_params: dict[str, Parameter] = {}
+    for name, raw_value in params.items():
+        if name not in parameter_config or parameter_config[name].type != "calibrated":
+            continue
+
+        converted_value = (
+            _convert_months_to_daily_rate(raw_value, name) if name in MONTH_RATE_PARAMETERS else raw_value
+        )
+        calibrated_params[name] = Parameter(type="scalar", value=converted_value)
 
     if calibrated_params:
         add_model_parameters_from_config(model, calibrated_params)

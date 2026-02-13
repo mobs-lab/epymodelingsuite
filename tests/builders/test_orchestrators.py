@@ -775,7 +775,32 @@ class TestApplyCalibratedParameters:
 
             # Should call both add and calculate
             mock_add.assert_called_once()
-            mock_calc.assert_called_once_with(model, parameter_config)
+            mock_calc.assert_called_once_with(
+                model=model, parameters=parameter_config, compartment_init=None
+            )
+
+    def test_month_prior_params_are_converted_to_rates(self):
+        """Omega and eta priors are sampled in months and converted to daily rates."""
+        model = Mock()
+        params = {"omega": 5, "eta": 3}
+        parameter_config = {"omega": Parameter(type="calibrated"), "eta": Parameter(type="calibrated")}
+
+        with patch("epymodelingsuite.builders.orchestrators.add_model_parameters_from_config") as mock_add:
+            apply_calibrated_parameters(model, params, parameter_config)
+
+            mock_add.assert_called_once()
+            added_params = mock_add.call_args[0][1]
+            assert added_params["omega"].value == pytest.approx(1 / (5 * 30))
+            assert added_params["eta"].value == pytest.approx(1 / (3 * 30))
+
+    def test_month_prior_params_validate_positive(self):
+        """Month-based priors must be positive to convert to rates."""
+        model = Mock()
+        params = {"omega": 0}
+        parameter_config = {"omega": Parameter(type="calibrated")}
+
+        with pytest.raises(ValueError):
+            apply_calibrated_parameters(model, params, parameter_config)
 
 
 class TestApplyVaccinationForSampledStart:
