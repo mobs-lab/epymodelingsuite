@@ -12,7 +12,7 @@ import tempfile
 from pathlib import Path
 
 from epymodelingsuite.config_loader import load_aggregation_config_from_file
-from epymodelingsuite.strain_aggregator import pull_trajectory_projections
+from epymodelingsuite.strain_aggregator import pull_trajectory_projections, dispatch_strain_sampler, dispatch_strain_aggregator
 
 def main():
     """Aggregate trajectories from multistrain experiments."""
@@ -37,36 +37,30 @@ def main():
         raise ValueError(f"Error loading aggregation config: {e}")
     aggregation = config.aggregation
 
-    # Work inside temp directory
-    outputs = {}
-    with tempfile.TemporaryDirectory() as tempdir:
-        subtypes = pull_trajectory_projections(aggregation, tempdir)
-        
-
+    print(f"Downloading strain trajectories from {aggregation.bucket} ...")
     
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    # Work inside temp directory for pulling from bucket
+    # Make dict of strain: trajectory df
+    strains = {}
+    with tempfile.TemporaryDirectory() as tempdir:
+        strains.update(pull_trajectory_projections(aggregation, tempdir))
 
-    print("Downloading HHS hospitalization data...")
-    print(f"  Start date: {args.start_date}")
-    print(f"  Data type: {args.data_type}")
-    print(f"  Output file: {args.output}")
+    print(f"  Obtained trajectories for strains {strains.keys()}.")
+    
+    print("\nCreating strain sim_id mapping...")
+    
+    # Create an n-sample mapping of trajectories from each strain
+    mapping_df = dispatch_strain_sampler(strains, aggregation)
 
-    # Fetch data
-    df = fetch_hhs_hospitalizations(
-        query_start_date=args.start_date,
-        save_path=args.output,
-        data_type=args.data_type,
-    )
+    print(f"  Created mapping:\n{mapping_df.head()}")
 
-    print("\nDownload complete!")
-    print(f"  Total records: {len(df)}")
-    print(f"  Date range: {df['target_end_date'].min()} to {df['target_end_date'].max()}")
-    print(f"  Locations: {df['location_iso'].nunique()}")
-    print(f"  Saved to: {args.output}")
+    print("\nCreating aggregated trajectories...")
+    
+    # Aggregate the trajectories based on the mapping
+    aggregated_df = dispatch_strain_aggregator(strains, mapping_df, aggregation)
 
-    # Show preview
-    print("\nFirst few rows:")
-    print(df.head())
+    print(f"  Aggregated trajectories:\n{aggregated_df.head()}")
+    
 
 
 if __name__ == "__main__":

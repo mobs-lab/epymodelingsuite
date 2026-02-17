@@ -2,11 +2,42 @@ import logging
 import os
 from tempfile import TemporaryDirectory
 import pandas as pd
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
 from .schema.aggregation import AggregationConfig, AggregationConfiguration, AggregationStrategyEnum, SamplingStrategyEnum
-    
+
+
+def validate_strains(
+    strains: dict[str, pd.DataFrame],
+    config: AggregationConfiguration,
+) -> pd.DataFrame:
+    """
+    Ensure strain trajectories match sources in config.
+
+    Parameters
+    ----------
+    strains : dict
+        Dictionary mapping strain names to their trajectory DataFrames
+        Example: {'h1': df_h1, 'h3': df_h3, 'b': df_b}
+        Or: {'a': df_a, 'b': df_b}
+    config: AggregationConfiguration
+        Config object with settings
+
+    Raises
+    ------
+    ValueError
+        if strains do not match
+    """
+    source_strains = [source.strain for source in config.sources]
+    traj_strains = list(strains.keys())
+    if (len(source_strains) != len(traj_strains)) or (set(source_strains) != set(traj_strains)):
+        raise ValueError(
+            f"Received trajectories for strains {traj_strains}, \
+            but configurations for strains {source_strains}."
+        )
+        
     
 def pull_trajectory_projections(config: AggregationConfiguration, tempdir: TemporaryDirectory) -> dict[str, pd.DataFrame]
     """
@@ -36,249 +67,223 @@ def pull_trajectory_projections(config: AggregationConfiguration, tempdir: Tempo
             f"{config.bucket}/{source.experiment}/*/"
             f"outputs/*/{source.trajectory_file}"
         )
-        target_location = f"{tempdir}/{source.subtype}"
+        target_location = f"{tempdir}/{source.strain}"
 
         command = f"gsutil cp -r '{source_location}' '{target_location}'"
         exit_code = os.system(command)
 
         if exit_code == 0:
-            logger.info(f"Downloaded: {source.subtype}")
+            logger.info(f"Downloaded: {source.strain}")
             # Load the downloaded data
-            trajectory_file = f"{target_location}/{source.subtype}/{source.trajectory_file}"
-            trajectories[source.subtype] = pd.read_csv(trajectory_file)
+            trajectory_file = f"{target_location}/{source.strain}/{source.trajectory_file}"
+            trajectories[source.strain] = pd.read_csv(trajectory_file)
         else:
             raise ValueError(f"Failed to download: {source.experiment}\nExit code: {exit_code}")
 
     return trajectories
 
 
-def random_sample_mapping(
+def _random_sample_mapping(
     strains: dict[str, pd.DataFrame],
     config: AggregationConfiguration,
-    n_samples: int = 1000,
-    seed: int | None = None,
 ) -> pd.DataFrame:
     """
+    Random sampling: independently shuffle strain sim_ids and sum trajectories.
+
+    Parameters
+    ----------
+    strains : dict
+        Dictionary mapping strain names to their trajectory DataFrames
+        Example: {'h1': df_h1, 'h3': df_h3, 'b': df_b}
+        Or: {'a': df_a, 'b': df_b}
+    config: AggregationConfiguration
+        Config object with sampling settings
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame mapping sample_id to strain sim_ids
     """
+    rng = np.random.default_rng(seed=config.seed)
+    n_samples = config.sampling.n_samples
+
+    # Sample sim_ids for each strain and create mapping
+    mapping_data = {'sample_id': range(n_samples)}
+    for source in config.sources:
+        # Sample sim_ids
+        sim_ids = strains[source.strain][source.sim_id].unique()
+        if len(sim_ids) < n_samples:
+            raise ValueError(
+                f"Source {source.strain} contains {len(sim_ids)} \
+                trajectories but {n_samples} were requested."
+            )
+        sampled_ids = rng.choice(sim_ids, size=n_samples, replace=False)
+        mapping_data[source.strain] = sampled_ids
+    return pd.DataFrame(mapping_data)
+    
     
 def dispatch_strain_sampler(
     strains: dict[str, pd.DataFrame],
     config: AggregationConfiguration,
 ) -> pd.DataFrame:
     """
-    """
-    match config.sampling.method:
-        case SamplingStrategyEnum.random:
-            return random_sample_mapping(strains, config)
-        case _:
-            raise NotImplementedError(f"Invalid sampling method: {config.sampling.method}")
-    
-
-def random_sample_and_sum(
-    strain_trajectories: Dict[str, pd.DataFrame],
-    n_samples: int = 1000,
-    seed: Optional[int] = None
-) -> tuple:
-    """
-    Random sampling: independently shuffle strain sim_ids and sum trajectories.
+    Dispatch multistrain trajectory sampling methods.
 
     Parameters
     ----------
-    strain_trajectories : dict
+    strains : dict
         Dictionary mapping strain names to their trajectory DataFrames
         Example: {'h1': df_h1, 'h3': df_h3, 'b': df_b}
         Or: {'a': df_a, 'b': df_b}
-    n_samples : int
-        Number of samples to generate (default: 1000)
-    seed : int, optional
-        Random seed for reproducibility
+    config: AggregationConfiguration
+        Config object with sampling settings
 
     Returns
     -------
-    tuple
-        (combined_df, mapping_df)
-        - combined_df: DataFrame with summed trajectories
-        - mapping_df: DataFrame mapping sample_id to strain sim_ids
+    pd.DataFrame
+        DataFrame mapping sample_id to strain sim_ids
     """
-    if seed is not None:
-        np.random.seed(seed)
+    validate_strains(strains, config)
+    
+    match config.sampling.method:
+        case SamplingStrategyEnum.random:
+            return _random_sample_mapping(strains, config)
+        case _:
+            raise NotImplementedError(f"Invalid sampling method: {config.sampling.method}")
 
-    strain_names = list(strain_trajectories.keys())
 
-    # Sample sim_ids for each strain
-    sampled_ids = {}
-    for strain in strain_names:
-        sim_ids = strain_trajectories[strain]['sim_id'].unique()
-        sampled_ids[strain] = np.random.choice(sim_ids, size=n_samples, replace=False)
+def merge_strain_trajectories(
+    strains: dict[str, pd.DataFrame],
+    mapping: pd.DataFrame,
+    config: AggregationConfiguration,
+) -> pd.DataFrame:
+    """
+    Merge trajectory DataFrames based on a mapping of sim_id.
 
-    # Create mapping DataFrame
-    mapping_data = {'sample_id': range(n_samples)}
-    for strain in strain_names:
-        mapping_data[f'{strain}_sim_id'] = sampled_ids[strain]
-    mapping_df = pd.DataFrame(mapping_data)
+    Parameters
+    ----------
+    strains : dict
+        Dictionary mapping strain names to their trajectory DataFrames
+        Example: {'h1': df_h1, 'h3': df_h3, 'b': df_b}
+        Or: {'a': df_a, 'b': df_b}
+    mapping: pd.DataFrame
+        DataFrame mapping sample_id to strain sim_ids
+    config: AggregationConfiguration
+        Config object with sampling settings
 
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with merged trajectories:
+        strain trajectories in columns "target_{strain}"
+        strain sim_id in columns "{strain}"
+        identifying columns "sample_id", "location", and "date"
+            
+    """
+    validate_strains(strains, config)
+
+    # Standardize strain DFs
+    formatted_strains = {}
+    for source in config.sources:
+        traj_df = strains[source.strain].copy()
+        formatted = traj_df.rename(columns={
+            source.target_column: "target",
+            source.date_column: "date",
+            source.location_column: "location",
+            source.sim_id: "sim_id",
+        })[["target","date","location","sim_id"]]
+        formatted_strains[source.strain] = formatted
+    
     # Start with first strain
-    first_strain = strain_names[0]
-    combined = mapping_df.merge(
-        strain_trajectories[first_strain],
-        left_on=f'{first_strain}_sim_id',
-        right_on='sim_id'
-    ).rename(columns={'hospitalizations': f'hospitalizations_{first_strain}'})
+    first_source = config.sources[0]
+    combined = mapping.merge(
+        formatted_strains[first_source.strain],
+        left_on=first_source.strain,
+        right_on="sim_id"
+    ).rename(columns={
+        "target": f"target_{first_source.strain}"
+    })
 
     # Merge remaining strains
-    for strain in strain_names[1:]:
+    for source in config.sources[1:]:
         combined = combined.merge(
-            strain_trajectories[strain],
-            left_on=[f'{strain}_sim_id', 'population', 'date'],
-            right_on=['sim_id', 'population', 'date'],
-            suffixes=('', f'_{strain}'),
-            how='outer'
-        )
-        combined = combined.rename(columns={'hospitalizations': f'hospitalizations_{strain}'})
+            formatted_strains[source.strain],
+            left_on=[source.strain, "location", "date"],
+            right_on=["sim_id", "location", "date"],
+            suffixes=('', f'_{source.strain}'),
+            how="outer"
+        ).rename(columns={
+            "target": f"target_{source.strain}"
+        })
 
-    # Sum hospitalizations from all strains
-    hosp_cols = [f'hospitalizations_{strain}' for strain in strain_names]
-    combined['hospitalizations_total'] = combined[hosp_cols].fillna(0).sum(axis=1)
+    return combined
+    
+
+def _aggregate_sum(
+    merged_trajectories: pd.DataFrame,
+    config: AggregationConfiguration,
+) -> pd.DataFrame:
+    """
+    Dispatch multistrain trajectory aggregation methods.
+
+    Parameters
+    ----------
+    merged_trajectories: pd.DataFrame
+        DataFrame with merged trajectories in columns "target_{strain}",
+        sim_id in columns "{strain}",
+        and identifying columns "sample_id", "location", and "date"
+    config: AggregationConfiguration
+        Config object with sampling settings
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with summed trajectories
+    """
+    aggregated = merged_trajectories.copy()
+    
+    # Sum target values from all strains
+    target_cols = [f'target_{source.strain}' for source in config.sources]
+    aggregated['target_total'] = aggregated[target_cols].fillna(0).sum(axis=1)
 
     # Clean up columns
-    output_cols = ['sample_id'] + [f'{strain}_sim_id' for strain in strain_names] + \
-                  ['population', 'date'] + hosp_cols + ['hospitalizations_total']
+    output_cols = ['sample_id'] + [source.strain for source in config.sources] + \
+                  ['location', 'date'] + target_cols + ['target_total']
 
     # Filter to only columns that exist
-    output_cols = [col for col in output_cols if col in combined.columns]
-    combined = combined[output_cols]
+    output_cols = [col for col in output_cols if col in aggregated.columns]
 
-    return combined, mapping_df
+    return aggregated[output_cols]
 
-
-
-
-def dispatch_aggregator(
-    source_results: dict[str, list[CalibrationOutput]], config: AggregationConfig
-) -> list[CalibrationOutput]:
+    
+def dispatch_strain_aggregator(
+    merged_trajectories: pd.DataFrame,
+    config: AggregationConfiguration,
+) -> pd.DataFrame:
     """
-    Aggregate projection trajectories from multiple experiments.
-
-    Produces N aggregated outputs where N is the number of locations/tasks in source experiments.
-    Each aggregated output combines the corresponding results from all sources:
-    aggregated[i] = aggregate(source1[i].results, source2[i].results, ...) for location i
+    Dispatch multistrain trajectory aggregation methods.
 
     Parameters
     ----------
-    source_results : dict[str, list[CalibrationOutput]]
-        Dictionary mapping exp_id to list of CalibrationOutput for that experiment.
-        Keys are exp_ids from config.sources, values are CalibrationOutput objects from runner-artifacts.
-        All sources must have the same number of outputs (one per population/location) and must be aligned.
-        This structure preserves source grouping needed for weighted/bootstrap/correlated methods.
-    config : AggregationConfig
-        Aggregation configuration (method, compartments, transitions, weights, etc.)
+    merged_trajectories: pd.DataFrame
+        DataFrame with merged trajectories in columns "target_{strain}"
+    config: AggregationConfiguration
+        Config object with sampling settings
 
     Returns
     -------
-    list[CalibrationOutput]
-        List of aggregated CalibrationOutput objects, one per location.
-        Length matches the input (e.g., 10 outputs for 10 locations).
-
-    Examples
-    --------
-    >>> source_results = {
-    ...     "h1-calibration": [output0, output1, ...],  # 10 CalibrationOutput (one per location)
-    ...     "h3-calibration": [output0, output1, ...]   # 10 CalibrationOutput (one per location)
-    ... }
-    >>> aggregated = dispatch_aggregator(source_results, config)
-    >>> len(aggregated)  # 10 aggregated CalibrationOutput
-    10
-    >>> # aggregated[0] contains h1[0].results + h3[0].results (for location 0)
-    >>> # aggregated[1] contains h1[1].results + h3[1].results (for location 1)
+    pd.DataFrame
+        DataFrame with aggregated trajectories
     """
-    aggregation = config.aggregation
+    validate_strains(strains, config)
+    
+    match config.aggregation.method:
+        case AggregationStrategyEnum.sum:
+            return _aggregate_sum(strains, mapping_df, config)
+        case _:
+            raise NotImplementedError(f"Invalid aggregation method: {config.aggregation.method}")
 
-    # Validate that all exp_ids in config have corresponding results
-    for source in aggregation.sources:
-        if source.exp_id not in source_results:
-            raise ValueError(f"Missing results for exp_id: {source.exp_id}")
-
-    # Validate that results sets are of equal length
-    if not len(set(len(l) for l in source_results.values())) == 1:
-        msg = f"All sources must have the same number of outputs (one per population). \
-        Received sources {list(source_results.keys())} \
-        with corresponding num outputs {[len(l) for l in source_results.values()]}"
-        raise ValueError(msg)
-
-    # Validate that results sets are aligned by population
-    results_zip = zip(*source_results.values(), strict=True)
-    idx = 0
-    for tup in results_zip:
-        if not len(set(obj.population for obj in tup)) == 1:
-            msg = f"Source results must be aligned such that results objects at equivalent \
-            indices all share the same population/location. \
-            Encountered differing populations at index {idx}: {[obj.population for obj in tup]}."
-            raise ValueError(msg)
-        idx += 1
-
-    # Dispatch to method-specific aggregator
-    if aggregation.method == AggregationStrategyEnum.sum:
-        return aggregate_sum(source_results, aggregation)
-    if aggregation.method == AggregationStrategyEnum.weighted_sum:
-        return aggregate_weighted_sum(source_results, aggregation)
-    if aggregation.method == AggregationStrategyEnum.bootstrap:
-        return aggregate_bootstrap(source_results, aggregation)
-    if aggregation.method == AggregationStrategyEnum.correlated:
-        return aggregate_correlated(source_results, aggregation)
-    raise ValueError(f"Unknown aggregation method: {aggregation.method}")
+            
 
 
-def aggregate_sum(
-    source_results: dict[str, list[CalibrationOutput]], config: AggregationConfiguration
-) -> list[CalibrationOutput]:
-    """
-    Simple element-wise summation of trajectories.
 
-    Parameters
-    ----------
-    source_results : dict[str, list[CalibrationOutput]]
-        Dictionary mapping exp_id to list of CalibrationOutput
-    config : AggregationConfiguration
-        Aggregation configuration
-
-    Returns
-    -------
-    list[CalibrationOutput]
-        List of CalibrationOutput with summed projections (one per location)
-
-    Notes
-    -----
-    Workflow:
-        1. Validate all sources have same number of outputs (N locations)
-        2. For each location i in 0..N-1:
-            a. Extract .results from each source's CalibrationOutput[i]
-            b. Extract trajectories via get_projection_trajectories()
-            c. Identify variables to aggregate based on config
-            d. Sum arrays element-wise across all sources
-            e. Preserve metadata (date, random_state) from first source
-            f. Package as CalibrationResults with projections dict
-            g. Wrap aggregated CalibrationResults into CalibrationOutput
-        3. Return list of N aggregated CalibrationOutput objects
-    """
-    return []
-
-
-def aggregate_weighted_sum(
-    source_results: dict[str, list[CalibrationOutput]], config: AggregationConfiguration
-) -> list[CalibrationOutput]:
-    """"""
-    raise NotImplementedError("Weighted sum aggregation not yet implemented")
-
-
-def aggregate_bootstrap(
-    source_results: dict[str, list[CalibrationOutput]], config: AggregationConfiguration
-) -> list[CalibrationOutput]:
-    """"""
-    raise NotImplementedError("Bootstrap aggregation not yet implemented")
-
-
-def aggregate_correlated(
-    source_results: dict[str, list[CalibrationOutput]], config: AggregationConfiguration
-) -> list[CalibrationOutput]:
-    """"""
-    raise NotImplementedError("Correlated aggregation not yet implemented")
