@@ -70,6 +70,7 @@ def _fetch_quantiles_for_location(
             cal_quant = calibration.results.get_calibration_quantiles(
                 quantiles=plots_config.quantiles.quantiles,
                 variables=["date", "data"],
+                ignore_nan=True,
             )
         except (ValueError, AttributeError, TypeError, IndexError) as e:
             logger.warning("Failed to get calibration quantiles for %s: %s", calibration.population, e)
@@ -79,6 +80,7 @@ def _fetch_quantiles_for_location(
         try:
             proj_quant = calibration.results.get_projection_quantiles(
                 quantiles=plots_config.quantiles.quantiles,
+                ignore_nan=True,
             )
         except (ValueError, AttributeError, TypeError, IndexError) as e:
             logger.warning("Failed to get projection quantiles for %s: %s", calibration.population, e)
@@ -555,6 +557,7 @@ def generate_single_quantile_plots(
                         cal_quant_for_fitting = calibration.results.get_calibration_quantiles(
                             quantiles=[0.5],  # Only need one quantile to get dates
                             variables=["date", "data"],
+                            ignore_nan=True,
                         )
                     except (ValueError, AttributeError, TypeError, IndexError) as e:
                         logger.warning(
@@ -784,6 +787,7 @@ def generate_quantile_grid_plot(
                         cal_quant_for_fitting = calibration.results.get_calibration_quantiles(
                             quantiles=[0.5],  # Only need one quantile to get dates
                             variables=["date", "data"],
+                            ignore_nan=True,
                         )
                     except (ValueError, AttributeError, TypeError, IndexError) as e:
                         logger.warning(
