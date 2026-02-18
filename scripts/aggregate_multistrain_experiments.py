@@ -9,10 +9,14 @@ Usage:
 
 import argparse
 import tempfile
-from pathlib import Path
 
 from epymodelingsuite.config_loader import load_aggregation_config_from_file
-from epymodelingsuite.strain_aggregator import pull_trajectory_projections, dispatch_strain_sampler, dispatch_strain_aggregator
+from epymodelingsuite.strain_aggregator import (
+    dispatch_strain_aggregator,
+    dispatch_strain_sampler,
+    pull_trajectory_projections,
+)
+
 
 def main():
     """Aggregate trajectories from multistrain experiments."""
@@ -38,7 +42,7 @@ def main():
     aggregation = config.aggregation
 
     print(f"Downloading strain trajectories from {aggregation.bucket} ...")
-    
+
     # Work inside temp directory for pulling from bucket
     # Make dict of strain: trajectory df
     strains = {}
@@ -46,21 +50,20 @@ def main():
         strains.update(pull_trajectory_projections(aggregation, tempdir))
 
     print(f"  Obtained trajectories for strains {strains.keys()}.")
-    
+
     print("\nCreating strain sim_id mapping...")
-    
+
     # Create an n-sample mapping of trajectories from each strain
     mapping_df = dispatch_strain_sampler(strains, aggregation)
 
     print(f"  Created mapping:\n{mapping_df.head()}")
 
     print("\nCreating aggregated trajectories...")
-    
+
     # Aggregate the trajectories based on the mapping
     aggregated_df = dispatch_strain_aggregator(strains, mapping_df, aggregation)
 
     print(f"  Aggregated trajectories:\n{aggregated_df.head()}")
-    
 
 
 if __name__ == "__main__":
