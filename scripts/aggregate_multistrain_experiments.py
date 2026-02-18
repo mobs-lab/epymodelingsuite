@@ -11,7 +11,7 @@ import argparse
 import tempfile
 
 from epymodelingsuite.config_loader import load_aggregation_config_from_file
-from epymodelingsuite.strain_aggregator import (
+from epymodelingsuite.multistrain.aggregator import (
     dispatch_strain_aggregator,
     dispatch_strain_sampler,
     pull_trajectory_projections,

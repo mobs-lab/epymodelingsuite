@@ -7,7 +7,7 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-from .schema.aggregation import AggregationConfiguration, AggregationStrategyEnum, SamplingStrategyEnum
+from ..schema.aggregation import AggregationConfiguration, AggregationStrategyEnum, SamplingStrategyEnum
 
 #############
 ### UTILS ###
