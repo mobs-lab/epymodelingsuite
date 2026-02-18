@@ -709,7 +709,7 @@ epiweeks==2.4.0 ; python_full_version >= '3.10' \
     --hash=sha256:0096132a50cfc4b52b2bfc8cf841d278740414d01cac303df05146db8b526539 \
     --hash=sha256:a40cdde09b47530e7703d3d75248bb4ae2eb340f23af7c4c50e708b2e733e101
     # via epymodelingsuite
-epydemix @ git+https://github.com/mobs-lab/epydemix.git@2efc92bd0416f4fec362d65fad70220452e876fe
+epydemix @ git+https://github.com/mobs-lab/epydemix.git@480a7974b0efae6841fcf09bf5e86e670eba37be
     # via epymodelingsuite
 evalidate==2.1.3 \
     --hash=sha256:5c0b806fa12c5c029a26e5f69f02d4dedc00bbbe9dbfaafdb99d4f538a841438 \

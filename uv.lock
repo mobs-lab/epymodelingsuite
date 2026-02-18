@@ -963,8 +963,8 @@ wheels = [
 
 [[package]]
 name = "epydemix"
-version = "1.0.2.1"
-source = { git = "https://github.com/mobs-lab/epydemix.git#2efc92bd0416f4fec362d65fad70220452e876fe" }
+version = "1.0.2.2"
+source = { git = "https://github.com/mobs-lab/epydemix.git#480a7974b0efae6841fcf09bf5e86e670eba37be" }
 dependencies = [
     { name = "evalidate" },
     { name = "matplotlib", version = "3.9.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
