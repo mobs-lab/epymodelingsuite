@@ -67,9 +67,12 @@ def _fetch_quantiles_for_location(
     cal_quant = None
     if needs_calibration:
         try:
+            cal_trajs = calibration.results.get_selected_trajectories()
+            cal_dates = cal_trajs[0].get("date") if cal_trajs else None
             cal_quant = calibration.results.get_calibration_quantiles(
                 quantiles=plots_config.quantiles.quantiles,
-                variables=["date", "data"],
+                dates=cal_dates,
+                variables=["data"],
                 ignore_nan=True,
             )
         except (ValueError, AttributeError, TypeError, IndexError) as e:
@@ -78,8 +81,11 @@ def _fetch_quantiles_for_location(
     proj_quant = None
     if needs_projection:
         try:
+            proj_sims = calibration.results.projections.get("baseline", [])
+            proj_dates = proj_sims[0].get("date") if proj_sims else None
             proj_quant = calibration.results.get_projection_quantiles(
                 quantiles=plots_config.quantiles.quantiles,
+                dates=proj_dates,
                 ignore_nan=True,
             )
         except (ValueError, AttributeError, TypeError, IndexError) as e:
@@ -554,9 +560,12 @@ def generate_single_quantile_plots(
                 cal_quant_for_fitting = cal_quant
                 if cal_quant_for_fitting is None:
                     try:
+                        cal_trajs = calibration.results.get_selected_trajectories()
+                        cal_dates = cal_trajs[0].get("date") if cal_trajs else None
                         cal_quant_for_fitting = calibration.results.get_calibration_quantiles(
                             quantiles=[0.5],  # Only need one quantile to get dates
-                            variables=["date", "data"],
+                            dates=cal_dates,
+                            variables=["data"],
                             ignore_nan=True,
                         )
                     except (ValueError, AttributeError, TypeError, IndexError) as e:
@@ -784,9 +793,12 @@ def generate_quantile_grid_plot(
                 cal_quant_for_fitting = location_cal_quants.get(loc)
                 if cal_quant_for_fitting is None:
                     try:
+                        cal_trajs = calibration.results.get_selected_trajectories()
+                        cal_dates = cal_trajs[0].get("date") if cal_trajs else None
                         cal_quant_for_fitting = calibration.results.get_calibration_quantiles(
                             quantiles=[0.5],  # Only need one quantile to get dates
-                            variables=["date", "data"],
+                            dates=cal_dates,
+                            variables=["data"],
                             ignore_nan=True,
                         )
                     except (ValueError, AttributeError, TypeError, IndexError) as e:
