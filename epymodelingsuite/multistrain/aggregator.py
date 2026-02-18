@@ -71,7 +71,7 @@ def pull_trajectory_projections(
         # Download trajectory projections (not runner artifacts)
         # TODO: use source.run_id
         source_location = f"{config.bucket}/{source.experiment}/*/outputs/*/{source.trajectory_file}"
-        target_location = f"{tempdir}/{source.strain}"
+        target_location = f"{tempdir}/{source.strain}_{source.trajectory_file}"
 
         command = f"gsutil cp -r '{source_location}' '{target_location}'"
         exit_code = os.system(command)
@@ -79,8 +79,8 @@ def pull_trajectory_projections(
         if exit_code == 0:
             logger.info(f"Downloaded: {source.strain}")
             # Load the downloaded data
-            trajectory_file = f"{target_location}/{source.strain}/{source.trajectory_file}"
-            trajectories[source.strain] = pd.read_csv(trajectory_file)
+            # trajectory_file = f"{target_location}/{source.trajectory_file}"
+            trajectories[source.strain] = pd.read_csv(target_location)  # trajectory_file)
         else:
             raise ValueError(f"Failed to download: {source.experiment}\nExit code: {exit_code}")
 
@@ -128,24 +128,32 @@ def merge_strain_trajectories(
                 source.location_column: "location",
                 source.sim_id: "sim_id",
             }
-        )[["target", "date", "location", "sim_id"]]
+        )[["date", "location", "target", "sim_id"]]
         formatted_strains[source.strain] = formatted
 
     # Start with first strain
     first_source = config.sources[0]
-    combined = mapping.merge(
-        formatted_strains[first_source.strain], left_on=first_source.strain, right_on="sim_id"
-    ).rename(columns={"target": f"target_{first_source.strain}"})
+    combined = (
+        mapping.merge(
+            formatted_strains[first_source.strain], left_on=f"sim_id_{first_source.strain}", right_on="sim_id"
+        )
+        .rename(columns={"target": f"target_{first_source.strain}"})
+        .drop("sim_id", axis=1)
+    )
 
     # Merge remaining strains
     for source in config.sources[1:]:
-        combined = combined.merge(
-            formatted_strains[source.strain],
-            left_on=[source.strain, "location", "date"],
-            right_on=["sim_id", "location", "date"],
-            suffixes=("", f"_{source.strain}"),
-            how="outer",
-        ).rename(columns={"target": f"target_{source.strain}"})
+        combined = (
+            combined.merge(
+                formatted_strains[source.strain],
+                left_on=[f"sim_id_{source.strain}", "location", "date"],
+                right_on=["sim_id", "location", "date"],
+                # suffixes=("", f"_{source.strain}"),
+                how="outer",
+            )
+            .rename(columns={"target": f"target_{source.strain}"})
+            .drop("sim_id", axis=1)
+        )
 
     return combined
 
@@ -176,7 +184,7 @@ def _random_sample_mapping(
     pd.DataFrame
         DataFrame mapping sample_id to strain sim_ids
     """
-    rng = np.random.default_rng(seed=config.seed)
+    rng = np.random.default_rng(seed=config.random_seed)
     n_samples = config.sampling.n_samples
 
     # Sample sim_ids for each strain and create mapping
@@ -190,7 +198,7 @@ def _random_sample_mapping(
                 trajectories but {n_samples} were requested."
             )
         sampled_ids = rng.choice(sim_ids, size=n_samples, replace=False)
-        mapping_data[source.strain] = sampled_ids
+        mapping_data[f"sim_id_{source.strain}"] = sampled_ids
     return pd.DataFrame(mapping_data)
 
 
@@ -259,7 +267,7 @@ def _aggregate_sum(
     # Clean up columns
     output_cols = (
         ["sample_id"]
-        + [source.strain for source in config.sources]
+        + [f"sim_id_{source.strain}" for source in config.sources]
         + ["location", "date"]
         + target_cols
         + ["target_total"]
@@ -290,10 +298,8 @@ def dispatch_strain_aggregator(
     pd.DataFrame
         DataFrame with aggregated trajectories
     """
-    validate_strains(strains, config)
-
     match config.aggregate_method:
         case AggregationStrategyEnum.sum:
-            return _aggregate_sum(strains, mapping_df, config)
+            return _aggregate_sum(merged_trajectories, config)
         case _:
             raise NotImplementedError(f"Invalid aggregation method: {config.aggregation.method}")

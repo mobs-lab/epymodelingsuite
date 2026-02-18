@@ -4,16 +4,18 @@ Script to aggregate trajectories from multistrain experiments and create a hubve
 All options specified via yaml file.
 
 Usage:
-    python aggregate_multistrain_experiments.py --config aggregation.yml
+    python aggregate_multistrain_experiments.py --config aggregation.yml --output ./multistrain
 """
 
 import argparse
 import tempfile
+from pathlib import Path
 
 from epymodelingsuite.config_loader import load_aggregation_config_from_file
 from epymodelingsuite.multistrain.aggregator import (
     dispatch_strain_aggregator,
     dispatch_strain_sampler,
+    merge_strain_trajectories,
     pull_trajectory_projections,
 )
 
@@ -32,7 +34,18 @@ def main():
         help="Path to aggregation config yaml (required)",
     )
 
+    parser.add_argument(
+        "--output",
+        type=str,
+        default="./multistrain",
+        help="Directory for all outputs. Default: './multistrain'",
+    )
+
     args = parser.parse_args()
+
+    # Create output directory if it doesn't exist
+    output_path = Path(args.output)
+    output_path.mkdir(parents=True, exist_ok=True)
 
     # Load config
     try:
@@ -49,7 +62,7 @@ def main():
     with tempfile.TemporaryDirectory() as tempdir:
         strains.update(pull_trajectory_projections(aggregation, tempdir))
 
-    print(f"  Obtained trajectories for strains {strains.keys()}.")
+    print(f"  Obtained trajectories for strains {strains}.")
 
     print("\nCreating strain sim_id mapping...")
 
@@ -58,10 +71,17 @@ def main():
 
     print(f"  Created mapping:\n{mapping_df.head()}")
 
+    print("\nMerging strain trajectories...")
+
+    # Merge the strain trajectories based on the mapping
+    merged_df = merge_strain_trajectories(strains, mapping_df, aggregation)
+
+    print(f"  Merged trajectories:\n{merged_df.head()}")
+
     print("\nCreating aggregated trajectories...")
 
-    # Aggregate the trajectories based on the mapping
-    aggregated_df = dispatch_strain_aggregator(strains, mapping_df, aggregation)
+    # Aggregate the merged trajectories
+    aggregated_df = dispatch_strain_aggregator(merged_df, aggregation)
 
     print(f"  Aggregated trajectories:\n{aggregated_df.head()}")
 
