@@ -57,6 +57,13 @@ class SamplingConfiguration(BaseModel):
     n_samples: int = Field(description="Number of trajectory mapping samples to take")
 
 
+class AggregationOutputConfiguration(BaseModel):
+    """"""
+
+    raw_trajectories: bool = Field(default=True, description="")
+    aggregated_trajectories: bool = Field(default=True, description="")
+
+    
 class AggregationConfiguration(BaseModel):
     """Configuration for aggregating multiple experiment results."""
 
@@ -68,6 +75,7 @@ class AggregationConfiguration(BaseModel):
         description="Configuration for sampling mappings of individual trajectories across experiments."
     )
     aggregate_method: AggregationStrategyEnum = Field(description="Strategy for aggregating multistrain results.")
+    outputs: AggregationOutputConfiguration = Field(description="")
 
 
 class AggregationConfig(BaseModel):

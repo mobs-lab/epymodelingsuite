@@ -37,8 +37,8 @@ def main():
     parser.add_argument(
         "--output",
         type=str,
-        default="./multistrain",
-        help="Directory for all outputs. Default: './multistrain'",
+        default="./multistrain_outputs",
+        help="Directory for all outputs. Default: './multistrain_outputs'",
     )
 
     args = parser.parse_args()
@@ -62,7 +62,16 @@ def main():
     with tempfile.TemporaryDirectory() as tempdir:
         strains.update(pull_trajectory_projections(aggregation, tempdir))
 
-    print(f"  Obtained trajectories for strains {strains}.")
+    print(f"  Obtained trajectories for strains:")
+    for strain, traj_df in strains.items():
+        print(f"  {strain}: shape {traj_df.shape}")
+
+    # Write raw trajectories to file
+    if aggregation.outputs.raw_trajectories:
+        for strain, traj_df in strains.items():
+            fname = f"{args.output}/trajectories_{strain}.csv"
+            traj_df.to_csv(fname, index=False)
+            print(f"  Saved trajectory file at {fname}")
 
     print("\nCreating strain sim_id mapping...")
 
@@ -84,6 +93,12 @@ def main():
     aggregated_df = dispatch_strain_aggregator(merged_df, aggregation)
 
     print(f"  Aggregated trajectories:\n{aggregated_df.head()}")
+
+    # Write aggregated trajectories to file
+    if aggregation.outputs.aggregated_trajectories:
+        fname = f"{args.output}/trajectories_aggregated.csv"
+        aggregated_df.to_csv(fname, index=False)
+        print(f"  Saved aggregated trajectories at {fname}")
 
 
 if __name__ == "__main__":
