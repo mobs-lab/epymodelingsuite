@@ -79,7 +79,8 @@ class CsvFormatter(TelemetryFormatter):
                 "calibration_duration",
                 "calibration_strategy",
                 "calibration_particles",
-                "calibration_generations",
+                "calibration_generations_requested",
+                "calibration_generations_completed",
                 "calibration_accepted",
                 "projection_duration",
                 "projection_success",
@@ -145,13 +146,15 @@ class CsvFormatter(TelemetryFormatter):
                 )
                 row["calibration_strategy"] = calibration.get("strategy", "")
                 row["calibration_particles"] = calibration.get("num_particles", "")
-                row["calibration_generations"] = calibration.get("num_generations", "")
+                row["calibration_generations_requested"] = calibration.get("num_generations_requested", "")
+                row["calibration_generations_completed"] = calibration.get("num_generations_completed", "")
                 row["calibration_accepted"] = calibration.get("particles_accepted", 0)
             else:
                 row["calibration_duration"] = "" if self._format_mode == "readable" else 0.0
                 row["calibration_strategy"] = ""
                 row["calibration_particles"] = ""
-                row["calibration_generations"] = ""
+                row["calibration_generations_requested"] = ""
+                row["calibration_generations_completed"] = ""
                 row["calibration_accepted"] = 0
 
             # Projection metrics

@@ -179,8 +179,20 @@ class TextFormatter(TelemetryFormatter):
                 if "strategy" in cal:
                     strategy = cal["strategy"]
                     particles = cal.get("num_particles", "?")
-                    generations = cal.get("num_generations", "?")
-                    lines.append(f"    Strategy: {strategy} ({particles} particles, {generations} generations)")
+                    generations_requested = cal.get("num_generations_requested", "?")
+                    generations_completed = cal.get("num_generations_completed")
+                    if (
+                        generations_completed is not None
+                        and generations_requested != "?"
+                        and generations_completed != generations_requested
+                    ):
+                        lines.append(
+                            f"    Strategy: {strategy} ({particles} particles, {generations_completed}/{generations_requested} generations)"
+                        )
+                    else:
+                        lines.append(
+                            f"    Strategy: {strategy} ({particles} particles, {generations_requested} generations)"
+                        )
 
                 if "particles_accepted" in cal:
                     lines.append(f"    Particles accepted: {cal['particles_accepted']}")
