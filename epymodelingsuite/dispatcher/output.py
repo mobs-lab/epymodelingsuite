@@ -958,7 +958,9 @@ def generate_simulation_outputs(
         for simulation in simulations:
             # Compartments
             if output.quantiles.compartments:
-                quanc_df = simulation.results.get_quantiles_compartments(quantiles=output.quantiles.selections)
+                quanc_df = simulation.results.get_quantiles_compartments(
+                    quantiles=output.quantiles.selections, ignore_nan=True
+                )
                 if hasattr(output.quantiles.compartments, "__len__"):
                     try:
                         columns_to_select = ["date", "quantile"]
@@ -975,7 +977,9 @@ def generate_simulation_outputs(
 
             # Transitions
             if output.quantiles.transitions:
-                quant_df = simulation.results.get_quantiles_transitions(quantiles=output.quantiles.selections)
+                quant_df = simulation.results.get_quantiles_transitions(
+                    quantiles=output.quantiles.selections, ignore_nan=True
+                )
                 if hasattr(output.quantiles.transitions, "__len__"):
                     try:
                         columns_to_select = ["date", "quantile"]
@@ -1170,10 +1174,13 @@ def generate_calibration_outputs(
                 if hasattr(output.quantiles.calibration, "__len__"):
                     for generation in output.quantiles.calibration:
                         try:
+                            cal_trajs = calibration.results.get_selected_trajectories(generation)
+                            cal_dates = cal_trajs[0].get("date") if cal_trajs else None
                             quancal_df = calibration.results.get_calibration_quantiles(
                                 quantiles=output.quantiles.selections,
                                 generation=generation,
-                                variables=["data", "date"],
+                                dates=cal_dates,
+                                variables=["data"],
                                 ignore_nan=True,
                             )
                             quancal_df.insert(0, "primary_id", calibration.primary_id)
@@ -1187,9 +1194,12 @@ def generate_calibration_outputs(
                             )
                 else:
                     try:
+                        cal_trajs = calibration.results.get_selected_trajectories()
+                        cal_dates = cal_trajs[0].get("date") if cal_trajs else None
                         quancal_df = calibration.results.get_calibration_quantiles(
                             quantiles=output.quantiles.selections,
-                            variables=["data", "date"],
+                            dates=cal_dates,
+                            variables=["data"],
                             ignore_nan=True,
                         )
                         quancal_df.insert(0, "primary_id", calibration.primary_id)
@@ -1203,7 +1213,13 @@ def generate_calibration_outputs(
 
             # Projection quantiles
             try:
-                quan_df = calibration.results.get_projection_quantiles(quantiles=output.quantiles.selections)
+                proj_sims = calibration.results.projections.get("baseline", [])
+                proj_dates = proj_sims[0].get("date") if proj_sims else None
+                quan_df = calibration.results.get_projection_quantiles(
+                    quantiles=output.quantiles.selections,
+                    dates=proj_dates,
+                    ignore_nan=True,
+                )
             except ValueError:
                 warnings.add(
                     f"OUTPUT GENERATOR: failed to obtain projection quantiles for model with primary_id={calibration.primary_id}, continuing to next model."
@@ -1428,8 +1444,13 @@ def generate_calibration_outputs(
             for calibration in calibrations:
                 try:
                     # FRAGILE: the name 'hospitalizations' is user-supplied in the modelset as the column to look for in the surveillance data.
+                    proj_sims = calibration.results.projections.get("baseline", [])
+                    proj_dates = proj_sims[0].get("date") if proj_sims else None
                     quanf_df = calibration.results.get_projection_quantiles(
-                        quantiles=flusight_quantiles, variables=["date", "quantile", "hospitalizations"]
+                        quantiles=flusight_quantiles,
+                        dates=proj_dates,
+                        variables=["hospitalizations"],
+                        ignore_nan=True,
                     )
                 except ValueError:
                     warnings.add(
@@ -1459,9 +1480,12 @@ def generate_calibration_outputs(
             if output.flusight_format.prop_ed.strategy == "calibration_window":
                 for calibration in calibrations:
                     try:
+                        cal_trajs = calibration.results.get_selected_trajectories()
+                        cal_dates = cal_trajs[0].get("date") if cal_trajs else None
                         quancalflu_df = calibration.results.get_calibration_quantiles(
                             quantiles=flusight_quantiles,
-                            variables=["data", "date"],
+                            dates=cal_dates,
+                            variables=["data"],
                             ignore_nan=True,
                         )
                         quancalflu_df.insert(0, "primary_id", calibration.primary_id)
@@ -1479,8 +1503,13 @@ def generate_calibration_outputs(
                 transition_name = output.flusight_format.prop_ed.transition_name
                 for calibration in calibrations:
                     try:
+                        proj_sims = calibration.results.projections.get("baseline", [])
+                        proj_dates = proj_sims[0].get("date") if proj_sims else None
                         quanproj_df = calibration.results.get_projection_quantiles(
-                            quantiles=flusight_quantiles, variables=["date", "quantile", transition_name]
+                            quantiles=flusight_quantiles,
+                            dates=proj_dates,
+                            variables=[transition_name],
+                            ignore_nan=True,
                         )
                         quanproj_df.insert(0, "primary_id", calibration.primary_id)
                         quanproj_df.insert(1, "seed", calibration.seed)
