@@ -60,10 +60,11 @@ class SamplingConfiguration(BaseModel):
 class AggregationOutputConfiguration(BaseModel):
     """"""
 
+    base_fname: str | None = Field(default=None, description="")
     raw_trajectories: bool = Field(default=True, description="")
     aggregated_trajectories: bool = Field(default=True, description="")
 
-    
+
 class AggregationConfiguration(BaseModel):
     """Configuration for aggregating multiple experiment results."""
 

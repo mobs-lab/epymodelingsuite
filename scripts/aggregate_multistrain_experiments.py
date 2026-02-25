@@ -62,14 +62,17 @@ def main():
     with tempfile.TemporaryDirectory() as tempdir:
         strains.update(pull_trajectory_projections(aggregation, tempdir))
 
-    print(f"  Obtained trajectories for strains:")
+    print("  Obtained trajectories for strains:")
     for strain, traj_df in strains.items():
         print(f"  {strain}: shape {traj_df.shape}")
 
     # Write raw trajectories to file
     if aggregation.outputs.raw_trajectories:
         for strain, traj_df in strains.items():
-            fname = f"{args.output}/trajectories_{strain}.csv"
+            if aggregation.outputs.base_fname:
+                fname = f"{args.output}/trajectories_{aggregation.outputs.base_fname}_{strain}.csv"
+            else:
+                fname = f"{args.output}/trajectories_{strain}.csv"
             traj_df.to_csv(fname, index=False)
             print(f"  Saved trajectory file at {fname}")
 
@@ -96,7 +99,10 @@ def main():
 
     # Write aggregated trajectories to file
     if aggregation.outputs.aggregated_trajectories:
-        fname = f"{args.output}/trajectories_aggregated.csv"
+        if aggregation.outputs.base_fname:
+            fname = f"{args.output}/trajectories_aggregated_{aggregation.outputs.base_fname}.csv"
+        else:
+            fname = f"{args.output}/trajectories_aggregated.csv"
         aggregated_df.to_csv(fname, index=False)
         print(f"  Saved aggregated trajectories at {fname}")
 
