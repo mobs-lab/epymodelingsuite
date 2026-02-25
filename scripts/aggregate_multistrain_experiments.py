@@ -81,21 +81,21 @@ def main():
     # Create an n-sample mapping of trajectories from each strain
     mapping_df = dispatch_strain_sampler(strains, aggregation)
 
-    print(f"  Created mapping with {len(mapping_df)} rows:\n{mapping_df.head()}")
+    print(f"  Created mapping with {len(mapping_df)} rows:\n{mapping_df.tail()}")
 
     print("\nMerging strain trajectories...")
 
     # Merge the strain trajectories based on the mapping
     merged_df = merge_strain_trajectories(strains, mapping_df, aggregation)
 
-    print(f"  Merged trajectories with {len(merged_df)} rows:\n{merged_df.head()}")
+    print(f"  Merged trajectories with {len(merged_df)} rows:\n{merged_df.tail()}")
 
     print("\nCreating aggregated trajectories...")
 
     # Aggregate the merged trajectories
     aggregated_df = dispatch_strain_aggregator(merged_df, aggregation)
 
-    print(f"  Aggregated trajectories with {len(aggregated_df)} rows:\n{aggregated_df.head()}")
+    print(f"  Aggregated trajectories with {len(aggregated_df)} rows:\n{aggregated_df.tail()}")
 
     # Write aggregated trajectories to file
     if aggregation.outputs.aggregated_trajectories:
