@@ -73,7 +73,7 @@ def pull_trajectory_projections(
         source_location = f"{config.bucket}/{source.experiment}/*/outputs/*/{source.trajectory_file}"
         target_location = f"{tempdir}/{source.strain}_{source.trajectory_file}"
 
-        command = f"gsutil cp -r '{source_location}' '{target_location}'"
+        command = f"gcloud storage cp -r {source_location} {target_location}"
         exit_code = os.system(command)
 
         if exit_code == 0:
