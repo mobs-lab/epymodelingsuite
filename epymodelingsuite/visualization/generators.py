@@ -472,6 +472,7 @@ def _create_sidebyside_plot(
     plots_config: PlotsConfig,
     value_col: str,
     output_config: QuantilesOutputConfig,
+    cal_quant_filtered: pd.DataFrame | None = None,
 ) -> tuple:
     """
     Create side-by-side (full | filtered) quantile plot for a location.
@@ -481,7 +482,7 @@ def _create_sidebyside_plot(
     location : str
         Location name
     cal_quant : pd.DataFrame or None
-        Calibration quantiles (shown in both panels)
+        Calibration quantiles for full (left) panel
     proj_quant_full : pd.DataFrame or None
         Projection quantiles for left panel (full version)
     proj_quant_filtered : pd.DataFrame or None
@@ -500,6 +501,8 @@ def _create_sidebyside_plot(
         Name of value column
     output_config : QuantilesOutputConfig
         Output configuration with show flags
+    cal_quant_filtered : pd.DataFrame or None, optional
+        Calibration quantiles for filtered (right) panel. If None, uses cal_quant.
 
     Returns
     -------
@@ -512,6 +515,7 @@ def _create_sidebyside_plot(
 
     return plot_calibration_projection_sidebyside(
         calibration_quantiles=cal_quant if output_config.show_calibration else None,
+        calibration_quantiles_filtered=cal_quant_filtered if output_config.show_calibration else None,
         projection_quantiles_full=proj_quant_full if output_config.show_projection else None,
         projection_quantiles_filtered=proj_quant_filtered if output_config.show_projection else None,
         surveillance_full=df_surv_full if output_config.show_surveillance else None,
@@ -712,6 +716,26 @@ def generate_single_quantile_plots(
                         elif output_config.surveillance_points is not None:
                             surv_to_use = surv_to_use.sort_values("date").tail(output_config.surveillance_points)
 
+                    # For filtered plots, clip projection and calibration quantiles to
+                    # the visible surveillance start so the ribbons match the zoomed view
+                    cal_to_use = cal_quant
+                    if output_config.type == QuantilesOutputTypeEnum.FILTERED:
+                        effective_surv_start = None
+                        if surv_to_use is not None and not surv_to_use.empty:
+                            effective_surv_start = pd.to_datetime(surv_to_use["date"]).dt.date.min()
+
+                        if effective_surv_start is not None:
+                            if proj_to_use is not None:
+                                proj_dates = pd.to_datetime(proj_to_use["date"]).dt.date
+                                proj_to_use = proj_to_use[proj_dates >= effective_surv_start]
+                                if proj_to_use.empty:
+                                    proj_to_use = None
+                            if cal_to_use is not None:
+                                cal_dates = pd.to_datetime(cal_to_use["date"]).dt.date
+                                cal_to_use = cal_to_use[cal_dates >= effective_surv_start]
+                                if cal_to_use.empty:
+                                    cal_to_use = None
+
                     # Apply per-output horizon_max if specified (overrides base config)
                     if proj_to_use is not None and output_config.horizon_max is not None:
                         proj_dates = pd.to_datetime(proj_to_use["date"]).dt.date
@@ -722,7 +746,7 @@ def generate_single_quantile_plots(
                     if output_config.type == QuantilesOutputTypeEnum.FILTERED:
                         fig, ax = _create_filtered_plot(
                             location,
-                            cal_quant,
+                            cal_to_use,
                             proj_to_use,
                             surv_to_use,
                             fitting_window_start,
@@ -744,11 +768,27 @@ def generate_single_quantile_plots(
                             output_config,
                         )
                     elif output_config.type == QuantilesOutputTypeEnum.SIDE_BY_SIDE:
+                        # Clip calibration and projection quantiles for the filtered panel
+                        cal_quant_for_filtered = cal_quant
+                        proj_quant_for_filtered = proj_quant_filtered
+                        if df_surv_filtered is not None and not df_surv_filtered.empty:
+                            sbs_surv_start = pd.to_datetime(df_surv_filtered["date"]).dt.date.min()
+                            if cal_quant_for_filtered is not None:
+                                cal_dates = pd.to_datetime(cal_quant_for_filtered["date"]).dt.date
+                                cal_quant_for_filtered = cal_quant_for_filtered[cal_dates >= sbs_surv_start]
+                                if cal_quant_for_filtered.empty:
+                                    cal_quant_for_filtered = None
+                            if proj_quant_for_filtered is not None:
+                                proj_dates = pd.to_datetime(proj_quant_for_filtered["date"]).dt.date
+                                proj_quant_for_filtered = proj_quant_for_filtered[proj_dates >= sbs_surv_start]
+                                if proj_quant_for_filtered.empty:
+                                    proj_quant_for_filtered = None
+
                         fig, (ax_full, ax_filtered) = _create_sidebyside_plot(
                             location,
                             cal_quant,
                             proj_quant_full,
-                            proj_quant_filtered,
+                            proj_quant_for_filtered,
                             df_surv_full,
                             df_surv_filtered,
                             fitting_window_start,
@@ -756,6 +796,7 @@ def generate_single_quantile_plots(
                             plots_config,
                             value_col,
                             output_config,
+                            cal_quant_filtered=cal_quant_for_filtered,
                         )
                     else:
                         logger.warning("Unknown output type %s for %s", output_config.type, location)
@@ -1031,6 +1072,43 @@ def generate_quantile_grid_plot(
                         )
                     surv_data_to_use = surv_data_filtered_by_output
 
+            # For filtered plots, clip projection and calibration quantiles to
+            # the visible surveillance start so the ribbons match the zoomed view
+            cal_quants_to_use = location_cal_quants
+            if output_type_name == "filtered" and surv_data_to_use:
+                cal_quants_clipped = {}
+                proj_quants_clipped = {}
+                for loc in set(list(cal_quants_to_use or []) + list(proj_quants_to_use or [])):
+                    surv_df = surv_data_to_use.get(loc)
+                    effective_surv_start = None
+                    if surv_df is not None and not surv_df.empty:
+                        effective_surv_start = pd.to_datetime(surv_df["date"]).dt.date.min()
+
+                    if loc in (cal_quants_to_use or {}):
+                        if effective_surv_start is not None:
+                            cal_df = cal_quants_to_use[loc]
+                            cal_dates = pd.to_datetime(cal_df["date"]).dt.date
+                            clipped = cal_df[cal_dates >= effective_surv_start]
+                            if not clipped.empty:
+                                cal_quants_clipped[loc] = clipped
+                        else:
+                            cal_quants_clipped[loc] = cal_quants_to_use[loc]
+
+                    if loc in (proj_quants_to_use or {}):
+                        if effective_surv_start is not None:
+                            proj_df = proj_quants_to_use[loc]
+                            proj_dates = pd.to_datetime(proj_df["date"]).dt.date
+                            clipped = proj_df[proj_dates >= effective_surv_start]
+                            if not clipped.empty:
+                                proj_quants_clipped[loc] = clipped
+                        else:
+                            proj_quants_clipped[loc] = proj_quants_to_use[loc]
+
+                if cal_quants_to_use:
+                    cal_quants_to_use = cal_quants_clipped
+                if proj_quants_to_use:
+                    proj_quants_to_use = proj_quants_clipped
+
             # Apply per-output horizon_max if specified (overrides base config)
             if proj_quants_to_use and output_config.horizon_max is not None:
                 proj_quants_horizon_filtered = {}
@@ -1047,7 +1125,7 @@ def generate_quantile_grid_plot(
                 try:
                     fig, axes = plot_calibration_projection_grid(
                         location_calibration_quantiles=(
-                            location_cal_quants if output_config.show_calibration and location_cal_quants else None
+                            cal_quants_to_use if output_config.show_calibration and cal_quants_to_use else None
                         ),
                         location_projection_quantiles=(
                             proj_quants_to_use if output_config.show_projection and proj_quants_to_use else None
@@ -1243,6 +1321,22 @@ def generate_quantile_grid_plot(
                                         surv_filtered = surv_filtered.sort_values("date").tail(
                                             output_config.filtered_panel.surveillance_points
                                         )
+
+                            # Clip filtered panel quantiles to visible surveillance start
+                            cal_quant_filtered = cal_quant
+                            if surv_filtered is not None and not surv_filtered.empty:
+                                effective_surv_start = pd.to_datetime(surv_filtered["date"]).dt.date.min()
+                                if cal_quant_filtered is not None:
+                                    cal_dates = pd.to_datetime(cal_quant_filtered["date"]).dt.date
+                                    cal_quant_filtered = cal_quant_filtered[cal_dates >= effective_surv_start]
+                                    if cal_quant_filtered.empty:
+                                        cal_quant_filtered = None
+                                if proj_quant_filtered is not None:
+                                    proj_dates = pd.to_datetime(proj_quant_filtered["date"]).dt.date
+                                    proj_quant_filtered = proj_quant_filtered[proj_dates >= effective_surv_start]
+                                    if proj_quant_filtered.empty:
+                                        proj_quant_filtered = None
+
                             fitting_window_start = (
                                 location_fitting_window_starts.get(location)
                                 if output_config.show_fitting_window_line and location_fitting_window_starts
@@ -1266,6 +1360,7 @@ def generate_quantile_grid_plot(
                             sbs_title_suffix = location_notes.get(location, ("", ""))[0]
                             plot_calibration_projection_sidebyside(
                                 calibration_quantiles=cal_quant,
+                                calibration_quantiles_filtered=cal_quant_filtered,
                                 projection_quantiles_full=proj_quant_full,
                                 projection_quantiles_filtered=proj_quant_filtered,
                                 surveillance_full=surv_full,
