@@ -370,7 +370,7 @@ class ExecutionTelemetry:
             if "num_particles" in calibration_strategy.options:
                 model_data["calibration"]["num_particles"] = calibration_strategy.options["num_particles"]
             if "num_generations" in calibration_strategy.options:
-                model_data["calibration"]["num_generations"] = calibration_strategy.options["num_generations"]
+                model_data["calibration"]["num_generations_requested"] = calibration_strategy.options["num_generations"]
             if "distance_function" in calibration_strategy.options:
                 model_data["calibration"]["distance_function"] = _serialize_distance_function(
                     calibration_strategy.options["distance_function"]
@@ -435,7 +435,7 @@ class ExecutionTelemetry:
             if "num_particles" in calibration_strategy.options:
                 model_data["calibration"]["num_particles"] = calibration_strategy.options["num_particles"]
             if "num_generations" in calibration_strategy.options:
-                model_data["calibration"]["num_generations"] = calibration_strategy.options["num_generations"]
+                model_data["calibration"]["num_generations_requested"] = calibration_strategy.options["num_generations"]
             if "distance_function" in calibration_strategy.options:
                 model_data["calibration"]["distance_function"] = _serialize_distance_function(
                     calibration_strategy.options["distance_function"]

@@ -97,6 +97,10 @@ def extract_calibration_info(results: Any) -> dict[str, Any]:
     if hasattr(results, "accepted") and results.accepted is not None:
         calibration_info["particles_accepted"] = len(results.accepted)
 
+    # Extract completed generations count from posterior distributions
+    if hasattr(results, "posterior_distributions") and results.posterior_distributions is not None:
+        calibration_info["num_generations_completed"] = len(results.posterior_distributions)
+
     return calibration_info
 
 

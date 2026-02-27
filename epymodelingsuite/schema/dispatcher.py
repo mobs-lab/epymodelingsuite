@@ -116,3 +116,4 @@ class CalibrationOutput(BaseModel):
     results: CalibrationResults | None = Field(
         description="Results of a call to ABCSampler.calibrate() or ABCSampler.run_projections()"
     )
+    calibration_strategy: CalibrationStrategy | None = Field(None, description="Calibration strategy used.")

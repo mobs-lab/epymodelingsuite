@@ -936,7 +936,7 @@ class TestStrategyInfoCapture:
         model = telemetry.runner["models"][0]
         assert model["calibration"]["strategy"] == "SMC"
         assert model["calibration"]["num_particles"] == 100
-        assert model["calibration"]["num_generations"] == 5
+        assert model["calibration"]["num_generations_requested"] == 5
         # max_time should not be included (only particles, generations, distance_function)
         assert "max_time" not in model["calibration"]
 
@@ -961,7 +961,7 @@ class TestStrategyInfoCapture:
         model = telemetry.runner["models"][0]
         assert model["calibration"]["strategy"] == "SMC"
         assert model["calibration"]["num_particles"] == 100
-        assert model["calibration"]["num_generations"] == 5
+        assert model["calibration"]["num_generations_requested"] == 5
 
     def test_capture_without_strategy_info(self):
         """Test that capture works without strategy info (backward compatibility)."""
@@ -976,7 +976,7 @@ class TestStrategyInfoCapture:
         # Should not have strategy info
         assert "strategy" not in model["calibration"]
         assert "num_particles" not in model["calibration"]
-        assert "num_generations" not in model["calibration"]
+        assert "num_generations_requested" not in model["calibration"]
 
 
 class TestTelemetryCsv:
@@ -1236,3 +1236,122 @@ class TestTelemetryCsv:
         lines = csv_str.strip().split("\n")
         assert len(lines) == 1  # Only header
         assert "primary_id" in lines[0]
+
+    def test_csv_has_generations_requested_and_completed_columns(self):
+        """Test CSV has renamed generations columns."""
+        telemetry = ExecutionTelemetry()
+        telemetry.enter_builder("calibration")
+        telemetry.exit_builder(n_models=1, populations=["US-CA"])
+        telemetry.enter_runner()
+
+        calib_output = make_mock_calibration_output(0, "US-CA", particles_accepted=50)
+        # Add posterior_distributions to mock for num_generations_completed
+        calib_output.results.posterior_distributions = [MagicMock() for _ in range(5)]
+        strategy = CalibrationStrategy(name="SMC", options={"num_particles": 100, "num_generations": 7})
+        builder_output = make_mock_builder_output(calibration_strategy=strategy)
+        telemetry.capture_calibration(calib_output, duration=120.0, builder_output=builder_output)
+        telemetry.exit_runner()
+        telemetry.enter_output()
+        telemetry.exit_output()
+
+        csv_str = telemetry.to_csv(format="readable")
+        assert "calibration_generations_requested" in csv_str
+        assert "calibration_generations_completed" in csv_str
+        # Old column name should not appear
+        lines = csv_str.strip().split("\n")
+        header = lines[0]
+        assert "calibration_generations," not in header  # Should not have old bare name
+
+
+class TestGenerationsCompleted:
+    """Test tracking of completed generations in telemetry."""
+
+    def test_extract_calibration_info_with_posterior_distributions(self):
+        """Test that num_generations_completed is extracted from posterior_distributions."""
+        from epymodelingsuite.telemetry.extractors import extract_calibration_info
+
+        mock_results = MagicMock()
+        mock_results.accepted = [MagicMock() for _ in range(50)]
+        mock_results.posterior_distributions = [MagicMock() for _ in range(5)]
+
+        info = extract_calibration_info(mock_results)
+        assert info["particles_accepted"] == 50
+        assert info["num_generations_completed"] == 5
+
+    def test_extract_calibration_info_without_posterior_distributions(self):
+        """Test that num_generations_completed is not set when posterior_distributions is missing."""
+        from epymodelingsuite.telemetry.extractors import extract_calibration_info
+
+        mock_results = MagicMock(spec=[])  # No attributes
+        mock_results.accepted = None
+
+        info = extract_calibration_info(mock_results)
+        assert "num_generations_completed" not in info
+
+    def test_extract_calibration_info_with_none_posterior_distributions(self):
+        """Test that num_generations_completed is not set when posterior_distributions is None."""
+        from epymodelingsuite.telemetry.extractors import extract_calibration_info
+
+        mock_results = MagicMock()
+        mock_results.accepted = [MagicMock() for _ in range(50)]
+        mock_results.posterior_distributions = None
+
+        info = extract_calibration_info(mock_results)
+        assert "num_generations_completed" not in info
+
+    def test_capture_calibration_includes_completed_generations(self):
+        """Test that capture_calibration includes num_generations_completed in telemetry."""
+        telemetry = ExecutionTelemetry()
+        telemetry.enter_runner()
+
+        calib_output = make_mock_calibration_output(0, "US-CA", particles_accepted=50)
+        # Add posterior_distributions to the mock
+        calib_output.results.posterior_distributions = [MagicMock() for _ in range(5)]
+
+        strategy = CalibrationStrategy(name="SMC", options={"num_particles": 100, "num_generations": 7})
+        builder_output = make_mock_builder_output(calibration_strategy=strategy)
+
+        telemetry.capture_calibration(calib_output, duration=120.0, builder_output=builder_output)
+
+        model = telemetry.runner["models"][0]
+        assert model["calibration"]["num_generations_requested"] == 7
+        assert model["calibration"]["num_generations_completed"] == 5
+
+    def test_text_formatter_shows_completed_vs_requested(self):
+        """Test text formatter shows completed/requested when they differ."""
+        telemetry = ExecutionTelemetry()
+        telemetry.enter_builder("calibration")
+        telemetry.exit_builder(n_models=1, populations=["US-CA"])
+        telemetry.enter_runner()
+
+        calib_output = make_mock_calibration_output(0, "US-CA", particles_accepted=50)
+        calib_output.results.posterior_distributions = [MagicMock() for _ in range(5)]
+
+        strategy = CalibrationStrategy(name="SMC", options={"num_particles": 100, "num_generations": 7})
+        builder_output = make_mock_builder_output(calibration_strategy=strategy)
+
+        telemetry.capture_calibration(calib_output, duration=120.0, builder_output=builder_output)
+        telemetry.exit_runner()
+
+        text = telemetry.to_text()
+        assert "5/7 generations" in text
+
+    def test_text_formatter_shows_normal_when_equal(self):
+        """Test text formatter shows normal count when completed == requested."""
+        telemetry = ExecutionTelemetry()
+        telemetry.enter_builder("calibration")
+        telemetry.exit_builder(n_models=1, populations=["US-CA"])
+        telemetry.enter_runner()
+
+        calib_output = make_mock_calibration_output(0, "US-CA", particles_accepted=50)
+        calib_output.results.posterior_distributions = [MagicMock() for _ in range(7)]
+
+        strategy = CalibrationStrategy(name="SMC", options={"num_particles": 100, "num_generations": 7})
+        builder_output = make_mock_builder_output(calibration_strategy=strategy)
+
+        telemetry.capture_calibration(calib_output, duration=120.0, builder_output=builder_output)
+        telemetry.exit_runner()
+
+        text = telemetry.to_text()
+        assert "7 generations" in text
+        assert "7/7" not in text
