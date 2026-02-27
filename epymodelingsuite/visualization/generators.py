@@ -383,6 +383,7 @@ def _clip_surveillance(
     *,
     surveillance_start_date: str | None = None,
     surveillance_points: int | None = None,
+    reference_date: date | None = None,
 ) -> pd.DataFrame | None:
     """
     Filter surveillance data by a start date or by keeping the last N points.
@@ -396,7 +397,11 @@ def _clip_surveillance(
     surveillance_start_date : str or None
         If given, keep only rows with date >= this value (parsed via ``pd.to_datetime``).
     surveillance_points : int or None
-        If given (and ``surveillance_start_date`` is None), keep only the last N rows by date.
+        If given (and ``surveillance_start_date`` is None), keep the last N rows
+        *before* ``reference_date``, plus all rows after it.
+    reference_date : date or None
+        The reference date used to split before/after when ``surveillance_points``
+        is specified. Required when ``surveillance_points`` is not None.
 
     Returns
     -------
@@ -410,7 +415,13 @@ def _clip_surveillance(
         dates = pd.to_datetime(surv["date"]).dt.date
         return surv[dates >= start]
     if surveillance_points is not None:
-        return surv.sort_values("date").tail(surveillance_points)
+        surv = surv.sort_values("date")
+        dates = pd.to_datetime(surv["date"]).dt.date
+        if reference_date is not None:
+            before = surv[dates <= reference_date].tail(surveillance_points)
+            after = surv[dates > reference_date]
+            return pd.concat([before, after])
+        return surv.tail(surveillance_points)
     return surv
 
 
@@ -828,6 +839,7 @@ def generate_single_quantile_plots(
                         surv_to_use,
                         surveillance_start_date=output_config.surveillance_start_date,
                         surveillance_points=output_config.surveillance_points,
+                        reference_date=plots_config.reference_date,
                     )
 
                     # For filtered plots, clip projection and calibration quantiles to
@@ -838,9 +850,7 @@ def generate_single_quantile_plots(
                         cal_to_use = _clip_to_surveillance_start(cal_to_use, surv_to_use)
 
                     # Apply per-output horizon_max if specified (overrides base config)
-                    proj_to_use = _clip_to_horizon(
-                        proj_to_use, output_config.horizon_max, plots_config.reference_date
-                    )
+                    proj_to_use = _clip_to_horizon(proj_to_use, output_config.horizon_max, plots_config.reference_date)
 
                     # Create the plot
                     if output_config.type == QuantilesOutputTypeEnum.FILTERED:
@@ -1116,6 +1126,7 @@ def generate_quantile_grid_plot(
                         surv_df,
                         surveillance_start_date=output_config.surveillance_start_date,
                         surveillance_points=output_config.surveillance_points,
+                        reference_date=plots_config.reference_date,
                     )
                     for loc, surv_df in surv_data_to_use.items()
                 }
@@ -1320,6 +1331,7 @@ def generate_quantile_grid_plot(
                                         surv_full,
                                         surveillance_start_date=output_config.full_panel.surveillance_start_date,
                                         surveillance_points=output_config.full_panel.surveillance_points,
+                                        reference_date=plots_config.reference_date,
                                     )
 
                             surv_filtered = None
@@ -1334,6 +1346,7 @@ def generate_quantile_grid_plot(
                                         surv_filtered,
                                         surveillance_start_date=output_config.filtered_panel.surveillance_start_date,
                                         surveillance_points=output_config.filtered_panel.surveillance_points,
+                                        reference_date=plots_config.reference_date,
                                     )
 
                             # Clip filtered panel quantiles to visible surveillance start
