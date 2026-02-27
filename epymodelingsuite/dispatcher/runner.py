@@ -116,6 +116,7 @@ def run_calibration(configs: BuilderOutput, rng: np.random.Generator | None = No
             population=configs.model.population.name,
             start_date_reference=configs.start_date_reference,
             results=results,
+            calibration_strategy=configs.calibration,
         )
 
         # Track metrics if telemetry is available in context
@@ -133,6 +134,7 @@ def run_calibration(configs: BuilderOutput, rng: np.random.Generator | None = No
             population=configs.model.population.name,
             start_date_reference=configs.start_date_reference,
             results=None,  # type: ignore
+            calibration_strategy=configs.calibration,
         )
         telemetry = ExecutionTelemetry.get_current()
         if telemetry:
@@ -186,6 +188,7 @@ def run_calibration_with_projection(
             population=population,
             start_date_reference=configs.start_date_reference,
             results=None,  # type: ignore
+            calibration_strategy=configs.calibration,
         )
         telemetry = ExecutionTelemetry.get_current()
         if telemetry:
@@ -217,6 +220,7 @@ def run_calibration_with_projection(
             population=configs.model.population.name,
             start_date_reference=configs.start_date_reference,
             results=projection_results,
+            calibration_strategy=configs.calibration,
         )
 
         # Track metrics if telemetry is available in context
@@ -246,6 +250,7 @@ def run_calibration_with_projection(
             population=configs.model.population.name,
             start_date_reference=configs.start_date_reference,
             results=calibration_results,
+            calibration_strategy=configs.calibration,
         )
 
         # Track metrics even if projection failed

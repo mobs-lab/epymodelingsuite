@@ -5,7 +5,13 @@ from collections.abc import Callable
 import pandas as pd
 from epydemix.model import EpiModel
 
-from .utils.populations import get_age_group_mapping, validate_age_groups
+from .utils.location import (
+    get_metrocast_population_data,
+    get_parent_region,
+    is_state_level_metrocast_location,
+    parse_population_name,
+)
+from .utils.populations import aggregate_population_by_age_groups, get_age_group_mapping, validate_age_groups
 
 logger = logging.getLogger(__name__)
 
@@ -356,16 +362,11 @@ def scenario_to_epydemix(
             "50-64 Years": 4,
             "65+ Years": 5,
         }
-        age_group_map_data = get_age_group_mapping(data_age_groups)
-        # population_data = load_epydemix_population(loc_epydemix, age_group_mapping=age_group_map_data)
-        population_data = {}
-        for key, val in age_group_map_data.items():
-            vals = [int(v.replace("+", "")) for v in val]
-            population_data[key] = sum(population_codebook[loc_epydemix][vals].values)
+        pop_by_agegroup = aggregate_population_by_age_groups(population_codebook[loc_epydemix], data_age_groups)
 
         # Add model population and calculate cumulative doses
         vaccine_schedule["population_data"] = vaccine_schedule["Age"].map(
-            lambda age: list(population_data.values())[age_to_index[age]] if age in age_to_index else 0
+            lambda age: list(pop_by_agegroup.values())[age_to_index[age]] if age in age_to_index else 0
         )
 
         vaccine_schedule["cumulative_doses"] = (
@@ -456,16 +457,9 @@ def scenario_to_epydemix(
 
         daily_vaccines_wide_subset = this_location_wide[data_age_groups]
 
-        age_group_map_model = get_age_group_mapping(target_age_groups)
-        # population_model = load_epydemix_population(loc_epydemix, age_group_mapping=age_group_map_model)
-        population_dict_model = {}
-        for key, val in age_group_map_model.items():
-            vals = [int(v.replace("+", "")) for v in val]
-            population_dict_model[key] = sum(population_codebook[loc_epydemix][vals].values)
+        pop_by_agegroup_model = aggregate_population_by_age_groups(population_codebook[loc_epydemix], target_age_groups)
 
-        # population_dict_model= dict(zip(population_model.Nk_names, population_model.Nk))
-
-        reweighting_factors_dict = make_reweighting_factors(population_dict_model, data_age_groups, loc_epydemix)
+        reweighting_factors_dict = make_reweighting_factors(pop_by_agegroup_model, data_age_groups, loc_epydemix)
         new_coverages = {}
         for target_group, weights in reweighting_factors_dict.items():
             # linear combination
@@ -793,6 +787,71 @@ def make_vaccination_rate_function(origin_compartment: str, eligible_compartment
     return compute_vaccination_rate
 
 
+def _get_vaccination_scaling_factors(
+    population_name: str,
+    age_groups: list[str],
+) -> dict[str, float]:
+    """
+    Calculate age-stratified vaccination dose scaling factors for sub-state level locations.
+
+    For sub-state level locations (e.g., HSA regions for Metrocast), returns a dict
+    mapping each age group to its scaling factor (substate_pop[age] / state_pop[age]).
+    For ISO locations (state-level), returns scaling factor of 1.0 for all age groups.
+
+    Parameters
+    ----------
+    population_name : str
+        The model's population name (e.g., "metrocast_location_denver" or "United_States_Colorado")
+    age_groups : list[str]
+        List of age group strings (e.g., ["0-4", "5-17", "18-49", "50-64", "65+"])
+
+    Returns
+    -------
+    dict[str, float]
+        Mapping of age group -> scaling factor
+    """
+    from .utils import convert_location_name_format, get_population_codebook
+
+    location_id, location_type = parse_population_name(population_name)
+
+    # No scaling for ISO locations
+    if location_type != "metrocast_location":
+        return dict.fromkeys(age_groups, 1.0)
+
+    # No scaling for state-level metrocast locations
+    # (Uses the original epydemix population for states directly)
+    if is_state_level_metrocast_location(location_id):
+        return dict.fromkeys(age_groups, 1.0)
+
+    # Get metrocast population aggregated by age groups
+    metro_pop_data = get_metrocast_population_data()
+    location_data = metro_pop_data[metro_pop_data["metrocast_location_id"] == location_id]
+
+    if location_data.empty:
+        logger.warning(f"Metrocast location '{location_id}' not found. No vaccination scaling applied.")
+        return dict.fromkeys(age_groups, 1.0)
+
+    metro_pop = aggregate_population_by_age_groups(location_data, age_groups)
+
+    # Get parent state population aggregated by age groups
+    state_iso = get_parent_region(location_id, output_format="ISO")
+    state_epydemix = convert_location_name_format(state_iso, "epydemix_population")
+
+    population_codebook = get_population_codebook()
+    state_pop = aggregate_population_by_age_groups(population_codebook[state_epydemix], age_groups)
+
+    # Calculate scaling factors
+    scaling_factors = {}
+    for ag in age_groups:
+        if state_pop[ag] > 0:
+            scaling_factors[ag] = metro_pop[ag] / state_pop[ag]
+        else:
+            scaling_factors[ag] = 1.0
+
+    logger.info(f"Vaccination scaling factors for {location_id}: {scaling_factors}")
+    return scaling_factors
+
+
 def add_vaccination_schedule(
     model: EpiModel,
     vaccine_rate_function: Callable,
@@ -852,10 +911,18 @@ def add_vaccination_schedule(
 
     vaccination_schedule = vaccination_schedule.query("location == @iso_location").copy()
 
+    # Scale vaccination doses for sub-state level locations (age-stratified)
+    age_groups_model = model.population.Nk_names
+    if age_groups_model is None:
+        raise ValueError("Model population must have Nk_names defined for vaccination scheduling.")
+    scaling_factors = _get_vaccination_scaling_factors(model.population.name, age_groups_model)
+
+    for age_group, factor in scaling_factors.items():
+        if factor != 1.0 and age_group in vaccination_schedule.columns:
+            vaccination_schedule[age_group] = (vaccination_schedule[age_group] * factor).round().astype(int)
+
     # From epydemix v1.0.2, register_transition_kind accepts Callable for rate not probability
     model.register_transition_kind("vaccination", vaccine_rate_function)
-
-    age_groups_model = model.population.Nk_names
     age_groups_data = vaccination_schedule.columns.tolist()
 
     missing = [age for age in age_groups_model if age not in age_groups_data]

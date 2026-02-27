@@ -6,9 +6,12 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
+from epymodelingsuite.schema.calibration import CalibrationStrategy
 from epymodelingsuite.schema.dispatcher import CalibrationOutput
 from epymodelingsuite.schema.output import ObservedValuesConfig, PlotsConfig, QuantilesPlotConfig
 from epymodelingsuite.visualization.generators import (
+    _check_incomplete_generations,
+    _format_plot_notes,
     _prepare_surveillance_for_location,
     _rename_value_column,
     generate_single_quantile_plots,
@@ -73,19 +76,20 @@ class TestSurveillanceDataFiltering:
 
     @pytest.fixture
     def surveillance_sources(self, surveillance_csv_data):
-        """Create surveillance sources dict."""
+        """Create surveillance sources dict with ObservedValuesConfig."""
         return {
-            "default": ObservedValuesConfig(
+            "hosp": ObservedValuesConfig(
                 data_path=str(surveillance_csv_data),
                 value_column="hospitalizations",
                 date_column="date",
                 location_column="location",
+                location_format="ISO",
             )
         }
 
     @pytest.fixture
     def plots_config_with_surveillance(self):
-        """Create a PlotsConfig with surveillance display enabled."""
+        """Create a PlotsConfig with surveillance data enabled."""
         quantiles_config = QuantilesPlotConfig(
             single=True,  # Enable single plots
         )
@@ -376,3 +380,134 @@ class TestRenameValueColumn:
         df = pd.DataFrame({"date": ["2024-01-01"], "ed_signal": [100], "other_transition": [200], "quantile": [0.5]})
         with pytest.raises(ValueError, match=r"Available value columns:.*ed_signal.*other_transition"):
             _rename_value_column(df, "hospitalizations")
+
+
+class TestCheckIncompleteGenerations:
+    """Test _check_incomplete_generations helper."""
+
+    def test_incomplete_returns_note(self):
+        """Test returns note when completed < requested."""
+        strategy = CalibrationStrategy(name="SMC", options={"num_generations": 7})
+        mock_results = MagicMock()
+        mock_results.posterior_distributions = [MagicMock() for _ in range(5)]
+
+        calibration = CalibrationOutput.model_construct(
+            primary_id=0,
+            seed=42,
+            delta_t=1.0,
+            population="US-CA",
+            results=mock_results,
+            calibration_strategy=strategy,
+        )
+
+        result = _check_incomplete_generations(calibration)
+        assert result == "Completed 5 of 7 requested generations"
+
+    def test_complete_returns_none(self):
+        """Test returns None when all generations completed."""
+        strategy = CalibrationStrategy(name="SMC", options={"num_generations": 7})
+        mock_results = MagicMock()
+        mock_results.posterior_distributions = [MagicMock() for _ in range(7)]
+
+        calibration = CalibrationOutput.model_construct(
+            primary_id=0,
+            seed=42,
+            delta_t=1.0,
+            population="US-CA",
+            results=mock_results,
+            calibration_strategy=strategy,
+        )
+
+        result = _check_incomplete_generations(calibration)
+        assert result is None
+
+    def test_no_strategy_returns_none(self):
+        """Test returns None when no calibration_strategy is set."""
+        mock_results = MagicMock()
+        mock_results.posterior_distributions = [MagicMock() for _ in range(5)]
+
+        calibration = CalibrationOutput.model_construct(
+            primary_id=0,
+            seed=42,
+            delta_t=1.0,
+            population="US-CA",
+            results=mock_results,
+            calibration_strategy=None,
+        )
+
+        result = _check_incomplete_generations(calibration)
+        assert result is None
+
+    def test_no_num_generations_in_options_returns_none(self):
+        """Test returns None when num_generations not in strategy options."""
+        strategy = CalibrationStrategy(name="rejection", options={"num_particles": 100})
+        mock_results = MagicMock()
+        mock_results.posterior_distributions = [MagicMock() for _ in range(5)]
+
+        calibration = CalibrationOutput.model_construct(
+            primary_id=0,
+            seed=42,
+            delta_t=1.0,
+            population="US-CA",
+            results=mock_results,
+            calibration_strategy=strategy,
+        )
+
+        result = _check_incomplete_generations(calibration)
+        assert result is None
+
+    def test_none_results_returns_none(self):
+        """Test returns None when results is None."""
+        strategy = CalibrationStrategy(name="SMC", options={"num_generations": 7})
+
+        calibration = CalibrationOutput.model_construct(
+            primary_id=0,
+            seed=42,
+            delta_t=1.0,
+            population="US-CA",
+            results=None,
+            calibration_strategy=strategy,
+        )
+
+        result = _check_incomplete_generations(calibration)
+        assert result is None
+
+    def test_none_posterior_distributions_returns_none(self):
+        """Test returns None when posterior_distributions is None."""
+        strategy = CalibrationStrategy(name="SMC", options={"num_generations": 7})
+        mock_results = MagicMock()
+        mock_results.posterior_distributions = None
+
+        calibration = CalibrationOutput.model_construct(
+            primary_id=0,
+            seed=42,
+            delta_t=1.0,
+            population="US-CA",
+            results=mock_results,
+            calibration_strategy=strategy,
+        )
+
+        result = _check_incomplete_generations(calibration)
+        assert result is None
+
+
+class TestFormatPlotNotes:
+    """Test _format_plot_notes helper."""
+
+    def test_empty_notes(self):
+        """Test empty notes returns empty strings."""
+        suffix, footnote = _format_plot_notes([])
+        assert suffix == ""
+        assert footnote == ""
+
+    def test_single_note(self):
+        """Test single note returns asterisk and footnote."""
+        suffix, footnote = _format_plot_notes(["Completed 5 of 7 requested generations"])
+        assert suffix == "*"
+        assert footnote == "* Completed 5 of 7 requested generations"
+
+    def test_multiple_notes(self):
+        """Test multiple notes are joined with semicolons."""
+        suffix, footnote = _format_plot_notes(["Note one", "Note two"])
+        assert suffix == "*"
+        assert footnote == "* Note one; Note two"

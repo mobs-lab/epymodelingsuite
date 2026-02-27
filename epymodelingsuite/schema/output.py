@@ -98,6 +98,34 @@ def get_flusight_quantiles() -> list[float]:
     ]
 
 
+def get_metrocast_quantiles() -> list[float]:
+    """
+    Return a list containing the quantiles needed for FluSight metrocast submissions.
+
+    The set of quantiles is defined at https://github.com/reichlab/flu-metrocast/tree/main/model-output#output_type_id
+    """
+    return [
+        0.025,
+        0.05,
+        0.1,
+        0.25,
+        0.5,
+        0.75,
+        0.9,
+        0.95,
+        0.975,
+    ]
+
+
+def get_metrocast_horizons() -> range:
+    """
+    Return the forecast horizons for metrocast submissions.
+
+    Metrocast uses horizons 0-3, while standard FluSight uses -1 to 3.
+    """
+    return range(4)
+
+
 def get_quantile_ribbon_default() -> list[float]:
     """Return a list containing default quantiles for plotting ribbons."""
     return [0.025, 0.25, 0.5, 0.75, 0.975]
@@ -112,14 +140,14 @@ class ObservedValuesConfig(BaseModel):
     location_column: str = Field(description="Name of column containing location in observed data CSV")
     location_format: str = Field(
         default="ISO",
-        description="Format of location identifiers in observed data. Options: ISO, FIPS, abbreviation, name, epydemix_population",
+        description="Format of location identifiers in observed data. Options: ISO, FIPS, abbreviation, name, epydemix_population, metrocast_location_id",
     )
 
     @field_validator("location_format")
     @classmethod
     def validate_location_format(cls, v: str) -> str:
         """Ensure location_format is a valid option."""
-        valid_formats = {"ISO", "FIPS", "abbreviation", "name", "epydemix_population"}
+        valid_formats = {"ISO", "FIPS", "abbreviation", "name", "epydemix_population", "metrocast_location_id"}
         if v not in valid_formats:
             msg = f"location_format must be one of {valid_formats}, got '{v}'"
             raise ValueError(msg)
@@ -140,10 +168,16 @@ class PropEDStrategyEnum(str, Enum):
     transition = "transition"
 
 
+# TODO: Consider renaming 'prop_ed' key to a more generic name (e.g., 'ed_visits', 'ed_target')
+# Metrocast uses "Flu ED visits pct" which is a percentage, not a proportion.
 class FlusightPropED(BaseModel):
-    """Specifications for generating the wk_inc_flu_prop_ed_visits target forecasts."""
+    """Specifications for generating ED-related target forecasts."""
 
-    strategy: PropEDStrategyEnum = Field(description="Strategy for generating prop ED forecasts.")
+    target: str = Field(
+        default="wk inc flu prop ed visits",
+        description="Target name for the submission file (e.g., 'wk inc flu prop ed visits', 'Flu ED visits pct').",
+    )
+    strategy: PropEDStrategyEnum = Field(description="Strategy for generating ED forecasts.")
     transition_name: str | None = Field(
         None,
         description="Name of transition to use for prop ED forecasts (required iff using 'transition' strategy).",
@@ -243,6 +277,11 @@ class FlusightPropED(BaseModel):
 class FlusightHospitalizations(BaseModel):
     """Specifications for generating hospitalizations forecasts."""
 
+    target: str = Field(
+        default="wk inc flu hosp",
+        description="Target name for the submission file (e.g., 'wk inc flu hosp').",
+    )
+
 
 class FlusightForecastOutput(BaseModel):
     """Specifications for outputs in flusight forecast hub format."""
@@ -262,6 +301,12 @@ class FlusightForecastOutput(BaseModel):
         None,
         description="Add 'wk inc flu prop ed visits' target to submission file.",
     )
+    quantiles: list[float] | None = Field(
+        default_factory=get_flusight_quantiles,
+        description="Desired quantiles for hospitalizations and prop_ed expressed as floats.",
+        validate_default=True,
+    )
+    metrocast: bool | None = Field(False, description="Treat outputs as metrocast.")
 
 
 class QuantilesOutput(BaseModel):
@@ -352,6 +397,10 @@ class SideBySidePanelConfig(BaseModel):
         None,
         description="Filter surveillance to show only points >= this date (YYYY-MM-DD). Overrides surveillance_points if both set.",
     )
+    xlabel_interval: str | None = Field(
+        None,
+        description="X-axis label interval as pandas offset string (e.g., 'W-SAT', '2W-SAT', 'MS'). None = auto (matplotlib default).",
+    )
 
 
 class QuantilesOutputConfig(BaseModel):
@@ -379,6 +428,10 @@ class QuantilesOutputConfig(BaseModel):
         description="Filter surveillance to show only points >= this date (YYYY-MM-DD). Overrides surveillance_points if both set. Not used for SIDE_BY_SIDE.",
     )
     horizon_max: int | None = Field(None, description="Override base horizon_max. None = use base config value.")
+    xlabel_interval: str | None = Field(
+        None,
+        description="X-axis label interval as pandas offset string (e.g., 'W-SAT', '2W-SAT', 'MS'). None = auto. For SIDE_BY_SIDE, use panel configs instead.",
+    )
 
     # Panel settings (only for SIDE_BY_SIDE type)
     full_panel: SideBySidePanelConfig | None = Field(
@@ -478,6 +531,14 @@ class QuantilesPlotConfig(BaseModel):
     value_column: str = Field(
         "hospitalizations",
         description="Column name for projection quantiles to plot. Common values: 'hospitalizations', 'ed_signal', 'value'. Must match a transition name in output.quantiles.transitions.",
+    )
+    ylabel: str | None = Field(
+        default=None,
+        description="Y-axis label for quantile plots (e.g., 'Hospitalizations'). If None, no label is shown.",
+    )
+    suptitle: str | None = Field(
+        default=None,
+        description="Super title for grid plots. If None, no super title is shown.",
     )
 
     @field_validator("grid")

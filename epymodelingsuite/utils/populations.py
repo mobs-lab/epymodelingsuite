@@ -6,6 +6,9 @@ import pandas as pd
 from epydemix import EpiModel
 from epydemix.population import Population
 
+from .location import METROCAST_PREFIX, get_metrocast_locations
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -210,12 +213,12 @@ def get_population_codebook() -> pd.DataFrame:
 def get_total_population(epydemix_name: str) -> int:
     """Get total population for a given epydemix location name.
 
-    Population data is sourced from load_epydemix_population(epydemix_name).total_population.
+    Handles both ISO locations (countries/states) and metrocast locations.
 
     Parameters
     ----------
     epydemix_name : str
-        Location name in epydemix format (e.g., "United_States_Alabama")
+        Name of epydemix's population object (e.g., "United_States_Alabama" or "metrocast_location_denver")
 
     Returns
     -------
@@ -226,7 +229,22 @@ def get_total_population(epydemix_name: str) -> int:
     ------
     KeyError
         If the location name is not found in the lookup table
+    ValueError
+        If a metrocast location is not found in metrocast data
     """
+    # Handle metrocast locations
+    if epydemix_name.startswith(METROCAST_PREFIX):
+        location_name = epydemix_name[len(METROCAST_PREFIX) :]
+        metrocast_locs = get_metrocast_locations()
+        location_row = metrocast_locs[metrocast_locs["metrocast_location_id"] == location_name]
+
+        if location_row.empty:
+            msg = f"Metrocast location '{location_name}' not found in metrocast locations data"
+            raise ValueError(msg)
+
+        return int(location_row["population"].iloc[0])
+
+    # ISO locations - use hardcoded lookup
     POPULATION_LOOKUP = {
         "United_States": 338120586,
         "United_States_Alabama": 5108468,

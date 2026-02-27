@@ -102,10 +102,9 @@ def make_school_closure_dict(
         # Sort table
         tmp = df.sort_values(by=[cat, start_str]).reset_index(drop=True)
         # Create a new column 'InPrev' thats true for all rows > 0, if start time at Event_(X) > end time at Event_(X-1)
+        # Use shift() to compare current row's start with previous row's end
+        tmp["InPrev"] = tmp[start_str] > tmp[end_str].shift(1)
         tmp.loc[0, "InPrev"] = False
-        tmp.InPrev.to_numpy()[1:] = tmp.loc[1:, start_str].reset_index(drop=True) > tmp.loc[
-            : (len(tmp) - 2), end_str
-        ].reset_index(drop=True)
         tmp["InPrev"] = tmp["InPrev"].astype("bool")
         # Create a new column 'GrpCount' that creates a cumulative sum of all 'InPrev' column bools
         # If 'GrpCount' does not change value between subsequent rows, these rows will be grouped into a single interval

@@ -22,17 +22,90 @@ from ..schema.output import (
     QuantilesOutputTypeEnum,
 )
 from .core import (
-    _format_location_name,
     figure_to_output_object,
+    format_location_name,
     plot_calibration_projection,
     plot_calibration_projection_grid,
     plot_calibration_projection_sidebyside,
     plot_categorical_stacked_bars_multihorizon,
     plot_posterior_histogram,
     plot_posterior_histogram_grid,
+    sort_locations_by_state,
 )
 
 logger = logging.getLogger(__name__)
+
+# Columns that are metadata/identifiers and should be excluded when extracting parameter names
+POSTERIOR_METADATA_COLUMNS = {"sim_id", "location", "population", "primary_id", "seed"}
+
+
+def _check_incomplete_generations(calibration: CalibrationOutput) -> str | None:
+    """Return a note string if fewer generations completed than requested.
+
+    ABC-SMC from epydemix can return fewer generations than requested if it reaches the stopping criterion (e.g., max_time) before completing all generations. It discards the incomplete generation and returns the previously completed generation as the final result (CalibrationResults).
+
+    This function checks if the number of completed generations in the results is fewer than the number requested in the calibration strategy, and if so, returns a note string to indicate this. If all generations completed or if the necessary information is unavailable, it returns None.
+
+    Parameters
+    ----------
+    calibration : CalibrationOutput
+        Calibration output with optional calibration_strategy and results.
+
+    Returns
+    -------
+    str or None
+        A note string if calibration completed fewer generations than requested,
+        or None if all generations completed or info is unavailable.
+    """
+    # Check number of generations requested
+    strategy = getattr(calibration, "calibration_strategy", None)
+    requested = strategy.options.get("num_generations") if strategy else None
+    if requested is None or calibration.results is None:
+        return None
+
+    # Check number of completed generations
+    posterior_dists = getattr(calibration.results, "posterior_distributions", None)
+    if posterior_dists is None:
+        return None
+    completed = len(posterior_dists)
+
+    # Compare
+    if completed < requested:
+        return f"Completed {completed} of {requested} requested generations"
+    return None
+
+
+def _format_plot_notes(notes: list[str]) -> tuple[str, str]:
+    """Return (title_suffix, footnote_text) from a list of notes.
+
+    Parameters
+    ----------
+    notes : list of str
+        List of note strings to format.
+
+    Returns
+    -------
+    tuple of (str, str)
+        (title_suffix, footnote_text). Empty strings if no notes.
+    """
+    if not notes:
+        return ("", "")
+    return ("*", "* " + "; ".join(notes))
+
+
+def _add_footnote(fig: plt.Figure, footnote: str) -> None:
+    """Add footnote text to bottom of figure if non-empty.
+
+    Parameters
+    ----------
+    fig : matplotlib.figure.Figure
+        Figure to add footnote to.
+    footnote : str
+        Footnote text. If empty, no action is taken.
+    """
+    if footnote:
+        fig.subplots_adjust(bottom=fig.subplotpars.bottom + 0.03)
+        fig.text(0.5, 0.01, footnote, ha="center", fontsize=8, style="italic")
 
 
 def _fetch_quantiles_for_location(
@@ -63,9 +136,13 @@ def _fetch_quantiles_for_location(
     cal_quant = None
     if needs_calibration:
         try:
+            cal_trajs = calibration.results.get_selected_trajectories()
+            cal_dates = cal_trajs[0].get("date") if cal_trajs else None
             cal_quant = calibration.results.get_calibration_quantiles(
                 quantiles=plots_config.quantiles.quantiles,
-                variables=["date", "data"],
+                dates=cal_dates,
+                variables=["data"],
+                ignore_nan=True,
             )
         except (ValueError, AttributeError, TypeError, IndexError) as e:
             logger.warning("Failed to get calibration quantiles for %s: %s", calibration.population, e)
@@ -73,8 +150,12 @@ def _fetch_quantiles_for_location(
     proj_quant = None
     if needs_projection:
         try:
+            proj_sims = calibration.results.projections.get("baseline", [])
+            proj_dates = proj_sims[0].get("date") if proj_sims else None
             proj_quant = calibration.results.get_projection_quantiles(
                 quantiles=plots_config.quantiles.quantiles,
+                dates=proj_dates,
+                ignore_nan=True,
             )
         except (ValueError, AttributeError, TypeError, IndexError) as e:
             logger.warning("Failed to get projection quantiles for %s: %s", calibration.population, e)
@@ -118,7 +199,10 @@ def _prepare_surveillance_for_location(
         return df_surv_full, df_surv_filtered, surveillance_start_date
 
     surv = get_data_in_location(
-        surveillance, location, surveillance_config.location_column, surveillance_config.location_format
+        surveillance,
+        location,
+        surveillance_config.location_column,
+        surveillance_config.location_format,
     )
 
     # Full surveillance (no filtering)
@@ -315,7 +399,9 @@ def _create_filtered_plot(
         df_surveillance=df_surv if output_config.show_surveillance else None,
         fitting_window_start=fitting_window_start if output_config.show_fitting_window_line else None,
         fitting_window_end=fitting_window_end if output_config.show_fitting_window_line else None,
-        title=_format_location_name(location),
+        title=format_location_name(location),
+        xlabel_interval=output_config.xlabel_interval,
+        ylabel=plots_config.quantiles.ylabel,
     )
 
 
@@ -368,7 +454,9 @@ def _create_full_plot(
         df_surveillance=df_surv if output_config.show_surveillance else None,
         fitting_window_start=fitting_window_start if output_config.show_fitting_window_line else None,
         fitting_window_end=fitting_window_end if output_config.show_fitting_window_line else None,
-        title=_format_location_name(location),
+        title=format_location_name(location),
+        xlabel_interval=output_config.xlabel_interval,
+        ylabel=plots_config.quantiles.ylabel,
     )
 
 
@@ -418,6 +506,10 @@ def _create_sidebyside_plot(
     tuple
         (fig, (ax_full, ax_filtered)) matplotlib figure and tuple of axes
     """
+    # Get xlabel_interval for each panel from panel configs
+    xlabel_interval_full = output_config.full_panel.xlabel_interval if output_config.full_panel else None
+    xlabel_interval_filtered = output_config.filtered_panel.xlabel_interval if output_config.filtered_panel else None
+
     return plot_calibration_projection_sidebyside(
         calibration_quantiles=cal_quant if output_config.show_calibration else None,
         projection_quantiles_full=proj_quant_full if output_config.show_projection else None,
@@ -429,9 +521,12 @@ def _create_sidebyside_plot(
         projection_color=plots_config.quantiles.projection.color,
         fitting_window_start=fitting_window_start if output_config.show_fitting_window_line else None,
         fitting_window_end=fitting_window_end if output_config.show_fitting_window_line else None,
-        title=_format_location_name(location),
+        title=format_location_name(location),
         figsize=output_config.figsize,
         spacing=output_config.spacing,
+        ylabel=plots_config.quantiles.ylabel,
+        xlabel_interval_full=xlabel_interval_full,
+        xlabel_interval_filtered=xlabel_interval_filtered,
     )
 
 
@@ -519,6 +614,12 @@ def generate_single_quantile_plots(
         location = calibration.population
 
         try:
+            # Check for incomplete generations
+            notes = []
+            if note := _check_incomplete_generations(calibration):
+                notes.append(note)
+            title_suffix, footnote = _format_plot_notes(notes)
+
             # Filter failed calibration trajectories and projections
             # calibration.results = filter_failed_calibration_trajectories(calibration.results)
             calibration.results = filter_failed_projections(calibration.results)
@@ -534,9 +635,13 @@ def generate_single_quantile_plots(
                 cal_quant_for_fitting = cal_quant
                 if cal_quant_for_fitting is None:
                     try:
+                        cal_trajs = calibration.results.get_selected_trajectories()
+                        cal_dates = cal_trajs[0].get("date") if cal_trajs else None
                         cal_quant_for_fitting = calibration.results.get_calibration_quantiles(
                             quantiles=[0.5],  # Only need one quantile to get dates
-                            variables=["date", "data"],
+                            dates=cal_dates,
+                            variables=["data"],
+                            ignore_nan=True,
                         )
                     except (ValueError, AttributeError, TypeError, IndexError) as e:
                         logger.warning(
@@ -656,6 +761,18 @@ def generate_single_quantile_plots(
                         logger.warning("Unknown output type %s for %s", output_config.type, location)
                         continue
 
+                    # Add generation notice to plot titles and footnote
+                    if title_suffix:
+                        if output_config.type == QuantilesOutputTypeEnum.SIDE_BY_SIDE:
+                            current_title = ax_full.get_title()
+                            if current_title:
+                                ax_full.set_title(current_title + title_suffix)
+                        else:
+                            current_title = ax.get_title()
+                            if current_title:
+                                ax.set_title(current_title + title_suffix)
+                        _add_footnote(fig, footnote)
+
                     # Package output
                     output_objs = []
                     for figure_output_type in plots_config.figure_output_types:
@@ -739,12 +856,19 @@ def generate_quantile_grid_plot(
     location_proj_quants_raw = {}
     location_fitting_window_starts = {}
     location_fitting_window_ends = {}
+    location_notes: dict[str, tuple[str, str]] = {}  # loc -> (title_suffix, footnote)
 
     # Collect quantiles for each location
     for calibration in calibrations:
         loc = calibration.population
 
         try:
+            # Check for incomplete generations
+            notes = []
+            if note := _check_incomplete_generations(calibration):
+                notes.append(note)
+            location_notes[loc] = _format_plot_notes(notes)
+
             # Filter failed calibration trajectories and projections
             # calibration.results = filter_failed_calibration_trajectories(calibration.results)
             calibration.results = filter_failed_projections(calibration.results)
@@ -763,9 +887,13 @@ def generate_quantile_grid_plot(
                 cal_quant_for_fitting = location_cal_quants.get(loc)
                 if cal_quant_for_fitting is None:
                     try:
+                        cal_trajs = calibration.results.get_selected_trajectories()
+                        cal_dates = cal_trajs[0].get("date") if cal_trajs else None
                         cal_quant_for_fitting = calibration.results.get_calibration_quantiles(
                             quantiles=[0.5],  # Only need one quantile to get dates
-                            variables=["date", "data"],
+                            dates=cal_dates,
+                            variables=["data"],
+                            ignore_nan=True,
                         )
                     except (ValueError, AttributeError, TypeError, IndexError) as e:
                         logger.warning(
@@ -937,7 +1065,24 @@ def generate_quantile_grid_plot(
                             location_fitting_window_ends if output_config.show_fitting_window_line else None
                         ),
                         panels_per_row=plots_config.quantiles.grid.panels_per_row,
+                        ylabel=plots_config.quantiles.ylabel,
+                        xlabel_interval=output_config.xlabel_interval,
+                        suptitle=plots_config.quantiles.suptitle,
                     )
+
+                    # Add generation notice to grid panel titles
+                    grid_footnotes = set()
+                    for ax in axes.flat:
+                        title = ax.get_title()
+                        if not title:
+                            continue
+                        for loc, (suffix, fn) in location_notes.items():
+                            if suffix and title == format_location_name(loc):
+                                ax.set_title(title + suffix)
+                                grid_footnotes.add(fn)
+                                break
+                    if grid_footnotes:
+                        _add_footnote(fig, "; ".join(sorted(grid_footnotes)))
 
                     # Package output
                     output_objs = []
@@ -1025,7 +1170,7 @@ def generate_quantile_grid_plot(
                         locations.update(location_proj_quants_full_sbs.keys())
                     if location_proj_quants_filtered_sbs:
                         locations.update(location_proj_quants_filtered_sbs.keys())
-                    locations = sorted(locations)
+                    locations = sort_locations_by_state(locations)
 
                     if locations:
                         n_locations = len(locations)
@@ -1034,7 +1179,7 @@ def generate_quantile_grid_plot(
                         nrows = math.ceil(n_locations / pairs_per_row)
                         ncols = panels_per_row
 
-                        figsize = output_config.figsize if output_config.figsize else (4 * ncols, 3.6 * nrows)
+                        figsize = output_config.figsize or (4 * ncols, 3.6 * nrows)
                         fig, axes = plt.subplots(nrows, ncols, figsize=figsize, squeeze=False)
 
                         for i, location in enumerate(locations):
@@ -1110,6 +1255,15 @@ def generate_quantile_grid_plot(
                             )
 
                             # Use core helper to draw both panels on provided axes
+                            # Get xlabel_interval for each panel from panel configs
+                            x_interval_full = (
+                                output_config.full_panel.xlabel_interval if output_config.full_panel else None
+                            )
+                            x_interval_filtered = (
+                                output_config.filtered_panel.xlabel_interval if output_config.filtered_panel else None
+                            )
+
+                            sbs_title_suffix = location_notes.get(location, ("", ""))[0]
                             plot_calibration_projection_sidebyside(
                                 calibration_quantiles=cal_quant,
                                 projection_quantiles_full=proj_quant_full,
@@ -1121,9 +1275,12 @@ def generate_quantile_grid_plot(
                                 projection_color=plots_config.quantiles.projection.color,
                                 fitting_window_start=fitting_window_start,
                                 fitting_window_end=fitting_window_end,
-                                title=_format_location_name(location),
+                                title=format_location_name(location) + sbs_title_suffix,
                                 ax_full=ax_full,
                                 ax_filtered=ax_filtered,
+                                ylabel=plots_config.quantiles.ylabel if col_start == 0 else None,
+                                xlabel_interval_full=x_interval_full,
+                                xlabel_interval_filtered=x_interval_filtered,
                             )
 
                             # Hide legends except for leftmost column
@@ -1143,7 +1300,15 @@ def generate_quantile_grid_plot(
                             c = idx % ncols
                             axes[r, c].axis("off")
 
+                        if plots_config.quantiles.suptitle:
+                            fig.suptitle(plots_config.quantiles.suptitle)
+
                         plt.tight_layout()
+
+                        # Add generation notice footnote for side-by-side grid
+                        sbs_footnotes = {fn for loc in locations for _, fn in [location_notes.get(loc, ("", ""))] if fn}
+                        if sbs_footnotes:
+                            _add_footnote(fig, "; ".join(sorted(sbs_footnotes)))
 
                         # Package output
                         output_objs = []
@@ -1208,7 +1373,7 @@ def generate_single_location_posterior_plots(
             posterior_df = calibration.results.get_posterior_distribution()
 
             # Get parameters to plot (exclude metadata columns)
-            params = [col for col in posterior_df.columns if col not in ["sim_id", "location"]]
+            params = [col for col in posterior_df.columns if col not in POSTERIOR_METADATA_COLUMNS]
 
             if not params:
                 logger.warning("No parameters to plot for %s", location)
@@ -1246,8 +1411,16 @@ def generate_single_location_posterior_plots(
             for idx in range(n_params, len(axes)):
                 axes[idx].set_visible(False)
 
-            fig.suptitle(f"Posterior Distributions - {location}", fontsize=14, y=0.995)
+            # Add generation notice to posterior suptitle
+            notes = []
+            if note := _check_incomplete_generations(calibration):
+                notes.append(note)
+            title_suffix, footnote = _format_plot_notes(notes)
+
+            fig.suptitle(f"Posterior Distributions - {location}{title_suffix}", fontsize=14, y=0.995)
             fig.tight_layout()
+            if footnote:
+                _add_footnote(fig, footnote)
 
             # Package output
             output_objs = []
@@ -1298,15 +1471,23 @@ def generate_posterior_grid_plot(
 
     location_posteriors = {}
     all_params = set()
+    location_notes: dict[str, tuple[str, str]] = {}  # loc -> (title_suffix, footnote)
 
     # Collect posterior distributions for each location
     for calibration in calibrations:
         loc = calibration.population
+
+        # Check for incomplete generations
+        notes = []
+        if note := _check_incomplete_generations(calibration):
+            notes.append(note)
+        location_notes[loc] = _format_plot_notes(notes)
+
         try:
             posterior_df = calibration.results.get_posterior_distribution()
             if not posterior_df.empty:
                 location_posteriors[loc] = posterior_df
-                all_params.update(col for col in posterior_df.columns if col not in ["sim_id", "location"])
+                all_params.update(col for col in posterior_df.columns if col not in POSTERIOR_METADATA_COLUMNS)
             else:
                 logger.warning("Skipping posterior plot for %s: posterior data is empty", loc)
         except (ValueError, AttributeError) as e:
@@ -1322,6 +1503,21 @@ def generate_posterior_grid_plot(
                 bins=plots_config.posterior.bins,
                 start_date_reference=start_date_reference,
             )
+
+            # Add generation notice to posterior grid y-labels (first column)
+            grid_footnotes = set()
+            for ax_row in axes:
+                ax_first = ax_row[0] if hasattr(ax_row, "__getitem__") else ax_row
+                ylabel = ax_first.get_ylabel()
+                if not ylabel:
+                    continue
+                for loc, (suffix, fn) in location_notes.items():
+                    if suffix and ylabel == loc:
+                        ax_first.set_ylabel(loc + suffix)
+                        grid_footnotes.add(fn)
+                        break
+            if grid_footnotes:
+                _add_footnote(fig, "; ".join(sorted(grid_footnotes)))
 
             # Package output
             output_objs = []
@@ -1393,7 +1589,7 @@ def generate_categorical_plots(
 
     # Convert location codes to readable names
     df_rate_trends = df_rate_trends.copy()
-    df_rate_trends["location"] = df_rate_trends["location"].apply(_format_location_name)
+    df_rate_trends["location"] = df_rate_trends["location"].apply(format_location_name)
 
     # Default category labels (prettier display names)
     default_category_labels = {

@@ -118,11 +118,12 @@ class TestCreateModelCollection:
         # Mock codebook with 3 locations (major + minor states) for faster testing
         mock_codebook = pd.DataFrame(
             {
+                "ISO": ["US-CA", "US-VT", "US-WA"],
                 "location_name_epydemix": [
                     "United_States_California",
                     "United_States_Vermont",
                     "United_States_Washington",
-                ]
+                ],
             }
         )
 
@@ -131,15 +132,103 @@ class TestCreateModelCollection:
             models, resolved_names = create_model_collection(base_model_config, population_names)
 
             # Should create models for all locations in mocked codebook
-            expected_locations = mock_codebook["location_name_epydemix"]
+            expected_locations = mock_codebook["ISO"].tolist()
 
             assert len(models) == len(expected_locations)
-            # resolved_names is a pandas Series when "all" is used
-            # Convert to list for comparison
-            if isinstance(resolved_names, pd.Series):
-                assert list(resolved_names) == list(expected_locations)
-            else:
-                assert resolved_names == list(expected_locations)
+            assert resolved_names == expected_locations
+
+    def test_all_states_expands_to_all_us_states(self, base_model_config):
+        """Test that 'all-states' expands to all US state ISO codes."""
+        # Mock codebook with a subset of states for faster testing
+        mock_codebook = pd.DataFrame(
+            {
+                "ISO": ["US-CA", "US-TX", "US-NY", "US-FL", "US-MA"],
+                "location_name_epydemix": [
+                    "United_States_California",
+                    "United_States_Texas",
+                    "United_States_New_York",
+                    "United_States_Florida",
+                    "United_States_Massachusetts",
+                ],
+            }
+        )
+
+        with patch("epymodelingsuite.builders.orchestrators.get_location_codebook", return_value=mock_codebook):
+            population_names = ["all-states"]
+            models, resolved_names = create_model_collection(base_model_config, population_names)
+
+            # Should create models for all states in mocked codebook
+            expected_locations = mock_codebook["ISO"].tolist()
+
+            assert len(models) == len(expected_locations)
+            assert resolved_names == expected_locations
+
+    def test_all_metrocast_includes_state_level_locations(self, base_model_config):
+        """Test that 'all-metrocast' expands to all metrocast locations, including state-level."""
+        # Mock metrocast locations with mix of state-level and sub-state entries
+        # Use real location names (denver, mesa, savannah) to pass schema validation
+        mock_metrocast = pd.DataFrame(
+            {
+                "metrocast_location_id": ["denver", "mesa", "colorado", "savannah", "georgia"],
+                "original_location_code": ["688", "711", "All", "501", "All"],
+                "state": ["Colorado", "Colorado", "Colorado", "Georgia", "Georgia"],
+                "state_abb": ["CO", "CO", "CO", "GA", "GA"],
+                "location_name": ["Denver", "Mesa", "Colorado", "Savannah", "Georgia"],
+                "population": [100000, 50000, 150000, 200000, 250000],
+                "location_type": ["hsa", "hsa", "state", "hsa", "state"],
+                "hsa_counties": ["", "", "", "", ""],
+                "state_iso": ["US-CO", "US-CO", "US-CO", "US-GA", "US-GA"],
+            }
+        )
+
+        with (
+            patch(
+                "epymodelingsuite.builders.orchestrators.get_metrocast_locations",
+                return_value=mock_metrocast,
+            ),
+            patch("epymodelingsuite.builders.orchestrators.set_population_from_config"),
+        ):
+            population_names = ["all-metrocast"]
+            models, resolved_names = create_model_collection(base_model_config, population_names)
+
+            # Should include ALL locations (including state-level "colorado" and "georgia")
+            expected_locations = ["denver", "mesa", "colorado", "savannah", "georgia"]
+
+            assert len(models) == len(expected_locations)
+            assert resolved_names == expected_locations
+
+    def test_all_metrocast_excludes_nyc(self, base_model_config):
+        """Test that 'all-metrocast' excludes NYC."""
+        mock_metrocast = pd.DataFrame(
+            {
+                "metrocast_location_id": ["denver", "boston", "nyc"],
+                "original_location_code": ["688", "22", "94"],
+                "state": ["Colorado", "Massachusetts", "New York"],
+                "state_abb": ["CO", "MA", "NY"],
+                "location_name": ["Denver", "Boston", "NYC"],
+                "population": [100000, 200000, 8000000],
+                "location_type": ["hsa", "hsa", "hsa"],
+                "hsa_counties": ["", "", ""],
+                "state_iso": ["US-CO", "US-MA", "US-NY"],
+            }
+        )
+
+        with (
+            patch(
+                "epymodelingsuite.builders.orchestrators.get_metrocast_locations",
+                return_value=mock_metrocast,
+            ),
+            patch("epymodelingsuite.builders.orchestrators.set_population_from_config"),
+        ):
+            population_names = ["all-metrocast"]
+            models, resolved_names = create_model_collection(base_model_config, population_names)
+
+            # Should exclude NYC
+            expected_locations = ["denver", "boston"]
+
+            assert len(models) == len(expected_locations)
+            assert resolved_names == expected_locations
+            assert "nyc" not in resolved_names
 
     def test_all_models_share_compartments(self, base_model_config):
         """Test that all models have the same compartments."""
@@ -480,6 +569,106 @@ class TestSetupVaccinationSchedules:
                 # _add_vaccination_schedules_from_config should not be called when start_date is sampled
                 mock_add_vax.assert_not_called()
 
+    def test_iso_states_passed_directly_to_scenario_to_epydemix(self, base_model_with_vaccination):
+        """Test that ISO state codes are passed directly without conversion."""
+        models = [Mock(), Mock()]
+        population_names = ["US-CA", "US-TX"]
+
+        sampled_start_timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
+
+        mock_vax_schedule = pd.DataFrame({"date": ["2024-01-01"], "location": ["US-CA"], "doses": [100]})
+
+        with patch(
+            "epymodelingsuite.builders.orchestrators.scenario_to_epydemix", return_value=mock_vax_schedule
+        ) as mock_scenario_to_epydemix:
+            setup_vaccination_schedules(
+                basemodel=base_model_with_vaccination,
+                models=models,
+                sampled_start_timespan=sampled_start_timespan,
+                population_names=population_names,
+            )
+
+            # Verify ISO states are passed directly
+            mock_scenario_to_epydemix.assert_called_once()
+            call_kwargs = mock_scenario_to_epydemix.call_args[1]
+            assert call_kwargs["states"] == ["US-CA", "US-TX"]
+
+    def test_metrocast_locations_converted_to_parent_state_iso(self, base_model_with_vaccination):
+        """Test that metrocast locations are converted to their parent state ISO codes."""
+        models = [Mock(), Mock()]
+        # denver -> US-CO, boston -> US-MA
+        population_names = ["denver", "boston"]
+
+        sampled_start_timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
+
+        mock_vax_schedule = pd.DataFrame({"date": ["2024-01-01"], "location": ["US-CO"], "doses": [100]})
+
+        with patch(
+            "epymodelingsuite.builders.orchestrators.scenario_to_epydemix", return_value=mock_vax_schedule
+        ) as mock_scenario_to_epydemix:
+            setup_vaccination_schedules(
+                basemodel=base_model_with_vaccination,
+                models=models,
+                sampled_start_timespan=sampled_start_timespan,
+                population_names=population_names,
+            )
+
+            # Verify metrocast locations are converted to parent state ISO codes
+            mock_scenario_to_epydemix.assert_called_once()
+            call_kwargs = mock_scenario_to_epydemix.call_args[1]
+            assert call_kwargs["states"] == ["US-CO", "US-MA"]
+
+    def test_mixed_iso_and_metrocast_locations(self, base_model_with_vaccination):
+        """Test handling of mixed ISO states and metrocast locations."""
+        models = [Mock(), Mock(), Mock()]
+        # US-CA (ISO), denver (metrocast -> US-CO), US-TX (ISO)
+        population_names = ["US-CA", "denver", "US-TX"]
+
+        sampled_start_timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
+
+        mock_vax_schedule = pd.DataFrame({"date": ["2024-01-01"], "location": ["US-CA"], "doses": [100]})
+
+        with patch(
+            "epymodelingsuite.builders.orchestrators.scenario_to_epydemix", return_value=mock_vax_schedule
+        ) as mock_scenario_to_epydemix:
+            setup_vaccination_schedules(
+                basemodel=base_model_with_vaccination,
+                models=models,
+                sampled_start_timespan=sampled_start_timespan,
+                population_names=population_names,
+            )
+
+            # Verify conversion: US-CA stays, denver -> US-CO, US-TX stays
+            mock_scenario_to_epydemix.assert_called_once()
+            call_kwargs = mock_scenario_to_epydemix.call_args[1]
+            assert call_kwargs["states"] == ["US-CA", "US-CO", "US-TX"]
+
+    def test_metrocast_locations_in_same_state_deduplicated(self, base_model_with_vaccination):
+        """Test that multiple metrocast locations in the same state result in a single state ISO."""
+        models = [Mock(), Mock()]
+        # Both denver and colorado-springs are in Colorado (US-CO)
+        population_names = ["denver", "colorado-springs"]
+
+        sampled_start_timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
+
+        mock_vax_schedule = pd.DataFrame({"date": ["2024-01-01"], "location": ["US-CO"], "doses": [100]})
+
+        with patch(
+            "epymodelingsuite.builders.orchestrators.scenario_to_epydemix", return_value=mock_vax_schedule
+        ) as mock_scenario_to_epydemix:
+            setup_vaccination_schedules(
+                basemodel=base_model_with_vaccination,
+                models=models,
+                sampled_start_timespan=sampled_start_timespan,
+                population_names=population_names,
+            )
+
+            # Verify duplicates are removed - both locations map to US-CO
+            mock_scenario_to_epydemix.assert_called_once()
+            call_kwargs = mock_scenario_to_epydemix.call_args[1]
+            # Should be ["US-CO"] not ["US-CO", "US-CO"]
+            assert call_kwargs["states"] == ["US-CO"]
+
 
 class TestComputeSimulationStartDate:
     """Tests for compute_simulation_start_date function."""
@@ -640,7 +829,7 @@ class TestApplyVaccinationForSampledStart:
 
             apply_vaccination_for_sampled_start(model, basemodel, timespan, earliest_vax, sampled_start_timespan)
 
-            # Should reaggregate and add (resampling now happens inside add_vaccination_schedules_from_config)
+            # Should reaggregate and add
             mock_reagg.assert_called_once_with(earliest_vax, date(2024, 1, 15))
             mock_add.assert_called_once()
 
@@ -765,12 +954,12 @@ class TestFormatCalibrationData:
         np.testing.assert_array_equal(result["data"], expected_data)
         assert result["date"] == data_dates
 
-    def test_pads_with_zeros_when_simulation_shorter(self):
-        """Test that zeros are padded when simulation is shorter than observations."""
+    def test_pads_with_nan_when_simulation_shorter(self):
+        """Test that NaN values are padded when simulation is shorter than observations."""
         results = Mock()
         results.dates = [date(2024, 1, 3), date(2024, 1, 4), date(2024, 1, 5)]
         results.transitions = {
-            "Hosp": np.array([30, 40, 50]),
+            "Hosp": np.array([30.0, 40.0, 50.0]),  # Use float array for NaN padding
         }
 
         comparison_transitions = ["Hosp"]
@@ -789,9 +978,11 @@ class TestFormatCalibrationData:
         assert "data" in result
         assert "date" in result
 
-        # Should pad with 2 NaN at beginning
-        expected_data = np.array([np.nan, np.nan, 30, 40, 50])
-        np.testing.assert_array_equal(result["data"], expected_data)
+        # Should pad with 2 NaN values at beginning
+        assert len(result["data"]) == 5
+        assert np.isnan(result["data"][0])
+        assert np.isnan(result["data"][1])
+        np.testing.assert_array_equal(result["data"][2:], [30.0, 40.0, 50.0])
         assert result["date"] == data_dates
 
     def test_handles_multiple_transitions(self):
@@ -897,8 +1088,8 @@ class TestFormatProjectionTrajectories:
         # Simulate starting at week 2 (Jan 13), missing first week (Jan 6)
         # Jan 6, 2024 is the first Saturday of the year
         results.dates = [date(2024, 1, 13), date(2024, 1, 20)]
-        results.transitions = {"Hosp": np.array([10, 20])}
-        results.compartments = {"S": np.array([1000, 990])}
+        results.transitions = {"Hosp": np.array([10.0, 20.0])}
+        results.compartments = {"S": np.array([1000.0, 990.0])}
 
         result = format_projection_trajectories(
             results=results,
@@ -913,15 +1104,17 @@ class TestFormatProjectionTrajectories:
         # First date should be padded (Jan 6)
         assert result["date"][0] == pd.Timestamp(date(2024, 1, 6))
         # Hosp should have one NaN padded at beginning
-        np.testing.assert_array_equal(result["Hosp"], np.array([np.nan, 10, 20]))
-        np.testing.assert_array_equal(result["S"], np.array([np.nan, 1000, 990]))
+        assert np.isnan(result["Hosp"][0])
+        np.testing.assert_array_equal(result["Hosp"][1:], np.array([10.0, 20.0]))
+        assert np.isnan(result["S"][0])
+        np.testing.assert_array_equal(result["S"][1:], np.array([1000.0, 990.0]))
 
     def test_handles_different_pad_lengths(self):
         """Test that different trajectories pad to same final length."""
         # Trajectory 1: starts early, needs little padding
         results1 = Mock()
         results1.dates = [date(2024, 1, 8), date(2024, 1, 15)]
-        results1.transitions = {"Hosp": np.array([10, 20])}
+        results1.transitions = {"Hosp": np.array([10.0, 20.0])}
         results1.compartments = {}
 
         result1 = format_projection_trajectories(
@@ -935,7 +1128,7 @@ class TestFormatProjectionTrajectories:
         # Trajectory 2: starts late, needs more padding
         results2 = Mock()
         results2.dates = [date(2024, 1, 15)]
-        results2.transitions = {"Hosp": np.array([30])}
+        results2.transitions = {"Hosp": np.array([30.0])}
         results2.compartments = {}
 
         result2 = format_projection_trajectories(
@@ -1085,8 +1278,8 @@ class TestFormatProjectionTrajectories:
         results = Mock()
         results.dates = [date(2024, 1, 13), date(2024, 1, 20)]
         results.transitions = {
-            "Hosp_vax": np.array([10, 20]),
-            "Hosp_unvax": np.array([5, 10]),
+            "Hosp_vax": np.array([10.0, 20.0]),
+            "Hosp_unvax": np.array([5.0, 10.0]),
         }
         results.compartments = {}
 
@@ -1110,7 +1303,8 @@ class TestFormatProjectionTrajectories:
         # Should pad aggregated transition to 3 weeks total
         assert len(result["total_hosp"]) == 3
         # First value should be NaN (padding)
-        np.testing.assert_array_equal(result["total_hosp"], np.array([np.nan, 15, 30]))
+        assert np.isnan(result["total_hosp"][0])
+        np.testing.assert_array_equal(result["total_hosp"][1:], np.array([15.0, 30.0]))
 
 
 class TestGetAggregatedComparisonTransition:

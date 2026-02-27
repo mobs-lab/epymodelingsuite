@@ -389,3 +389,161 @@ class TestGenerateCategoricalPlots:
         # Assert: warning mentions "rate-trend categorical forecasts"
         assert any("No rate-trend categorical forecasts found" in rec.message for rec in caplog.records)
         assert any("flusight_format.rate_trends" in rec.message for rec in caplog.records)
+
+
+class TestGetHubLocationId:
+    """Tests for get_hub_location_id function."""
+
+    def test_iso_location_returns_fips(self):
+        """Test that ISO locations return FIPS codes."""
+        from epymodelingsuite.dispatcher.output import get_hub_location_id
+
+        # California
+        result = get_hub_location_id("United_States_California")
+        assert result == "06"
+
+        # Texas
+        result = get_hub_location_id("United_States_Texas")
+        assert result == "48"
+
+    def test_metrocast_location_returns_location_id(self):
+        """Test that metrocast locations return metrocast_location_id."""
+        from epymodelingsuite.dispatcher.output import get_hub_location_id
+
+        # Denver
+        result = get_hub_location_id("metrocast_location_denver")
+        assert result == "denver"
+
+        # Boston
+        result = get_hub_location_id("metrocast_location_boston")
+        assert result == "boston"
+
+        # NC flu region
+        result = get_hub_location_id("metrocast_location_nenc")
+        assert result == "nenc"
+
+
+class TestGetPlotLocationLabel:
+    """Tests for get_plot_location_label function."""
+
+    def test_iso_location_returns_name(self):
+        """Test that ISO locations return human-readable names."""
+        from epymodelingsuite.dispatcher.output import get_plot_location_label
+
+        # California
+        result = get_plot_location_label("United_States_California")
+        assert result == "California"
+
+        # Massachusetts
+        result = get_plot_location_label("United_States_Massachusetts")
+        assert result == "Massachusetts"
+
+    def test_metrocast_location_returns_short_name(self):
+        """Test that metrocast locations return short name from CSV."""
+        from epymodelingsuite.dispatcher.output import get_plot_location_label
+
+        # Denver - same as full name
+        result = get_plot_location_label("metrocast_location_denver")
+        assert result == "Denver, CO"
+
+        # Boston - shortened from "Boston Metro, South Shore, Cape & Islands, MA"
+        result = get_plot_location_label("metrocast_location_boston")
+        assert result == "Greater Boston, MA"
+
+        # NC flu region
+        result = get_plot_location_label("metrocast_location_nenc")
+        assert result == "Northeastern, NC"
+
+
+class TestFormatQuantilesFlusightforecast:
+    """Tests for format_quantiles_flusightforecast function."""
+
+    @pytest.fixture
+    def sample_quantiles_df(self):
+        """Create sample quantiles DataFrame spanning horizons -1 to 3."""
+        reference_date = date(2025, 11, 29)  # Saturday
+        # Create dates for horizons -1, 0, 1, 2, 3 (each 7 days apart)
+        dates = [
+            pd.Timestamp("2025-11-22"),  # horizon -1
+            pd.Timestamp("2025-11-29"),  # horizon 0
+            pd.Timestamp("2025-12-06"),  # horizon 1
+            pd.Timestamp("2025-12-13"),  # horizon 2
+            pd.Timestamp("2025-12-20"),  # horizon 3
+        ]
+        quantiles = [0.25, 0.5, 0.75]
+        data = []
+        for d in dates:
+            for q in quantiles:
+                data.append({"date": d, "quantile": q, "hospitalizations": 100.0})
+        return pd.DataFrame(data), reference_date
+
+    def test_standard_flusight_includes_horizon_minus_one(self, sample_quantiles_df):
+        """Test that standard FluSight (metrocast=False) includes horizon -1."""
+        from epymodelingsuite.dispatcher.output import format_quantiles_flusightforecast
+
+        df, reference_date = sample_quantiles_df
+        result = format_quantiles_flusightforecast(df, reference_date, metrocast=False)
+
+        horizons = result["horizon"].unique()
+        assert -1 in horizons
+        assert set(horizons) == {-1, 0, 1, 2, 3}
+
+    def test_metrocast_excludes_horizon_minus_one(self, sample_quantiles_df):
+        """Test that metrocast=True excludes horizon -1."""
+        from epymodelingsuite.dispatcher.output import format_quantiles_flusightforecast
+
+        df, reference_date = sample_quantiles_df
+        result = format_quantiles_flusightforecast(df, reference_date, metrocast=True)
+
+        horizons = result["horizon"].unique()
+        assert -1 not in horizons
+        assert set(horizons) == {0, 1, 2, 3}
+
+    def test_output_has_correct_columns(self, sample_quantiles_df):
+        """Test that output DataFrame has correct FluSight columns."""
+        from epymodelingsuite.dispatcher.output import format_quantiles_flusightforecast
+
+        df, reference_date = sample_quantiles_df
+        result = format_quantiles_flusightforecast(df, reference_date)
+
+        expected_columns = {"horizon", "target", "output_type", "output_type_id", "target_end_date", "value"}
+        assert set(result.columns) == expected_columns
+
+    def test_output_type_is_quantile(self, sample_quantiles_df):
+        """Test that output_type column is 'quantile' for all rows."""
+        from epymodelingsuite.dispatcher.output import format_quantiles_flusightforecast
+
+        df, reference_date = sample_quantiles_df
+        result = format_quantiles_flusightforecast(df, reference_date)
+
+        assert (result["output_type"] == "quantile").all()
+
+    def test_custom_target_name(self, sample_quantiles_df):
+        """Test that custom target name is used."""
+        from epymodelingsuite.dispatcher.output import format_quantiles_flusightforecast
+
+        df, reference_date = sample_quantiles_df
+        custom_target = "custom target name"
+        result = format_quantiles_flusightforecast(df, reference_date, target=custom_target)
+
+        assert (result["target"] == custom_target).all()
+
+    def test_default_target_name(self, sample_quantiles_df):
+        """Test that default target name is 'wk inc flu hosp'."""
+        from epymodelingsuite.dispatcher.output import format_quantiles_flusightforecast
+
+        df, reference_date = sample_quantiles_df
+        result = format_quantiles_flusightforecast(df, reference_date)
+
+        assert (result["target"] == "wk inc flu hosp").all()
+
+    def test_hospitalizations_rounded_to_integer(self, sample_quantiles_df):
+        """Test that hospitalization values are rounded to integers."""
+        from epymodelingsuite.dispatcher.output import format_quantiles_flusightforecast
+
+        df, reference_date = sample_quantiles_df
+        # Modify to have non-integer values
+        df["hospitalizations"] = 100.7
+        result = format_quantiles_flusightforecast(df, reference_date)
+
+        assert (result["value"] == 101).all()
