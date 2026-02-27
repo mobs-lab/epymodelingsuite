@@ -411,6 +411,35 @@ def _load_surveillance_sources(
     return result
 
 
+def _compute_fitting_window(
+    calibration: CalibrationOutput,
+    cal_quant: pd.DataFrame | None,
+) -> tuple[date | None, date | None]:
+    """Compute fitting window start/end from calibration quantiles, with fallback fetch."""
+    cal_quant_for_fitting = cal_quant
+    if cal_quant_for_fitting is None:
+        try:
+            cal_trajs = calibration.results.get_selected_trajectories()
+            cal_dates = cal_trajs[0].get("date") if cal_trajs else None
+            cal_quant_for_fitting = calibration.results.get_calibration_quantiles(
+                quantiles=[0.5],
+                dates=cal_dates,
+                variables=["data"],
+                ignore_nan=True,
+            )
+        except (ValueError, AttributeError, TypeError, IndexError) as e:
+            logger.warning(
+                "Failed to get calibration quantiles for fitting window for %s: %s",
+                calibration.population,
+                e,
+            )
+
+    if cal_quant_for_fitting is not None and "date" in cal_quant_for_fitting.columns:
+        dates = pd.to_datetime(cal_quant_for_fitting["date"]).dt.date
+        return dates.min(), dates.max()
+    return None, None
+
+
 def _create_quantile_plot(
     location: str,
     cal_quant: pd.DataFrame | None,
@@ -632,28 +661,7 @@ def generate_single_quantile_plots(
             fitting_window_start = None
             fitting_window_end = None
             if needs_fitting_window:
-                cal_quant_for_fitting = cal_quant
-                if cal_quant_for_fitting is None:
-                    try:
-                        cal_trajs = calibration.results.get_selected_trajectories()
-                        cal_dates = cal_trajs[0].get("date") if cal_trajs else None
-                        cal_quant_for_fitting = calibration.results.get_calibration_quantiles(
-                            quantiles=[0.5],  # Only need one quantile to get dates
-                            dates=cal_dates,
-                            variables=["data"],
-                            ignore_nan=True,
-                        )
-                    except (ValueError, AttributeError, TypeError, IndexError) as e:
-                        logger.warning(
-                            "Failed to get calibration quantiles for fitting window for %s: %s",
-                            location,
-                            e,
-                        )
-
-                if cal_quant_for_fitting is not None and "date" in cal_quant_for_fitting.columns:
-                    dates = pd.to_datetime(cal_quant_for_fitting["date"]).dt.date
-                    fitting_window_start = dates.min()
-                    fitting_window_end = dates.max()
+                fitting_window_start, fitting_window_end = _compute_fitting_window(calibration, cal_quant)
 
             # TODO: Determine which surveillance source to use (logic will be added with per-output processing)
             # For now, use first available source if any
@@ -881,29 +889,10 @@ def generate_quantile_grid_plot(
 
             # Calculate fitting window start and end from calibration quantiles
             if needs_fitting_window:
-                # Fetch calibration quantiles for fitting window calculation even if not displaying them
-                cal_quant_for_fitting = location_cal_quants.get(loc)
-                if cal_quant_for_fitting is None:
-                    try:
-                        cal_trajs = calibration.results.get_selected_trajectories()
-                        cal_dates = cal_trajs[0].get("date") if cal_trajs else None
-                        cal_quant_for_fitting = calibration.results.get_calibration_quantiles(
-                            quantiles=[0.5],  # Only need one quantile to get dates
-                            dates=cal_dates,
-                            variables=["data"],
-                            ignore_nan=True,
-                        )
-                    except (ValueError, AttributeError, TypeError, IndexError) as e:
-                        logger.warning(
-                            "Failed to get calibration quantiles for fitting window for %s: %s",
-                            loc,
-                            e,
-                        )
-
-                if cal_quant_for_fitting is not None and "date" in cal_quant_for_fitting.columns:
-                    dates = pd.to_datetime(cal_quant_for_fitting["date"]).dt.date
-                    location_fitting_window_starts[loc] = dates.min()
-                    location_fitting_window_ends[loc] = dates.max()
+                fw_start, fw_end = _compute_fitting_window(calibration, location_cal_quants.get(loc))
+                if fw_start is not None:
+                    location_fitting_window_starts[loc] = fw_start
+                    location_fitting_window_ends[loc] = fw_end
         except Exception as e:
             logger.warning(
                 "Failed to process location %s for grid quantile plots: %s",
