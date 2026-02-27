@@ -355,7 +355,22 @@ def _clip_to_surveillance_start(
     df: pd.DataFrame | None,
     surv: pd.DataFrame | None,
 ) -> pd.DataFrame | None:
-    """Clip df to start at the earliest date in surv. Returns None if empty or inputs are None."""
+    """
+    Clip a dataframe to start at the earliest date in surveillance data. Used to align calibration/projection quantile ribbons with the visible surveillance range.
+
+    Parameters
+    ----------
+    df : pd.DataFrame or None
+        DataFrame with a "date" column (e.g. calibration or projection quantiles).
+    surv : pd.DataFrame or None
+        Surveillance DataFrame with a "date" column whose minimum date defines the clip boundary.
+
+    Returns
+    -------
+    pd.DataFrame or None
+        Rows of ``df`` where date >= earliest surveillance date, or None if the result is empty.
+        Returns ``df`` unchanged when ``surv`` is None or empty.
+    """
     if df is None or surv is None or surv.empty:
         return df
     start = pd.to_datetime(surv["date"]).dt.date.min()
@@ -369,7 +384,25 @@ def _apply_surveillance_filter(
     surveillance_start_date: str | None = None,
     surveillance_points: int | None = None,
 ) -> pd.DataFrame | None:
-    """Filter surveillance by start date (priority) or last N points."""
+    """
+    Filter surveillance data by a start date or by keeping the last N points.
+
+    When both parameters are provided, ``surveillance_start_date`` takes precedence.
+
+    Parameters
+    ----------
+    surv : pd.DataFrame or None
+        Surveillance DataFrame with a "date" column.
+    surveillance_start_date : str or None
+        If given, keep only rows with date >= this value (parsed via ``pd.to_datetime``).
+    surveillance_points : int or None
+        If given (and ``surveillance_start_date`` is None), keep only the last N rows by date.
+
+    Returns
+    -------
+    pd.DataFrame or None
+        Filtered surveillance data, or the input unchanged if no filter applies.
+    """
     if surv is None or surv.empty:
         return surv
     if surveillance_start_date is not None:
@@ -386,7 +419,26 @@ def _apply_horizon_filter(
     horizon_max: int | None,
     reference_date: date,
 ) -> pd.DataFrame | None:
-    """Clip projection quantiles to reference_date + horizon_max weeks."""
+    """
+    Clip projection quantiles to a maximum forecast horizon.
+
+    Keeps only rows whose date is at most ``reference_date + horizon_max`` weeks.
+    Returns a copy to avoid mutating the caller's DataFrame.
+
+    Parameters
+    ----------
+    proj : pd.DataFrame or None
+        Projection quantiles DataFrame with a "date" column.
+    horizon_max : int or None
+        Maximum number of weeks past ``reference_date`` to keep. If None, no clipping is applied.
+    reference_date : date
+        The reference date from which the horizon is measured.
+
+    Returns
+    -------
+    pd.DataFrame or None
+        Clipped projection data, or ``proj`` unchanged when ``horizon_max`` is None.
+    """
     if proj is None or horizon_max is None:
         return proj
     proj = proj.copy()
@@ -399,7 +451,24 @@ def _load_surveillance_sources(
     surveillance_sources: dict[str, ObservedValuesConfig] | None,
     outputs: list[QuantilesOutputConfig],
 ) -> dict[str, dict[str, Any]]:
-    """Load surveillance CSVs if any output needs surveillance. Returns {name: {"data": df, "config": config}}."""
+    """
+    Load surveillance CSV files for all configured sources.
+
+    Skips loading entirely if no output requires surveillance data or if no sources are configured.
+
+    Parameters
+    ----------
+    surveillance_sources : dict[str, ObservedValuesConfig] or None
+        Mapping of source name to its configuration (including ``data_path``).
+    outputs : list[QuantilesOutputConfig]
+        Output configurations; loading is skipped if none have ``show_surveillance`` enabled.
+
+    Returns
+    -------
+    dict[str, dict[str, Any]]
+        Mapping of source name to ``{"data": pd.DataFrame, "config": ObservedValuesConfig}``.
+        Empty dict if no sources are needed or available.
+    """
     if not any(o.show_surveillance for o in outputs) or not surveillance_sources:
         return {}
     result: dict[str, dict[str, Any]] = {}
@@ -415,7 +484,23 @@ def _compute_fitting_window(
     calibration: CalibrationOutput,
     cal_quant: pd.DataFrame | None,
 ) -> tuple[date | None, date | None]:
-    """Compute fitting window start/end from calibration quantiles, with fallback fetch."""
+    """
+    Compute the fitting window date range from calibration quantiles.
+
+    Uses the provided ``cal_quant`` if available; otherwise falls back to fetching a minimal set of calibration quantiles (median only) from the calibration results.
+
+    Parameters
+    ----------
+    calibration : CalibrationOutput
+        Calibration output for one location, used as fallback source for quantile data.
+    cal_quant : pd.DataFrame or None
+        Pre-fetched calibration quantiles. If None, the function attempts to fetch them.
+
+    Returns
+    -------
+    tuple[date or None, date or None]
+        (start, end) of the fitting window, or (None, None) if quantiles are unavailable.
+    """
     cal_quant_for_fitting = cal_quant
     if cal_quant_for_fitting is None:
         try:
@@ -445,7 +530,23 @@ def _package_figure_outputs(
     name: str,
     plots_config: PlotsConfig,
 ) -> list[OutputObject]:
-    """Convert figure to OutputObjects for all configured output types."""
+    """
+    Convert a matplotlib figure to OutputObject instances for each configured format.
+
+    Parameters
+    ----------
+    fig : plt.Figure
+        The matplotlib figure to serialize.
+    name : str
+        Base name for the output (used in filenames).
+    plots_config : PlotsConfig
+        Configuration providing ``figure_output_types`` (e.g. png, svg) and ``dpi``.
+
+    Returns
+    -------
+    list[OutputObject]
+        One OutputObject per configured figure output type.
+    """
     return [
         figure_to_output_object(fig, name, output_type, plots_config.dpi)
         for output_type in plots_config.figure_output_types
