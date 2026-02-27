@@ -362,6 +362,24 @@ def _clip_to_surveillance_start(
     return clipped if not clipped.empty else None
 
 
+def _apply_surveillance_filter(
+    surv: pd.DataFrame | None,
+    *,
+    surveillance_start_date: str | None = None,
+    surveillance_points: int | None = None,
+) -> pd.DataFrame | None:
+    """Filter surveillance by start date (priority) or last N points."""
+    if surv is None or surv.empty:
+        return surv
+    if surveillance_start_date is not None:
+        start = pd.to_datetime(surveillance_start_date).date()
+        dates = pd.to_datetime(surv["date"]).dt.date
+        return surv[dates >= start]
+    if surveillance_points is not None:
+        return surv.sort_values("date").tail(surveillance_points)
+    return surv
+
+
 def _create_quantile_plot(
     location: str,
     cal_quant: pd.DataFrame | None,
@@ -664,14 +682,11 @@ def generate_single_quantile_plots(
                         continue
 
                     # Apply per-output surveillance filtering if needed (for filtered/full types)
-                    if surv_to_use is not None:
-                        # Date-based filtering takes precedence over points-based filtering
-                        if output_config.surveillance_start_date is not None:
-                            start_date = pd.to_datetime(output_config.surveillance_start_date).date()
-                            surv_dates = pd.to_datetime(surv_to_use["date"]).dt.date
-                            surv_to_use = surv_to_use[surv_dates >= start_date]
-                        elif output_config.surveillance_points is not None:
-                            surv_to_use = surv_to_use.sort_values("date").tail(output_config.surveillance_points)
+                    surv_to_use = _apply_surveillance_filter(
+                        surv_to_use,
+                        surveillance_start_date=output_config.surveillance_start_date,
+                        surveillance_points=output_config.surveillance_points,
+                    )
 
                     # For filtered plots, clip projection and calibration quantiles to
                     # the visible surveillance start so the ribbons match the zoomed view
@@ -987,22 +1002,14 @@ def generate_quantile_grid_plot(
 
             # Apply per-output surveillance filtering if needed
             if surv_data_to_use:
-                # Date-based filtering takes precedence over points-based filtering
-                if output_config.surveillance_start_date is not None:
-                    surv_data_filtered_by_output = {}
-                    start_date = pd.to_datetime(output_config.surveillance_start_date).date()
-                    for loc, surv_df in surv_data_to_use.items():
-                        surv_df_copy = surv_df.copy()
-                        surv_dates = pd.to_datetime(surv_df_copy["date"]).dt.date
-                        surv_data_filtered_by_output[loc] = surv_df_copy[surv_dates >= start_date]
-                    surv_data_to_use = surv_data_filtered_by_output
-                elif output_config.surveillance_points is not None:
-                    surv_data_filtered_by_output = {}
-                    for loc, surv_df in surv_data_to_use.items():
-                        surv_data_filtered_by_output[loc] = surv_df.sort_values("date").tail(
-                            output_config.surveillance_points
-                        )
-                    surv_data_to_use = surv_data_filtered_by_output
+                surv_data_to_use = {
+                    loc: _apply_surveillance_filter(
+                        surv_df,
+                        surveillance_start_date=output_config.surveillance_start_date,
+                        surveillance_points=output_config.surveillance_points,
+                    )
+                    for loc, surv_df in surv_data_to_use.items()
+                }
 
             # For filtered plots, clip projection and calibration quantiles to
             # the visible surveillance start so the ribbons match the zoomed view
@@ -1208,16 +1215,11 @@ def generate_quantile_grid_plot(
                             ):
                                 surv_full = location_surveillance_full_sbs[location].copy()
                                 if output_config.full_panel:
-                                    if output_config.full_panel.surveillance_start_date is not None:
-                                        start_date = pd.to_datetime(
-                                            output_config.full_panel.surveillance_start_date
-                                        ).date()
-                                        surv_dates = pd.to_datetime(surv_full["date"]).dt.date
-                                        surv_full = surv_full[surv_dates >= start_date]
-                                    elif output_config.full_panel.surveillance_points is not None:
-                                        surv_full = surv_full.sort_values("date").tail(
-                                            output_config.full_panel.surveillance_points
-                                        )
+                                    surv_full = _apply_surveillance_filter(
+                                        surv_full,
+                                        surveillance_start_date=output_config.full_panel.surveillance_start_date,
+                                        surveillance_points=output_config.full_panel.surveillance_points,
+                                    )
 
                             surv_filtered = None
                             if (
@@ -1227,16 +1229,11 @@ def generate_quantile_grid_plot(
                             ):
                                 surv_filtered = location_surveillance_filtered_sbs[location].copy()
                                 if output_config.filtered_panel:
-                                    if output_config.filtered_panel.surveillance_start_date is not None:
-                                        start_date = pd.to_datetime(
-                                            output_config.filtered_panel.surveillance_start_date
-                                        ).date()
-                                        surv_dates = pd.to_datetime(surv_filtered["date"]).dt.date
-                                        surv_filtered = surv_filtered[surv_dates >= start_date]
-                                    elif output_config.filtered_panel.surveillance_points is not None:
-                                        surv_filtered = surv_filtered.sort_values("date").tail(
-                                            output_config.filtered_panel.surveillance_points
-                                        )
+                                    surv_filtered = _apply_surveillance_filter(
+                                        surv_filtered,
+                                        surveillance_start_date=output_config.filtered_panel.surveillance_start_date,
+                                        surveillance_points=output_config.filtered_panel.surveillance_points,
+                                    )
 
                             # Clip filtered panel quantiles to visible surveillance start
                             cal_quant_filtered = _clip_to_surveillance_start(cal_quant, surv_filtered)
