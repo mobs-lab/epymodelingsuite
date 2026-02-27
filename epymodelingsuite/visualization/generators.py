@@ -440,6 +440,18 @@ def _compute_fitting_window(
     return None, None
 
 
+def _package_figure_outputs(
+    fig: plt.Figure,
+    name: str,
+    plots_config: PlotsConfig,
+) -> list[OutputObject]:
+    """Convert figure to OutputObjects for all configured output types."""
+    return [
+        figure_to_output_object(fig, name, output_type, plots_config.dpi)
+        for output_type in plots_config.figure_output_types
+    ]
+
+
 def _create_quantile_plot(
     location: str,
     cal_quant: pd.DataFrame | None,
@@ -790,12 +802,7 @@ def generate_single_quantile_plots(
                         _add_footnote(fig, footnote)
 
                     # Package output
-                    output_objs = []
-                    for figure_output_type in plots_config.figure_output_types:
-                        output_objs.append(
-                            figure_to_output_object(fig, output_name, figure_output_type, plots_config.dpi)
-                        )
-                    out_dict[output_name] = output_objs
+                    out_dict[output_name] = _package_figure_outputs(fig, output_name, plots_config)
                     plt.close(fig)
                 except Exception as e:
                     logger.warning(
@@ -889,10 +896,12 @@ def generate_quantile_grid_plot(
 
             # Calculate fitting window start and end from calibration quantiles
             if needs_fitting_window:
-                fw_start, fw_end = _compute_fitting_window(calibration, location_cal_quants.get(loc))
-                if fw_start is not None:
-                    location_fitting_window_starts[loc] = fw_start
-                    location_fitting_window_ends[loc] = fw_end
+                fitting_window_start, fitting_window_end = _compute_fitting_window(
+                    calibration, location_cal_quants.get(loc)
+                )
+                if fitting_window_start is not None:
+                    location_fitting_window_starts[loc] = fitting_window_start
+                    location_fitting_window_ends[loc] = fitting_window_end
         except Exception as e:
             logger.warning(
                 "Failed to process location %s for grid quantile plots: %s",
@@ -1082,14 +1091,9 @@ def generate_quantile_grid_plot(
                         _add_footnote(fig, "; ".join(sorted(grid_footnotes)))
 
                     # Package output
-                    output_objs = []
-                    for fig_output_type in plots_config.figure_output_types:
-                        output_objs.append(
-                            figure_to_output_object(
-                                fig, f"quantiles_grid_{output_type_name}", fig_output_type, plots_config.dpi
-                            )
-                        )
-                    out_dict[f"quantiles_grid_{output_type_name}"] = output_objs
+                    out_dict[f"quantiles_grid_{output_type_name}"] = _package_figure_outputs(
+                        fig, f"quantiles_grid_{output_type_name}", plots_config
+                    )
                     plt.close(fig)
                 except Exception as e:
                     logger.warning("Failed to create %s quantile grid plot: %s", output_type_name, e, exc_info=True)
@@ -1304,14 +1308,9 @@ def generate_quantile_grid_plot(
                             _add_footnote(fig, "; ".join(sorted(sbs_footnotes)))
 
                         # Package output
-                        output_objs = []
-                        for fig_output_type in plots_config.figure_output_types:
-                            output_objs.append(
-                                figure_to_output_object(
-                                    fig, "quantiles_grid_sidebyside", fig_output_type, plots_config.dpi
-                                )
-                            )
-                        out_dict["quantiles_grid_sidebyside"] = output_objs
+                        out_dict["quantiles_grid_sidebyside"] = _package_figure_outputs(
+                            fig, "quantiles_grid_sidebyside", plots_config
+                        )
                         plt.close(fig)
                 except Exception as e:
                     logger.warning("Failed to create sidebyside quantile grid plot: %s", e, exc_info=True)
@@ -1416,10 +1415,7 @@ def generate_single_location_posterior_plots(
                 _add_footnote(fig, footnote)
 
             # Package output
-            output_objs = []
-            for output_type in plots_config.figure_output_types:
-                output_objs.append(figure_to_output_object(fig, f"posterior_{location}", output_type, plots_config.dpi))
-            out_dict[f"posterior_{location}"] = output_objs
+            out_dict[f"posterior_{location}"] = _package_figure_outputs(fig, f"posterior_{location}", plots_config)
             plt.close(fig)
 
         except (ValueError, AttributeError) as e:
@@ -1513,10 +1509,7 @@ def generate_posterior_grid_plot(
                 _add_footnote(fig, "; ".join(sorted(grid_footnotes)))
 
             # Package output
-            output_objs = []
-            for output_type in plots_config.figure_output_types:
-                output_objs.append(figure_to_output_object(fig, "posterior_grid", output_type, plots_config.dpi))
-            out_dict["posterior_grid"] = output_objs
+            out_dict["posterior_grid"] = _package_figure_outputs(fig, "posterior_grid", plots_config)
             plt.close(fig)
         except Exception as e:
             logger.warning("Failed to create posterior grid plot: %s", e, exc_info=True)
@@ -1606,10 +1599,7 @@ def generate_categorical_plots(
         )
 
         # Package output
-        output_objs = []
-        for output_type in plots_config.figure_output_types:
-            output_objs.append(figure_to_output_object(fig, "categorical_rate_trends", output_type, plots_config.dpi))
-        out_dict["categorical_rate_trends"] = output_objs
+        out_dict["categorical_rate_trends"] = _package_figure_outputs(fig, "categorical_rate_trends", plots_config)
         plt.close(fig)
 
         logger.info("Generated categorical rate-trend plot with %d horizons", len(plots_config.categorical.horizons))
