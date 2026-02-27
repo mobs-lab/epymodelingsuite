@@ -8,6 +8,7 @@ outputs as OutputObject instances.
 import logging
 import math
 from datetime import date, timedelta
+from typing import Any
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -394,6 +395,22 @@ def _apply_horizon_filter(
     return proj[dates.values <= end]
 
 
+def _load_surveillance_sources(
+    surveillance_sources: dict[str, ObservedValuesConfig] | None,
+    outputs: list[QuantilesOutputConfig],
+) -> dict[str, dict[str, Any]]:
+    """Load surveillance CSVs if any output needs surveillance. Returns {name: {"data": df, "config": config}}."""
+    if not any(o.show_surveillance for o in outputs) or not surveillance_sources:
+        return {}
+    result: dict[str, dict[str, Any]] = {}
+    for name, config in surveillance_sources.items():
+        try:
+            result[name] = {"data": pd.read_csv(config.data_path), "config": config}
+        except Exception as e:
+            logger.warning("Failed to load surveillance data from %s: %s", config.data_path, e)
+    return result
+
+
 def _create_quantile_plot(
     location: str,
     cal_quant: pd.DataFrame | None,
@@ -583,17 +600,7 @@ def generate_single_quantile_plots(
     logger.info("Generating single-location quantile plots for %d locations", len(locations))
 
     # Load surveillance data once before loop if any output needs it
-    surveillance_data = {}
-    needs_surveillance = any(output.show_surveillance for output in plots_config.quantiles.outputs)
-    if needs_surveillance and surveillance_sources:
-        for source_name, source_config in surveillance_sources.items():
-            try:
-                surveillance_data[source_name] = {
-                    "data": pd.read_csv(source_config.data_path),
-                    "config": source_config,
-                }
-            except Exception as e:
-                logger.warning("Failed to load surveillance data from %s: %s", source_config.data_path, e)
+    surveillance_data = _load_surveillance_sources(surveillance_sources, plots_config.quantiles.outputs)
 
     needs_calibration = any(output.show_calibration for output in plots_config.quantiles.outputs)
     needs_projection = any(output.show_projection for output in plots_config.quantiles.outputs)
@@ -836,17 +843,7 @@ def generate_quantile_grid_plot(
     logger.info("Generating grid quantile plots for %d locations", len(calibrations))
 
     # Load surveillance data once before loop if any output needs it
-    surveillance_data = {}
-    needs_surveillance = any(output.show_surveillance for output in plots_config.quantiles.outputs)
-    if needs_surveillance and surveillance_sources:
-        for source_name, source_config in surveillance_sources.items():
-            try:
-                surveillance_data[source_name] = {
-                    "data": pd.read_csv(source_config.data_path),
-                    "config": source_config,
-                }
-            except Exception as e:
-                logger.warning("Failed to load surveillance data from %s: %s", source_config.data_path, e)
+    surveillance_data = _load_surveillance_sources(surveillance_sources, plots_config.quantiles.outputs)
 
     needs_calibration = any(output.show_calibration for output in plots_config.quantiles.outputs)
     needs_projection = any(output.show_projection for output in plots_config.quantiles.outputs)
