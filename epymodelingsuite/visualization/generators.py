@@ -350,19 +350,19 @@ def _rename_value_column(df: pd.DataFrame | None, old_name: str) -> pd.DataFrame
     raise ValueError(msg)
 
 
-def _create_filtered_plot(
+def _create_quantile_plot(
     location: str,
     cal_quant: pd.DataFrame | None,
     proj_quant: pd.DataFrame | None,
     df_surv: pd.DataFrame | None,
-    fitting_window_start: pd.Timestamp | None,
-    fitting_window_end: pd.Timestamp | None,
+    fitting_window_start: date | None,
+    fitting_window_end: date | None,
     plots_config: PlotsConfig,
     value_col: str,
     output_config: QuantilesOutputConfig,
 ) -> tuple:
     """
-    Create filtered quantile plot for a location.
+    Create a quantile plot (filtered or full) for a location.
 
     Parameters
     ----------
@@ -371,67 +371,12 @@ def _create_filtered_plot(
     cal_quant : pd.DataFrame or None
         Calibration quantiles
     proj_quant : pd.DataFrame or None
-        Projection quantiles (filtered version)
+        Projection quantiles
     df_surv : pd.DataFrame or None
-        Surveillance data (filtered version)
-    fitting_window_start : pd.Timestamp or None
+        Surveillance data
+    fitting_window_start : date or None
         Start of fitting window
-    fitting_window_end : pd.Timestamp or None
-        End of fitting window
-    plots_config : PlotsConfig
-        Plot configuration
-    value_col : str
-        Name of value column
-    output_config : QuantilesOutputConfig
-        Output configuration with show flags
-
-    Returns
-    -------
-    tuple
-        (fig, ax) matplotlib figure and axes
-    """
-    return plot_calibration_projection(
-        calibration_quantiles=cal_quant if output_config.show_calibration else None,
-        projection_quantiles=proj_quant if output_config.show_projection else None,
-        value_col=value_col,
-        calibration_color=plots_config.quantiles.calibration.color,
-        projection_color=plots_config.quantiles.projection.color,
-        df_surveillance=df_surv if output_config.show_surveillance else None,
-        fitting_window_start=fitting_window_start if output_config.show_fitting_window_line else None,
-        fitting_window_end=fitting_window_end if output_config.show_fitting_window_line else None,
-        title=format_location_name(location),
-        xlabel_interval=output_config.xlabel_interval,
-        ylabel=plots_config.quantiles.ylabel,
-    )
-
-
-def _create_full_plot(
-    location: str,
-    cal_quant: pd.DataFrame | None,
-    proj_quant: pd.DataFrame | None,
-    df_surv: pd.DataFrame | None,
-    fitting_window_start: pd.Timestamp | None,
-    fitting_window_end: pd.Timestamp | None,
-    plots_config: PlotsConfig,
-    value_col: str,
-    output_config: QuantilesOutputConfig,
-) -> tuple:
-    """
-    Create full quantile plot for a location.
-
-    Parameters
-    ----------
-    location : str
-        Location name
-    cal_quant : pd.DataFrame or None
-        Calibration quantiles
-    proj_quant : pd.DataFrame or None
-        Projection quantiles (full version)
-    df_surv : pd.DataFrame or None
-        Surveillance data (full version)
-    fitting_window_start : pd.Timestamp or None
-        Start of fitting window
-    fitting_window_end : pd.Timestamp or None
+    fitting_window_end : date or None
         End of fitting window
     plots_config : PlotsConfig
         Plot configuration
@@ -467,8 +412,8 @@ def _create_sidebyside_plot(
     proj_quant_filtered: pd.DataFrame | None,
     df_surv_full: pd.DataFrame | None,
     df_surv_filtered: pd.DataFrame | None,
-    fitting_window_start: pd.Timestamp | None,
-    fitting_window_end: pd.Timestamp | None,
+    fitting_window_start: date | None,
+    fitting_window_end: date | None,
     plots_config: PlotsConfig,
     value_col: str,
     output_config: QuantilesOutputConfig,
@@ -491,9 +436,9 @@ def _create_sidebyside_plot(
         Surveillance data for left panel (full version)
     df_surv_filtered : pd.DataFrame or None
         Surveillance data for right panel (filtered version)
-    fitting_window_start : pd.Timestamp or None
+    fitting_window_start : date or None
         Start of fitting window
-    fitting_window_end : pd.Timestamp or None
+    fitting_window_end : date or None
         End of fitting window
     plots_config : PlotsConfig
         Plot configuration
@@ -744,7 +689,7 @@ def generate_single_quantile_plots(
 
                     # Create the plot
                     if output_config.type == QuantilesOutputTypeEnum.FILTERED:
-                        fig, ax = _create_filtered_plot(
+                        fig, ax = _create_quantile_plot(
                             location,
                             cal_to_use,
                             proj_to_use,
@@ -756,7 +701,7 @@ def generate_single_quantile_plots(
                             output_config,
                         )
                     elif output_config.type == QuantilesOutputTypeEnum.FULL:
-                        fig, ax = _create_full_plot(
+                        fig, ax = _create_quantile_plot(
                             location,
                             cal_quant,
                             proj_to_use,
