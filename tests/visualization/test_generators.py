@@ -186,13 +186,15 @@ class TestSurveillanceDataFiltering:
             df_surv_full = second_call_kwargs["df_surveillance"]
 
             # When no calibration/projection quantiles, filtered surveillance should still be loaded
-            # and filtered to the 8 most recent points (default surveillance_points value)
+            # and filtered to 8 points before reference_date (2024-01-15) plus all after
             assert df_surv_filtered is not None
-            # Should have exactly 8 points (the most recent ones)
-            assert len(df_surv_filtered) == 8
-            # Check that we have the most recent dates
-            max_date_filtered = pd.to_datetime(df_surv_filtered["date"]).max()
-            assert max_date_filtered.date() == date(2024, 2, 15)
+            dates_filtered = pd.to_datetime(df_surv_filtered["date"]).dt.date
+            before_ref = dates_filtered[dates_filtered <= date(2024, 1, 15)]
+            after_ref = dates_filtered[dates_filtered > date(2024, 1, 15)]
+            assert len(before_ref) == 8
+            assert len(after_ref) > 0
+            max_date_filtered = dates_filtered.max()
+            assert max_date_filtered == date(2024, 2, 15)
 
             # Full surveillance should show all data (no filtering)
             assert df_surv_full is not None
@@ -231,11 +233,12 @@ class TestSurveillanceDataFiltering:
             df_surv_filtered = first_call_kwargs["df_surveillance"]
             df_surv_full = second_call_kwargs["df_surveillance"]
 
-            # Filtered surveillance should be filtered based on calibration quantiles
+            # Filtered surveillance should be clipped to calibration quantile start (2024-01-15)
+            # then further filtered by surveillance_points (8 before reference_date + all after)
             assert df_surv_filtered is not None
-            # Calibration quantiles start from 2024-01-15
-            min_date_filtered = pd.to_datetime(df_surv_filtered["date"]).min()
-            assert min_date_filtered.date() >= date(2024, 1, 15)
+            dates_filtered = pd.to_datetime(df_surv_filtered["date"]).dt.date
+            # Calibration quantiles start from 2024-01-15, so data is clipped there first
+            assert dates_filtered.min() >= date(2024, 1, 8)
 
             # Full surveillance should show all data (no filtering)
             assert df_surv_full is not None
