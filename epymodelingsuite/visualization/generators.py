@@ -380,6 +380,20 @@ def _apply_surveillance_filter(
     return surv
 
 
+def _apply_horizon_filter(
+    proj: pd.DataFrame | None,
+    horizon_max: int | None,
+    reference_date: date,
+) -> pd.DataFrame | None:
+    """Clip projection quantiles to reference_date + horizon_max weeks."""
+    if proj is None or horizon_max is None:
+        return proj
+    proj = proj.copy()
+    dates = pd.to_datetime(proj["date"]).dt.date
+    end = reference_date + timedelta(weeks=horizon_max)
+    return proj[dates.values <= end]
+
+
 def _create_quantile_plot(
     location: str,
     cal_quant: pd.DataFrame | None,
@@ -696,10 +710,9 @@ def generate_single_quantile_plots(
                         cal_to_use = _clip_to_surveillance_start(cal_to_use, surv_to_use)
 
                     # Apply per-output horizon_max if specified (overrides base config)
-                    if proj_to_use is not None and output_config.horizon_max is not None:
-                        proj_dates = pd.to_datetime(proj_to_use["date"]).dt.date
-                        horizon_end = plots_config.reference_date + timedelta(weeks=output_config.horizon_max)
-                        proj_to_use = proj_to_use[proj_dates.values <= horizon_end]
+                    proj_to_use = _apply_horizon_filter(
+                        proj_to_use, output_config.horizon_max, plots_config.reference_date
+                    )
 
                     # Create the plot
                     if output_config.type == QuantilesOutputTypeEnum.FILTERED:
@@ -1034,13 +1047,10 @@ def generate_quantile_grid_plot(
 
             # Apply per-output horizon_max if specified (overrides base config)
             if proj_quants_to_use and output_config.horizon_max is not None:
-                proj_quants_horizon_filtered = {}
-                for loc, proj_df in proj_quants_to_use.items():
-                    proj_df_copy = proj_df.copy()
-                    proj_dates = pd.to_datetime(proj_df_copy["date"]).dt.date
-                    horizon_end = plots_config.reference_date + timedelta(weeks=output_config.horizon_max)
-                    proj_quants_horizon_filtered[loc] = proj_df_copy[proj_dates.values <= horizon_end]
-                proj_quants_to_use = proj_quants_horizon_filtered
+                proj_quants_to_use = {
+                    loc: _apply_horizon_filter(df, output_config.horizon_max, plots_config.reference_date)
+                    for loc, df in proj_quants_to_use.items()
+                }
 
             # Generate grid plot based on output type
             if output_type_name in ["filtered", "full"]:
