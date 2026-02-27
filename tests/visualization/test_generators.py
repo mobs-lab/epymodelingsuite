@@ -11,6 +11,9 @@ from epymodelingsuite.schema.dispatcher import CalibrationOutput
 from epymodelingsuite.schema.output import ObservedValuesConfig, PlotsConfig, QuantilesPlotConfig
 from epymodelingsuite.visualization.generators import (
     _check_incomplete_generations,
+    _clip_surveillance,
+    _clip_to_horizon,
+    _clip_to_surveillance_start,
     _format_plot_notes,
     _prepare_surveillance_for_location,
     _rename_value_column,
@@ -511,3 +514,172 @@ class TestFormatPlotNotes:
         suffix, footnote = _format_plot_notes(["Note one", "Note two"])
         assert suffix == "*"
         assert footnote == "* Note one; Note two"
+
+
+class TestClipToSurveillanceStart:
+    """Tests for _clip_to_surveillance_start helper."""
+
+    @pytest.fixture()
+    def df(self):
+        """Quantile-like DataFrame spanning Jan 1–10."""
+        return pd.DataFrame(
+            {
+                "date": pd.date_range("2024-01-01", periods=10, freq="D"),
+                "quantile": [0.5] * 10,
+                "value": range(10),
+            }
+        )
+
+    def test_clips_df_to_earliest_surveillance_date(self, df):
+        """Rows before the earliest surveillance date are removed."""
+        surv = pd.DataFrame({"date": pd.date_range("2024-01-05", periods=3, freq="D"), "value": [1, 2, 3]})
+        result = _clip_to_surveillance_start(df, surv)
+        assert result is not None
+        assert len(result) == 6  # Jan 5–10
+        assert pd.to_datetime(result["date"]).dt.date.min() == date(2024, 1, 5)
+
+    def test_returns_df_unchanged_when_surv_is_none(self, df):
+        """When surv is None, df is returned as-is."""
+        result = _clip_to_surveillance_start(df, None)
+        assert result is not None
+        assert len(result) == 10
+
+    def test_returns_df_unchanged_when_surv_is_empty(self, df):
+        """When surv is an empty DataFrame, df is returned as-is."""
+        empty_surv = pd.DataFrame({"date": pd.Series(dtype="datetime64[ns]"), "value": pd.Series(dtype="float64")})
+        result = _clip_to_surveillance_start(df, empty_surv)
+        assert result is not None
+        assert len(result) == 10
+
+    def test_returns_none_when_df_is_none(self):
+        """When df is None, None is returned."""
+        surv = pd.DataFrame({"date": ["2024-01-05"], "value": [1]})
+        assert _clip_to_surveillance_start(None, surv) is None
+
+    def test_returns_none_when_all_rows_clipped(self, df):
+        """When surveillance starts after all df dates, None is returned."""
+        surv = pd.DataFrame({"date": ["2024-02-01"], "value": [1]})
+        assert _clip_to_surveillance_start(df, surv) is None
+
+
+class TestClipSurveillance:
+    """Tests for _clip_surveillance helper."""
+
+    @pytest.fixture()
+    def surv(self):
+        """Weekly surveillance DataFrame spanning 8 weeks."""
+        return pd.DataFrame(
+            {
+                "date": pd.date_range("2024-01-01", periods=8, freq="W-SAT"),
+                "value": range(8),
+            }
+        )
+
+    def test_filter_by_start_date(self, surv):
+        """Rows before surveillance_start_date are removed."""
+        result = _clip_surveillance(surv, surveillance_start_date="2024-01-20")
+        assert result is not None
+        assert pd.to_datetime(result["date"]).dt.date.min() >= date(2024, 1, 20)
+
+    def test_filter_by_points_with_reference_date(self, surv):
+        """Keep N points before reference_date plus all points after."""
+        # reference_date in the middle of the series
+        ref = date(2024, 2, 3)  # between week 4 and 5
+        result = _clip_surveillance(surv, surveillance_points=3, reference_date=ref)
+        assert result is not None
+        dates = pd.to_datetime(result["date"]).dt.date
+        before = dates[dates <= ref]
+        after = dates[dates > ref]
+        assert len(before) == 3
+        assert len(after) > 0
+
+    def test_filter_by_points_without_reference_date(self, surv):
+        """Without reference_date, keep the last N rows."""
+        result = _clip_surveillance(surv, surveillance_points=3, reference_date=None)
+        assert result is not None
+        assert len(result) == 3
+        # Should be the last 3 rows
+        assert list(result["value"]) == [5, 6, 7]
+
+    def test_start_date_takes_precedence_over_points(self, surv):
+        """When both surveillance_start_date and surveillance_points are provided, start_date wins."""
+        result = _clip_surveillance(
+            surv,
+            surveillance_start_date="2024-01-20",
+            surveillance_points=2,
+            reference_date=date(2024, 2, 3),
+        )
+        assert result is not None
+        # start_date filter keeps everything >= Jan 20
+        dates = pd.to_datetime(result["date"]).dt.date
+        assert all(d >= date(2024, 1, 20) for d in dates)
+        # Should NOT be limited to 2 points
+        assert len(result) > 2
+
+    def test_returns_none_when_surv_is_none(self):
+        """When surv is None, None is returned."""
+        assert _clip_surveillance(None) is None
+
+    def test_returns_empty_when_surv_is_empty(self):
+        """When surv is empty, empty DataFrame is returned."""
+        empty = pd.DataFrame({"date": pd.Series(dtype="datetime64[ns]"), "value": pd.Series(dtype="float64")})
+        result = _clip_surveillance(empty)
+        assert result is not None
+        assert result.empty
+
+    def test_reference_date_point_included_in_before(self, surv):
+        """A point exactly on reference_date counts in the 'before' group."""
+        # Pick a date that matches an actual row
+        exact_date = pd.to_datetime(surv["date"]).dt.date.iloc[4]
+        result = _clip_surveillance(surv, surveillance_points=2, reference_date=exact_date)
+        assert result is not None
+        dates = pd.to_datetime(result["date"]).dt.date
+        before = dates[dates <= exact_date]
+        # The point on exact_date should be in the 'before' group
+        assert exact_date in before.values
+        assert len(before) == 2
+
+
+class TestClipToHorizon:
+    """Tests for _clip_to_horizon helper."""
+
+    @pytest.fixture()
+    def proj(self):
+        """Weekly projection DataFrame spanning 10 weeks from reference_date."""
+        return pd.DataFrame(
+            {
+                "date": pd.date_range("2024-01-07", periods=10, freq="W-SUN"),
+                "quantile": [0.5] * 10,
+                "value": range(10),
+            }
+        )
+
+    @pytest.fixture()
+    def reference_date(self):
+        return date(2024, 1, 7)
+
+    def test_clips_to_max_horizon_weeks(self, proj, reference_date):
+        """Only rows within horizon_max weeks of reference_date are kept."""
+        result = _clip_to_horizon(proj, horizon_max=4, reference_date=reference_date)
+        assert result is not None
+        dates = pd.to_datetime(result["date"]).dt.date
+        assert len(result) == 5  # week 0, 1, 2, 3, 4
+        assert dates.max() <= date(2024, 2, 4)  # reference + 4 weeks
+
+    def test_returns_proj_unchanged_when_horizon_max_is_none(self, proj, reference_date):
+        """When horizon_max is None, proj is returned as-is."""
+        result = _clip_to_horizon(proj, horizon_max=None, reference_date=reference_date)
+        assert result is not None
+        assert len(result) == 10
+
+    def test_returns_none_when_proj_is_none(self, reference_date):
+        """When proj is None, None is returned."""
+        assert _clip_to_horizon(None, horizon_max=4, reference_date=reference_date) is None
+
+    def test_does_not_mutate_original(self, proj, reference_date):
+        """Clipping returns a copy; the original DataFrame is unchanged."""
+        original_len = len(proj)
+        result = _clip_to_horizon(proj, horizon_max=2, reference_date=reference_date)
+        assert len(proj) == original_len
+        assert result is not None
+        assert len(result) < original_len
