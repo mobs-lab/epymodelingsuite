@@ -378,7 +378,7 @@ def _clip_to_surveillance_start(
     return clipped if not clipped.empty else None
 
 
-def _apply_surveillance_filter(
+def _clip_surveillance(
     surv: pd.DataFrame | None,
     *,
     surveillance_start_date: str | None = None,
@@ -414,7 +414,7 @@ def _apply_surveillance_filter(
     return surv
 
 
-def _apply_horizon_filter(
+def _clip_to_horizon(
     proj: pd.DataFrame | None,
     horizon_max: int | None,
     reference_date: date,
@@ -824,7 +824,7 @@ def generate_single_quantile_plots(
                         continue
 
                     # Apply per-output surveillance filtering if needed (for filtered/full types)
-                    surv_to_use = _apply_surveillance_filter(
+                    surv_to_use = _clip_surveillance(
                         surv_to_use,
                         surveillance_start_date=output_config.surveillance_start_date,
                         surveillance_points=output_config.surveillance_points,
@@ -838,7 +838,7 @@ def generate_single_quantile_plots(
                         cal_to_use = _clip_to_surveillance_start(cal_to_use, surv_to_use)
 
                     # Apply per-output horizon_max if specified (overrides base config)
-                    proj_to_use = _apply_horizon_filter(
+                    proj_to_use = _clip_to_horizon(
                         proj_to_use, output_config.horizon_max, plots_config.reference_date
                     )
 
@@ -1112,7 +1112,7 @@ def generate_quantile_grid_plot(
             # Apply per-output surveillance filtering if needed
             if surv_data_to_use:
                 surv_data_to_use = {
-                    loc: _apply_surveillance_filter(
+                    loc: _clip_surveillance(
                         surv_df,
                         surveillance_start_date=output_config.surveillance_start_date,
                         surveillance_points=output_config.surveillance_points,
@@ -1144,7 +1144,7 @@ def generate_quantile_grid_plot(
             # Apply per-output horizon_max if specified (overrides base config)
             if proj_quants_to_use and output_config.horizon_max is not None:
                 proj_quants_to_use = {
-                    loc: _apply_horizon_filter(df, output_config.horizon_max, plots_config.reference_date)
+                    loc: _clip_to_horizon(df, output_config.horizon_max, plots_config.reference_date)
                     for loc, df in proj_quants_to_use.items()
                 }
 
@@ -1316,7 +1316,7 @@ def generate_quantile_grid_plot(
                             ):
                                 surv_full = location_surveillance_full_sbs[location].copy()
                                 if output_config.full_panel:
-                                    surv_full = _apply_surveillance_filter(
+                                    surv_full = _clip_surveillance(
                                         surv_full,
                                         surveillance_start_date=output_config.full_panel.surveillance_start_date,
                                         surveillance_points=output_config.full_panel.surveillance_points,
@@ -1330,7 +1330,7 @@ def generate_quantile_grid_plot(
                             ):
                                 surv_filtered = location_surveillance_filtered_sbs[location].copy()
                                 if output_config.filtered_panel:
-                                    surv_filtered = _apply_surveillance_filter(
+                                    surv_filtered = _clip_surveillance(
                                         surv_filtered,
                                         surveillance_start_date=output_config.filtered_panel.surveillance_start_date,
                                         surveillance_points=output_config.filtered_panel.surveillance_points,
