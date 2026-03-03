@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 Script to aggregate trajectories from multistrain experiments and create a hubverse submission file.
-All options specified via yaml file.
+Takes a file path to a configuration and, optionally, a directory path for outputs.
+All other options specified via yaml file.
 
 Usage:
     python aggregate_multistrain_experiments.py --config aggregation.yml --output ./multistrain
