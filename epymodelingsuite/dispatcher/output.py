@@ -119,8 +119,19 @@ def filter_failed_projections(calibration_results: CalibrationResults) -> Calibr
             projections = calibration_results.projections[scenario_id]
             if projections:
                 # Extract valid projections (non-empty dicts)
-                valid_projections = [proj for proj in projections if proj]
+                valid_indices = [i for i, proj in enumerate(projections) if proj]
+                valid_projections = [projections[i] for i in valid_indices]
                 calibration_results.projections[scenario_id] = valid_projections
+
+                # Keep projection_parameters in sync (filter same rows)
+                if (
+                    hasattr(calibration_results, "projection_parameters")
+                    and calibration_results.projection_parameters
+                    and scenario_id in calibration_results.projection_parameters
+                ):
+                    proj_params = calibration_results.projection_parameters[scenario_id]
+                    if isinstance(proj_params, pd.DataFrame) and len(proj_params) == len(projections):
+                        calibration_results.projection_parameters[scenario_id] = proj_params.iloc[valid_indices].reset_index(drop=True)
 
                 # Count and log filtered projections
                 filtered_count = len(projections) - len(valid_projections)
@@ -1323,6 +1334,21 @@ def generate_calibration_outputs(
 
             trajectories = pd.concat(trajectories_list, ignore_index=True) if trajectories_list else pd.DataFrame()
             transition_columns = [c for c in trajectories.columns if "_to_" in c]
+            param_columns = []
+
+            # Attach projection parameters (sampled for each trajectory) when available
+            if hasattr(calibration.results, "projection_parameters") and calibration.results.projection_parameters:
+                for scenario_id in calibration.results.projection_parameters:
+                    proj_params = calibration.results.projection_parameters[scenario_id]
+                    if isinstance(proj_params, pd.DataFrame) and len(proj_params) == len(traj["date"]):
+                        proj_params_with_sim = proj_params.copy()
+                        proj_params_with_sim.insert(0, "sim_id", range(len(proj_params)))
+                        trajectories = trajectories.merge(
+                            proj_params_with_sim, on="sim_id", how="left", suffixes=("", "_param")
+                        )
+                        trajectories = trajectories[[c for c in trajectories.columns if not c.endswith("_param")]]
+                        param_columns = [c for c in proj_params.columns if c in trajectories.columns]
+                    break  # Use first scenario (typically "baseline")
 
             # Compartments
             if output.trajectories.compartments:
@@ -1332,6 +1358,7 @@ def generate_calibration_outputs(
                     try:
                         columns_to_select = ["sim_id", "date"]
                         columns_to_select.extend(output.trajectories.compartments)
+                        columns_to_select.extend(c for c in param_columns if c in traj_c.columns)
                         traj_c = traj_c[columns_to_select].copy()
                     except Exception:
                         warnings.add(
@@ -1355,6 +1382,7 @@ def generate_calibration_outputs(
                     try:
                         columns_to_select = ["sim_id", "date"]
                         columns_to_select.extend(output.trajectories.transitions)
+                        columns_to_select.extend(c for c in param_columns if c in traj_t.columns)
                         traj_t = traj_t[columns_to_select].copy()
                     except Exception:
                         warnings.add(
@@ -1363,11 +1391,13 @@ def generate_calibration_outputs(
                         # Use all transitions, filter out compartments
                         columns_to_select = ["sim_id", "date"]
                         columns_to_select.extend(transition_columns)
+                        columns_to_select.extend(c for c in param_columns if c in traj_t.columns)
                         traj_t = traj_t[columns_to_select].copy()
                 else:
                     # Use all transitions, filter out compartments
                     columns_to_select = ["sim_id", "date"]
                     columns_to_select.extend(transition_columns)
+                    columns_to_select.extend(c for c in param_columns if c in traj_t.columns)
                     traj_t = traj_t[columns_to_select].copy()
                 traj_t.insert(0, "primary_id", calibration.primary_id)
                 traj_t.insert(2, "seed", calibration.seed)
