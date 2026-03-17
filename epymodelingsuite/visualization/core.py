@@ -584,6 +584,7 @@ def plot_calibration_projection(  # noqa: PLR0913
 
 def plot_calibration_projection_sidebyside(  # noqa: PLR0913
     calibration_quantiles: pd.DataFrame | None = None,
+    calibration_quantiles_filtered: pd.DataFrame | None = None,
     projection_quantiles_full: pd.DataFrame | None = None,
     projection_quantiles_filtered: pd.DataFrame | None = None,
     surveillance_full: pd.DataFrame | None = None,
@@ -617,7 +618,9 @@ def plot_calibration_projection_sidebyside(  # noqa: PLR0913
     Parameters
     ----------
     calibration_quantiles : pd.DataFrame | None, optional
-        Pre-computed quantiles for calibration period (shown in both panels).
+        Pre-computed quantiles for calibration period (shown in full/left panel).
+    calibration_quantiles_filtered : pd.DataFrame | None, optional
+        Calibration quantiles for filtered/right panel. If None, uses calibration_quantiles.
     projection_quantiles_full : pd.DataFrame | None, optional
         Projection quantiles for left panel (full range, horizon_max only).
     projection_quantiles_filtered : pd.DataFrame | None, optional
@@ -723,8 +726,11 @@ def plot_calibration_projection_sidebyside(  # noqa: PLR0913
     )
 
     # Right panel: Filtered
+    cal_quant_for_filtered = (
+        calibration_quantiles_filtered if calibration_quantiles_filtered is not None else calibration_quantiles
+    )
     plot_calibration_projection(
-        calibration_quantiles=calibration_quantiles,
+        calibration_quantiles=cal_quant_for_filtered,
         projection_quantiles=projection_quantiles_filtered,
         value_col=value_col,
         date_col=date_col,
