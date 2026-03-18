@@ -36,7 +36,8 @@ def run_simulation(configs: BuilderOutput, rng: np.random.Generator | None = Non
     RuntimeError
         If simulation fails.
     """
-    logger.info("RUNNER: running simulation.")
+    population = configs.model.population.name
+    logger.info(f"RUNNER: Running simulation for {population}", extra={"stage": "runner", "population": population})
     start_time = time.time()
 
     # Create RNG if not provided
@@ -46,7 +47,10 @@ def run_simulation(configs: BuilderOutput, rng: np.random.Generator | None = Non
     try:
         results = configs.model.run_simulations(**dict(configs.simulation), rng=rng)
         duration = time.time() - start_time
-        logger.info("RUNNER: completed simulation.")
+        logger.info(
+            f"RUNNER: Completed simulation for {population} in {duration:.2f}s",
+            extra={"stage": "runner", "population": population, "duration_s": duration},
+        )
 
         output = SimulationOutput(
             primary_id=configs.primary_id,
@@ -101,13 +105,17 @@ def run_calibration(configs: BuilderOutput, rng: np.random.Generator | None = No
     RuntimeError
         If calibration fails.
     """
-    logger.info("RUNNER: running calibration.")
+    population = configs.model.population.name
+    logger.info(f"RUNNER: Running calibration for {population}", extra={"stage": "runner", "population": population})
     start_time = time.time()
 
     try:
         results = configs.calibrator.calibrate(strategy=configs.calibration.name, **configs.calibration.options)
         duration = time.time() - start_time
-        logger.info("RUNNER: completed calibration.")
+        logger.info(
+            f"RUNNER: Completed calibration for {population} in {duration:.2f}s",
+            extra={"stage": "runner", "population": population, "duration_s": duration},
+        )
 
         output = CalibrationOutput(
             primary_id=configs.primary_id,
@@ -168,8 +176,11 @@ def run_calibration_with_projection(
     RuntimeError
         If calibration or projection fails.
     """
-    logger.info("RUNNER: running calibration and projection.")
     population = configs.calibrator.parameters["epimodel"].population.name
+    logger.info(
+        f"RUNNER: Running calibration and projection for {population}",
+        extra={"stage": "runner", "population": population},
+    )
 
     # Calibration phase
     calibration_start = time.time()
@@ -178,7 +189,10 @@ def run_calibration_with_projection(
             strategy=configs.calibration.name, **configs.calibration.options
         )
         calibration_duration = time.time() - calibration_start
-        logger.info("RUNNER: completed calibration.")
+        logger.info(
+            f"RUNNER: Completed calibration phase for {population} in {calibration_duration:.2f}s",
+            extra={"stage": "runner", "population": population, "duration_s": calibration_duration},
+        )
     except Exception as e:
         # Create output with None results for error tracking
         output = CalibrationOutput(
@@ -211,7 +225,15 @@ def run_calibration_with_projection(
             iterations=configs.projection.n_trajectories,
         )
         projection_duration = time.time() - projection_start
-        logger.info("RUNNER: completed calibration and projection.")
+        logger.info(
+            f"RUNNER: Completed calibration and projection for {population} (calibration: {calibration_duration:.2f}s, projection: {projection_duration:.2f}s)",
+            extra={
+                "stage": "runner",
+                "population": population,
+                "calibration_s": calibration_duration,
+                "projection_s": projection_duration,
+            },
+        )
 
         output = CalibrationOutput(
             primary_id=configs.primary_id,
@@ -240,7 +262,8 @@ def run_calibration_with_projection(
     except Exception as e:
         projection_duration = time.time() - projection_start
         logger.warning(
-            f"RUNNER: projection failed for model with primary_id={configs.primary_id}, returning calibration results.\nError message: {e}"
+            f"RUNNER: Projection failed for {population} (primary_id={configs.primary_id}), returning calibration results. Error: {e}",
+            extra={"stage": "runner", "population": population, "primary_id": configs.primary_id, "error": str(e)},
         )
 
         output = CalibrationOutput(
@@ -305,15 +328,15 @@ def dispatch_runner(configs: BuilderOutput) -> SimulationOutput | CalibrationOut
 
         # Handle simulation
         if configs.simulation:
-            logger.info("RUNNER: dispatched for simulation.")
+            logger.info("RUNNER: Dispatched for simulation", extra={"stage": "runner"})
             result = run_simulation(configs, rng=rng)
         # Handle calibration
         elif configs.calibration and not configs.projection:
-            logger.info("RUNNER: dispatched for calibration.")
+            logger.info("RUNNER: Dispatched for calibration", extra={"stage": "runner"})
             result = run_calibration(configs, rng=rng)
         # Handle calibration and projection
         elif configs.calibration and configs.projection:
-            logger.info("RUNNER: dispatched for calibration and projection.")
+            logger.info("RUNNER: Dispatched for calibration with projection", extra={"stage": "runner"})
             result = run_calibration_with_projection(configs, rng=rng)
         # Error
         else:
