@@ -1,4 +1,4 @@
-# Unit tests for seasonality.py
+# Unit tests for seasonality.py primitives
 import datetime as dt
 
 import numpy as np
@@ -8,6 +8,7 @@ from epymodelingsuite.seasonality import (
     _calc_seasonality_balcan_at_t,
     calc_seasonality_balcan_at_date,
     generate_seasonal_values,
+    get_scaled_parameter,
     get_seasonal_transmission_balcan,
 )
 
@@ -183,236 +184,140 @@ def test_get_seasonal_transmission_balcan_end_to_end():
     assert values[0] < values[idx_tmax], "October transmission should be lower than December peak"
 
 
-# =============================================================================
-# E2E tests for seasonality dynamics
-# =============================================================================
+class TestSeasonalityPrimitivesSubdaily:
+    """Tests verifying seasonality functions work correctly with subdaily delta_t values."""
 
+    @pytest.mark.parametrize("delta_t", [1.0, 0.5, 0.25])
+    def test_calc_seasonality_balcan_at_date_consistent_across_dt(self, delta_t):
+        """Same date should produce the same seasonal factor regardless of delta_t."""
+        date_start = dt.date(2025, 10, 1)
+        date_tmax = dt.date(2025, 12, 31)
+        date_t = dt.date(2025, 11, 15)
+        val_min, val_max = 0.5, 1.0
 
-def _create_sir_model_for_seasonality(location: str = "United_States_Massachusetts"):
-    """Create a basic SIR model with age structure for seasonality E2E tests.
+        value = calc_seasonality_balcan_at_date(
+            date_t=date_t,
+            date_start=date_start,
+            date_tmax=date_tmax,
+            val_min=val_min,
+            val_max=val_max,
+            delta_t=delta_t,
+        )
 
-    Parameters
-    ----------
-    location : str
-        Population name for epydemix.
+        # Reference value at dt=1.0
+        reference = calc_seasonality_balcan_at_date(
+            date_t=date_t,
+            date_start=date_start,
+            date_tmax=date_tmax,
+            val_min=val_min,
+            val_max=val_max,
+            delta_t=1.0,
+        )
 
-    Returns
-    -------
-    EpiModel
-        Basic SIR model with population set.
-    """
-    from epydemix.model import EpiModel
-    from epydemix.population import load_epydemix_population
+        assert np.isclose(value, reference, rtol=0, atol=1e-12), (
+            f"Seasonal factor at delta_t={delta_t} ({value}) differs from delta_t=1.0 ({reference})"
+        )
 
-    model = EpiModel()
-
-    age_group_mapping = {
-        "0-4": [str(i) for i in range(5)],
-        "5-17": [str(i) for i in range(5, 18)],
-        "18-49": [str(i) for i in range(18, 50)],
-        "50-64": [str(i) for i in range(50, 65)],
-        "65+": [str(i) for i in range(65, 84)] + ["84+"],
-    }
-    population = load_epydemix_population(
-        population_name=location,
-        age_group_mapping=age_group_mapping,
+    @pytest.mark.parametrize(
+        ("delta_t", "expected_len"),
+        [
+            (1.0, 11),
+            (0.5, 21),
+            (0.25, 41),
+        ],
     )
-    model.set_population(population)
+    def test_generate_seasonal_values_correct_length(self, delta_t, expected_len):
+        """Verify generated array length matches expected timestep count."""
+        date_start = dt.date(2025, 1, 1)
+        date_stop = dt.date(2025, 1, 11)  # 10-day range
 
-    # Add compartments
-    model.add_compartments(["S", "I", "R"])
+        def dummy(d):
+            return 1.0
 
-    # Add transitions
-    model.add_transition("S", "I", params=("beta", "I"), kind="mediated")
-    model.add_transition("I", "R", params="gamma", kind="spontaneous")
+        dates, values = generate_seasonal_values(date_start, date_stop, dummy, delta_t=delta_t)
 
-    return model
+        assert len(dates) == expected_len, f"Expected {expected_len} dates for delta_t={delta_t}, got {len(dates)}"
+        assert len(values) == expected_len
 
+    def test_generate_seasonal_values_subdaily_dates_are_datetimes(self):
+        """With subdaily delta_t, dates should be datetime objects (not date)."""
+        date_start = dt.date(2025, 1, 1)
+        date_stop = dt.date(2025, 1, 3)
 
-def _create_initial_conditions_for_seasonality(model, seed_infections: int = 100) -> dict:
-    """Create initial conditions for seasonality E2E simulation.
+        def dummy(d):
+            return 1.0
 
-    Parameters
-    ----------
-    model : EpiModel
-        Model with population set.
-    seed_infections : int
-        Number of initial infections in 18-49 age group.
+        dates, _ = generate_seasonal_values(date_start, date_stop, dummy, delta_t=0.5)
 
-    Returns
-    -------
-    dict
-        Initial conditions dictionary.
-    """
-    n_age = len(model.population.Nk)
-    i_init = np.zeros(n_age)
-    i_init[2] = seed_infections  # Seed in 18-49 age group
-    return {
-        "S": model.population.Nk - i_init,
-        "I": i_init,
-        "R": np.zeros(n_age),
-    }
+        # Sub-day entries should be datetime objects
+        for d in dates:
+            assert isinstance(d, (dt.datetime, dt.date))
+        # At least some entries should be datetime (the half-day points)
+        # The half-day entries (12:00:00) should be present
+        has_non_midnight = any(isinstance(d, dt.datetime) and d.hour != 0 for d in dates)
+        assert has_non_midnight, "Subdaily delta_t should produce datetime entries with non-midnight times"
 
+    def test_get_seasonal_transmission_balcan_subdaily(self):
+        """Full season with delta_t=0.5: correct length, peak at tmax, values in range."""
+        date_start = dt.date(2025, 10, 1)
+        date_stop = dt.date(2026, 5, 31)
+        date_tmax = dt.date(2025, 12, 31)
+        date_tmin = dt.date(2026, 6, 15)
+        val_min, val_max = 0.5, 1.0
+        delta_t = 0.5
 
-@pytest.mark.dynamics
-class TestSeasonalityE2E:
-    """End-to-end tests verifying seasonality affects transmission dynamics."""
-
-    def test_seasonality_affects_transmission(self):
-        """Test that seasonal transmission differs from constant transmission.
-
-        Creates two models:
-        1. Constant beta (no seasonality)
-        2. Seasonal beta (using add_seasonality_from_config)
-
-        Verifies that the infection dynamics differ between the two models.
-        """
-        from epymodelingsuite.builders.seasonality import add_seasonality_from_config
-        from epymodelingsuite.schema.basemodel import Seasonality, Timespan
-
-        # Simulation parameters
-        start_date = dt.date(2025, 10, 1)
-        end_date = dt.date(2025, 12, 31)
-        baseline_beta = 0.2
-        gamma = 0.1
-
-        # Model 1: Constant transmission
-        model_constant = _create_sir_model_for_seasonality()
-        model_constant.add_parameter(parameters_dict={"beta": baseline_beta, "gamma": gamma})
-        init_constant = _create_initial_conditions_for_seasonality(model_constant)
-
-        # Model 2: Seasonal transmission
-        model_seasonal = _create_sir_model_for_seasonality()
-        model_seasonal.add_parameter(parameters_dict={"beta": baseline_beta, "gamma": gamma})
-
-        # Apply seasonality - winter peak on Dec 31, summer trough on June 15
-        seasonality_config = Seasonality(
-            method="balcan",
-            min_value=0.3,  # Summer trough at 30% of baseline
-            max_value=1.0,  # Winter peak at 100% of baseline
-            target_parameter="beta",
-            seasonality_max_date=dt.date(2025, 12, 31),
-            seasonality_min_date=dt.date(2026, 6, 15),
-        )
-        timespan = Timespan(start_date=start_date, end_date=end_date, delta_t=1.0)
-        add_seasonality_from_config(model_seasonal, seasonality_config, timespan)
-        init_seasonal = _create_initial_conditions_for_seasonality(model_seasonal)
-
-        # Run simulations
-        rng1 = np.random.default_rng(42)
-        results_constant = model_constant.run_simulations(
-            start_date=start_date.isoformat(),
-            end_date=end_date.isoformat(),
-            initial_conditions_dict=init_constant,
-            Nsim=10,
-            dt=1.0,
-            rng=rng1,
+        dates, values = get_seasonal_transmission_balcan(
+            date_start=date_start,
+            date_stop=date_stop,
+            date_tmax=date_tmax,
+            date_tmin=date_tmin,
+            val_min=val_min,
+            val_max=val_max,
+            delta_t=delta_t,
         )
 
-        rng2 = np.random.default_rng(42)
-        results_seasonal = model_seasonal.run_simulations(
-            start_date=start_date.isoformat(),
-            end_date=end_date.isoformat(),
-            initial_conditions_dict=init_seasonal,
-            Nsim=10,
-            dt=1.0,
-            rng=rng2,
+        # Check length
+        total_days = (date_stop - date_start).days
+        expected_len = int(total_days / delta_t) + 1
+        assert len(dates) == expected_len, f"Expected {expected_len} entries, got {len(dates)}"
+        assert len(values) == expected_len
+
+        # Values should be in range [val_min/val_max, 1.0]
+        min_expected = val_min / val_max
+        assert min(values) >= min_expected - 1e-10
+        assert max(values) <= 1.0 + 1e-10
+
+        # Peak should be near 1.0
+        assert np.isclose(max(values), 1.0, atol=1e-6)
+
+    def test_get_scaled_parameter_subdaily(self):
+        """get_scaled_parameter with delta_t=0.5 produces correct length and scaling."""
+        date_start = dt.date(2025, 1, 1)
+        date_stop = dt.date(2025, 1, 11)  # 10-day range
+        scaling_start = dt.date(2025, 1, 3)
+        scaling_stop = dt.date(2025, 1, 7)
+        scaling_factor = 0.5
+        delta_t = 0.5
+
+        dates, values = get_scaled_parameter(
+            date_start=date_start,
+            date_stop=date_stop,
+            scaling_start=scaling_start,
+            scaling_stop=scaling_stop,
+            scaling_factor=scaling_factor,
+            delta_t=delta_t,
         )
 
-        # Get total infections
-        transitions_constant = results_constant.get_stacked_transitions()
-        transitions_seasonal = results_seasonal.get_stacked_transitions()
+        # Check length
+        total_days = (date_stop - date_start).days
+        expected_len = int(total_days / delta_t) + 1
+        assert len(dates) == expected_len
+        assert len(values) == expected_len
 
-        infections_constant = np.sum(transitions_constant["S_to_I_total"], axis=1)
-        infections_seasonal = np.sum(transitions_seasonal["S_to_I_total"], axis=1)
-
-        avg_constant = np.mean(infections_constant)
-        avg_seasonal = np.mean(infections_seasonal)
-
-        # Verify the models produce different results
-        assert avg_seasonal != avg_constant, (
-            f"Seasonal model should differ from constant: constant={avg_constant:.0f}, seasonal={avg_seasonal:.0f}"
-        )
-
-    def test_winter_higher_transmission(self):
-        """Test that winter simulations have more infections than summer.
-
-        Creates two simulations with identical parameters and seasonality,
-        but running at different times of year:
-        1. Winter simulation (Dec-Feb): High transmission period
-        2. Summer simulation (Jun-Aug): Low transmission period
-
-        Verifies that the winter simulation has more total infections.
-        """
-        from epymodelingsuite.builders.seasonality import add_seasonality_from_config
-        from epymodelingsuite.schema.basemodel import Seasonality, Timespan
-
-        # Common parameters
-        baseline_beta = 0.2
-        gamma = 0.1
-
-        # Seasonality config: peak in winter (Dec 31), trough in summer (June 15)
-        seasonality_config = Seasonality(
-            method="balcan",
-            min_value=0.3,  # Summer at 30% of peak
-            max_value=1.0,
-            target_parameter="beta",
-            seasonality_max_date=dt.date(2025, 12, 31),
-            seasonality_min_date=dt.date(2026, 6, 15),
-        )
-
-        # Winter simulation (Dec 1 - Feb 1)
-        winter_start = dt.date(2025, 12, 1)
-        winter_end = dt.date(2026, 2, 1)
-
-        model_winter = _create_sir_model_for_seasonality()
-        model_winter.add_parameter(parameters_dict={"beta": baseline_beta, "gamma": gamma})
-        timespan_winter = Timespan(start_date=winter_start, end_date=winter_end, delta_t=1.0)
-        add_seasonality_from_config(model_winter, seasonality_config, timespan_winter)
-        init_winter = _create_initial_conditions_for_seasonality(model_winter)
-
-        # Summer simulation (Jun 1 - Aug 1)
-        summer_start = dt.date(2026, 6, 1)
-        summer_end = dt.date(2026, 8, 1)
-
-        model_summer = _create_sir_model_for_seasonality()
-        model_summer.add_parameter(parameters_dict={"beta": baseline_beta, "gamma": gamma})
-        timespan_summer = Timespan(start_date=summer_start, end_date=summer_end, delta_t=1.0)
-        add_seasonality_from_config(model_summer, seasonality_config, timespan_summer)
-        init_summer = _create_initial_conditions_for_seasonality(model_summer)
-
-        # Run simulations
-        rng1 = np.random.default_rng(42)
-        results_winter = model_winter.run_simulations(
-            start_date=winter_start.isoformat(),
-            end_date=winter_end.isoformat(),
-            initial_conditions_dict=init_winter,
-            Nsim=10,
-            dt=1.0,
-            rng=rng1,
-        )
-
-        rng2 = np.random.default_rng(42)
-        results_summer = model_summer.run_simulations(
-            start_date=summer_start.isoformat(),
-            end_date=summer_end.isoformat(),
-            initial_conditions_dict=init_summer,
-            Nsim=10,
-            dt=1.0,
-            rng=rng2,
-        )
-
-        # Get total infections
-        transitions_winter = results_winter.get_stacked_transitions()
-        transitions_summer = results_summer.get_stacked_transitions()
-
-        infections_winter = np.sum(transitions_winter["S_to_I_total"], axis=1)
-        infections_summer = np.sum(transitions_summer["S_to_I_total"], axis=1)
-
-        avg_winter = np.mean(infections_winter)
-        avg_summer = np.mean(infections_summer)
-
-        # Winter should have more infections due to higher transmission
-        assert avg_winter > avg_summer, (
-            f"Winter should have more infections than summer: winter={avg_winter:.0f}, summer={avg_summer:.0f}"
-        )
+        # Values outside intervention period should be 1.0, inside should be scaling_factor
+        for d, v in zip(dates, values, strict=True):
+            d_date = d.date() if isinstance(d, dt.datetime) else d
+            if scaling_start <= d_date <= scaling_stop:
+                assert v == scaling_factor, f"Expected {scaling_factor} at {d}, got {v}"
+            else:
+                assert v == 1.0, f"Expected 1.0 at {d}, got {v}"
