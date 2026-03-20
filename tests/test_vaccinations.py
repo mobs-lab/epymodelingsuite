@@ -614,6 +614,7 @@ class TestVaccinationIntegration:
             )
 
 
+@pytest.mark.dynamics
 class TestVaccinationE2E:
     """End-to-end tests verifying vaccination works correctly in simulations.
 
