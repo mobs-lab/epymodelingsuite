@@ -243,6 +243,43 @@ class TestBuildBasemodel:
 
         assert result.primary_id == 0
 
+    @pytest.mark.parametrize("delta_t", [0.5, 0.25, 2.0])
+    def test_delta_t_is_preserved_across_values(self, delta_t):
+        """Test that various delta_t values are preserved through build_basemodel."""
+        compartments = [
+            Compartment(id="S", label="Susceptible", init="default"),
+            Compartment(id="I", label="Infected", init=10),
+            Compartment(id="R", label="Recovered", init=0),
+        ]
+        transitions = [
+            Transition(source="S", target="I", type="mediated", rate="beta", mediator="I"),
+            Transition(source="I", target="R", type="spontaneous", rate="gamma"),
+        ]
+        parameters = {
+            "beta": Parameter(type="scalar", value=0.5),
+            "gamma": Parameter(type="scalar", value=0.1),
+        }
+        population = Population(name="US-CA", age_groups=["0-4", "5-17", "18-49", "50-64", "65+"])
+        timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 3, 31), delta_t=delta_t)
+        simulation = Simulation(n_sims=5)
+
+        basemodel = BaseEpiModel(
+            name="test_model",
+            compartments=compartments,
+            transitions=transitions,
+            parameters=parameters,
+            population=population,
+            timespan=timespan,
+            simulation=simulation,
+            random_seed=42,
+        )
+        config = BasemodelConfig(model=basemodel)
+
+        result = build_basemodel(basemodel_config=config)
+
+        assert result.delta_t == delta_t
+        assert result.simulation.dt == delta_t
+
 
 class TestDispatchBuilder:
     """Tests for dispatch_builder function."""
