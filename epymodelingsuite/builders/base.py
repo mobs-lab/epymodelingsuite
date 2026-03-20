@@ -303,8 +303,11 @@ def add_model_parameters_from_config(model: EpiModel, parameters: dict[str, Para
             pass
 
     try:
-        model.add_parameter(parameters_dict=parameters_dict)
-        logger.info(f"Added parameters: {list(parameters_dict.keys())}")
+        if parameters_dict:
+            model.add_parameter(parameters_dict=parameters_dict)
+            logger.info(f"Added parameters: {list(parameters_dict.keys())}")
+        else:
+            logger.info("No scalar/age_varying parameters to add (all parameters are calibrated/sampled)")
 
         return model
     except Exception as e:
