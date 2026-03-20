@@ -73,16 +73,26 @@ class TestSimulationPipelineE2E:
 
         # Verify population conservation
         # Sum S + I + R totals across all age groups
-        s_total = compartments.get("S_total")
-        i_total = compartments.get("I_total")
-        r_total = compartments.get("R_total")
+        s_total = compartments["S_total"]
+        i_total = compartments["I_total"]
+        r_total = compartments["R_total"]
 
-        if s_total is not None and i_total is not None and r_total is not None:
-            total_pop = s_total + i_total + r_total
-            # Population should be approximately constant across time (axis=1)
-            for sim_idx in range(total_pop.shape[0]):
-                pop_std = np.std(total_pop[sim_idx])
-                assert pop_std < 1.0, f"Population not conserved in sim {sim_idx}, std: {pop_std}"
+        total_pop_per_timestep = s_total + i_total + r_total
+
+        # Get expected total population from model
+        expected_total_pop = np.sum(builder_output.model.population.Nk)
+
+        # Population should be exactly conserved at every timestep for every simulation
+        for sim_idx in range(total_pop_per_timestep.shape[0]):
+            for t_idx in range(total_pop_per_timestep.shape[1]):
+                actual_pop = total_pop_per_timestep[sim_idx, t_idx]
+                np.testing.assert_allclose(
+                    actual_pop,
+                    expected_total_pop,
+                    rtol=1e-10,
+                    err_msg=f"Population not conserved at sim={sim_idx}, t={t_idx}: "
+                    f"expected={expected_total_pop}, got={actual_pop}",
+                )
 
     def test_simulation_produces_expected_compartment_dynamics(self):
         """Verify SIR dynamics: S decreases, I peaks then decreases, R increases."""
@@ -108,12 +118,102 @@ class TestSimulationPipelineE2E:
         i_max_idx = np.argmax(i_total)
         assert 0 < i_max_idx < len(i_total) - 1, "Infectious should peak in middle of simulation"
 
+    @pytest.mark.dynamics
+    def test_sir_mean_approximates_ode(self):
+        """Verify stochastic SIR mean approximates deterministic ODE solution.
 
+        Uses a large population (100k) and many simulations (50) to verify that
+        the stochastic model's mean behavior matches the deterministic ODE solution
+        within 10% relative error for the final epidemic size.
+
+        This test validates that the epydemix simulation engine correctly implements
+        the underlying epidemic dynamics.
+        """
+        from scipy.integrate import solve_ivp
+
+        from epydemix.model import EpiModel
+
+        # Parameters for a simple SIR model
+        N = 100_000  # Large population to reduce stochastic noise
+        I0 = 100  # Initial infections
+        beta = 0.3  # Transmission rate
+        gamma = 0.1  # Recovery rate
+        t_span = 60  # 60 days
+
+        # Define ODE system for SIR
+        def sir_ode(t, y, beta, gamma, N):  # noqa: ARG001
+            S, I, _ = y
+            dS = -beta * S * I / N
+            dI = beta * S * I / N - gamma * I
+            dR = gamma * I
+            return [dS, dI, dR]
+
+        # Solve ODE
+        y0 = [N - I0, I0, 0]
+        sol = solve_ivp(
+            sir_ode,
+            [0, t_span],
+            y0,
+            args=(beta, gamma, N),
+            t_eval=np.arange(0, t_span + 1, 1),
+            method="RK45",
+        )
+        ode_final_s = sol.y[0][-1]
+
+        # Create stochastic model with single age group
+        model = EpiModel()
+
+        # Use a simple single-age-group setup
+        from epydemix.population import Population
+
+        pop = Population("Test_Population")
+        pop.add_population(Nk=[float(N)], Nk_names=["all"])
+        pop.add_contact_matrix(np.array([[1.0]]), layer_name="all")
+        model.set_population(pop)
+
+        model.add_compartments(["S", "I", "R"])
+        model.add_transition("S", "I", params=("beta", "I"), kind="mediated")
+        model.add_transition("I", "R", params="gamma", kind="spontaneous")
+        model.add_parameter(parameters_dict={"beta": beta, "gamma": gamma})
+
+        # Initial conditions
+        init_conditions = {
+            "S": np.array([N - I0]),
+            "I": np.array([I0]),
+            "R": np.array([0]),
+        }
+
+        # Run stochastic simulations
+        rng = np.random.default_rng(42)
+        results = model.run_simulations(
+            start_date="2025-01-01",
+            end_date="2025-03-01",
+            initial_conditions_dict=init_conditions,
+            Nsim=50,
+            dt=1.0,
+            rng=rng,
+        )
+
+        # Get final S from stochastic model
+        compartments = results.get_stacked_compartments()
+        s_final_stochastic = compartments["S_total"][:, -1]  # Shape: (Nsim,)
+        mean_final_s_stochastic = np.mean(s_final_stochastic)
+
+        # Compare with ODE solution
+        relative_error = abs(mean_final_s_stochastic - ode_final_s) / ode_final_s
+
+        assert relative_error < 0.10, (
+            f"Stochastic mean final S ({mean_final_s_stochastic:.0f}) differs from "
+            f"ODE solution ({ode_final_s:.0f}) by {relative_error * 100:.1f}% (> 10%)"
+        )
+
+
+@pytest.mark.slow
 class TestCalibrationPipelineE2E:
     """End-to-end tests for the calibration pipeline."""
 
-    @pytest.fixture
-    def synthetic_observed_data(self, tmp_path):
+    @pytest.fixture(scope="class")
+    def synthetic_observed_data(self, tmp_path_factory):
         """Generate synthetic observed data by running actual simulation.
 
         Uses known parameter values (beta=0.25, I_init=100) to generate
@@ -186,7 +286,8 @@ class TestCalibrationPipelineE2E:
             }
         )
 
-        # Save to temp file
+        # Save to temp file (use tmp_path_factory for class-scoped fixture)
+        tmp_path = tmp_path_factory.mktemp("data")
         data_path = tmp_path / "synthetic_observed.csv"
         df.to_csv(data_path, index=False)
 
@@ -460,3 +561,130 @@ class TestCalibrationPipelineE2E:
         start_date_values = posterior_df["start_date"].values
         assert np.all(start_date_values >= 0), "start_date below prior minimum"
         assert np.all(start_date_values < 14), "start_date above prior maximum"
+
+
+class TestSimulationPipelineSubdailyTimesteps:
+    """Integration tests for subdaily timestep (delta_t=0.5) pipeline."""
+
+    def test_pipeline_with_half_day_timestep(self):
+        """Full pipeline with delta_t=0.5: YAML -> build -> run -> valid output."""
+        basemodel_config = load_basemodel_config_from_file(str(FIXTURES_DIR / "minimal_basemodel_half_day.yaml"))
+
+        builder_output = dispatch_builder(basemodel_config=basemodel_config)
+
+        assert builder_output is not None
+        assert builder_output.model is not None
+        assert builder_output.simulation is not None
+        assert builder_output.delta_t == 0.5
+        assert builder_output.simulation.dt == 0.5
+
+        result = dispatch_runner(builder_output)
+
+        assert isinstance(result, SimulationOutput)
+        assert result.results is not None
+        assert result.delta_t == 0.5
+
+        compartments = result.results.get_stacked_compartments()
+        assert len(compartments) > 0
+
+        # Verify no NaN or inf values
+        for name, values in compartments.items():
+            assert not np.any(np.isnan(values)), f"NaN values found in {name}"
+            assert not np.any(np.isinf(values)), f"Inf values found in {name}"
+
+        # Verify population conservation
+        s_total = compartments["S_total"]
+        i_total = compartments["I_total"]
+        r_total = compartments["R_total"]
+        total_pop = s_total + i_total + r_total
+        expected_total_pop = np.sum(builder_output.model.population.Nk)
+
+        # Subdaily timesteps may introduce small numerical drift in stochastic simulation
+        np.testing.assert_allclose(
+            total_pop,
+            expected_total_pop,
+            rtol=1e-5,
+            err_msg="Population not conserved with subdaily timesteps",
+        )
+
+    def test_sir_dynamics_with_subdaily_timesteps(self):
+        """Verify SIR dynamics with dt=0.5: S decreases, R increases, I peaks in middle."""
+        basemodel_config = load_basemodel_config_from_file(str(FIXTURES_DIR / "minimal_basemodel_half_day.yaml"))
+        builder_output = dispatch_builder(basemodel_config=basemodel_config)
+        result = dispatch_runner(builder_output)
+
+        compartments = result.results.get_stacked_compartments()
+        s_total = compartments["S_total"][0]
+        i_total = compartments["I_total"][0]
+        r_total = compartments["R_total"][0]
+
+        # S should decrease overall
+        assert s_total[0] > s_total[-1], "Susceptibles should decrease over epidemic"
+
+        # R should increase overall
+        assert r_total[-1] > r_total[0], "Recovered should increase over epidemic"
+
+        # I should peak somewhere in the middle
+        i_max_idx = np.argmax(i_total)
+        assert 0 < i_max_idx < len(i_total) - 1, "Infectious should peak in middle of simulation"
+
+    def test_subdaily_with_weekly_resampling_produces_weekly_output(self):
+        """dt=0.5 + resample_frequency=W-SAT -> output dates are weekly Saturdays."""
+        basemodel_config = load_basemodel_config_from_file(str(FIXTURES_DIR / "minimal_basemodel_half_day.yaml"))
+        builder_output = dispatch_builder(basemodel_config=basemodel_config)
+        result = dispatch_runner(builder_output)
+
+        dates = result.results.dates
+        assert len(dates) > 1
+
+        # Verify dates are weekly (7 days apart) and are Saturdays (weekday=5)
+        for i in range(len(dates) - 1):
+            d1 = pd.Timestamp(dates[i])
+            d2 = pd.Timestamp(dates[i + 1])
+            assert (d2 - d1).days == 7, f"Dates not 7 days apart: {d1} -> {d2}"
+            assert d1.weekday() == 5, f"Date {d1} is not a Saturday"
+
+    @pytest.mark.nightly
+    def test_resampled_output_similar_across_dt(self):
+        """Compare dt=1.0 vs dt=0.5 resampled to W-SAT: mean final S within 10%."""
+        import yaml
+
+        from epymodelingsuite.schema.basemodel import validate_basemodel
+
+        # Build dt=1.0 config with same date range as half-day (Jan 1 - Feb 1)
+        with open(FIXTURES_DIR / "minimal_basemodel.yaml") as f:
+            raw_dt10 = yaml.safe_load(f)
+        raw_dt10["model"]["timespan"]["end_date"] = "2025-02-01"
+        raw_dt10["model"]["simulation"]["n_sims"] = 50
+        raw_dt10["model"]["random_seed"] = 99
+        basemodel_config_dt10 = validate_basemodel(raw_dt10)
+
+        # Build dt=0.5 config with same sims and seed
+        with open(FIXTURES_DIR / "minimal_basemodel_half_day.yaml") as f:
+            raw_dt05 = yaml.safe_load(f)
+        raw_dt05["model"]["simulation"]["n_sims"] = 50
+        raw_dt05["model"]["random_seed"] = 99
+        basemodel_config_dt05 = validate_basemodel(raw_dt05)
+
+        # Build and run dt=1.0
+        builder_dt10 = dispatch_builder(basemodel_config=basemodel_config_dt10)
+        result_dt10 = dispatch_runner(builder_dt10)
+
+        # Build and run dt=0.5
+        builder_dt05 = dispatch_builder(basemodel_config=basemodel_config_dt05)
+        result_dt05 = dispatch_runner(builder_dt05)
+
+        # Compare mean final S (resampled to weekly)
+        s_dt10 = result_dt10.results.get_stacked_compartments()["S_total"]
+        s_dt05 = result_dt05.results.get_stacked_compartments()["S_total"]
+
+        mean_final_s_dt10 = np.mean(s_dt10[:, -1])
+        mean_final_s_dt05 = np.mean(s_dt05[:, -1])
+
+        # Should be within 10% tolerance
+        np.testing.assert_allclose(
+            mean_final_s_dt05,
+            mean_final_s_dt10,
+            rtol=0.10,
+            err_msg=f"Mean final S differs: dt=1.0 ({mean_final_s_dt10:.0f}) vs dt=0.5 ({mean_final_s_dt05:.0f})",
+        )
