@@ -39,6 +39,8 @@ dev = [
     "ruff",
     "pytest",
     "pytest-cov",
+    "pytest-xdist",
+    "pytest-sugar",
     "sphinx",
     "sphinx-pyproject",
     "autodoc_pydantic",
