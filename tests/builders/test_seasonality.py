@@ -180,7 +180,7 @@ class TestAddSeasonalityFromConfig:
             f"Expected shape ({expected_T}, {n_age_groups}), got {beta.shape}"
         )
 
-    def test_winter_higher_than_summer(self, model_with_beta, seasonality_config, timespan):
+    def test_beta_higher_in_winter_than_summer(self, model_with_beta, seasonality_config, timespan):
         """Test that winter transmission is higher than summer (realistic flu pattern)."""
         # Extend to include both peak and trough
         full_year_timespan = Timespan(
@@ -339,3 +339,99 @@ class TestParameterToArrayConversion:
 
         with pytest.raises(ValueError, match="Cannot apply seasonality"):
             add_seasonality_from_config(model_with_population, seasonality_config, timespan)
+
+
+class TestAddSeasonalityWithSubdailyTimesteps:
+    """Tests for add_seasonality_from_config with subdaily delta_t values."""
+
+    @pytest.fixture
+    def seasonality_config(self):
+        """Create a standard seasonality configuration."""
+        return Seasonality(
+            method="balcan",
+            min_value=0.5,
+            max_value=1.0,
+            target_parameter="beta",
+            seasonality_max_date=date(2025, 12, 31),
+            seasonality_min_date=date(2026, 6, 15),
+        )
+
+    @pytest.mark.parametrize(
+        ("delta_t", "days", "expected_T"),
+        [
+            (1.0, 10, 11),
+            (0.5, 10, 21),
+            (0.25, 10, 41),
+        ],
+    )
+    def test_beta_array_length_matches_timestep_count(self, seasonality_config, delta_t, days, expected_T):
+        """Verify beta array length matches expected timestep count for various delta_t."""
+        model = EpiModel()
+        set_population_from_config(model, "US-CA", ["0-4", "5-17", "18-49", "50-64", "65+"])
+        model.add_parameter("beta", 0.5)
+
+        start = date(2025, 12, 1)
+        end = date(2025, 12, 1 + days)
+        timespan = Timespan(start_date=start, end_date=end, delta_t=delta_t)
+
+        add_seasonality_from_config(model, seasonality_config, timespan)
+
+        beta = model.get_parameter("beta")
+        assert beta.shape[0] == expected_T, f"Expected {expected_T} timesteps, got {beta.shape[0]}"
+
+    def test_seasonality_values_match_across_dt(self, seasonality_config):
+        """Values at overlapping timesteps should match between dt=1.0 and dt=0.5."""
+        start = date(2025, 12, 1)
+        end = date(2025, 12, 11)
+
+        # Model with dt=1.0
+        model_dt10 = EpiModel()
+        set_population_from_config(model_dt10, "US-CA", ["0-4", "5-17", "18-49", "50-64", "65+"])
+        model_dt10.add_parameter("beta", 0.5)
+        timespan_dt10 = Timespan(start_date=start, end_date=end, delta_t=1.0)
+        add_seasonality_from_config(model_dt10, seasonality_config, timespan_dt10)
+        beta_dt10 = model_dt10.get_parameter("beta")
+
+        # Model with dt=0.5
+        model_dt05 = EpiModel()
+        set_population_from_config(model_dt05, "US-CA", ["0-4", "5-17", "18-49", "50-64", "65+"])
+        model_dt05.add_parameter("beta", 0.5)
+        timespan_dt05 = Timespan(start_date=start, end_date=end, delta_t=0.5)
+        add_seasonality_from_config(model_dt05, seasonality_config, timespan_dt05)
+        beta_dt05 = model_dt05.get_parameter("beta")
+
+        # Every other entry of dt=0.5 should match dt=1.0
+        for k in range(len(beta_dt10)):
+            np.testing.assert_allclose(
+                beta_dt05[2 * k],
+                beta_dt10[k],
+                rtol=1e-10,
+                err_msg=f"Mismatch at day index {k}",
+            )
+
+    def test_seasonality_with_age_varying_beta_subdaily(self, seasonality_config):
+        """With dt=0.5 and age-varying beta, output shape should be (T, N_age)."""
+        n_age_groups = 5
+        start = date(2025, 12, 1)
+        end = date(2025, 12, 11)  # 10 days
+        delta_t = 0.5
+
+        model = EpiModel()
+        set_population_from_config(model, "US-CA", ["0-4", "5-17", "18-49", "50-64", "65+"])
+        age_varying_beta = np.array([[0.3, 0.4, 0.5, 0.4, 0.3]])
+        model.add_parameter("beta", age_varying_beta)
+
+        timespan = Timespan(start_date=start, end_date=end, delta_t=delta_t)
+        add_seasonality_from_config(model, seasonality_config, timespan)
+
+        beta = model.get_parameter("beta")
+        total_days = (end - start).days
+        expected_T = int(total_days / delta_t) + 1
+
+        assert beta.shape == (expected_T, n_age_groups), f"Expected ({expected_T}, {n_age_groups}), got {beta.shape}"
+
+        # Age ratios should be preserved at every timestep
+        for t in range(beta.shape[0]):
+            ratio = beta[t, 2] / beta[t, 0]
+            expected_ratio = 0.5 / 0.3
+            assert np.isclose(ratio, expected_ratio, rtol=1e-6), f"Age ratio not preserved at t={t}"
