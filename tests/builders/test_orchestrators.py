@@ -33,6 +33,7 @@ from epymodelingsuite.schema.basemodel import (
     Vaccination,
 )
 from epymodelingsuite.schema.calibration import ComparisonSpec
+from tests.conftest import make_sir_config
 
 
 class TestCreateModelCollection:
@@ -41,48 +42,7 @@ class TestCreateModelCollection:
     @pytest.fixture
     def base_model_config(self):
         """Create a minimal BaseEpiModel configuration for testing."""
-        compartments = [
-            Compartment(id="S", label="Susceptible", init="default"),
-            Compartment(id="I", label="Infected", init=10),
-            Compartment(id="R", label="Recovered", init=0),
-        ]
-
-        transitions = [
-            Transition(
-                source="S",
-                target="I",
-                type="mediated",
-                rate="beta",
-                mediator="I",
-            ),
-            Transition(
-                source="I",
-                target="R",
-                type="spontaneous",
-                rate="gamma",
-            ),
-        ]
-
-        parameters = {
-            "beta": Parameter(type="scalar", value=0.5),
-            "gamma": Parameter(type="scalar", value=0.1),
-        }
-
-        population = Population(name="US-CA", age_groups=["0-4", "5-17", "18-49", "50-64", "65+"])
-
-        timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
-
-        simulation = Simulation(n_sims=10, resample_frequency="W-SAT")
-
-        return BaseEpiModel(
-            name="test_model",
-            compartments=compartments,
-            transitions=transitions,
-            parameters=parameters,
-            population=population,
-            timespan=timespan,
-            simulation=simulation,
-        )
+        return make_sir_config()
 
     def test_creates_single_model_when_population_names_none(self, base_model_config):
         """Test that a single model is created when population_names is None."""
@@ -374,48 +334,7 @@ class TestSetupVaccinationSchedules:
     @pytest.fixture
     def base_model_config(self):
         """Create a minimal BaseEpiModel configuration for testing."""
-        compartments = [
-            Compartment(id="S", label="Susceptible", init="default"),
-            Compartment(id="I", label="Infected", init=10),
-            Compartment(id="R", label="Recovered", init=0),
-        ]
-
-        transitions = [
-            Transition(
-                source="S",
-                target="I",
-                type="mediated",
-                rate="beta",
-                mediator="I",
-            ),
-            Transition(
-                source="I",
-                target="R",
-                type="spontaneous",
-                rate="gamma",
-            ),
-        ]
-
-        parameters = {
-            "beta": Parameter(type="scalar", value=0.5),
-            "gamma": Parameter(type="scalar", value=0.1),
-        }
-
-        population = Population(name="US-CA", age_groups=["0-4", "5-17", "18-49", "50-64", "65+"])
-
-        timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
-
-        simulation = Simulation(n_sims=10, resample_frequency="W-SAT")
-
-        return BaseEpiModel(
-            name="test_model",
-            compartments=compartments,
-            transitions=transitions,
-            parameters=parameters,
-            population=population,
-            timespan=timespan,
-            simulation=simulation,
-        )
+        return make_sir_config()
 
     @pytest.fixture
     def base_model_with_vaccination(self, base_model_config, tmp_path):

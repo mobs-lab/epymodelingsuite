@@ -45,16 +45,7 @@ from epymodelingsuite.schema.dispatcher import (
     SimulationArguments,
     SimulationOutput,
 )
-
-# =============================================================================
-# Helper Functions
-# =============================================================================
-
-
-def create_builder_output(**kwargs):
-    """Create a BuilderOutput bypassing Pydantic validation for testing with mocks."""
-    return BuilderOutput.model_construct(**kwargs)
-
+from tests.conftest import create_builder_output, make_sir_config
 
 # =============================================================================
 # Fixtures for Integration Tests
@@ -67,36 +58,12 @@ def base_epimodel_config():
 
     This creates a simple SIR model that can be used to create real EpiModel objects.
     """
-    compartments = [
-        Compartment(id="S", label="Susceptible", init="default"),
-        Compartment(id="I", label="Infected", init=100),
-        Compartment(id="R", label="Recovered", init=0),
-    ]
-
-    transitions = [
-        Transition(source="S", target="I", type="mediated", rate="beta", mediator="I"),
-        Transition(source="I", target="R", type="spontaneous", rate="gamma"),
-    ]
-
-    parameters = {
-        "beta": Parameter(type="scalar", value=0.3),
-        "gamma": Parameter(type="scalar", value=0.1),
-    }
-
-    population = Population(name="US-MA", age_groups=["0-4", "5-17", "18-49", "50-64", "65+"])
-
-    timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 2, 1), delta_t=1.0)
-
-    simulation = Simulation(n_sims=3, resample_frequency="W-SAT")
-
-    return BaseEpiModel(
-        name="test_sir_model",
-        compartments=compartments,
-        transitions=transitions,
-        parameters=parameters,
-        population=population,
-        timespan=timespan,
-        simulation=simulation,
+    return make_sir_config(
+        population_name="US-MA",
+        beta=0.3,
+        initial_infected=100,
+        end_date=date(2024, 2, 1),
+        n_sims=3,
     )
 
 

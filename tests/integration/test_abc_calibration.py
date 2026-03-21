@@ -40,6 +40,7 @@ from epymodelingsuite.schema.calibration import (
     FittingWindow,
 )
 from epymodelingsuite.schema.common import Distribution, Meta
+from tests.conftest import AGE_GROUP_MAPPING, AGE_GROUPS
 
 
 def get_credible_interval(samples: np.ndarray, level: float = 0.80) -> tuple[float, float]:
@@ -70,15 +71,6 @@ def is_in_interval(value: float, lower: float, upper: float) -> bool:
 # Shared config builders
 # =============================================================================
 
-_AGE_GROUPS = ["0-4", "5-17", "18-49", "50-64", "65+"]
-_AGE_GROUP_MAPPING = {
-    "0-4": [str(i) for i in range(5)],
-    "5-17": [str(i) for i in range(5, 18)],
-    "18-49": [str(i) for i in range(18, 50)],
-    "50-64": [str(i) for i in range(50, 65)],
-    "65+": [str(i) for i in range(65, 84)] + ["84+"],
-}
-
 
 def _make_basemodel_config(
     calibrated_params: list[str],
@@ -108,7 +100,7 @@ def _make_basemodel_config(
         timespan=Timespan(start_date=date(2025, 1, 1), end_date=date(2025, 3, 1), delta_t=1.0),
         simulation=Simulation(resample_frequency="W-SAT"),
         random_seed=42,
-        population=Population(name="US-MA", age_groups=_AGE_GROUPS),
+        population=Population(name="US-MA", age_groups=AGE_GROUPS),
         compartments=[
             Compartment(id="S", label="Susceptible", init="default"),
             Compartment(id="I", label="Infectious", init=initial_infected),
@@ -249,7 +241,7 @@ class TestABCParameterRecovery:
 
         population = load_epydemix_population(
             population_name="United_States_Massachusetts",
-            age_group_mapping=_AGE_GROUP_MAPPING,
+            age_group_mapping=AGE_GROUP_MAPPING,
         )
         model.set_population(population)
 

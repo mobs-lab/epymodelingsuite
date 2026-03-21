@@ -6,6 +6,7 @@ from unittest.mock import patch
 import pytest
 
 from epymodelingsuite.builders.orchestrators import create_model_collection, setup_interventions
+from tests.conftest import make_sir_config
 
 
 class TestSetupInterventions:
@@ -14,58 +15,7 @@ class TestSetupInterventions:
     @pytest.fixture
     def base_model_config(self):
         """Create a minimal BaseEpiModel configuration for testing."""
-        from epymodelingsuite.schema.basemodel import (
-            BaseEpiModel,
-            Compartment,
-            Parameter,
-            Population,
-            Simulation,
-            Timespan,
-            Transition,
-        )
-
-        compartments = [
-            Compartment(id="S", label="Susceptible", init="default"),
-            Compartment(id="I", label="Infected", init=10),
-            Compartment(id="R", label="Recovered", init=0),
-        ]
-
-        transitions = [
-            Transition(
-                source="S",
-                target="I",
-                type="mediated",
-                rate="beta",
-                mediator="I",
-            ),
-            Transition(
-                source="I",
-                target="R",
-                type="spontaneous",
-                rate="gamma",
-            ),
-        ]
-
-        parameters = {
-            "beta": Parameter(type="scalar", value=0.5),
-            "gamma": Parameter(type="scalar", value=0.1),
-        }
-
-        population = Population(name="US-CA", age_groups=["0-4", "5-17", "18-49", "50-64", "65+"])
-
-        timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
-
-        simulation = Simulation(n_sims=10, resample_frequency="W-SAT")
-
-        return BaseEpiModel(
-            name="test_model",
-            compartments=compartments,
-            transitions=transitions,
-            parameters=parameters,
-            population=population,
-            timespan=timespan,
-            simulation=simulation,
-        )
+        return make_sir_config()
 
     @pytest.fixture
     def sample_models(self, base_model_config):
@@ -561,60 +511,8 @@ class TestSetupInterventionsIntegration:
 
     @pytest.fixture
     def base_model_config(self):
-        """Create a minimal BaseEpiModel configuration for testing."""
-        from epymodelingsuite.schema.basemodel import (
-            BaseEpiModel,
-            Compartment,
-            Parameter,
-            Population,
-            Simulation,
-            Timespan,
-            Transition,
-        )
-
-        compartments = [
-            Compartment(id="S", label="Susceptible", init="default"),
-            Compartment(id="I", label="Infected", init=10),
-            Compartment(id="R", label="Recovered", init=0),
-        ]
-
-        transitions = [
-            Transition(
-                source="S",
-                target="I",
-                type="mediated",
-                rate="beta",
-                mediator="I",
-            ),
-            Transition(
-                source="I",
-                target="R",
-                type="spontaneous",
-                rate="gamma",
-            ),
-        ]
-
-        parameters = {
-            "beta": Parameter(type="scalar", value=0.5),
-            "gamma": Parameter(type="scalar", value=0.1),
-        }
-
-        population = Population(name="US-CA", age_groups=["0-4", "5-17", "18-49", "50-64", "65+"])
-
-        # Use flu season timespan (Oct-May) to include school closures
-        timespan = Timespan(start_date=date(2024, 10, 5), end_date=date(2025, 5, 31), delta_t=1.0)
-
-        simulation = Simulation(n_sims=10, resample_frequency="W-SAT")
-
-        return BaseEpiModel(
-            name="test_model",
-            compartments=compartments,
-            transitions=transitions,
-            parameters=parameters,
-            population=population,
-            timespan=timespan,
-            simulation=simulation,
-        )
+        """Create a minimal BaseEpiModel configuration with flu season timespan."""
+        return make_sir_config(start_date=date(2024, 10, 5), end_date=date(2025, 5, 31))
 
     def test_school_closure_interventions_actually_applied(self, base_model_config):
         """Test that school closure interventions are actually added to models."""
@@ -642,23 +540,23 @@ class TestSetupInterventionsIntegration:
 
         # Verify specific closures are included (timespan is Oct 2024 - May 2025)
         intervention_names = [i["name"] for i in models[0].interventions]
-        assert any(
-            "Christmas" in name for name in intervention_names
-        ), f"Christmas break not found in interventions: {intervention_names}"
-        assert any(
-            "Thanksgiving" in name for name in intervention_names
-        ), f"Thanksgiving break not found in interventions: {intervention_names}"
+        assert any("Christmas" in name for name in intervention_names), (
+            f"Christmas break not found in interventions: {intervention_names}"
+        )
+        assert any("Thanksgiving" in name for name in intervention_names), (
+            f"Thanksgiving break not found in interventions: {intervention_names}"
+        )
 
         # Verify holidays are included (added via holidays package)
-        assert any(
-            "Veterans Day" in name for name in intervention_names
-        ), f"Veterans Day not found in interventions: {intervention_names}"
-        assert any(
-            "Martin Luther King" in name for name in intervention_names
-        ), f"MLK Day not found in interventions: {intervention_names}"
-        assert any(
-            "Washington" in name or "Presidents" in name for name in intervention_names
-        ), f"Presidents Day not found in interventions: {intervention_names}"
+        assert any("Veterans Day" in name for name in intervention_names), (
+            f"Veterans Day not found in interventions: {intervention_names}"
+        )
+        assert any("Martin Luther King" in name for name in intervention_names), (
+            f"MLK Day not found in interventions: {intervention_names}"
+        )
+        assert any("Washington" in name or "Presidents" in name for name in intervention_names), (
+            f"Presidents Day not found in interventions: {intervention_names}"
+        )
 
     def test_state_specific_closures_applied_correctly(self, base_model_config):
         """Test that state-specific closures are applied to the correct states.
@@ -695,12 +593,8 @@ class TestSetupInterventionsIntegration:
         az_names = [i["name"] for i in az_models[0].interventions]
 
         # AZ has Fall Break, CA does not
-        assert any(
-            "Fall Break" in name for name in az_names
-        ), f"AZ should have Fall Break but got: {az_names}"
-        assert not any(
-            "Fall Break" in name for name in ca_names
-        ), f"CA should NOT have Fall Break but got: {ca_names}"
+        assert any("Fall Break" in name for name in az_names), f"AZ should have Fall Break but got: {az_names}"
+        assert not any("Fall Break" in name for name in ca_names), f"CA should NOT have Fall Break but got: {ca_names}"
 
         # Both should have common closures
         assert any("Christmas" in name for name in ca_names)

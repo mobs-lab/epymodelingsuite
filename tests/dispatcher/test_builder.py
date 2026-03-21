@@ -29,11 +29,7 @@ from epymodelingsuite.schema.basemodel import (
     Transition,
 )
 from epymodelingsuite.schema.dispatcher import BuilderOutput, SimulationArguments
-
-
-def create_builder_output(**kwargs):
-    """Create a BuilderOutput bypassing Pydantic validation for testing with mocks."""
-    return BuilderOutput.model_construct(**kwargs)
+from tests.conftest import create_builder_output, make_sir_config
 
 
 class TestCountNansAtStart:
@@ -132,38 +128,7 @@ class TestBuildBasemodel:
     @pytest.fixture
     def minimal_basemodel_config(self):
         """Create a minimal BasemodelConfig for testing."""
-        compartments = [
-            Compartment(id="S", label="Susceptible", init="default"),
-            Compartment(id="I", label="Infected", init=10),
-            Compartment(id="R", label="Recovered", init=0),
-        ]
-
-        transitions = [
-            Transition(source="S", target="I", type="mediated", rate="beta", mediator="I"),
-            Transition(source="I", target="R", type="spontaneous", rate="gamma"),
-        ]
-
-        parameters = {
-            "beta": Parameter(type="scalar", value=0.5),
-            "gamma": Parameter(type="scalar", value=0.1),
-        }
-
-        population = Population(name="US-CA", age_groups=["0-4", "5-17", "18-49", "50-64", "65+"])
-        timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 3, 31), delta_t=1.0)
-        simulation = Simulation(n_sims=5, resample_frequency="W-SAT")
-
-        basemodel = BaseEpiModel(
-            name="test_model",
-            compartments=compartments,
-            transitions=transitions,
-            parameters=parameters,
-            population=population,
-            timespan=timespan,
-            simulation=simulation,
-            random_seed=42,
-        )
-
-        return BasemodelConfig(model=basemodel)
+        return BasemodelConfig(model=make_sir_config(end_date=date(2024, 3, 31), n_sims=5, random_seed=42))
 
     def test_returns_builder_output(self, minimal_basemodel_config):
         """Test that build_basemodel returns a BuilderOutput object."""
@@ -287,38 +252,7 @@ class TestDispatchBuilder:
     @pytest.fixture
     def minimal_basemodel_config(self):
         """Create a minimal BasemodelConfig for testing."""
-        compartments = [
-            Compartment(id="S", label="Susceptible", init="default"),
-            Compartment(id="I", label="Infected", init=10),
-            Compartment(id="R", label="Recovered", init=0),
-        ]
-
-        transitions = [
-            Transition(source="S", target="I", type="mediated", rate="beta", mediator="I"),
-            Transition(source="I", target="R", type="spontaneous", rate="gamma"),
-        ]
-
-        parameters = {
-            "beta": Parameter(type="scalar", value=0.5),
-            "gamma": Parameter(type="scalar", value=0.1),
-        }
-
-        population = Population(name="US-CA", age_groups=["0-4", "5-17", "18-49", "50-64", "65+"])
-        timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 3, 31), delta_t=1.0)
-        simulation = Simulation(n_sims=5, resample_frequency="W-SAT")
-
-        basemodel = BaseEpiModel(
-            name="test_model",
-            compartments=compartments,
-            transitions=transitions,
-            parameters=parameters,
-            population=population,
-            timespan=timespan,
-            simulation=simulation,
-            random_seed=42,
-        )
-
-        return BasemodelConfig(model=basemodel)
+        return BasemodelConfig(model=make_sir_config(end_date=date(2024, 3, 31), n_sims=5, random_seed=42))
 
     def test_dispatch_with_basemodel_only_returns_builder_output(self, minimal_basemodel_config):
         """Test that dispatch_builder with only basemodel returns BuilderOutput."""
@@ -368,38 +302,7 @@ class TestBuildSampling:
     @pytest.fixture
     def minimal_basemodel_config(self):
         """Create a minimal BasemodelConfig for testing."""
-        compartments = [
-            Compartment(id="S", label="Susceptible", init="default"),
-            Compartment(id="I", label="Infected", init=10),
-            Compartment(id="R", label="Recovered", init=0),
-        ]
-
-        transitions = [
-            Transition(source="S", target="I", type="mediated", rate="beta", mediator="I"),
-            Transition(source="I", target="R", type="spontaneous", rate="gamma"),
-        ]
-
-        parameters = {
-            "beta": Parameter(type="scalar", value=0.5),
-            "gamma": Parameter(type="scalar", value=0.1),
-        }
-
-        population = Population(name="US-CA", age_groups=["0-4", "5-17", "18-49", "50-64", "65+"])
-        timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 3, 31), delta_t=1.0)
-        simulation = Simulation(n_sims=5, resample_frequency="W-SAT")
-
-        basemodel = BaseEpiModel(
-            name="test_model",
-            compartments=compartments,
-            transitions=transitions,
-            parameters=parameters,
-            population=population,
-            timespan=timespan,
-            simulation=simulation,
-            random_seed=42,
-        )
-
-        return BasemodelConfig(model=basemodel)
+        return BasemodelConfig(model=make_sir_config(end_date=date(2024, 3, 31), n_sims=5, random_seed=42))
 
     @pytest.fixture
     def minimal_sampling_config(self):
@@ -471,38 +374,9 @@ class TestBuildCalibration:
 
     @pytest.fixture
     def minimal_basemodel_config(self):
-        """Create a minimal BasemodelConfig for testing."""
-        compartments = [
-            Compartment(id="S", label="Susceptible", init="default"),
-            Compartment(id="I", label="Infected", init=10),
-            Compartment(id="R", label="Recovered", init=0),
-        ]
-
-        transitions = [
-            Transition(source="S", target="I", type="mediated", rate="beta", mediator="I"),
-            Transition(source="I", target="R", type="spontaneous", rate="gamma"),
-        ]
-
-        parameters = {
-            "beta": Parameter(type="calibrated"),
-            "gamma": Parameter(type="scalar", value=0.1),
-        }
-
-        population = Population(name="US-CA", age_groups=["0-4", "5-17", "18-49", "50-64", "65+"])
-        timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 3, 31), delta_t=1.0)
-        simulation = Simulation(n_sims=5, resample_frequency="W-SAT")
-
-        basemodel = BaseEpiModel(
-            name="test_model",
-            compartments=compartments,
-            transitions=transitions,
-            parameters=parameters,
-            population=population,
-            timespan=timespan,
-            simulation=simulation,
-            random_seed=42,
-        )
-
+        """Create a minimal BasemodelConfig for calibration testing (beta is calibrated)."""
+        basemodel = make_sir_config(end_date=date(2024, 3, 31), n_sims=5, random_seed=42)
+        basemodel.parameters["beta"] = Parameter(type="calibrated")
         return BasemodelConfig(model=basemodel)
 
     @pytest.fixture

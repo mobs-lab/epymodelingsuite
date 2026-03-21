@@ -15,18 +15,7 @@ from epydemix.population import load_epydemix_population
 from epymodelingsuite.builders.interventions import add_parameter_interventions_from_config
 from epymodelingsuite.builders.seasonality import add_seasonality_from_config
 from epymodelingsuite.schema.basemodel import Intervention, Seasonality, Timespan
-
-# =============================================================================
-# Shared helpers
-# =============================================================================
-
-_AGE_GROUP_MAPPING = {
-    "0-4": [str(i) for i in range(5)],
-    "5-17": [str(i) for i in range(5, 18)],
-    "18-49": [str(i) for i in range(18, 50)],
-    "50-64": [str(i) for i in range(50, 65)],
-    "65+": [str(i) for i in range(65, 84)] + ["84+"],
-}
+from tests.conftest import AGE_GROUP_MAPPING
 
 
 def create_sir_model(location: str = "United_States_Massachusetts") -> EpiModel:
@@ -46,7 +35,7 @@ def create_sir_model(location: str = "United_States_Massachusetts") -> EpiModel:
 
     population = load_epydemix_population(
         population_name=location,
-        age_group_mapping=_AGE_GROUP_MAPPING,
+        age_group_mapping=AGE_GROUP_MAPPING,
     )
     model.set_population(population)
 
