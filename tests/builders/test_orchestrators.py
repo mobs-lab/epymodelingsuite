@@ -652,7 +652,7 @@ class TestApplyCalibratedParameters:
         }
 
         with patch("epymodelingsuite.builders.orchestrators.add_model_parameters_from_config") as mock_add:
-            apply_calibrated_parameters(model, params, parameter_config)
+            apply_calibrated_parameters(model, params, parameter_config, compartment_init=None)
 
             # Should only extract beta and gamma (calibrated params)
             mock_add.assert_called_once()
@@ -672,7 +672,7 @@ class TestApplyCalibratedParameters:
         parameter_config = {"alpha": Parameter(type="scalar", value=0.1)}
 
         with patch("epymodelingsuite.builders.orchestrators.add_model_parameters_from_config") as mock_add:
-            apply_calibrated_parameters(model, params, parameter_config)
+            apply_calibrated_parameters(model, params, parameter_config, compartment_init=None)
 
             # Should not call add since no calibrated params
             mock_add.assert_not_called()
@@ -690,11 +690,11 @@ class TestApplyCalibratedParameters:
             patch("epymodelingsuite.builders.orchestrators.add_model_parameters_from_config") as mock_add,
             patch("epymodelingsuite.builders.orchestrators.calculate_parameters_from_config") as mock_calc,
         ):
-            apply_calibrated_parameters(model, params, parameter_config)
+            apply_calibrated_parameters(model, params, parameter_config, compartment_init=None)
 
             # Should call both add and calculate
             mock_add.assert_called_once()
-            mock_calc.assert_called_once_with(model, parameter_config)
+            mock_calc.assert_called_once_with(model=model, parameters=parameter_config, compartment_init=None)
 
 
 class TestApplyVaccinationForSampledStart:
