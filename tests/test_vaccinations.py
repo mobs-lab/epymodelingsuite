@@ -407,9 +407,10 @@ class TestVaccinationIntegration:
         from epydemix.model import EpiModel
 
         from epymodelingsuite.builders.base import set_population_from_config
+        from epymodelingsuite.schema.basemodel import Population
 
         model = EpiModel()
-        set_population_from_config(model, "US-CA", ["0-4", "5-17", "18-49", "50-64", "65+"])
+        set_population_from_config(model, Population(name="US-CA", age_groups=["0-4", "5-17", "18-49", "50-64", "65+"]))
 
         # Add compartments
         model.add_compartments(["S", "S_vax", "I", "R"])
@@ -1713,10 +1714,11 @@ class TestRemoveVaccinationTransitions:
         from epydemix.model import EpiModel
 
         from epymodelingsuite.builders.base import set_population_from_config
+        from epymodelingsuite.schema.basemodel import Population
 
         model = EpiModel()
         # Use complete age groups (must end with '+')
-        set_population_from_config(model, "US-CA", ["0-4", "5-17", "18-49", "50-64", "65+"])
+        set_population_from_config(model, Population(name="US-CA", age_groups=["0-4", "5-17", "18-49", "50-64", "65+"]))
 
         model.add_compartments(["S", "S_vax", "I", "R"])
         model.add_transition("S", "I", params=("beta", "I"), kind="mediated")
@@ -1780,10 +1782,11 @@ class TestRemoveVaccinationTransitions:
         from epydemix.model import EpiModel
 
         from epymodelingsuite.builders.base import set_population_from_config
+        from epymodelingsuite.schema.basemodel import Population
 
         model = EpiModel()
         # Use complete age groups (must end with '+')
-        set_population_from_config(model, "US-CA", ["0-4", "5-17", "18-49", "50-64", "65+"])
+        set_population_from_config(model, Population(name="US-CA", age_groups=["0-4", "5-17", "18-49", "50-64", "65+"]))
 
         model.add_compartments(["S", "S_vax", "I", "R"])
         model.add_transition("S", "I", params=("beta", "I"), kind="mediated")

@@ -8,7 +8,7 @@ from epydemix.model import EpiModel
 
 from epymodelingsuite.builders.base import set_population_from_config
 from epymodelingsuite.builders.seasonality import add_seasonality_from_config
-from epymodelingsuite.schema.basemodel import Seasonality, Timespan
+from epymodelingsuite.schema.basemodel import Population, Seasonality, Timespan
 
 
 class TestAddSeasonalityFromConfig:
@@ -18,7 +18,7 @@ class TestAddSeasonalityFromConfig:
     def model_with_beta(self):
         """Create an EpiModel with population and beta parameter set."""
         model = EpiModel()
-        set_population_from_config(model, "US-CA", ["0-4", "5-17", "18-49", "50-64", "65+"])
+        set_population_from_config(model, Population(name="US-CA", age_groups=["0-4", "5-17", "18-49", "50-64", "65+"]))
         model.add_parameter("beta", 0.5)
         return model
 
@@ -137,7 +137,7 @@ class TestAddSeasonalityFromConfig:
     def test_raises_error_for_undefined_parameter(self, seasonality_config, timespan):
         """Test that error is raised when target parameter doesn't exist."""
         model = EpiModel()
-        set_population_from_config(model, "US-CA", ["0-4", "5-17", "18-49", "50-64", "65+"])
+        set_population_from_config(model, Population(name="US-CA", age_groups=["0-4", "5-17", "18-49", "50-64", "65+"]))
         # Don't add beta parameter
 
         with pytest.raises(ValueError, match="undefined parameter"):
@@ -163,7 +163,7 @@ class TestAddSeasonalityFromConfig:
     def test_with_age_varying_parameter(self, seasonality_config, timespan):
         """Test seasonality applied to an age-varying parameter."""
         model = EpiModel()
-        set_population_from_config(model, "US-CA", ["0-4", "5-17", "18-49", "50-64", "65+"])
+        set_population_from_config(model, Population(name="US-CA", age_groups=["0-4", "5-17", "18-49", "50-64", "65+"]))
 
         # Add age-varying beta (shape: 1 x N_age_groups)
         n_age_groups = 5
@@ -231,7 +231,7 @@ class TestParameterToArrayConversion:
     def model_with_population(self):
         """Create an EpiModel with population set (5 age groups)."""
         model = EpiModel()
-        set_population_from_config(model, "US-CA", ["0-4", "5-17", "18-49", "50-64", "65+"])
+        set_population_from_config(model, Population(name="US-CA", age_groups=["0-4", "5-17", "18-49", "50-64", "65+"]))
         return model
 
     def test_scalar_converts_to_time_varying_array(self, model_with_population, seasonality_config, timespan):
@@ -367,7 +367,7 @@ class TestAddSeasonalityWithSubdailyTimesteps:
     def test_beta_array_length_matches_timestep_count(self, seasonality_config, delta_t, days, expected_T):
         """Verify beta array length matches expected timestep count for various delta_t."""
         model = EpiModel()
-        set_population_from_config(model, "US-CA", ["0-4", "5-17", "18-49", "50-64", "65+"])
+        set_population_from_config(model, Population(name="US-CA", age_groups=["0-4", "5-17", "18-49", "50-64", "65+"]))
         model.add_parameter("beta", 0.5)
 
         start = date(2025, 12, 1)
@@ -386,7 +386,9 @@ class TestAddSeasonalityWithSubdailyTimesteps:
 
         # Model with dt=1.0
         model_dt10 = EpiModel()
-        set_population_from_config(model_dt10, "US-CA", ["0-4", "5-17", "18-49", "50-64", "65+"])
+        set_population_from_config(
+            model_dt10, Population(name="US-CA", age_groups=["0-4", "5-17", "18-49", "50-64", "65+"])
+        )
         model_dt10.add_parameter("beta", 0.5)
         timespan_dt10 = Timespan(start_date=start, end_date=end, delta_t=1.0)
         add_seasonality_from_config(model_dt10, seasonality_config, timespan_dt10)
@@ -394,7 +396,9 @@ class TestAddSeasonalityWithSubdailyTimesteps:
 
         # Model with dt=0.5
         model_dt05 = EpiModel()
-        set_population_from_config(model_dt05, "US-CA", ["0-4", "5-17", "18-49", "50-64", "65+"])
+        set_population_from_config(
+            model_dt05, Population(name="US-CA", age_groups=["0-4", "5-17", "18-49", "50-64", "65+"])
+        )
         model_dt05.add_parameter("beta", 0.5)
         timespan_dt05 = Timespan(start_date=start, end_date=end, delta_t=0.5)
         add_seasonality_from_config(model_dt05, seasonality_config, timespan_dt05)
@@ -417,7 +421,7 @@ class TestAddSeasonalityWithSubdailyTimesteps:
         delta_t = 0.5
 
         model = EpiModel()
-        set_population_from_config(model, "US-CA", ["0-4", "5-17", "18-49", "50-64", "65+"])
+        set_population_from_config(model, Population(name="US-CA", age_groups=["0-4", "5-17", "18-49", "50-64", "65+"]))
         age_varying_beta = np.array([[0.3, 0.4, 0.5, 0.4, 0.3]])
         model.add_parameter("beta", age_varying_beta)
 
