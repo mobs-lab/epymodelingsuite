@@ -400,7 +400,7 @@ class TestBuildCalibration:
             observed_data = pd.DataFrame(
                 {
                     "date": pd.date_range(start="2024-01-01", periods=12, freq="W-SAT"),
-                    "location": ["United_States_California"] * 12,
+                    "location": ["US-CA"] * 12,
                     "value": np.random.randint(10, 100, size=12),
                 }
             )
@@ -593,7 +593,7 @@ class TestBuildCalibration:
             observed_data = pd.DataFrame(
                 {
                     "date": pd.date_range(start="2024-01-01", periods=12, freq="W-SAT"),
-                    "location": ["United_States_California"] * 12,
+                    "location": ["US-CA"] * 12,
                     "value": np.random.randint(10, 100, size=12),
                 }
             )
