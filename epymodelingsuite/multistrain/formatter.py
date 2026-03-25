@@ -1,10 +1,8 @@
-import os
-import numpy as np
 import pandas as pd
+
 from ..schema.output import (
-    get_flusight_quantiles,
-    get_flusight_horizons,
     get_flusight_categorical_horizons,
+    get_flusight_quantiles,
 )
 
 # fmt: off
@@ -324,9 +322,9 @@ def create_ed_submission(
         df=trajectories_df, reference_date=reference_date, horizons=horizons, value_col=value_col
     )
 
-    submission = quantile_df.sort_values(["location", "target", "horizon", "output_type", "output_type_id"]).reset_index(
-        drop=True
-    )
+    submission = quantile_df.sort_values(
+        ["location", "target", "horizon", "output_type", "output_type_id"]
+    ).reset_index(drop=True)
 
     if output_path:
         if output_path.endswith(".parquet"):
@@ -397,9 +395,9 @@ def create_metro_submission(
         df=trajectories_df, reference_date=reference_date, quantiles=quantiles, horizons=horizons, value_col=value_col
     )
 
-    submission = quantile_df.sort_values(["location", "target", "horizon", "output_type", "output_type_id"]).reset_index(
-        drop=True
-    )
+    submission = quantile_df.sort_values(
+        ["location", "target", "horizon", "output_type", "output_type_id"]
+    ).reset_index(drop=True)
 
     if output_path:
         if output_path.endswith(".parquet"):
@@ -414,7 +412,11 @@ def create_metro_submission(
 
 
 def create_metro_quantile_submission(
-    df: pd.DataFrame, reference_date: str, quantiles: list[float], horizons: list = None, value_col: str = "target_total"
+    df: pd.DataFrame,
+    reference_date: str,
+    quantiles: list[float],
+    horizons: list = None,
+    value_col: str = "target_total",
 ) -> pd.DataFrame:
     """Create quantile forecasts in Metrocast submission format."""
     if horizons is None:
