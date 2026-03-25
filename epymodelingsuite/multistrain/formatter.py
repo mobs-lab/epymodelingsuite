@@ -1,10 +1,13 @@
+import os
+import numpy as np
 import pandas as pd
+from ..schema.output import (
+    get_flusight_quantiles,
+    get_flusight_horizons,
+    get_flusight_categorical_horizons,
+)
 
 # fmt: off
-# FluSight required quantiles
-FLUSIGHT_QUANTILES = [0.01, 0.025, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4,
-                      0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9,
-                      0.95, 0.975, 0.99]
 
 MIN_COUNT_CHANGE = 10
 RATE_TREND_CATEGORIES = ["large_decrease", "decrease", "stable", "increase", "large_increase"]
@@ -126,38 +129,12 @@ def classify_rate_trend(count_change: float, population: int, horizon: int) -> s
     return "decrease"
 
 
-def compute_quantiles(
-    df: pd.DataFrame, quantiles: list = None, value_col: str = "hospitalizations_total"
-) -> pd.DataFrame:
+def compute_quantiles(df: pd.DataFrame, quantiles: list = None, value_col: str = "target_total") -> pd.DataFrame:
     """Compute quantiles from sampled trajectories."""
     if quantiles is None:
-        quantiles = [
-            0.01,
-            0.025,
-            0.05,
-            0.1,
-            0.15,
-            0.2,
-            0.25,
-            0.3,
-            0.35,
-            0.4,
-            0.45,
-            0.5,
-            0.55,
-            0.6,
-            0.65,
-            0.7,
-            0.75,
-            0.8,
-            0.85,
-            0.9,
-            0.95,
-            0.975,
-            0.99,
-        ]
+        quantiles = get_flusight_quantiles()
 
-    result = df.groupby(["population", "date"])[value_col].quantile(quantiles).unstack()
+    result = df.groupby(["location", "date"])[value_col].quantile(quantiles).unstack()
     result.columns = [f"q{int(q * 1000):03d}" for q in quantiles]
     return result.reset_index()
 
@@ -165,7 +142,7 @@ def compute_quantiles(
 def add_state_abbreviations(df: pd.DataFrame) -> pd.DataFrame:
     """Add state abbreviation column based on population name."""
     df = df.copy()
-    df["abbreviation"] = df["population"].map(STATE_ABBREV)
+    df["abbreviation"] = df["location"].map(STATE_ABBREV)
     return df
 
 
@@ -174,14 +151,14 @@ def compute_rate_trend_categories(
     reference_date: str,
     surveillance_df: pd.DataFrame,
     horizons: list = None,
-    value_col: str = "hospitalizations_total",
+    value_col: str = "target_total",
     surveillance_date_col: str = "date",
     surveillance_value_col: str = "hospitalizations",
     surveillance_location_col: str = "abbreviation",
 ) -> pd.DataFrame:
     """Compute rate trend category for each trajectory at each horizon."""
     if horizons is None:
-        horizons = [0, 1, 2, 3]
+        horizons = get_flusight_categorical_horizons()
 
     df = df.copy()
     df["date"] = pd.to_datetime(df["date"])
@@ -193,9 +170,9 @@ def compute_rate_trend_categories(
 
     results = []
 
-    for pop in df["population"].unique():
+    for pop in df["location"].unique():
         abbrev = STATE_ABBREV.get(pop, pop)
-        pop_data = df[df["population"] == pop]
+        pop_data = df[df["location"] == pop]
         population_size = POPULATION.get(abbrev, POPULATION.get("US"))
 
         surv_pop = surv[surv[surveillance_location_col] == abbrev]
@@ -263,7 +240,7 @@ def create_flusight_submission(
     pmf_df: pd.DataFrame,
     reference_date: str,
     horizons: list = None,
-    value_col: str = "hospitalizations_total",
+    value_col: str = "target_total",
     output_path: str = None,
 ) -> pd.DataFrame:
     """Create complete FluSight submission file combining quantiles and PMF."""
@@ -292,11 +269,12 @@ def create_flusight_submission(
 
 
 def create_quantile_submission(
-    df: pd.DataFrame, reference_date: str, horizons: list = None, value_col: str = "hospitalizations_total"
+    df: pd.DataFrame, reference_date: str, horizons: list = None, value_col: str = "target_total"
 ) -> pd.DataFrame:
     """Create quantile forecasts in FluSight submission format."""
     if horizons is None:
         horizons = [-1, 0, 1, 2, 3]
+    flusight_quantiles = get_flusight_quantiles()
 
     df = df.copy()
     df["date"] = pd.to_datetime(df["date"])
@@ -304,10 +282,10 @@ def create_quantile_submission(
 
     results = []
 
-    for pop in df["population"].unique():
+    for pop in df["location"].unique():
         abbrev = STATE_ABBREV.get(pop, pop)
         location = LOCATION_CODES.get(abbrev, abbrev)
-        pop_data = df[df["population"] == pop]
+        pop_data = df[df["location"] == pop]
 
         for horizon in horizons:
             target_end_date = reference_date_dt + pd.Timedelta(weeks=horizon)
@@ -316,7 +294,7 @@ def create_quantile_submission(
             if len(target_data) == 0:
                 continue
 
-            for q in FLUSIGHT_QUANTILES:
+            for q in flusight_quantiles:
                 value = target_data.quantile(q)
                 results.append(
                     {
@@ -328,6 +306,149 @@ def create_quantile_submission(
                         "output_type": "quantile",
                         "output_type_id": str(q),
                         "value": round(value, 0),
+                    }
+                )
+
+    return pd.DataFrame(results)
+
+
+def create_ed_submission(
+    trajectories_df: pd.DataFrame,
+    reference_date: str,
+    horizons: list = None,
+    value_col: str = "target_total",
+    output_path: str = None,
+) -> pd.DataFrame:
+    """Create complete FluSight submission file combining quantiles and PMF."""
+    quantile_df = create_ed_quantile_submission(
+        df=trajectories_df, reference_date=reference_date, horizons=horizons, value_col=value_col
+    )
+
+    submission = quantile_df.sort_values(["location", "target", "horizon", "output_type", "output_type_id"]).reset_index(
+        drop=True
+    )
+
+    if output_path:
+        if output_path.endswith(".parquet"):
+            submission.to_parquet(output_path, index=False)
+        elif output_path.endswith(".gz"):
+            submission.to_csv(output_path, index=False, compression="gzip")
+        else:
+            submission.to_csv(output_path, index=False)
+        print(f"Saved submission to: {output_path}")
+
+    return submission
+
+
+def create_ed_quantile_submission(
+    df: pd.DataFrame, reference_date: str, horizons: list = None, value_col: str = "target_total"
+) -> pd.DataFrame:
+    """Create quantile forecasts in FluSight submission format."""
+    if horizons is None:
+        horizons = [-1, 0, 1, 2, 3]
+    flusight_quantiles = get_flusight_quantiles()
+
+    df = df.copy()
+    df["date"] = pd.to_datetime(df["date"])
+    reference_date_dt = pd.to_datetime(reference_date)
+
+    results = []
+
+    for pop in df["location"].unique():
+        abbrev = STATE_ABBREV.get(pop, pop)
+        location = LOCATION_CODES.get(abbrev, abbrev)
+        pop_data = df[df["location"] == pop]
+
+        for horizon in horizons:
+            target_end_date = reference_date_dt + pd.Timedelta(weeks=horizon)
+            target_data = pop_data[pop_data["date"] == target_end_date][value_col]
+
+            if len(target_data) == 0:
+                continue
+
+            for q in flusight_quantiles:
+                value = target_data.quantile(q)
+                results.append(
+                    {
+                        "reference_date": reference_date,
+                        "horizon": horizon,
+                        "target_end_date": target_end_date.strftime("%Y-%m-%d"),
+                        "location": location,
+                        "target": "wk inc flu prop ed visits",
+                        "output_type": "quantile",
+                        "output_type_id": str(q),
+                        "value": round(value, 3),
+                    }
+                )
+
+    return pd.DataFrame(results)
+
+
+def create_metro_submission(
+    trajectories_df: pd.DataFrame,
+    reference_date: str,
+    quantiles: list[float],
+    horizons: list = None,
+    value_col: str = "target_total",
+    output_path: str = None,
+) -> pd.DataFrame:
+    """Create complete FluSight submission file combining quantiles and PMF."""
+    quantile_df = create_metro_quantile_submission(
+        df=trajectories_df, reference_date=reference_date, quantiles=quantiles, horizons=horizons, value_col=value_col
+    )
+
+    submission = quantile_df.sort_values(["location", "target", "horizon", "output_type", "output_type_id"]).reset_index(
+        drop=True
+    )
+
+    if output_path:
+        if output_path.endswith(".parquet"):
+            submission.to_parquet(output_path, index=False)
+        elif output_path.endswith(".gz"):
+            submission.to_csv(output_path, index=False, compression="gzip")
+        else:
+            submission.to_csv(output_path, index=False)
+        print(f"Saved submission to: {output_path}")
+
+    return submission
+
+
+def create_metro_quantile_submission(
+    df: pd.DataFrame, reference_date: str, quantiles: list[float], horizons: list = None, value_col: str = "target_total"
+) -> pd.DataFrame:
+    """Create quantile forecasts in Metrocast submission format."""
+    if horizons is None:
+        horizons = [0, 1, 2, 3]
+
+    df = df.copy()
+    df["date"] = pd.to_datetime(df["date"])
+    reference_date_dt = pd.to_datetime(reference_date)
+
+    results = []
+
+    for pop in df["location"].unique():
+        location = pop.replace("metrocast_location_", "")
+        pop_data = df[df["location"] == pop]
+
+        for horizon in horizons:
+            target_end_date = reference_date_dt + pd.Timedelta(weeks=horizon)
+            target_data = pop_data[pop_data["date"] == target_end_date][value_col]
+
+            if len(target_data) == 0:
+                continue
+
+            for q in quantiles:
+                value = target_data.quantile(q)
+                results.append(
+                    {
+                        "reference_date": reference_date,
+                        "horizon": horizon,
+                        "target_end_date": target_end_date.strftime("%Y-%m-%d"),
+                        "location": location,
+                        "target": "Flu ED visits pct",
+                        "output_type": "quantile",
+                        "output_type_id": str(q),
+                        "value": round(value, 3),
                     }
                 )
 
