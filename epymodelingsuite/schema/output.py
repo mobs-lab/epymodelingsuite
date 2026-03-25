@@ -97,6 +97,15 @@ def get_flusight_quantiles() -> list[float]:
         0.99,
     ]
 
+    
+def get_flusight_horizons() -> range:
+    """
+    Return the forecast horizons for FluSight submissions.
+
+    Metrocast uses horizons 0-3, while standard FluSight uses -1 to 3.
+    """
+    return range(-1, 4)
+    
 
 def get_metrocast_quantiles() -> list[float]:
     """
