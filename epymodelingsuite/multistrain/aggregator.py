@@ -1,5 +1,6 @@
 import logging
 import os
+import tempfile
 from tempfile import TemporaryDirectory
 
 import numpy as np
@@ -44,12 +45,50 @@ def validate_strains(
         )
 
 
+def pull_single_strain_submission(source_location: str, fname: str) -> pd.DataFrame:
+    """
+    Pull single-strain submission files from Google Cloud Storage.
+    Requires cloud authorization and gcloud.
+
+    Downloads e.g. output_hub_formatted.csv.gz files (NOT runner artifacts).
+
+    Parameters
+    ----------
+    source_location: str
+        Location of folder in bucket containing desiredfile
+    fname: str
+        Name of desired file
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with submission file
+    """
+    # Download pipeline submission file
+    submission = pd.DataFrame()
+    with tempfile.TemporaryDirectory() as tempdir:
+        source_location = f"{source_location}/{fname}"
+        target_location = f"{tempdir}/{fname}"
+
+        command = f"gcloud storage cp {source_location} {target_location}"
+        exit_code = os.system(command)
+
+        if exit_code == 0:
+            print(f"Downloaded: {fname}")
+            # Load the downloaded data
+            submission = pd.read_csv(target_location, dtype={"output_type_id": str})
+        else:
+            raise ValueError(f"Failed to download: {source_location}\nExit code: {exit_code}")
+
+    return submission
+
+
 def pull_trajectory_projections(
     config: AggregationConfiguration, tempdir: TemporaryDirectory
 ) -> dict[str, pd.DataFrame]:
     """
     Pull trajectory projection files from Google Cloud Storage.
-    Requires cloud authorization and gsutil.
+    Requires cloud authorization and gcloud.
 
     Downloads e.g. trajectories_projection_transitions.csv.gz files (NOT runner artifacts).
 
