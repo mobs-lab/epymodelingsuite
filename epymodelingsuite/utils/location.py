@@ -419,4 +419,6 @@ def parse_population_name(population_name: str) -> tuple[str, str]:
     if population_name.startswith(METROCAST_PREFIX):
         location_name = population_name[len(METROCAST_PREFIX) :]
         return location_name, "metrocast_location"
+    if population_name in get_metrocast_locations()["metrocast_location_id"].values:
+        return population_name, "metrocast_location"
     return population_name, "iso"
