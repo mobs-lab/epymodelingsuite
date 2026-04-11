@@ -1,0 +1,53 @@
+location_name,baseline,abbreviation,epydemix_population
+Alabama,21.08333333333333,AL,United_States_Alabama
+Alaska,3.4166666666666665,AK,United_States_Alaska
+Arizona,13.0,AZ,United_States_Arizona
+Arkansas,3.25,AR,United_States_Arkansas
+California,81.16666666666667,CA,United_States_California
+Colorado,3.8333333333333335,CO,United_States_Colorado
+Connecticut,6.5,CT,United_States_Connecticut
+Delaware,0.5,DE,United_States_Delaware
+District of Columbia,1.0833333333333333,DC,United_States_District_of_Columbia
+Florida,156.5,FL,United_States_Florida
+Georgia,18.666666666666668,GA,United_States_Georgia
+Hawaii,3.5,HI,United_States_Hawaii
+Idaho,1.5833333333333333,ID,United_States_Idaho
+Illinois,10.333333333333334,IL,United_States_Illinois
+Indiana,10.083333333333334,IN,United_States_Indiana
+Iowa,2.0,IA,United_States_Iowa
+Kansas,3.583333333333333,KS,United_States_Kansas
+Kentucky,10.166666666666666,KY,United_States_Kentucky
+Louisiana,23.75,LA,United_States_Louisiana
+Maine,0.6666666666666666,ME,United_States_Maine
+Maryland,6.0,MD,United_States_Maryland
+Massachusetts,9.75,MA,United_States_Massachusetts
+Michigan,20.916666666666668,MI,United_States_Michigan
+Minnesota,2.6666666666666665,MN,United_States_Minnesota
+Mississippi,13.416666666666666,MS,United_States_Mississippi
+Missouri,11.583333333333334,MO,United_States_Missouri
+Montana,1.5833333333333333,MT,United_States_Montana
+Nebraska,2.1666666666666665,NE,United_States_Nebraska
+Nevada,6.416666666666667,NV,United_States_Nevada
+New Hampshire,1.8333333333333333,NH,United_States_New_Hampshire
+New Jersey,11.833333333333334,NJ,United_States_New_Jersey
+New Mexico,1.5833333333333333,NM,United_States_New_Mexico
+New York,17.25,NY,United_States_New_York
+North Carolina,13.166666666666666,NC,United_States_North_Carolina
+North Dakota,1.8333333333333333,ND,United_States_North_Dakota
+Ohio,12.0,OH,United_States_Ohio
+Oklahoma,8.583333333333334,OK,United_States_Oklahoma
+Oregon,3.6666666666666665,OR,United_States_Oregon
+Pennsylvania,105.75,PA,United_States_Pennsylvania
+Rhode Island,1.25,RI,United_States_Rhode_Island
+South Carolina,8.583333333333334,SC,United_States_South_Carolina
+South Dakota,1.6666666666666667,SD,United_States_South_Dakota
+Tennessee,29.166666666666668,TN,United_States_Tennessee
+Texas,100.5,TX,United_States_Texas
+US,889.0833333333334,US,United_States
+Utah,3.1666666666666665,UT,United_States_Utah
+Vermont,0.1666666666666666,VT,United_States_Vermont
+Virginia,10.75,VA,United_States_Virginia
+Washington,7.75,WA,United_States_Washington
+West Virginia,0.5,WV,United_States_West_Virginia
+Wisconsin,5.25,WI,United_States_Wisconsin
+Wyoming,0.75,WY,United_States_Wyoming
