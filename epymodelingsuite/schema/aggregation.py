@@ -27,7 +27,7 @@ class SourceExperiment(BaseModel):
     date_column: str = Field(default="date", description="")
     location_column: str = Field(default="population", description="")
     sim_id: str = Field(default="sim_id", description="")
-    run_id: str = Field(default="latest", description="Run ID, default 'latest'.")  # Not used yet
+    run_id: str = Field(default="latest", description="Run ID, set to a run id from gcloud, or 'latest'.")  # Not used yet
     weight: float = Field(default=1.0, description="")  # For weighted aggregation (future)
 
 

@@ -1,5 +1,6 @@
 import logging
 import os
+import subprocess
 import tempfile
 from tempfile import TemporaryDirectory
 
@@ -108,10 +109,21 @@ def pull_trajectory_projections(
 
     for source in config.sources:
         # Download trajectory projections (not runner artifacts)
-        # TODO: use source.run_id
-        source_location = f"{config.bucket}/{source.experiment}/*/outputs/*/{source.trajectory_file}"
+        if source.run_id == "latest":
+            command = f"gcloud storage ls '{config.bucket}/{source.experiment}'"
+            output = subprocess.run(["gcloud","storage","ls",f"{config.bucket}/{source.experiment}"], 
+                                    capture_output=True, text=True)
+            if output.returncode == 0:
+                assert type(output.stdout) is str
+                run_id = output.stdout.split("/")[-2]
+            else:
+                raise ValueError(f"Failed to find runs for experiment {source.experiment}")
+        else:
+            run_id = source.run_id
+        source_location = f"{config.bucket}/{source.experiment}/{run_id}/outputs/*/{source.trajectory_file}"
         target_location = f"{tempdir}/{source.strain}_{source.trajectory_file}"
 
+        
         command = f"gcloud storage cp -r {source_location} {target_location}"
         exit_code = os.system(command)
 
@@ -121,7 +133,12 @@ def pull_trajectory_projections(
             # trajectory_file = f"{target_location}/{source.trajectory_file}"
             trajectories[source.strain] = pd.read_csv(target_location)  # trajectory_file)
         else:
-            raise ValueError(f"Failed to download: {source.experiment}\nExit code: {exit_code}")
+            raise ValueError(
+                f"Failed to download: {source.experiment}\n\
+                    Exit code: {exit_code}\n\
+                    Source: {source_location}\n\
+                    Target: {target_location}"
+            )
 
     return trajectories
 
