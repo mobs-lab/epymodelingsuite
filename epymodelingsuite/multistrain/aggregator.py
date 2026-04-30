@@ -68,7 +68,16 @@ def pull_single_strain_submission(source_location: str, fname: str) -> pd.DataFr
     # Download pipeline submission file
     submission = pd.DataFrame()
     with tempfile.TemporaryDirectory() as tempdir:
-        source_location = f"{source_location}/{fname}"
+        # Retrieve latest run
+        command = f"gcloud storage ls '{source_location}'"
+        output = subprocess.run(["gcloud","storage","ls",f"{source_location}"], 
+                                capture_output=True, text=True)
+        if output.returncode == 0:
+            assert type(output.stdout) is str
+            run_id = output.stdout.split("/")[-2]
+        else:
+            raise ValueError(f"Failed to find runs for experiment {source_location}")
+        source_location = f"{source_location}/{run_id}/outputs/*/{fname}"
         target_location = f"{tempdir}/{fname}"
 
         command = f"gcloud storage cp {source_location} {target_location}"
@@ -110,7 +119,6 @@ def pull_trajectory_projections(
     for source in config.sources:
         # Download trajectory projections (not runner artifacts)
         if source.run_id == "latest":
-            command = f"gcloud storage ls '{config.bucket}/{source.experiment}'"
             output = subprocess.run(["gcloud","storage","ls",f"{config.bucket}/{source.experiment}"], 
                                     capture_output=True, text=True)
             if output.returncode == 0:
