@@ -12,7 +12,13 @@ logger = logging.getLogger(__name__)
 
 def _ensure_parameters_present(base_params: set, modelset_params: set) -> None:
     """
-    Validate that all modelset parameters exist in the base model.
+    Warn if modelset parameters are not declared in the base model.
+
+    Modelset parameters may be referenced only inside user-defined functions
+    (custom distance functions, post-hoc transformations, calculated parameter
+    expressions) and thus need not appear in `basemodel.parameters`. We emit a
+    warning rather than raising so legitimate usages are not blocked, while
+    typos are still surfaced.
 
     Parameters
     ----------
@@ -20,16 +26,14 @@ def _ensure_parameters_present(base_params: set, modelset_params: set) -> None:
         Parameter names available in the base model.
     modelset_params : set
         Parameter names referenced by the modelset.
-
-    Raises
-    ------
-    ValueError
-        Raised when at least one modelset parameter is missing from the base model.
     """
     missing = modelset_params - base_params
     if missing:
-        err_msg = f"Parameters in modelset not defined in base model: {sorted(missing)}"
-        raise ValueError(err_msg)
+        logger.warning(
+            f"Parameters in modelset not defined in base model: {sorted(missing)}. "
+            "If these are referenced only inside user-defined functions this is fine; "
+            "otherwise check for a typo."
+        )
 
 
 def _ensure_compartments_valid(base_compartments: set, sampling: SamplingConfiguration | None) -> None:

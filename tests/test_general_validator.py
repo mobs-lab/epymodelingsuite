@@ -35,11 +35,12 @@ class TestEnsureParametersPresent:
         modelset_params = {"a", "b"}
         _ensure_parameters_present(base_params, modelset_params)  # Should not raise
 
-    def test_missing_params(self):
+    def test_missing_params_warns(self, caplog):
         base_params = {"a", "b"}
         modelset_params = {"a", "c"}
-        with pytest.raises(ValueError, match="Parameters in modelset not defined in base model: \\['c'\\]"):
+        with caplog.at_level("WARNING"):
             _ensure_parameters_present(base_params, modelset_params)
+        assert "Parameters in modelset not defined in base model: ['c']" in caplog.text
 
 
 class TestEnsureCompartmentsValid:
@@ -211,11 +212,12 @@ class TestValidateModelsetConsistency:
         with pytest.raises(ValueError, match="Modelset must provide a 'sampling' or 'calibration' section"):
             validate_cross_config_consistency(base_config, modelset_config)
 
-    def test_missing_parameters(self):
+    def test_missing_parameters_warns(self, caplog):
         base_config = self._create_base_config()
         sampling_config = self._create_sampling_config(sampling_params={"delta": object()})
-        with pytest.raises(ValueError, match="Parameters in modelset not defined in base model"):
+        with caplog.at_level("WARNING"):
             validate_cross_config_consistency(base_config, sampling_config)
+        assert "Parameters in modelset not defined in base model" in caplog.text
 
     def test_invalid_compartments(self):
         base_config = self._create_base_config()
