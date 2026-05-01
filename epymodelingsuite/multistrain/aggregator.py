@@ -125,7 +125,14 @@ def pull_trajectory_projections(
                 assert type(output.stdout) is str
                 run_id = output.stdout.split("/")[-2]
             else:
-                raise ValueError(f"Failed to find runs for experiment {source.experiment}")
+                raise ValueError(
+                    f"Failed to find runs for experiment: {source.experiment}\n\
+                        Exit code: {output.returncode}\n\
+                        Stdout: {output.stdout}\n\
+                        Stderr: {output.stderr} "
+                )
+        elif source.run_id == "any":
+            run_id = "*"
         else:
             run_id = source.run_id
         source_location = f"{config.bucket}/{source.experiment}/{run_id}/outputs/*/{source.trajectory_file}"
@@ -141,8 +148,12 @@ def pull_trajectory_projections(
             # trajectory_file = f"{target_location}/{source.trajectory_file}"
             trajectories[source.strain] = pd.read_csv(target_location)  # trajectory_file)
         else:
+            if source.run_id == "any":
+                prepend_err = f"Warning: setting source.run_id to 'any' will\
+                fail if more than one matching trajectory file exists.\n"
+                logger.warn(prepend_err)
             raise ValueError(
-                f"Failed to download: {source.experiment}\n\
+                f"{preprend_err}Failed to download: {source.experiment}\n\
                     Exit code: {exit_code}\n\
                     Source: {source_location}\n\
                     Target: {target_location}"

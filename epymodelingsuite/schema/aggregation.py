@@ -20,15 +20,14 @@ class SourceExperiment(BaseModel):
     Used to locate sets of CalibrationOutput objects for aggregation.
     """
 
-    strain: str = Field(description="")
-    experiment: str = Field(description="")
-    trajectory_file: str = Field(description="")
-    target_column: str = Field(default="hospitalizations", description="")
-    date_column: str = Field(default="date", description="")
-    location_column: str = Field(default="population", description="")
-    sim_id: str = Field(default="sim_id", description="")
-    run_id: str = Field(default="latest", description="Run ID, set to a run id from gcloud, or 'latest'.")  # Not used yet
-    weight: float = Field(default=1.0, description="")  # For weighted aggregation (future)
+    strain: str = Field(description="Label for strain.")
+    experiment: str = Field(description="Name of experiment in cloud bucket.")
+    run_id: str = Field(default="latest", description="Run ID, set to a value from the google cloud bucket, or 'any' (fails if more than one matching trajectory file exists), or 'latest' (default).")
+    trajectory_file: str = Field(description="Name of trajectory file from experiment.")
+    target_column: str = Field(default="hospitalizations", description="Name of column in trajectory file with target values.")
+    date_column: str = Field(default="date", description="Name of column in trajectory file with date.")
+    location_column: str = Field(default="population", description="Name of column in trajectory file with location/population.")
+    sim_id: str = Field(default="sim_id", description="Name of column in trajectory file with simulation ID.")
 
 
 class SamplingStrategyEnum(str, Enum):
@@ -45,9 +44,6 @@ class AggregationStrategyEnum(str, Enum):
     """
 
     sum = "sum"
-    weighted_sum = "weighted_sum"
-    bootstrap = "bootstrap"
-    correlated = "correlated"
 
 
 class SamplingConfiguration(BaseModel):
