@@ -102,14 +102,13 @@ class TestEnsureTransitionsValid:
         calibration = SimpleNamespace(comparison=[comparison])
         _ensure_transitions_valid(base_transitions, calibration)
 
-    def test_invalid_transitions(self):
+    def test_invalid_transitions_warns(self, caplog):
         base_transitions = {"inf", "rec"}
         comparison = SimpleNamespace(simulation=["inf", "death"])
         calibration = SimpleNamespace(comparison=[comparison])
-        with pytest.raises(
-            ValueError, match="Transitions in calibration comparison not defined in base model: \\['death'\\]"
-        ):
+        with caplog.at_level("WARNING"):
             _ensure_transitions_valid(base_transitions, calibration)
+        assert "Transitions in calibration comparison not defined in base model: ['death']" in caplog.text
 
 
 class TestValidateModelsetConsistency:
@@ -231,12 +230,13 @@ class TestValidateModelsetConsistency:
         with pytest.raises(ValueError, match="Populations in modelset not matching base model"):
             validate_cross_config_consistency(base_config, sampling_config)
 
-    def test_invalid_transitions_in_calibration(self):
+    def test_invalid_transitions_in_calibration_warns(self, caplog):
         base_config = self._create_base_config()
         comparison = SimpleNamespace(simulation=["death"])
         calibration_config = self._create_calibration_config(comparisons=[comparison])
-        with pytest.raises(ValueError, match="Transitions in calibration comparison not defined in base model"):
+        with caplog.at_level("WARNING"):
             validate_cross_config_consistency(base_config, calibration_config)
+        assert "Transitions in calibration comparison not defined in base model" in caplog.text
 
     def test_with_valid_output_config(self):
         base_config = self._create_base_config()

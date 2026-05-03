@@ -17,7 +17,7 @@ def _ensure_parameters_present(base_params: set, modelset_params: set) -> None:
     Modelset parameters may be referenced only inside user-defined functions
     (custom distance functions, post-hoc transformations, calculated parameter
     expressions) and thus need not appear in `basemodel.parameters`. We emit a
-    warning rather than raising so legitimate usages are not blocked, while
+    warning rather than raising so legitimate usages are not blocked.
     typos are still surfaced.
 
     Parameters
@@ -86,7 +86,11 @@ def _ensure_populations_valid(base_population_name: str | None, modelset_populat
 
 def _ensure_transitions_valid(base_transitions: set, calibration: CalibrationConfiguration | None) -> None:
     """
-    Validate that calibration comparisons reference known transitions.
+    Warn if calibration comparison transitions are not declared in the base model.
+
+    Comparison transitions may be UDF-computed (e.g. derived signals like `ed_signal`)
+    rather than direct basemodel transitions. We warn rather than raise so legitimate
+    UDF transitions are not blocked, while typos are still surfaced.
 
     Parameters
     ----------
@@ -94,19 +98,16 @@ def _ensure_transitions_valid(base_transitions: set, calibration: CalibrationCon
         Transition identifiers defined in the base model.
     calibration : CalibrationConfiguration or None
         Calibration section of the modelset, if present.
-
-    Raises
-    ------
-    ValueError
-        Raised when calibration comparisons contain unknown transitions.
     """
     if not calibration:
         return
     for comparison in calibration.comparison or []:
         missing = set(comparison.simulation) - base_transitions
         if missing:
-            err_msg = f"Transitions in calibration comparison not defined in base model: {sorted(missing)}"
-            raise ValueError(err_msg)
+            logger.warning(
+                f"Transitions in calibration comparison not defined in base model: {sorted(missing)}. "
+                "If these are UDF-computed transitions this is fine; otherwise check for a typo."
+            )
 
 
 def _validate_compartment_list(names: list[str], base_compartments: set, context: str) -> None:
