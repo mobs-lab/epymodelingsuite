@@ -554,3 +554,260 @@ class TestMakeSimulateWrapper:
                 observed_data=observed_data_with_duplicates,
                 intervention_types=[],
             )
+
+    def test_wrapper_with_post_hoc_transformation(self, base_model_config, mock_calibration, data_state):
+        """
+        Test that wrapper correctly applies post-hoc transformation function.
+
+        Tests:
+        - Post-hoc transformation is applied to simulation results
+        - Transformation function receives Trajectory object
+        - Transformation output is used in final results
+        - Works in both calibration and projection modes
+        """
+        models, _ = create_model_collection(base_model_config, None)
+        model = models[0]
+
+        # Create a simple transformation function that adds a new compartment
+        def test_transformation(trajectory):
+            """Add a new compartment 'I_plus_R' that sums I and R compartments."""
+            import copy
+
+            traj = copy.deepcopy(trajectory)
+            # Sum all I compartments with all R compartments (across age groups)
+            i_keys = [k for k in traj.compartments.keys() if k.startswith("I_")]
+            r_keys = [k for k in traj.compartments.keys() if k.startswith("R_")]
+
+            if i_keys and r_keys:
+                i_total = sum(traj.compartments[k] for k in i_keys)
+                r_total = sum(traj.compartments[k] for k in r_keys)
+                traj.compartments["I_plus_R_total"] = i_total + r_total
+
+            return traj
+
+        wrapper = make_simulate_wrapper(
+            basemodel=base_model_config,
+            calibration=mock_calibration,
+            observed_data=data_state,
+            intervention_types=[],
+            post_hoc_transformation=test_transformation,
+        )
+
+        # Test in projection mode
+        params_projection = {
+            "epimodel": model,
+            "end_date": date(2024, 3, 31),
+            "projection": True,
+            "beta": 0.5,
+            "gamma": 0.1,
+        }
+        result_projection = wrapper(params_projection)
+
+        # Verify projection mode results include transformed compartment
+        if result_projection:  # If simulation succeeded
+            assert "I_plus_R_total" in result_projection
+            assert isinstance(result_projection["I_plus_R_total"], np.ndarray)
+
+        # Test in calibration mode
+        params_calibration = {
+            "epimodel": model,
+            "end_date": date(2024, 3, 31),
+            "projection": False,
+            "beta": 0.5,
+            "gamma": 0.1,
+        }
+        result_calibration = wrapper(params_calibration)
+
+        # Verify calibration mode still works (transformation applied before aggregation)
+        assert isinstance(result_calibration, dict)
+        assert "data" in result_calibration
+        assert isinstance(result_calibration["data"], np.ndarray)
+
+    def test_wrapper_with_failing_post_hoc_transformation(
+        self, base_model_config, mock_calibration, data_state, caplog
+    ):
+        """
+        Test that wrapper handles post-hoc transformation failures gracefully.
+
+        Tests:
+        - Exceptions in transformation are caught
+        - Non-transformed results are returned on failure
+        - Simulation continues despite transformation error
+        - Warning is logged
+        """
+        models, _ = create_model_collection(base_model_config, None)
+        model = models[0]
+
+        # Create a transformation function that always raises an exception
+        def failing_transformation(trajectory):
+            """Transformation that always fails."""
+            raise ValueError("Intentional test failure")
+
+        wrapper = make_simulate_wrapper(
+            basemodel=base_model_config,
+            calibration=mock_calibration,
+            observed_data=data_state,
+            intervention_types=[],
+            post_hoc_transformation=failing_transformation,
+        )
+
+        # Test in projection mode
+        params = {
+            "epimodel": model,
+            "end_date": date(2024, 3, 31),
+            "projection": True,
+            "beta": 0.5,
+            "gamma": 0.1,
+        }
+
+        # Should not raise exception - wrapper handles it gracefully
+        result = wrapper(params)
+
+        # Verify simulation completed (either succeeded or failed, but didn't crash)
+        assert isinstance(result, dict)
+
+        # Verify warning was logged
+        assert any("Post-hoc transformation failed" in record.message for record in caplog.records)
+
+        # If simulation succeeded, result should have standard keys (not transformed ones)
+        if result:  # Non-empty result means simulation succeeded
+            assert "date" in result
+            # Should NOT have any custom transformed compartments
+            assert "I_plus_R_total" not in result
+
+    def test_wrapper_with_post_hoc_transformation_receives_context(
+        self, base_model_config, mock_calibration, data_state
+    ):
+        """
+        Test that post-hoc transformation function receives context dict.
+
+        Tests:
+        - Transformation function is called with context keyword argument
+        - context contains expected keys (params, basemodel, timespan, observed_data, etc.)
+        - Function can access calibrated parameter values via context['params']
+        - Function can access model config via context['basemodel']
+        - Function can access actual dates via context['timespan']
+        - Works with optional context argument (backward compatible)
+        """
+        models, _ = create_model_collection(base_model_config, None)
+        model = models[0]
+
+        # Track what context was passed to the transformation
+        captured_context = {}
+
+        def context_aware_transformation(trajectory, context=None):
+            """Transformation that captures context for inspection."""
+            import copy
+
+            # Capture context for testing
+            if context is not None:
+                captured_context.update(context)
+
+            traj = copy.deepcopy(trajectory)
+            # Use context if available
+            if context:
+                beta = context["params"].get("beta", 0)
+                location = context["location"]
+                # Add compartment with info from context
+                traj.compartments["test_compartment"] = traj.compartments["S_total"] * beta
+
+            return traj
+
+        wrapper = make_simulate_wrapper(
+            basemodel=base_model_config,
+            calibration=mock_calibration,
+            observed_data=data_state,
+            intervention_types=[],
+            post_hoc_transformation=context_aware_transformation,
+        )
+
+        # Run in projection mode
+        params = {
+            "epimodel": model,
+            "end_date": date(2024, 3, 31),
+            "projection": True,
+            "beta": 0.6,
+            "gamma": 0.1,
+        }
+        result = wrapper(params)
+
+        # Verify context was passed
+        assert captured_context, "Context should have been passed to transformation function"
+
+        # Verify context has expected keys
+        assert "params" in captured_context
+        assert "basemodel" in captured_context
+        assert "timespan" in captured_context
+        assert "observed_data" in captured_context
+        assert "intervention_types" in captured_context
+        assert "projection" in captured_context
+        assert "location" in captured_context
+
+        # Verify context content
+        assert captured_context["params"]["beta"] == 0.6
+        assert captured_context["params"]["gamma"] == 0.1
+        assert captured_context["params"]["projection"] is True
+        assert captured_context["projection"] is True
+        # Location name is transformed from "US-CA" to "United_States_California"
+        assert captured_context["location"] == "United_States_California"
+        assert isinstance(captured_context["basemodel"], BaseEpiModel)
+        assert isinstance(captured_context["timespan"], Timespan)
+        assert isinstance(captured_context["observed_data"], pd.DataFrame)
+        assert isinstance(captured_context["intervention_types"], list)
+
+        # Verify transformation still worked
+        if result:
+            assert "test_compartment" in result
+
+    def test_wrapper_with_post_hoc_transformation_without_context_arg(
+        self, base_model_config, mock_calibration, data_state
+    ):
+        """
+        Test that transformation functions without context argument still work.
+
+        Tests:
+        - Functions with basic signature (only accepting trajectory) continue to work
+        - No error when function doesn't accept context keyword
+        - TypeError is caught and function is retried without context
+        - Backward compatibility is maintained
+        """
+        models, _ = create_model_collection(base_model_config, None)
+        model = models[0]
+
+        # Track that the function was called
+        call_count = {"count": 0}
+
+        def basic_transformation(trajectory):
+            """Transformation with basic signature that doesn't accept context."""
+            import copy
+
+            call_count["count"] += 1
+            traj = copy.deepcopy(trajectory)
+            traj.compartments["basic_compartment"] = traj.compartments["S_total"] * 2
+            return traj
+
+        wrapper = make_simulate_wrapper(
+            basemodel=base_model_config,
+            calibration=mock_calibration,
+            observed_data=data_state,
+            intervention_types=[],
+            post_hoc_transformation=basic_transformation,
+        )
+
+        # Run in projection mode
+        params = {
+            "epimodel": model,
+            "end_date": date(2024, 3, 31),
+            "projection": True,
+            "beta": 0.5,
+            "gamma": 0.1,
+        }
+        result = wrapper(params)
+
+        # Verify function was called
+        assert call_count["count"] > 0, "Transformation function should have been called"
+
+        # Verify transformation still worked despite not accepting context
+        if result:
+            assert "basic_compartment" in result
+            assert isinstance(result["basic_compartment"], np.ndarray)

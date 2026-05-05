@@ -7,6 +7,7 @@ import pytest
 from epymodelingsuite.schema.calibration import (
     CalibrationConfig,
     CalibrationStrategy,
+    ComparisonSpec,
 )
 
 
@@ -224,3 +225,145 @@ class TestCalibrationStrategyEnum:
         )
         assert strategy.name == "top_fraction"
         assert "max_time" not in strategy.options
+
+
+class TestComparisonSpecLocationFormat:
+    """Tests for ComparisonSpec observed_location_format validation."""
+
+    def test_default_location_format_is_iso(self):
+        """Test that default observed_location_format is ISO."""
+        spec = ComparisonSpec(
+            observed_date_column="date",
+            observed_value_column="value",
+            simulation=["I_to_R"],
+        )
+        assert spec.observed_location_format == "ISO"
+
+    def test_iso_location_format_is_valid(self):
+        """Test that ISO location format is accepted."""
+        spec = ComparisonSpec(
+            observed_date_column="date",
+            observed_value_column="value",
+            observed_location_format="ISO",
+            simulation=["I_to_R"],
+        )
+        assert spec.observed_location_format == "ISO"
+
+    def test_fips_location_format_is_valid(self):
+        """Test that FIPS location format is accepted."""
+        spec = ComparisonSpec(
+            observed_date_column="date",
+            observed_value_column="value",
+            observed_location_format="FIPS",
+            simulation=["I_to_R"],
+        )
+        assert spec.observed_location_format == "FIPS"
+
+    def test_metrocast_location_id_format_is_valid(self):
+        """Test that metrocast_location_id location format is accepted.
+
+        This is a regression test to ensure metrocast location format
+        is properly supported in calibration configs.
+        """
+        spec = ComparisonSpec(
+            observed_date_column="date",
+            observed_value_column="value",
+            observed_location_format="metrocast_location_id",
+            simulation=["I_to_R"],
+        )
+        assert spec.observed_location_format == "metrocast_location_id"
+
+    def test_epydemix_population_format_is_valid(self):
+        """Test that epydemix_population location format is accepted."""
+        spec = ComparisonSpec(
+            observed_date_column="date",
+            observed_value_column="value",
+            observed_location_format="epydemix_population",
+            simulation=["I_to_R"],
+        )
+        assert spec.observed_location_format == "epydemix_population"
+
+    def test_invalid_location_format_raises_error(self):
+        """Test that invalid location format raises ValueError."""
+        with pytest.raises(ValueError, match="observed_location_format must be one of"):
+            ComparisonSpec(
+                observed_date_column="date",
+                observed_value_column="value",
+                observed_location_format="invalid_format",
+                simulation=["I_to_R"],
+            )
+
+
+class TestCalibrationModelsetPopulationNames:
+    """Tests for CalibrationModelset population_names validation."""
+
+    @pytest.fixture
+    def base_config(self):
+        """Return base calibration configuration dict for testing population_names."""
+        return {
+            "modelset": {
+                "calibration": {
+                    "strategy": {"name": "top_fraction", "options": {"Nsim": 100, "top_fraction": 0.1}},
+                    "observed_data_path": "/tmp/data.csv",
+                    "fitting_window": {"start_date": "2024-01-01", "end_date": "2024-03-01"},
+                    "comparison": [
+                        {
+                            "observed_value_column": "value",
+                            "observed_date_column": "date",
+                            "simulation": ["I_to_R"],
+                        }
+                    ],
+                    "parameters": {
+                        "beta": {"prior": {"type": "scipy", "name": "uniform", "args": [0.1, 0.5]}},
+                    },
+                },
+            },
+        }
+
+    def test_all_states_keyword_is_valid(self, base_config):
+        """Test that 'all-states' keyword is accepted as a valid population name."""
+        base_config["modelset"]["population_names"] = ["all-states"]
+        config = CalibrationConfig(**base_config)
+        assert config.modelset.population_names == ["all-states"]
+
+    def test_all_metrocast_keyword_is_valid(self, base_config):
+        """Test that 'all-metrocast' keyword is accepted as a valid population name."""
+        base_config["modelset"]["population_names"] = ["all-metrocast"]
+        config = CalibrationConfig(**base_config)
+        assert config.modelset.population_names == ["all-metrocast"]
+
+    def test_deprecated_all_keyword_is_valid(self, base_config):
+        """Test that deprecated 'all' keyword is still accepted (with deprecation warning)."""
+        import warnings
+
+        base_config["modelset"]["population_names"] = ["all"]
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            config = CalibrationConfig(**base_config)
+            assert config.modelset.population_names == ["all"]
+            # Should have raised a deprecation warning
+            assert any("deprecated" in str(warning.message).lower() for warning in w)
+
+    def test_iso_location_is_valid(self, base_config):
+        """Test that ISO location codes are accepted."""
+        base_config["modelset"]["population_names"] = ["US-MA", "US-CA"]
+        config = CalibrationConfig(**base_config)
+        assert config.modelset.population_names == ["US-MA", "US-CA"]
+
+    def test_metrocast_location_is_valid(self, base_config):
+        """Test that metrocast location names are accepted."""
+        base_config["modelset"]["population_names"] = ["denver", "boston"]
+        config = CalibrationConfig(**base_config)
+        assert config.modelset.population_names == ["denver", "boston"]
+
+    def test_mixed_keywords_and_locations(self, base_config):
+        """Test that keywords can be mixed with specific locations."""
+        base_config["modelset"]["population_names"] = ["all-states", "denver"]
+        config = CalibrationConfig(**base_config)
+        assert config.modelset.population_names == ["all-states", "denver"]
+
+    def test_invalid_location_raises_error(self, base_config):
+        """Test that invalid location names raise ValueError."""
+        base_config["modelset"]["population_names"] = ["invalid_location_xyz"]
+        with pytest.raises(ValueError):
+            CalibrationConfig(**base_config)

@@ -1,11 +1,15 @@
 import logging
+import warnings
+from collections.abc import Callable
 from datetime import date, timedelta
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from epiweeks import Week
+from pydantic import BaseModel, Field, computed_field, field_validator, model_validator
 
 from ..utils import parse_timedelta, validate_iso3166
+from ..utils.location import validate_location_by_type
 from .common import DateParameter, Distribution, Meta
 
 logger = logging.getLogger(__name__)
@@ -91,7 +95,24 @@ class ComparisonSpec(BaseModel):
 
     observed_value_column: str = Field(description="Name of column containing observed values in observed data CSV")
     observed_date_column: str = Field(description="Name of column containing target dates in observed data CSV")
+    observed_location_column: str = Field(
+        default="geo_value", description="Name of column containing location identifiers in observed data CSV"
+    )
+    observed_location_format: str = Field(
+        default="ISO",
+        description="Format of location identifiers in observed data. Options: ISO, FIPS, abbreviation, name, epydemix_population, metrocast_location_id",
+    )
     simulation: list[str] = Field(description="List of transition names to sum for comparison (e.g. I_to_R)")
+
+    @field_validator("observed_location_format")
+    @classmethod
+    def validate_observed_location_format(cls, v: str) -> str:
+        """Ensure observed_location_format is a valid option."""
+        valid_formats = {"ISO", "FIPS", "abbreviation", "name", "epydemix_population", "metrocast_location_id"}
+        if v not in valid_formats:
+            msg = f"observed_location_format must be one of {valid_formats}, got '{v}'"
+            raise ValueError(msg)
+        return v
 
 
 class CalibrationParameter(BaseModel):
@@ -103,26 +124,183 @@ class CalibrationParameter(BaseModel):
 class FittingWindow(BaseModel):
     """Specification for the time window used in calibration fitting."""
 
-    start_date: date = Field(description="Start date of fitting window.")
-    end_date: date = Field(description="End date of fitting window.")
+    start_date: date | None = Field(default=None, description="Start date of fitting window.")
+    end_date: date | None = Field(default=None, description="End date of fitting window.")
+    start_epiweek: int | None = Field(
+        default=None,
+        description="Start epiweek of fitting window (start date will be Sunday of specified epiweek). Prefix with year, e.g. 202543.",
+    )
+    end_epiweek: int | None = Field(
+        default=None,
+        description="End epiweek of fitting window (end date will be Saturday of specified epiweek). Prefix with year, e.g. 202601.",
+    )
 
     @model_validator(mode="after")
-    def validate_date_order(self: "FittingWindow") -> "FittingWindow":
-        """Ensure end_date is after start_date."""
-        # Note: DateParameter can be a string date or have a prior distribution
-        # Only validate if both are actual date strings
-        if self.end_date <= self.start_date:
-            raise ValueError("end_date must be after start_date")
+    def validate_field_combinations(self: "FittingWindow") -> "FittingWindow":
+        """Ensure fields are specified consistently."""
+        # Specifying with dates
+        if self.start_date or self.end_date:
+            # Ensure both fields are present
+            if self.start_date is None or self.end_date is None:
+                raise ValueError("Must supply both start and end date if specifying fitting window by dates.")
+            # Ensure end_date is after start_date
+            if self.end_date <= self.start_date:
+                raise ValueError("end_date must be after start_date")
+            # Ensure other fields are absent
+            if self.start_epiweek or self.end_epiweek:
+                raise ValueError("Cannot use both date fields and epiweek fields")
+
+            return self
+
+        # Specifying with epiweeks
+        # Ensure all fields are present
+        if self.start_epiweek is None or self.end_epiweek is None:
+            raise ValueError("Must supply both start and end epiweek if specifying fitting window by epiweeks.")
+        # Ensure dates are consistent
+        if self.end_epiweek < self.start_epiweek:
+            raise ValueError("start_epiweek cannot be after end_epiweek")
+
         return self
+
+    @computed_field
+    @property
+    def epiweek_start_date(self) -> date:
+        """Return the Sunday of the specified start_epiweek, or the user-supplied start_date if epiweeks are absent."""
+        if self.start_date:
+            return self.start_date
+
+        start_year = int(str(self.start_epiweek)[0:4])
+        start_week = int(str(self.start_epiweek)[4:])
+        week = Week(year=start_year, week=start_week)
+        return week.startdate()
+
+    @computed_field
+    @property
+    def epiweek_end_date(self) -> date:
+        """Return the Saturday of the specified end_epiweek, or the user-supplied end_date if epiweeks are absent."""
+        if self.end_date:
+            return self.end_date
+
+        end_year = int(str(self.end_epiweek)[0:4])
+        end_week = int(str(self.end_epiweek)[4:])
+        week = Week(year=end_year, week=end_week)
+        return week.enddate()
+
+
+class UserDefinedFunction(BaseModel):
+    """
+    Specifications for user-defined functions (i.e. custom distance function, or post-hoc transformation function).
+    Functions will be imported from the specified script and applied within the simulate wrapper.
+
+    For post-hoc transformation functions, the function can optionally accept a 'context' keyword argument
+    containing simulation metadata and calibrated parameters:
+
+    Expected signatures:
+        - def transform(trajectory): ...  # Basic signature (still supported)
+        - def transform(trajectory, context=None): ...  # With optional context parameter
+        - def transform(trajectory, **kwargs): ...  # Flexible signature accepting kwargs
+
+    Context dictionary structure (when provided):
+        - params: dict of all simulation parameters (including calibrated values like beta, gamma)
+        - basemodel: BaseEpiModel configuration object
+        - timespan: Timespan object with actual simulation dates
+        - observed_data: DataFrame of observed data for this location
+        - intervention_types: list of intervention type strings
+        - projection: bool indicating calibration vs projection mode
+        - location: str location/population name
+    """
+
+    user_script_path: str = Field(description="Path to script containing user-defined functions.")
+    user_function_name: str = Field(description="Name of function to import from the supplied script.")
+
+    @computed_field
+    @property
+    def user_function(self) -> Callable:
+        """
+        Import the user defined function and populate a computed field in the schema model.
+
+        Returns a PicklableFunction wrapper that can be serialized and deserialized correctly.
+        """
+        import sys
+        import types
+        from importlib import import_module
+        from importlib.machinery import SourceFileLoader
+
+        try:
+            module_name = "user_defined_module"
+            loader = SourceFileLoader(module_name, self.user_script_path)
+            code = loader.get_code(module_name)
+            new_module = types.ModuleType(loader.name)
+            exec(code, new_module.__dict__)
+            sys.modules[module_name] = new_module
+            module = import_module(module_name)
+            user_func = getattr(module, self.user_function_name)
+
+            # Wrap in a picklable function class
+            return PicklableFunction(self.user_script_path, self.user_function_name, user_func)
+        except Exception as e:
+            raise RuntimeError(f"Error loading user-defined function {self.user_function_name}: {e}")
+
+
+class PicklableFunction:
+    """
+    Wrapper for user-defined functions that handles pickling/unpickling correctly.
+
+    When pickled, stores the script path and function name instead of the function object.
+    When unpickled, reloads the function from the script file.
+    """
+
+    def __init__(self, script_path: str, function_name: str, func: Callable):
+        self.script_path = script_path
+        self.function_name = function_name
+        self._func = func
+
+    def __call__(self, *args, **kwargs):
+        """Call the wrapped function."""
+        return self._func(*args, **kwargs)
+
+    def __reduce__(self):
+        """Custom pickle protocol: store path and name, reload on unpickle."""
+        return (_reload_picklable_function, (self.script_path, self.function_name))
+
+
+def _reload_picklable_function(script_path: str, function_name: str) -> PicklableFunction:
+    """
+    Reload a PicklableFunction from script path and function name.
+
+    This function is called during unpickling to reconstruct the function.
+    """
+    import sys
+    import types
+    from importlib import import_module
+    from importlib.machinery import SourceFileLoader
+
+    module_name = "user_defined_module"
+    loader = SourceFileLoader(module_name, script_path)
+    code = loader.get_code(module_name)
+    new_module = types.ModuleType(loader.name)
+    exec(code, new_module.__dict__)
+    sys.modules[module_name] = new_module
+    module = import_module(module_name)
+    user_func = getattr(module, function_name)
+
+    return PicklableFunction(script_path, function_name, user_func)
 
 
 class CalibrationConfiguration(BaseModel):
     """Calibration configuration section."""
 
     strategy: CalibrationStrategy = Field(description="Calibration strategy configuration")
+    post_hoc_transformation: UserDefinedFunction | None = Field(
+        None,
+        description="Transformation function to apply to simulation results. "
+        "The function can optionally accept a 'context' keyword argument with simulation metadata "
+        "(params, basemodel, timespan, observed_data, projection, location). See UserDefinedFunction "
+        "docstring for details.",
+    )
 
     # Sampler options, passed directly when initializing ABCSampler
-    distance_function: str = Field("rmse", description="Distance function for comparing data")
+    distance_function: str | UserDefinedFunction = Field("rmse", description="Distance function for comparing data")
     observed_data_path: str = Field(description="Path to observed data CSV file")
     comparison: list[ComparisonSpec] = Field(description="Specifications for data comparison")
 
@@ -168,7 +346,7 @@ class CalibrationConfiguration(BaseModel):
 
         prior = self.start_date.prior
         reference_date = self.start_date.reference_date
-        fitting_window_end = self.fitting_window.end_date
+        fitting_window_end = self.fitting_window.epiweek_end_date
 
         # Determine max offset based on distribution type
         max_offset = None
@@ -218,19 +396,53 @@ class CalibrationModelset(BaseModel):
     """Modelset configuration for calibration."""
 
     meta: Meta | None = Field(None, description="General metadata.")
-    population_names: list[str] = Field(description="List of population names")
+    population_names: list[str | dict[str, str]] = Field(
+        description="List of population names (strings or dicts with 'name' and 'type' fields)"
+    )
     calibration: CalibrationConfiguration = Field(description="Calibration configuration")
 
     @field_validator("population_names")
     @classmethod
     def validate_populations(cls, v):
-        """Validate each population name in the list."""
+        """
+        Validate each population name in the list.
+
+        Supports:
+        - String format (auto-detect type): "US-MA", "denver"
+        - Dict format (explicit type): {"name": "denver", "type": "metrocast_location"}
+        - Keywords: "all", "all-states", "all-metrocast"
+        """
         validated_populations = []
         for population in v:
-            if population == "all":
+            if isinstance(population, str):
+                # String format - keywords or auto-detect
+                if population == "all":
+                    warnings.warn(
+                        "The 'all' keyword is deprecated. Use 'all-states' instead.",
+                        DeprecationWarning,
+                        stacklevel=2,
+                    )
+                    validated_populations.append(population)
+                elif population in ("all-states", "all-metrocast"):
+                    validated_populations.append(population)
+                else:
+                    # Auto-detect: try ISO validation first
+                    try:
+                        validated_populations.append(validate_iso3166(population))
+                    except ValueError:
+                        # If not ISO, try metrocast location validation
+                        validated_populations.append(validate_location_by_type(population, "metrocast_location"))
+            elif isinstance(population, dict):
+                # Dict format - explicit type
+                name = population.get("name")
+                loc_type = population.get("type", "iso")
+                if not name:
+                    raise ValueError("population dict must have 'name' field")
+                validate_location_by_type(name, loc_type)
                 validated_populations.append(population)
             else:
-                validated_populations.append(validate_iso3166(population))
+                raise ValueError(f"Invalid population format: {population}")
+
         return validated_populations
 
 

@@ -84,9 +84,15 @@ class TextFormatter(TelemetryFormatter):
         lines.append("CONFIGURATION")
         lines.append(SECTION_SEPARATOR)
         if "populations" in config:
-            pop_list = ", ".join(config["populations"])
-            lines.append(f"Populations: {config['n_populations']} ({pop_list})")
-            # Show age groups inline with populations
+            populations = config["populations"]
+            n_pops = config.get("n_populations", len(populations))
+            lines.append(f"Populations: {n_pops}")
+            # Display task mapping: index -> population name
+            # Calculate width needed for largest index
+            index_width = len(str(n_pops - 1)) if n_pops > 0 else 1
+            for i, pop in enumerate(populations):
+                lines.append(f"  {i:>{index_width}}: {pop}")
+            # Show age groups after populations
             if "age_groups" in config:
                 age_groups = config["age_groups"]
                 age_list = ", ".join(age_groups)
@@ -135,6 +141,22 @@ class TextFormatter(TelemetryFormatter):
 
         lines.append("RUNNER STAGE")
         lines.append(SECTION_SEPARATOR)
+
+        # Show task completion summary if available
+        total_tasks = runner.get("total_tasks")
+        completed_tasks = runner.get("completed_tasks")
+        missing_tasks = runner.get("missing_tasks", [])
+
+        if total_tasks is not None and completed_tasks is not None:
+            n_missing = len(missing_tasks)
+            if n_missing > 0:
+                lines.append(f"Tasks: {completed_tasks}/{total_tasks} completed ({n_missing} missing)")
+                # List missing tasks with their populations
+                missing_str = ", ".join(f"{m['task_id']} ({m['population']})" for m in missing_tasks)
+                lines.append(f"Missing: {missing_str}")
+            else:
+                lines.append(f"Tasks: {completed_tasks}/{total_tasks} completed")
+
         if "duration_seconds" in runner:
             lines.append(f"Total duration: {format_duration(runner['duration_seconds'])}")
         lines.append("")
@@ -157,8 +179,20 @@ class TextFormatter(TelemetryFormatter):
                 if "strategy" in cal:
                     strategy = cal["strategy"]
                     particles = cal.get("num_particles", "?")
-                    generations = cal.get("num_generations", "?")
-                    lines.append(f"    Strategy: {strategy} ({particles} particles, {generations} generations)")
+                    generations_requested = cal.get("num_generations_requested", "?")
+                    generations_completed = cal.get("num_generations_completed")
+                    if (
+                        generations_completed is not None
+                        and generations_requested != "?"
+                        and generations_completed != generations_requested
+                    ):
+                        lines.append(
+                            f"    Strategy: {strategy} ({particles} particles, {generations_completed}/{generations_requested} generations)"
+                        )
+                    else:
+                        lines.append(
+                            f"    Strategy: {strategy} ({particles} particles, {generations_requested} generations)"
+                        )
 
                 if "particles_accepted" in cal:
                     lines.append(f"    Particles accepted: {cal['particles_accepted']}")

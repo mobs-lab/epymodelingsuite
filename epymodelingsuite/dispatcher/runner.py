@@ -114,7 +114,9 @@ def run_calibration(configs: BuilderOutput, rng: np.random.Generator | None = No
             seed=configs.seed,
             delta_t=configs.delta_t,
             population=configs.model.population.name,
+            start_date_reference=configs.start_date_reference,
             results=results,
+            calibration_strategy=configs.calibration,
         )
 
         # Track metrics if telemetry is available in context
@@ -130,7 +132,9 @@ def run_calibration(configs: BuilderOutput, rng: np.random.Generator | None = No
             seed=configs.seed,
             delta_t=configs.delta_t,
             population=configs.model.population.name,
+            start_date_reference=configs.start_date_reference,
             results=None,  # type: ignore
+            calibration_strategy=configs.calibration,
         )
         telemetry = ExecutionTelemetry.get_current()
         if telemetry:
@@ -182,13 +186,15 @@ def run_calibration_with_projection(
             seed=configs.seed,
             delta_t=configs.delta_t,
             population=population,
+            start_date_reference=configs.start_date_reference,
             results=None,  # type: ignore
+            calibration_strategy=configs.calibration,
         )
         telemetry = ExecutionTelemetry.get_current()
         if telemetry:
             calibration_duration = time.time() - calibration_start
             telemetry.capture_calibration(
-                output, calibration_duration, error=f"Calibration error: {e}", calibration_strategy=configs.calibration
+                output, calibration_duration, error=f"Calibration error: {e}", builder_output=configs
             )
         raise RuntimeError(f"Error during calibration: {e}")
 
@@ -212,7 +218,9 @@ def run_calibration_with_projection(
             seed=configs.seed,
             delta_t=configs.delta_t,
             population=configs.model.population.name,
+            start_date_reference=configs.start_date_reference,
             results=projection_results,
+            calibration_strategy=configs.calibration,
         )
 
         # Track metrics if telemetry is available in context
@@ -240,7 +248,9 @@ def run_calibration_with_projection(
             seed=configs.seed,
             delta_t=configs.delta_t,
             population=configs.model.population.name,
+            start_date_reference=configs.start_date_reference,
             results=calibration_results,
+            calibration_strategy=configs.calibration,
         )
 
         # Track metrics even if projection failed

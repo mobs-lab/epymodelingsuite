@@ -8,3 +8,4 @@ cov_annotate/
 .coverage
 *,cover
 docs/build/
+.venv/

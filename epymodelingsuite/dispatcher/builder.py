@@ -37,11 +37,16 @@ from ..schema.dispatcher import BuilderOutput, ProjectionArguments, SimulationAr
 from ..schema.general import validate_cross_config_consistency
 from ..schema.sampling import SamplingConfig
 from ..school_closures import make_school_closure_dict
-from ..telemetry import ExecutionTelemetry
+from ..telemetry import ExecutionTelemetry, extract_builder_metadata
 from ..utils.config import get_workflow_type_from_configs
+from ..utils.distance import wrmse
 from ..vaccinations import reaggregate_vaccines
 
 logger = logging.getLogger(__name__)
+
+
+class CalibrationDataError(ValueError):
+    """Raised when calibration data validation fails."""
 
 
 # ===== Helper Functions =====
@@ -53,6 +58,7 @@ dist_func_dict = {
     "ae": ae,
     "mae": mae,
     "mape": mape,
+    "wrmse": wrmse,
 }
 
 
@@ -70,19 +76,24 @@ def count_nans_at_start(arr: np.ndarray) -> int:
     int
         The number of NaNs found prepended to the array.
     """
+    # Handle empty array case
+    if arr.size == 0:
+        return 0
+
     # Create a boolean mask for NaN values
     mask = np.isnan(arr)
 
-    # Find the index of the first non-NaN value
-    first_non_nan_index = np.argmax(~mask)
-
-    # If no values are NaN, return 0
-    # If all, return len(arr)
+    # If all values are NaN, return len(arr)
     if mask.all():
         return len(arr)
-    if mask.any():
-        return first_non_nan_index
-    return 0
+
+    # If no values are NaN, return 0
+    if not mask.any():
+        return 0
+
+    # Find the index of the first non-NaN value
+    first_non_nan_index = np.argmax(~mask)
+    return first_non_nan_index
 
 
 def dist_func_date_alignment_wrapper(dist_func: Callable) -> Callable:
@@ -178,7 +189,7 @@ def build_basemodel(*, basemodel_config: BasemodelConfig, **_) -> BuilderOutput:
     logger.info("BUILDER: setting up single model...")
 
     # This workflow uses a single population
-    set_population_from_config(model, basemodel.population.name, basemodel.population.age_groups)
+    set_population_from_config(model, basemodel.population)
 
     # Compartments and transitions
     add_model_compartments_from_config(model, basemodel.compartments)
@@ -188,10 +199,16 @@ def build_basemodel(*, basemodel_config: BasemodelConfig, **_) -> BuilderOutput:
     if basemodel.vaccination:
         add_vaccination_schedules_from_config(model, basemodel.transitions, basemodel.vaccination, basemodel.timespan)
 
+    # Initial conditions
+    compartment_inits = calculate_compartment_initial_conditions(
+        compartments=basemodel.compartments,
+        population_array=model.population.Nk,
+    )
+
     # Parameters
     add_model_parameters_from_config(model, basemodel.parameters)
     if "calculated" in [param_args.type.value for param, param_args in (basemodel.parameters).items()]:
-        calculate_parameters_from_config(model, basemodel.parameters)
+        calculate_parameters_from_config(model, basemodel.parameters, compartment_inits)
 
     # Seasonality (this must occur before interventions to preserve parameter overrides)
     if basemodel.seasonality:
@@ -215,12 +232,6 @@ def build_basemodel(*, basemodel_config: BasemodelConfig, **_) -> BuilderOutput:
         # Parameter
         if "parameter" in intervention_types:
             add_parameter_interventions_from_config(model, basemodel.interventions, basemodel.timespan)
-
-    # Initial conditions
-    compartment_inits = calculate_compartment_initial_conditions(
-        compartments=basemodel.compartments,
-        population_array=model.population.Nk,
-    )
 
     simulation_args = SimulationArguments(
         start_date=basemodel.timespan.start_date,
@@ -273,8 +284,12 @@ def build_sampling(
     models, population_names = create_model_collection(basemodel, sampling.population_names)
 
     # Output of this is a list of dicts containing start_date, initial conditions, and parameter value
-    # combinations where parameters is in the same format as basemodel.parameters
-    sampled_vars = generate_samples(sampling_config, basemodel.random_seed)
+    # combinations where parameters is in the same format as basemodel.parameters.
+    # Create empty structure when only using modelset for multiple populations.
+    if sampling.sampling is None:
+        sampled_vars = [{}]
+    else:
+        sampled_vars = generate_samples(sampling_config, basemodel.random_seed)
 
     # Extract intervention types
     if basemodel.interventions:
@@ -314,12 +329,21 @@ def build_sampling(
                 delta_t=basemodel.timespan.delta_t,
             )
 
+            # Initial conditions
+            compartment_init = calculate_compartment_initial_conditions(
+                compartments=basemodel.compartments,
+                population_array=m.population.Nk,
+                params_dict=varset.get("compartments"),
+            )
+
             # Sampled/calculated parameters
             if "parameters" in varset.keys():
                 parameters = {k: Parameter(type="scalar", value=v) for k, v in varset["parameters"].items()}
                 add_model_parameters_from_config(m, parameters)
             if "calculated" in [param_args.type.value for param, param_args in (basemodel.parameters).items()]:
-                calculate_parameters_from_config(m, basemodel.parameters)
+                calculate_parameters_from_config(
+                    model=m, parameters=basemodel.parameters, compartment_init=compartment_init
+                )
 
             # Vaccination (if start_date is sampled)
             if basemodel.vaccination and sampled_start_timespan:
@@ -335,13 +359,6 @@ def build_sampling(
             # Parameter interventions
             if basemodel.interventions and "parameter" in intervention_types:
                 add_parameter_interventions_from_config(m, basemodel.interventions, timespan)
-
-            # Initial conditions
-            compartment_init = calculate_compartment_initial_conditions(
-                compartments=basemodel.compartments,
-                population_array=m.population.Nk,
-                params_dict=varset.get("compartments"),
-            )
 
             sim_args = SimulationArguments(
                 start_date=timespan.start_date,
@@ -371,19 +388,36 @@ def build_sampling(
 
 @register_builder({"basemodel_config", "calibration_config"})
 def build_calibration(
-    *, basemodel_config: BasemodelConfig, calibration_config: CalibrationConfig, **_
+    *,
+    basemodel_config: BasemodelConfig,
+    calibration_config: CalibrationConfig,
+    skip_invalid_locations: bool = True,
+    **_,
 ) -> list[BuilderOutput]:
     """
     Construct a set of ABCSamplers and arguments for calibration/projection using a BasemodelConfig and CalibrationConfig parsed from YAML.
 
     Parameters
     ----------
-        basemodel: configuration parsed from YAML
-        calibration: configuration parsed from YAML
+    basemodel_config : BasemodelConfig
+        Configuration parsed from YAML.
+    calibration_config : CalibrationConfig
+        Configuration parsed from YAML.
+    skip_invalid_locations : bool, optional
+        If True (default), skip locations with no data in the fitting window
+        and continue with valid locations. If False, raise CalibrationDataError
+        when any location has no data.
 
     Returns
     -------
+    list[BuilderOutput]
         BuilderOutput containing id, seed, ABCSampler, and arguments for calibration and projection.
+
+    Raises
+    ------
+    CalibrationDataError
+        If all locations have no data, or if skip_invalid_locations is False
+        and any location has no data.
     """
     from ..utils import distribution_to_scipy
 
@@ -425,16 +459,63 @@ def build_calibration(
     # using the earliest start_date before creating ABCSamplers.
     models = setup_interventions(models, basemodel, intervention_types, sampled_start_timespan)
 
+    # Extract UDF functions (now wrapped in PicklableFunction for correct serialization)
+    post_hoc_func = calibration.post_hoc_transformation.user_function if calibration.post_hoc_transformation else None
+    dist_func = (
+        dist_func_dict[calibration.distance_function]
+        if isinstance(calibration.distance_function, str)
+        else calibration.distance_function.user_function
+    )
+
     logger.info("BUILDER: setting up ABCSamplers...")
 
+    # Load observed data from CSV
     observed_raw = pd.read_csv(calibration.observed_data_path)
+    # Filter to fitting window and sort by date (oldest to newest) for consistent ABC distance calculations
     observed_in_window = get_data_in_window(observed_raw, calibration)
+
+    # Validate data availability for each location
+    from ..schema.data_validation import validate_calibration_data
+
+    # valid/invalid_population_names are subsets of population_names (e.g., "denver", "US-MA")
+    valid_population_names, invalid_population_names = validate_calibration_data(
+        calibration_config=calibration_config,
+        population_names=population_names,
+        observed_data=observed_in_window,
+    )
+
+    # All locations have no data - fail early
+    if not valid_population_names:
+        raise CalibrationDataError(f"No valid data for any location. Invalid: {invalid_population_names}")
+
+    # Some locations have no data - skip or fail based on parameter
+    if invalid_population_names:
+        if skip_invalid_locations:
+            logger.warning(
+                "Skipping %d location(s) with no data: %s",
+                len(invalid_population_names),
+                invalid_population_names,
+            )
+            # Filter using population_names (e.g., "denver", "US-MA")
+            # This is different from EpiModel.population.name (e.g., "metrocast_location_denver")
+            valid_set = set(valid_population_names)
+            models = [model for model, name in zip(models, population_names) if name in valid_set]
+            population_names = [name for name in population_names if name in valid_set]
+        else:
+            raise CalibrationDataError(f"Data validation failed for locations: {invalid_population_names}")
+
     calibrators = []
+    location_column = calibration.comparison[0].observed_location_column
+    location_format = calibration.comparison[0].observed_location_format
+
     for model in models:
-        # TODO: Make location column name configurable instead of hardcoded "geo_value"
-        # Should be added to ComparisonSpec schema (e.g., observed_location_column)
-        observed_data = get_data_in_location(observed_in_window, model, "geo_value")
-        vax_state = get_data_in_location(earliest_vax, model, "location") if earliest_vax is not None else None
+        observed_data = get_data_in_location(
+            observed_in_window, model.population.name, location_column, location_format
+        )
+        vax_state = (
+            get_data_in_location(earliest_vax, model.population.name, "location") if earliest_vax is not None else None
+        )
+
         # Create simulate_wrapper
         simulate_wrapper = make_simulate_wrapper(
             basemodel=basemodel,
@@ -443,20 +524,26 @@ def build_calibration(
             intervention_types=intervention_types,
             sampled_start_timespan=sampled_start_timespan,
             earliest_vax=vax_state,
+            post_hoc_transformation=post_hoc_func,
             rng=rng,
         )
 
         # Parse priors into scipy functions
+        # Parameters and compartments can be None in calibration config
         priors = {}
-        priors.update({k: distribution_to_scipy(v.prior) for k, v in calibration.parameters.items()})
-        priors.update({k: distribution_to_scipy(v.prior) for k, v in calibration.compartments.items()})
+        if calibration.parameters:
+            priors.update({k: distribution_to_scipy(v.prior) for k, v in calibration.parameters.items()})
+        if calibration.compartments:
+            priors.update({k: distribution_to_scipy(v.prior) for k, v in calibration.compartments.items()})
         if sampled_start_timespan:
             priors["start_date"] = distribution_to_scipy(calibration.start_date.prior)
 
         fixed_parameters = {k: v for k, v in model.parameters.items() if v is not None}
-        fixed_parameters.update(
-            {"end_date": calibration.fitting_window.end_date, "projection": False, "epimodel": model}
-        )
+        if calibration.fitting_window.end_date:
+            fit_end = calibration.fitting_window.end_date
+        else:
+            fit_end = calibration.fitting_window.epiweek_end_date
+        fixed_parameters.update({"end_date": fit_end, "projection": False, "epimodel": model})
 
         # ABCSamplers are the main outputs
         abc_sampler = ABCSampler(
@@ -464,7 +551,7 @@ def build_calibration(
             priors=priors,
             parameters=fixed_parameters,
             observed_data=observed_data[calibration.comparison[0].observed_value_column].values,
-            distance_function=dist_func_date_alignment_wrapper(dist_func_dict[calibration.distance_function]),
+            distance_function=dist_func_date_alignment_wrapper(dist_func),
         )
 
         calibrators.append(abc_sampler)
@@ -496,6 +583,7 @@ def build_calibration(
             calibrator=t[1],
             calibration=calibration.strategy,
             projection=projection_options,
+            start_date_reference=calibration.start_date.reference_date if calibration.start_date else None,
         )
         for i, t in enumerate(zip(models, calibrators, strict=True))
     ]

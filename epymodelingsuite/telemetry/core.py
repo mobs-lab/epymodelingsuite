@@ -32,6 +32,28 @@ def _get_package_version() -> str:
         return "unknown"
 
 
+def _serialize_distance_function(distance_func: str | object) -> str:
+    """Convert distance function to JSON-serializable string.
+
+    Parameters
+    ----------
+    distance_func : str | object
+        Distance function (str or UserDefinedFunction)
+
+    Returns
+    -------
+    str
+        String representation of the distance function
+    """
+    if isinstance(distance_func, str):
+        return distance_func
+    # Check if it's a UserDefinedFunction by checking for user_function_name attribute
+    if hasattr(distance_func, "user_function_name"):
+        return f"user_defined:{distance_func.user_function_name}"
+    # Fallback to string conversion
+    return str(distance_func)
+
+
 class ExecutionTelemetry:
     """Track execution metrics and telemetry for dispatcher workflows.
 
@@ -348,9 +370,11 @@ class ExecutionTelemetry:
             if "num_particles" in calibration_strategy.options:
                 model_data["calibration"]["num_particles"] = calibration_strategy.options["num_particles"]
             if "num_generations" in calibration_strategy.options:
-                model_data["calibration"]["num_generations"] = calibration_strategy.options["num_generations"]
+                model_data["calibration"]["num_generations_requested"] = calibration_strategy.options["num_generations"]
             if "distance_function" in calibration_strategy.options:
-                model_data["calibration"]["distance_function"] = calibration_strategy.options["distance_function"]
+                model_data["calibration"]["distance_function"] = _serialize_distance_function(
+                    calibration_strategy.options["distance_function"]
+                )
 
         if error:
             model_data["error"] = error
@@ -411,9 +435,11 @@ class ExecutionTelemetry:
             if "num_particles" in calibration_strategy.options:
                 model_data["calibration"]["num_particles"] = calibration_strategy.options["num_particles"]
             if "num_generations" in calibration_strategy.options:
-                model_data["calibration"]["num_generations"] = calibration_strategy.options["num_generations"]
+                model_data["calibration"]["num_generations_requested"] = calibration_strategy.options["num_generations"]
             if "distance_function" in calibration_strategy.options:
-                model_data["calibration"]["distance_function"] = calibration_strategy.options["distance_function"]
+                model_data["calibration"]["distance_function"] = _serialize_distance_function(
+                    calibration_strategy.options["distance_function"]
+                )
 
         # Record projection info
         projection_info = self._extract_projection_info(output.results, n_trajectories)
@@ -883,6 +909,21 @@ def _merge_stage_telemetries(
 
     if runner_telemetry:
         workflow.runner = runner_telemetry.runner.copy()
+
+    # Detect missing tasks by comparing expected vs completed
+    if builder_telemetry and runner_telemetry:
+        n_expected = builder_telemetry.configuration.get("n_populations", 0)
+        populations = builder_telemetry.configuration.get("populations", [])
+        completed_ids = {m["primary_id"] for m in runner_telemetry.runner.get("models", [])}
+        expected_ids = set(range(n_expected))
+        missing_ids = sorted(expected_ids - completed_ids)
+
+        workflow.runner["total_tasks"] = n_expected
+        workflow.runner["completed_tasks"] = len(completed_ids)
+        workflow.runner["missing_tasks"] = [
+            {"task_id": tid, "population": populations[tid] if tid < len(populations) else "unknown"}
+            for tid in missing_ids
+        ]
 
     if output_telemetry:
         workflow.output = output_telemetry.output.copy()

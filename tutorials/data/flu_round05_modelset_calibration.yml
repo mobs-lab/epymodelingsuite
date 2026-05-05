@@ -17,8 +17,16 @@ modelset:
         num_particles: 10
         num_generations: 2
 
+    # Apply a post-hoc transformation to trajectories obtained from simulate() within the simulate_wrapper
+    #post_hoc_transformation:
+    #  user_script_path: data/udf_examples.py
+    #  user_function_name: udf_transform
+
     # Sampler options, passed directly when initializing ABCSampler
     distance_function: rmse # Default, but we could provide custom distance function
+    #distance_function: # Custom distance function
+    #  user_script_path: data/udf_examples.py
+    #  user_function_name: udf_distance
     observed_data_path: data/flu_hosp_24.csv
     
     comparison:
@@ -30,8 +38,8 @@ modelset:
           - Home_sev_vax_to_Hosp_vax_total
     
     fitting_window:
-      start_date: "2024-09-15"
-      end_date: "2025-04-19"
+      start_date: "2025-01-19"
+      end_date: "2025-02-22"
     
     projection:
       n_trajectories: 100
@@ -59,7 +67,7 @@ modelset:
         name: randint
         args:
         - 0
-        - 80
+        - 42
 
     parameters:
       Rt:
