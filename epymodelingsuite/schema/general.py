@@ -1,4 +1,5 @@
 import logging
+from datetime import date, timedelta
 
 from ..utils.common import parse_transition_name, strip_agegroup_suffix, to_set
 from .basemodel import BasemodelConfig
@@ -128,7 +129,9 @@ def _validate_compartment_list(names: list[str], base_compartments: set, context
         raise ValueError(err_msg)
 
 
-def _validate_transition_list(names: list[str], base_transitions: set, context: str) -> None:
+def _validate_transition_list(
+    names: list[str], base_transitions: set, context: str, *, warn_only: bool = False
+) -> None:
     """
     Validate transition names exist in basemodel.
 
@@ -140,11 +143,14 @@ def _validate_transition_list(names: list[str], base_transitions: set, context: 
         Transition identifiers defined in base model (format: {source}_to_{target}).
     context : str
         Description of where these transitions are referenced (for error messages).
+    warn_only : bool, optional
+        If True, log a warning instead of raising an error for invalid transitions.
+        Defaults to False (raise error).
 
     Raises
     ------
     ValueError
-        If any transition names are not defined in base model.
+        If any transition names are not defined in base model (unless warn_only=True).
     """
     invalid = set()
     for name in names:
@@ -157,8 +163,11 @@ def _validate_transition_list(names: list[str], base_transitions: set, context: 
             invalid.add(name)
 
     if invalid:
-        err_msg = f"Transitions in {context} not defined in basemodel: {sorted(invalid)}"
-        raise ValueError(err_msg)
+        msg = f"Transitions in {context} not defined in basemodel: {sorted(invalid)}"
+        if warn_only:
+            logger.warning(msg)
+        else:
+            raise ValueError(msg)
 
 
 def _ensure_output_references_valid(
@@ -166,6 +175,9 @@ def _ensure_output_references_valid(
 ) -> None:
     """
     Validate that output config references exist in basemodel.
+
+    Compartment references are strictly validated (errors raised).
+    Transition references are loosely validated (warnings only) to allow aggregated transitions.
 
     Parameters
     ----------
@@ -179,7 +191,7 @@ def _ensure_output_references_valid(
     Raises
     ------
     ValueError
-        If any referenced compartments or transitions are not defined in base model.
+        If any referenced compartments are not defined in base model.
     """
     output = output_config.output
 
@@ -189,9 +201,9 @@ def _ensure_output_references_valid(
         # Validate compartments if it's a list (skip if boolean)
         if isinstance(quantiles.compartments, list):
             _validate_compartment_list(quantiles.compartments, base_compartments, "quantiles.compartments")
-        # Validate transitions if it's a list (skip if boolean)
+        # Validate transitions if it's a list (skip if boolean) - warn only for aggregated transitions
         if isinstance(quantiles.transitions, list):
-            _validate_transition_list(quantiles.transitions, base_transitions, "quantiles.transitions")
+            _validate_transition_list(quantiles.transitions, base_transitions, "quantiles.transitions", warn_only=True)
 
     # Validate trajectories section
     if output.trajectories is not None:
@@ -199,9 +211,166 @@ def _ensure_output_references_valid(
         # Validate compartments if it's a list (skip if boolean)
         if isinstance(trajectories.compartments, list):
             _validate_compartment_list(trajectories.compartments, base_compartments, "trajectories.compartments")
-        # Validate transitions if it's a list (skip if boolean)
+        # Validate transitions if it's a list (skip if boolean) - warn only for aggregated transitions
         if isinstance(trajectories.transitions, list):
-            _validate_transition_list(trajectories.transitions, base_transitions, "trajectories.transitions")
+            _validate_transition_list(
+                trajectories.transitions, base_transitions, "trajectories.transitions", warn_only=True
+            )
+
+
+def _warn_mismatched_observed_data_paths(
+    calibration: CalibrationConfiguration | None, output_config: OutputConfig
+) -> None:
+    """
+    Warn if observed data paths differ between calibration and output configs.
+
+    Parameters
+    ----------
+    calibration : CalibrationConfiguration or None
+        Calibration configuration, if present.
+    output_config : OutputConfig
+        Output configuration to check.
+    """
+    # Only check if we have both calibration config and FluSight rate trends output
+    if calibration is None:
+        return
+
+    output = output_config.output
+    if output.flusight_format is None or output.flusight_format.rate_trends_source is None:
+        return
+
+    # Get surveillance source configuration
+    if not output.options or not output.options.surveillance:
+        logger.warning(
+            "FluSight rate_trends_source specified but no surveillance sources defined in output.options.surveillance"
+        )
+        return
+
+    source_name = output.flusight_format.rate_trends_source
+    if source_name not in output.options.surveillance:
+        logger.warning("FluSight rate_trends_source '%s' not found in output.options.surveillance", source_name)
+        return
+
+    calibration_path = calibration.observed_data_path
+    output_path = output.options.surveillance[source_name].data_path
+
+    if calibration_path != output_path:
+        logger.warning(
+            "Observed data paths differ between configs: "
+            "calibration='%s', "
+            "output.flusight_format.rate_trends_source ('%s')='%s'. "
+            "This may lead to inconsistent results if the files contain different data.",
+            calibration_path,
+            source_name,
+            output_path,
+        )
+
+
+def _compare_prop_ed_window_against_calibration_window(
+    calibration: CalibrationConfiguration | None, output_config: OutputConfig
+) -> None:
+    """
+    Ensure rescaling factor fitting window is within calibration fitting window.
+
+    Parameters
+    ----------
+    calibration : CalibrationConfiguration or None
+        Calibration configuration, if present.
+    output_config : OutputConfig
+        Output configuration to check.
+    """
+    # Only check if we have both calibration config and FluSight prop ED output
+    if calibration is None:
+        return
+
+    output = output_config.output
+    if output.flusight_format is None or output.flusight_format.prop_ed is None:
+        return
+
+    # Collect calibration window
+    calibration_end = calibration.fitting_window.end_date
+    calibration_start = calibration.fitting_window.start_date
+
+    # calibration_window strategy
+    if output.flusight_format.prop_ed.strategy == "calibration_window":
+        rescale_start = calibration_end - timedelta(weeks=output.flusight_format.prop_ed.num_fit_weeks - 1)
+
+        # Validate
+        if rescale_start < calibration_start:
+            msg = (
+                f"Received flusight_format.prop_ed.num_fit_weeks: {output.flusight_format.prop_ed.num_fit_weeks}"
+                f"Resulting in a rescaling factor fit start: {rescale_start}"
+                f"Rescaling factor fit start cannot be earlier than calibration.fitting_window.start_date: {calibration_start}"
+            )
+            raise ValueError(msg)
+
+    # surveillance_window strategy
+    if output.flusight_format.prop_ed.strategy == "surveillance_window":
+        rescale_start = output.flusight_format.prop_ed.fit_start
+        rescale_end = output.flusight_format.prop_ed.fit_end
+
+        # Validate
+        if (
+            (rescale_start < calibration_start)
+            or (rescale_start > calibration_end)
+            or (rescale_end > calibration_end)
+            or (rescale_end < calibration_start)
+        ):
+            msg = (
+                f"Received flusight_format.prop_ed.fit_start: {rescale_start} and fit_end: {rescale_end}"
+                f"Received calibration.fitting_window.start_date: {calibration_start} and end_date: {calibration_end}"
+                "Prop ED rescaling factor must not extend beyond the calibration fitting window."
+            )
+            raise ValueError(msg)
+
+
+def _ensure_fitting_window_within_timespan(
+    basemodel: "BasemodelConfig",
+    calibration: CalibrationConfiguration | None,
+) -> None:
+    """
+    Validate fitting window is contained within simulation timespan.
+
+    Parameters
+    ----------
+    basemodel : BasemodelConfig
+        Base model configuration.
+    calibration : CalibrationConfiguration or None
+        Calibration configuration, if present.
+
+    Raises
+    ------
+    ValueError
+        Raised when fitting window extends beyond simulation timespan.
+    """
+    if calibration is None:
+        return
+
+    fitting_window = calibration.fitting_window
+    timespan = basemodel.model.timespan
+
+    # Use computed fields that handle both date and epiweek specifications
+    fit_start = fitting_window.epiweek_start_date
+    fit_end = fitting_window.epiweek_end_date
+
+    # Validate fitting_window end <= timespan.end_date
+    if fit_end > timespan.end_date:
+        msg = (
+            f"Fitting window end_date ({fit_end}) exceeds "
+            f"simulation timespan end_date ({timespan.end_date}). "
+            "The fitting window must be contained within the simulation timespan."
+        )
+        raise ValueError(msg)
+
+    # Validate fitting_window start >= timespan.start_date
+    # (only when timespan.start_date is a concrete date)
+    if isinstance(timespan.start_date, date) and fit_start < timespan.start_date:
+        msg = (
+            f"Fitting window start_date ({fit_start}) is before "
+            f"simulation timespan start_date ({timespan.start_date}). "
+            "The fitting window must be contained within the simulation timespan."
+        )
+        raise ValueError(msg)
 
 
 def validate_cross_config_consistency(
@@ -240,9 +409,16 @@ def validate_cross_config_consistency(
     # Modelset must contain either sampling or calibration section
     sampling = getattr(modelset, "sampling", None)
     calibration = getattr(modelset, "calibration", None)
-    if not sampling and not calibration:
-        err_msg = "Modelset must provide a 'sampling' or 'calibration' section."
+    if isinstance(modelset_config, CalibrationConfig) and not calibration:
+        err_msg = "Calibration modelset must provide a 'calibration' section."
         raise ValueError(err_msg)
+
+    # End validation if no variables are sampled (modelset is used only for population)
+    if sampling is None:
+        logger.info(
+            "Sampling modelset received without sampled variables (only populations). Ensure your modelset does not contain any 'sampled' keywords"
+        )
+        return
 
     # Parameter consistency checks
     # - Get sets of parameters for basemodel and modelset
@@ -272,11 +448,21 @@ def validate_cross_config_consistency(
     base_transitions = {f"{t.source}_to_{t.target}_total" for t in basemodel.transitions or []}
     _ensure_transitions_valid(base_transitions, calibration)
 
+    # Fitting window consistency checks
+    # - Ensure fitting window is within simulation timespan
+    _ensure_fitting_window_within_timespan(base_config, calibration)
+
     # Output config consistency checks
     # - Validate output config references if provided
     if output_config is not None:
         base_compartments_output = {comp.id for comp in basemodel.compartments or []}
         base_transitions_output = {f"{t.source}_to_{t.target}" for t in basemodel.transitions or []}
         _ensure_output_references_valid(base_compartments_output, base_transitions_output, output_config)
+
+        # Warn if observed data paths differ between calibration and output configs
+        _warn_mismatched_observed_data_paths(calibration, output_config)
+
+        # Ensure prop ed fitting window contained by calibration fitting window
+        _compare_prop_ed_window_against_calibration_window(calibration, output_config)
 
     logger.info("Config consistency validated successfully.")

@@ -6,9 +6,12 @@ from datetime import date
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from epymodelingsuite.dispatcher.output import filter_failed_projections
+from epymodelingsuite.schema.output import CategoricalPlotConfig, FigureOutputTypeEnum, PlotsConfig
+from epymodelingsuite.visualization.generators import generate_categorical_plots
 
 
 class TestFilterFailedProjections:
@@ -271,3 +274,276 @@ class TestFilterFailedProjections:
         # Should aggregate count across scenarios (1 + 2 = 3)
         assert hasattr(filtered, "_filtered_count")
         assert filtered._filtered_count == 3
+
+
+class TestGenerateCategoricalPlots:
+    """Tests for generate_categorical_plots function."""
+
+    @pytest.fixture
+    def mock_hub_format_data(self):
+        """Create mock FluSight hub format data with rate-trend forecasts."""
+        data = []
+        for horizon in [0, 1, 2, 3]:
+            for location in ["06", "48"]:  # FIPS codes for CA and TX
+                for category in ["large_decrease", "decrease", "stable", "increase", "large_increase"]:
+                    data.append(
+                        {
+                            "reference_date": date(2025, 11, 26),
+                            "location": location,
+                            "target": "wk flu hosp rate change",
+                            "horizon": horizon,
+                            "target_end_date": date(2025, 12, 7 + horizon * 7),
+                            "output_type": "pmf",
+                            "output_type_id": category,
+                            "value": 0.2,  # Equal probabilities for simplicity
+                        }
+                    )
+        return pd.DataFrame(data)
+
+    @pytest.fixture
+    def mock_plots_config_enabled(self):
+        """Create PlotsConfig with categorical plots enabled."""
+        return PlotsConfig(
+            reference_date=date(2025, 11, 26),
+            figure_output_types=[FigureOutputTypeEnum.PNG],
+            dpi=150,
+            categorical=CategoricalPlotConfig(),
+        )
+
+    @pytest.fixture
+    def mock_plots_config_disabled(self):
+        """Create PlotsConfig with categorical plots disabled."""
+        return PlotsConfig(
+            reference_date=date(2025, 11, 26),
+            figure_output_types=[FigureOutputTypeEnum.PNG],
+            dpi=150,
+            categorical=None,
+        )
+
+    def test_categorical_plots_from_flusight_data(self, mock_hub_format_data, mock_plots_config_enabled):
+        """Test categorical plot generation from FluSight rate-trend data."""
+        out_dict = {}
+
+        # Call generate_categorical_plots
+        generate_categorical_plots(mock_plots_config_enabled, out_dict, mock_hub_format_data)
+
+        # Assert: "categorical_rate_trends" in out_dict
+        assert "categorical_rate_trends" in out_dict
+
+        # Assert: OutputObject has correct types
+        assert len(out_dict["categorical_rate_trends"]) == 1  # One output type (PNG)
+        output_obj = out_dict["categorical_rate_trends"][0]
+        assert output_obj.name == "categorical_rate_trends.png"
+        assert output_obj.output_type == FigureOutputTypeEnum.PNG
+
+    def test_categorical_plots_skip_when_disabled(self, mock_hub_format_data, mock_plots_config_disabled):
+        """Test categorical plots are skipped when config.enabled=False."""
+        out_dict = {}
+
+        # Call generate_categorical_plots with disabled config
+        generate_categorical_plots(mock_plots_config_disabled, out_dict, mock_hub_format_data)
+
+        # Assert: "categorical_rate_trends" NOT in out_dict
+        assert "categorical_rate_trends" not in out_dict
+
+    def test_categorical_plots_skip_when_no_flusight_format(self, mock_plots_config_enabled, caplog):
+        """Test categorical plots are skipped when FluSight format not configured."""
+        out_dict = {}
+
+        # Call generate_categorical_plots with hub_format_data=None
+        generate_categorical_plots(mock_plots_config_enabled, out_dict, hub_format_data=None)
+
+        # Assert: categorical plots skipped
+        assert "categorical_rate_trends" not in out_dict
+
+        # Assert: warning mentions "flusight_format.rate_trends"
+        assert any(
+            "Categorical plots enabled but no FluSight format data available" in rec.message for rec in caplog.records
+        )
+        assert any("flusight_format.rate_trends" in rec.message for rec in caplog.records)
+
+    def test_categorical_plots_skip_when_no_rate_trends(self, mock_plots_config_enabled, caplog):
+        """Test categorical plots are skipped when rate-trend data missing."""
+        out_dict = {}
+
+        # Create hub format data WITHOUT rate-trend forecasts (only hospitalizations)
+        hub_format_data = pd.DataFrame(
+            {
+                "reference_date": [date(2025, 11, 26)],
+                "location": ["06"],
+                "target": ["wk ahead inc flu hosp"],  # Different target, not rate-trend
+                "horizon": [0],
+                "target_end_date": [date(2025, 12, 7)],
+                "output_type": ["quantile"],
+                "output_type_id": ["0.5"],
+                "value": [100.0],
+            }
+        )
+
+        # Call generate_categorical_plots
+        generate_categorical_plots(mock_plots_config_enabled, out_dict, hub_format_data)
+
+        # Assert: categorical plots skipped
+        assert "categorical_rate_trends" not in out_dict
+
+        # Assert: warning mentions "rate-trend categorical forecasts"
+        assert any("No rate-trend categorical forecasts found" in rec.message for rec in caplog.records)
+        assert any("flusight_format.rate_trends" in rec.message for rec in caplog.records)
+
+
+class TestGetHubLocationId:
+    """Tests for get_hub_location_id function."""
+
+    def test_iso_location_returns_fips(self):
+        """Test that ISO locations return FIPS codes."""
+        from epymodelingsuite.dispatcher.output import get_hub_location_id
+
+        # California
+        result = get_hub_location_id("United_States_California")
+        assert result == "06"
+
+        # Texas
+        result = get_hub_location_id("United_States_Texas")
+        assert result == "48"
+
+    def test_metrocast_location_returns_location_id(self):
+        """Test that metrocast locations return metrocast_location_id."""
+        from epymodelingsuite.dispatcher.output import get_hub_location_id
+
+        # Denver
+        result = get_hub_location_id("metrocast_location_denver")
+        assert result == "denver"
+
+        # Boston
+        result = get_hub_location_id("metrocast_location_boston")
+        assert result == "boston"
+
+        # NC flu region
+        result = get_hub_location_id("metrocast_location_nenc")
+        assert result == "nenc"
+
+
+class TestGetPlotLocationLabel:
+    """Tests for get_plot_location_label function."""
+
+    def test_iso_location_returns_name(self):
+        """Test that ISO locations return human-readable names."""
+        from epymodelingsuite.dispatcher.output import get_plot_location_label
+
+        # California
+        result = get_plot_location_label("United_States_California")
+        assert result == "California"
+
+        # Massachusetts
+        result = get_plot_location_label("United_States_Massachusetts")
+        assert result == "Massachusetts"
+
+    def test_metrocast_location_returns_short_name(self):
+        """Test that metrocast locations return short name from CSV."""
+        from epymodelingsuite.dispatcher.output import get_plot_location_label
+
+        # Denver - same as full name
+        result = get_plot_location_label("metrocast_location_denver")
+        assert result == "Denver, CO"
+
+        # Boston - shortened from "Boston Metro, South Shore, Cape & Islands, MA"
+        result = get_plot_location_label("metrocast_location_boston")
+        assert result == "Greater Boston, MA"
+
+        # NC flu region
+        result = get_plot_location_label("metrocast_location_nenc")
+        assert result == "Northeastern, NC"
+
+
+class TestFormatQuantilesFlusightforecast:
+    """Tests for format_quantiles_flusightforecast function."""
+
+    @pytest.fixture
+    def sample_quantiles_df(self):
+        """Create sample quantiles DataFrame spanning horizons -1 to 3."""
+        reference_date = date(2025, 11, 29)  # Saturday
+        # Create dates for horizons -1, 0, 1, 2, 3 (each 7 days apart)
+        dates = [
+            pd.Timestamp("2025-11-22"),  # horizon -1
+            pd.Timestamp("2025-11-29"),  # horizon 0
+            pd.Timestamp("2025-12-06"),  # horizon 1
+            pd.Timestamp("2025-12-13"),  # horizon 2
+            pd.Timestamp("2025-12-20"),  # horizon 3
+        ]
+        quantiles = [0.25, 0.5, 0.75]
+        data = []
+        for d in dates:
+            for q in quantiles:
+                data.append({"date": d, "quantile": q, "hospitalizations": 100.0})
+        return pd.DataFrame(data), reference_date
+
+    def test_standard_flusight_includes_horizon_minus_one(self, sample_quantiles_df):
+        """Test that standard FluSight (metrocast=False) includes horizon -1."""
+        from epymodelingsuite.dispatcher.output import format_quantiles_flusightforecast
+
+        df, reference_date = sample_quantiles_df
+        result = format_quantiles_flusightforecast(df, reference_date, metrocast=False)
+
+        horizons = result["horizon"].unique()
+        assert -1 in horizons
+        assert set(horizons) == {-1, 0, 1, 2, 3}
+
+    def test_metrocast_excludes_horizon_minus_one(self, sample_quantiles_df):
+        """Test that metrocast=True excludes horizon -1."""
+        from epymodelingsuite.dispatcher.output import format_quantiles_flusightforecast
+
+        df, reference_date = sample_quantiles_df
+        result = format_quantiles_flusightforecast(df, reference_date, metrocast=True)
+
+        horizons = result["horizon"].unique()
+        assert -1 not in horizons
+        assert set(horizons) == {0, 1, 2, 3}
+
+    def test_output_has_correct_columns(self, sample_quantiles_df):
+        """Test that output DataFrame has correct FluSight columns."""
+        from epymodelingsuite.dispatcher.output import format_quantiles_flusightforecast
+
+        df, reference_date = sample_quantiles_df
+        result = format_quantiles_flusightforecast(df, reference_date)
+
+        expected_columns = {"horizon", "target", "output_type", "output_type_id", "target_end_date", "value"}
+        assert set(result.columns) == expected_columns
+
+    def test_output_type_is_quantile(self, sample_quantiles_df):
+        """Test that output_type column is 'quantile' for all rows."""
+        from epymodelingsuite.dispatcher.output import format_quantiles_flusightforecast
+
+        df, reference_date = sample_quantiles_df
+        result = format_quantiles_flusightforecast(df, reference_date)
+
+        assert (result["output_type"] == "quantile").all()
+
+    def test_custom_target_name(self, sample_quantiles_df):
+        """Test that custom target name is used."""
+        from epymodelingsuite.dispatcher.output import format_quantiles_flusightforecast
+
+        df, reference_date = sample_quantiles_df
+        custom_target = "custom target name"
+        result = format_quantiles_flusightforecast(df, reference_date, target=custom_target)
+
+        assert (result["target"] == custom_target).all()
+
+    def test_default_target_name(self, sample_quantiles_df):
+        """Test that default target name is 'wk inc flu hosp'."""
+        from epymodelingsuite.dispatcher.output import format_quantiles_flusightforecast
+
+        df, reference_date = sample_quantiles_df
+        result = format_quantiles_flusightforecast(df, reference_date)
+
+        assert (result["target"] == "wk inc flu hosp").all()
+
+    def test_hospitalizations_rounded_to_integer(self, sample_quantiles_df):
+        """Test that hospitalization values are rounded to integers."""
+        from epymodelingsuite.dispatcher.output import format_quantiles_flusightforecast
+
+        df, reference_date = sample_quantiles_df
+        # Modify to have non-integer values
+        df["hospitalizations"] = 100.7
+        result = format_quantiles_flusightforecast(df, reference_date)
+
+        assert (result["value"] == 101).all()

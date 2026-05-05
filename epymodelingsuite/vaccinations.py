@@ -5,90 +5,15 @@ from collections.abc import Callable
 import pandas as pd
 from epydemix.model import EpiModel
 
+from .utils.location import (
+    get_metrocast_population_data,
+    get_parent_region,
+    is_state_level_metrocast_location,
+    parse_population_name,
+)
+from .utils.populations import aggregate_population_by_age_groups, get_age_group_mapping, validate_age_groups
+
 logger = logging.getLogger(__name__)
-
-
-def validate_age_groups(target_age_groups: list[str]) -> None:
-    """
-    Validate that a list of age group labels is properly formatted, contiguous, and non-overlapping.
-
-    Rules enforced
-    --------------
-    - The first age group must start at '0'.
-    - The last age group must end with '+' (e.g. '80+').
-    - All intermediate groups must be in the format 'start-end' (e.g. '0-9', '10-24').
-    - Groups must be contiguous: the end of one group plus one must equal the start of the next group.
-
-    Parameters
-    ----------
-    target_age_groups : list[str]
-        List of age group labels to validate.
-
-    Raises
-    ------
-    ValueError
-        If any of the rules above are violated.
-    """
-    logger.info(f"Validating age groups: {target_age_groups}")
-
-    if target_age_groups[-1][-1] != "+":
-        raise ValueError("The last age group must end with '+' e.g. '80+'")
-
-    if target_age_groups[0][0] != "0":
-        raise ValueError("The first age group must start at '0'")
-
-    for i in range(len(target_age_groups) - 1):
-        if "-" not in target_age_groups[i]:
-            raise ValueError("Age groups must be in the format 'start-end' e.g. '0-9', '10-24', '25-32' etc")
-        if "-" not in target_age_groups[i + 1] and i + 1 != len(target_age_groups) - 1:
-            raise ValueError("Age groups must be in the format 'start-end' e.g. '0-9', '10-24', '25-32' etc")
-        i_end = int(target_age_groups[i].split("-")[1].replace("+", ""))
-        i1_start = int(target_age_groups[i + 1].split("-")[0].replace("+", ""))
-        if i_end + 1 != i1_start:
-            raise ValueError("Age groups must be contiguous and not overlapping e.g. '0-9', '10-24', '25-32' etc")
-
-
-def get_age_group_mapping(target_age_groups: list[str]) -> dict[str, list[str]]:
-    """
-    Construct a mapping from model age group labels to the individual ages
-    they encompass.
-
-    Parameters
-    ----------
-    target_age_groups : list[str]
-        List of contiguous, non-overlapping age group labels. Each group
-        should be formatted as:
-        - 'start-end', e.g. '0-9', '10-24', '25-32', etc.
-        - The final group must use an open-ended format with '+', e.g. '80+'.
-
-    Returns
-    -------
-    dict[str, list[str]]
-        A dictionary mapping each age group label to a list of the string
-        representations of ages it covers. The final open-ended group includes
-        all ages from its starting value up to 83, plus the label '84+'.
-    """
-    validate_age_groups(target_age_groups)
-    age_group_map = {}
-    for i, a in enumerate(target_age_groups):
-        if i != len(target_age_groups) - 1:
-            start, end = a.split("-")
-            age_group_map[a] = [str(j) for j in range(int(start), int(end) + 1)]
-        elif "+" in a:
-            start = a.split("+")[0]
-            age_group_map[a] = [str(j) for j in range(int(start), 84)] + ["84+"]
-
-    return age_group_map
-
-
-def get_all_age_map() -> dict[str, list[str]]:
-    """Create a master population age group map from all age groups."""
-    # fmt: off
-    map = get_age_group_mapping(
-        ["0-0", "1-1", "2-2", "3-3", "4-4", "5-5", "6-6", "7-7", "8-8", "9-9", "10-10", "11-11", "12-12", "13-13", "14-14", "15-15", "16-16", "17-17", "18-18", "19-19", "20-20", "21-21", "22-22", "23-23", "24-24", "25-25", "26-26", "27-27", "28-28", "29-29", "30-30", "31-31", "32-32", "33-33", "34-34", "35-35", "36-36", "37-37", "38-38", "39-39", "40-40", "41-41", "42-42", "43-43", "44-44", "45-45", "46-46", "47-47", "48-48", "49-49", "50-50", "51-51", "52-52", "53-53", "54-54", "55-55", "56-56", "57-57", "58-58", "59-59", "60-60", "61-61", "62-62", "63-63", "64-64", "65-65", "66-66", "67-67", "68-68", "69-69", "70-70", "71-71", "72-72", "73-73", "74-74", "75-75", "76-76", "77-77", "78-78", "79-79", "80-80", "81-81", "82-82", "83-83", "84+"]
-    )
-    # fmt: on
-    return map
 
 
 def get_age_groups_from_data(data: pd.DataFrame) -> dict[str, str]:
@@ -126,35 +51,34 @@ def get_age_groups_from_data(data: pd.DataFrame) -> dict[str, str]:
     return age_group_map_data
 
 
-def resample_dataframe(df: pd.DataFrame, delta_t: float) -> pd.DataFrame:
+def resample_vaccination_schedule(df: pd.DataFrame, delta_t: float) -> pd.DataFrame:
     """
-    Resample a vaccination coverage DataFrame to match epydemix simulation time steps
-    by repeating values (step interpolation).
+    Resample daily vaccination schedule to match simulation timesteps.
 
-    This function preserves the step-wise nature of vaccination schedules,
-    where values should remain constant within each day/period rather than
-    being smoothly interpolated between periods.
-
-    Uses epydemix's compute_simulation_dates() to ensure exact alignment with simulation steps.
+    Adjusts the temporal resolution of a daily vaccination schedule to match the simulation's
+    delta_t by forward-filling values to maintain step-wise constant vaccination rates.
 
     Parameters
     ----------
     df : pd.DataFrame
-        Input DataFrame with at least the following columns:
-        - 'dates': datetime-like index column
-        - 'location': location identifier
-        - numeric coverage columns to be resampled
+        Daily vaccination schedule with 'dates' column, 'location' column, and numeric columns
+        for each age group containing daily vaccination counts.
     delta_t : float
-        Fraction of a day representing the new time step size. For example,
-        `delta_t=0.5` corresponds to 12-hour intervals, `delta_t=0.25` to 6-hour intervals.
+        Simulation time step in days. For example:
+        - delta_t=0.5: 12-hour intervals (values repeated twice per day)
+        - delta_t=1.0: daily intervals (no resampling, returns copy)
+        - delta_t=7.0: weekly intervals (aggregates 7 days into 1 timestep)
 
     Returns
     -------
     pd.DataFrame
-        Resampled DataFrame with:
-        - 'dates' as the new index column matching simulation time steps
-        - 'location' carried forward
-        - numeric columns repeated (not interpolated)
+        Vaccination schedule resampled to match simulation timesteps, with same columns as input.
+
+    Notes
+    -----
+    - Uses forward-fill (step interpolation) to preserve step-wise constant vaccination rates
+    - Does NOT multiply values by dt - values are repeated/aggregated as-is
+    - The vaccination rate function in epydemix handles dt conversion internally
     """
     import numpy as np
     from epydemix.utils import compute_simulation_dates
@@ -307,7 +231,6 @@ def scenario_to_epydemix(
     start_date: str | pd.Timestamp,
     end_date: str | pd.Timestamp,
     target_age_groups: list[str] = ["0-4", "5-17", "18-49", "50-64", "65+"],
-    delta_t: float = 1.0,
     output_filepath: str | None = None,
     states: list[str] | None = None,
 ) -> pd.DataFrame:
@@ -330,8 +253,6 @@ def scenario_to_epydemix(
         End date for the vaccination schedule (inclusive).
     target_age_groups : list of str, default ["0-4", "5-17", "18-49", "50-64", "65+"]
         Age groups to map the data to for the output schedule.
-    delta_t : float, default 1.0
-        Time step for resampling the daily vaccination data. Default 1.0 means daily.
     output_filepath : str, optional
         If provided, the processed daily vaccination DataFrame will be saved as a CSV at this path.
     states : list[str], optional
@@ -342,6 +263,7 @@ def scenario_to_epydemix(
     pd.DataFrame
         A DataFrame containing daily vaccination doses for each age group and location. Columns include:
         "dates", "location", and one column per target age group.
+        Returns daily vaccination schedules (dt=1.0).
 
     Raises
     ------
@@ -353,6 +275,7 @@ def scenario_to_epydemix(
     - The function aggregates weekly coverage into daily doses, distributes them evenly across days,
       and maps input age groups to the target model age groups using population reweighting.
     - Location names are converted to ISO codes for compatibility with Epydemix.
+    - Always returns daily schedules. Use resample_dataframe() to adjust temporal resolution for simulation timesteps.
     """
     import numpy as np
     from epydemix.utils import compute_simulation_dates
@@ -365,8 +288,8 @@ def scenario_to_epydemix(
         states = [convert_location_name_format(s, "name") for s in states]
 
     # ========== COMPUTE SIMULATION DATES ==========
-    # Use epydemix's date calculation to ensure alignment with simulation time steps
-    simulation_dates_array = compute_simulation_dates(start_date, end_date, dt=delta_t)
+    # Always generate daily schedules (dt=1.0)
+    simulation_dates_array = compute_simulation_dates(start_date, end_date, dt=1.0)
     simulation_dates_index = pd.DatetimeIndex(simulation_dates_array)
 
     # ========== LOAD AND FILTER DATA ==========
@@ -420,16 +343,11 @@ def scenario_to_epydemix(
             "50-64 Years": 4,
             "65+ Years": 5,
         }
-        age_group_map_data = get_age_group_mapping(data_age_groups)
-        # population_data = load_epydemix_population(loc_epydemix, age_group_mapping=age_group_map_data)
-        population_data = {}
-        for key, val in age_group_map_data.items():
-            vals = [int(v.replace("+", "")) for v in val]
-            population_data[key] = sum(population_codebook[loc_epydemix][vals].values)
+        pop_by_agegroup = aggregate_population_by_age_groups(population_codebook[loc_epydemix], data_age_groups)
 
         # Add model population and calculate cumulative doses
         vaccine_schedule["population_data"] = vaccine_schedule["Age"].map(
-            lambda age: list(population_data.values())[age_to_index[age]] if age in age_to_index else 0
+            lambda age: list(pop_by_agegroup.values())[age_to_index[age]] if age in age_to_index else 0
         )
 
         vaccine_schedule["cumulative_doses"] = (
@@ -520,16 +438,9 @@ def scenario_to_epydemix(
 
         daily_vaccines_wide_subset = this_location_wide[data_age_groups]
 
-        age_group_map_model = get_age_group_mapping(target_age_groups)
-        # population_model = load_epydemix_population(loc_epydemix, age_group_mapping=age_group_map_model)
-        population_dict_model = {}
-        for key, val in age_group_map_model.items():
-            vals = [int(v.replace("+", "")) for v in val]
-            population_dict_model[key] = sum(population_codebook[loc_epydemix][vals].values)
+        pop_by_agegroup_model = aggregate_population_by_age_groups(population_codebook[loc_epydemix], target_age_groups)
 
-        # population_dict_model= dict(zip(population_model.Nk_names, population_model.Nk))
-
-        reweighting_factors_dict = make_reweighting_factors(population_dict_model, data_age_groups, loc_epydemix)
+        reweighting_factors_dict = make_reweighting_factors(pop_by_agegroup_model, data_age_groups, loc_epydemix)
         new_coverages = {}
         for target_group, weights in reweighting_factors_dict.items():
             # linear combination
@@ -565,7 +476,6 @@ def smh_data_to_epydemix(
     start_date: str | pd.Timestamp,
     end_date: str | pd.Timestamp,
     target_age_groups: list[str] = ["0-4", "5-17", "18-49", "50-64", "65+"],
-    delta_t: float = 1.0,
     output_filepath: str | None = None,
     states: list[str] | None = None,
 ) -> pd.DataFrame:
@@ -582,7 +492,6 @@ def smh_data_to_epydemix(
         start_date (str or Timestamp): Start date of the simulation period.
         end_date (str or Timestamp): End date of the simulation period.
         target_age_groups (list[str]): Age groups to map the data to for the output schedule.
-        delta_t (float): Time step for resampling the daily vaccination data. Default 1.0 means daily.
         output_filepath (str, optional): If provided, the output DataFrame will be saved as a CSV.
         states (list[str], optional): If provided, only data for these specific states/locations will be processed.
 
@@ -590,6 +499,7 @@ def smh_data_to_epydemix(
     -------
         pd.DataFrame: DataFrame with columns ['dates', 'scenario', 'location', <age groups>] giving the
                       daily vaccination counts per age group for each scenario across all geographies.
+                      Returns daily vaccination schedules (dt=1.0).
     """
     import os
     import tempfile
@@ -639,7 +549,6 @@ def smh_data_to_epydemix(
                 start_date=start_date,
                 end_date=end_date,
                 target_age_groups=target_age_groups,
-                delta_t=delta_t,
                 output_filepath=None,  # Don't write individual scenario files
                 states=states,
             )
@@ -841,6 +750,71 @@ def make_vaccination_rate_function(origin_compartment: str, eligible_compartment
     return compute_vaccination_rate
 
 
+def _get_vaccination_scaling_factors(
+    population_name: str,
+    age_groups: list[str],
+) -> dict[str, float]:
+    """
+    Calculate age-stratified vaccination dose scaling factors for sub-state level locations.
+
+    For sub-state level locations (e.g., HSA regions for Metrocast), returns a dict
+    mapping each age group to its scaling factor (substate_pop[age] / state_pop[age]).
+    For ISO locations (state-level), returns scaling factor of 1.0 for all age groups.
+
+    Parameters
+    ----------
+    population_name : str
+        The model's population name (e.g., "metrocast_location_denver" or "United_States_Colorado")
+    age_groups : list[str]
+        List of age group strings (e.g., ["0-4", "5-17", "18-49", "50-64", "65+"])
+
+    Returns
+    -------
+    dict[str, float]
+        Mapping of age group -> scaling factor
+    """
+    from .utils import convert_location_name_format, get_population_codebook
+
+    location_id, location_type = parse_population_name(population_name)
+
+    # No scaling for ISO locations
+    if location_type != "metrocast_location":
+        return dict.fromkeys(age_groups, 1.0)
+
+    # No scaling for state-level metrocast locations
+    # (Uses the original epydemix population for states directly)
+    if is_state_level_metrocast_location(location_id):
+        return dict.fromkeys(age_groups, 1.0)
+
+    # Get metrocast population aggregated by age groups
+    metro_pop_data = get_metrocast_population_data()
+    location_data = metro_pop_data[metro_pop_data["metrocast_location_id"] == location_id]
+
+    if location_data.empty:
+        logger.warning(f"Metrocast location '{location_id}' not found. No vaccination scaling applied.")
+        return dict.fromkeys(age_groups, 1.0)
+
+    metro_pop = aggregate_population_by_age_groups(location_data, age_groups)
+
+    # Get parent state population aggregated by age groups
+    state_iso = get_parent_region(location_id, output_format="ISO")
+    state_epydemix = convert_location_name_format(state_iso, "epydemix_population")
+
+    population_codebook = get_population_codebook()
+    state_pop = aggregate_population_by_age_groups(population_codebook[state_epydemix], age_groups)
+
+    # Calculate scaling factors
+    scaling_factors = {}
+    for ag in age_groups:
+        if state_pop[ag] > 0:
+            scaling_factors[ag] = metro_pop[ag] / state_pop[ag]
+        else:
+            scaling_factors[ag] = 1.0
+
+    logger.info(f"Vaccination scaling factors for {location_id}: {scaling_factors}")
+    return scaling_factors
+
+
 def add_vaccination_schedule(
     model: EpiModel,
     vaccine_rate_function: Callable,
@@ -885,10 +859,18 @@ def add_vaccination_schedule(
 
     vaccination_schedule = vaccination_schedule.query("location == @iso_location").copy()
 
+    # Scale vaccination doses for sub-state level locations (age-stratified)
+    age_groups_model = model.population.Nk_names
+    if age_groups_model is None:
+        raise ValueError("Model population must have Nk_names defined for vaccination scheduling.")
+    scaling_factors = _get_vaccination_scaling_factors(model.population.name, age_groups_model)
+
+    for age_group, factor in scaling_factors.items():
+        if factor != 1.0 and age_group in vaccination_schedule.columns:
+            vaccination_schedule[age_group] = (vaccination_schedule[age_group] * factor).round().astype(int)
+
     # From epydemix v1.0.2, register_transition_kind accepts Callable for rate not probability
     model.register_transition_kind("vaccination", vaccine_rate_function)
-
-    age_groups_model = model.population.Nk_names
     age_groups_data = vaccination_schedule.columns.tolist()
 
     missing = [age for age in age_groups_model if age not in age_groups_data]
