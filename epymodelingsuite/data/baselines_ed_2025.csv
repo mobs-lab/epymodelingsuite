@@ -1,0 +1,52 @@
+location_name,baseline,epydemix_population,abbreviation
+Alabama,0.0020916666666666,United_States_Alabama,AL
+Alaska,0.0023083333333333,United_States_Alaska,AK
+Arizona,0.000725,United_States_Arizona,AZ
+Arkansas,0.0005833333333333,United_States_Arkansas,AR
+California,0.0011666666666666,United_States_California,CA
+Colorado,0.000575,United_States_Colorado,CO
+Connecticut,0.0005083333333333,United_States_Connecticut,CT
+Delaware,0.0003916666666666,United_States_Delaware,DE
+District of Columbia,0.0007916666666666,United_States_District_of_Columbia,DC
+Florida,0.0030166666666666,United_States_Florida,FL
+Georgia,0.0009,United_States_Georgia,GA
+Hawaii,0.003525,United_States_Hawaii,HI
+Idaho,0.0010166666666666,United_States_Idaho,ID
+Illinois,0.0005083333333333,United_States_Illinois,IL
+Indiana,0.0004333333333333,United_States_Indiana,IN
+Iowa,0.0004083333333333,United_States_Iowa,IA
+Kansas,0.000575,United_States_Kansas,KS
+Kentucky,0.0007166666666666,United_States_Kentucky,KY
+Louisiana,0.0016583333333333,United_States_Louisiana,LA
+Maine,0.0005416666666666,United_States_Maine,ME
+Maryland,0.0007999999999999,United_States_Maryland,MD
+Massachusetts,0.000575,United_States_Massachusetts,MA
+Michigan,0.00035,United_States_Michigan,MI
+Minnesota,0.0007916666666666,United_States_Minnesota,MN
+Mississippi,0.0022083333333333,United_States_Mississippi,MS
+Montana,0.0004666666666666,United_States_Montana,MT
+Nebraska,0.0002916666666666,United_States_Nebraska,NE
+Nevada,0.0011416666666666,United_States_Nevada,NV
+New Hampshire,0.0008916666666666,United_States_New_Hampshire,NH
+New Jersey,0.0009166666666666,United_States_New_Jersey,NJ
+New Mexico,0.000775,United_States_New_Mexico,NM
+New York,0.000475,United_States_New_York,NY
+North Carolina,0.0064833333333333,United_States_North_Carolina,NC
+North Dakota,0.0003749999999999,United_States_North_Dakota,ND
+Ohio,0.0003666666666666,United_States_Ohio,OH
+Oklahoma,0.0008166666666666,United_States_Oklahoma,OK
+Oregon,0.000575,United_States_Oregon,OR
+Pennsylvania,0.000475,United_States_Pennsylvania,PA
+Rhode Island,0.0005,United_States_Rhode_Island,RI
+South Carolina,0.0010083333333333,United_States_South_Carolina,SC
+South Dakota,0.000325,United_States_South_Dakota,SD
+Tennessee,0.0013833333333333,United_States_Tennessee,TN
+Texas,0.0020916666666666,United_States_Texas,TX
+United States,0.001325,United_States,US
+Utah,0.000775,United_States_Utah,UT
+Vermont,0.000325,United_States_Vermont,VT
+Virginia,0.0008666666666666,United_States_Virginia,VA
+Washington,0.0010083333333333,United_States_Washington,WA
+West Virginia,0.0003666666666666,United_States_West_Virginia,WV
+Wisconsin,0.000475,United_States_Wisconsin,WI
+Wyoming,0.0004583333333333,United_States_Wyoming,WY
