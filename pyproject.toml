@@ -59,6 +59,7 @@ packages = [
     "epymodelingsuite.data",
     "epymodelingsuite.visualization",
     "epymodelingsuite.telemetry",
+    "epymodelingsuite.multistrain",
 ]
 include-package-data = true
 
