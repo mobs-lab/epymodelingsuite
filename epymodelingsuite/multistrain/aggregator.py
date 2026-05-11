@@ -397,7 +397,7 @@ def _aggregate_sum(
 
     # Sum target values from all strains
     target_cols = [f"target_{source.strain}" for source in config.sources]
-    aggregated["target_total"] = aggregated[target_cols].fillna(0).sum(axis=1)
+    aggregated["target_sum"] = aggregated[target_cols].fillna(0).sum(axis=1)
 
     # Clean up columns
     output_cols = (
@@ -405,7 +405,7 @@ def _aggregate_sum(
         + [f"sim_id_{source.strain}" for source in config.sources]
         + ["location", "date"]
         + target_cols
-        + ["target_total"]
+        + ["target_sum"]
     )
 
     # Filter to only columns that exist
