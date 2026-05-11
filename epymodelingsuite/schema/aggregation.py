@@ -50,13 +50,13 @@ class SamplingConfiguration(BaseModel):
     """Configuration for sampling mappings of individual trajectories across experiments."""
 
     method: SamplingStrategyEnum = Field(description="Strategy for sampling multistrain results.")
-    n_samples: int = Field(description="Number of trajectory mapping samples to take")
+    n_samples: int = Field(description="Number of trajectory mapping samples to take.")
 
 
 class AggregationOutputConfiguration(BaseModel):
     """"""
 
-    base_fname: str | None = Field(default=None, description="")
+    base_fname: str | None = Field(default=None, description="If provided, output files will include the base file name.")
     raw_trajectories: bool = Field(default=True, description="")
     aggregated_trajectories: bool = Field(default=True, description="")
 
@@ -72,6 +72,7 @@ class AggregationConfiguration(BaseModel):
         description="Configuration for sampling mappings of individual trajectories across experiments."
     )
     aggregate_method: AggregationStrategyEnum = Field(description="Strategy for aggregating multistrain results.")
+    baseline_negbin_k: int | None = Field(None, description="If provided, adds negative binomial noise with dispersion parameter k to aggregated trajectories.")
     outputs: AggregationOutputConfiguration = Field(description="")
 
 

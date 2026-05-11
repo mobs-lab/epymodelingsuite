@@ -71,9 +71,9 @@ def main():
     if aggregation.outputs.raw_trajectories:
         for strain, traj_df in strains.items():
             if aggregation.outputs.base_fname:
-                fname = f"{args.output}/trajectories_{aggregation.outputs.base_fname}_{strain}.csv"
+                fname = f"{args.output}/trajectories_{aggregation.outputs.base_fname}_{strain}.csv.gz"
             else:
-                fname = f"{args.output}/trajectories_{strain}.csv"
+                fname = f"{args.output}/trajectories_{strain}.csv.gz"
             traj_df.to_csv(fname, index=False)
             print(f"  Saved trajectory file at {fname}")
 
@@ -101,9 +101,9 @@ def main():
     # Write aggregated trajectories to file
     if aggregation.outputs.aggregated_trajectories:
         if aggregation.outputs.base_fname:
-            fname = f"{args.output}/trajectories_aggregated_{aggregation.outputs.base_fname}.csv"
+            fname = f"{args.output}/trajectories_aggregated_{aggregation.outputs.base_fname}.csv.gz"
         else:
-            fname = f"{args.output}/trajectories_aggregated.csv"
+            fname = f"{args.output}/trajectories_aggregated.csv.gz"
         aggregated_df.to_csv(fname, index=False)
         print(f"  Saved aggregated trajectories at {fname}")
 

@@ -11,6 +11,66 @@ logger = logging.getLogger(__name__)
 
 from ..schema.aggregation import AggregationConfiguration, AggregationStrategyEnum, SamplingStrategyEnum
 
+
+# Weekly baseline hospitalization values per location.
+# Keys: epydemix population name (e.g., "United_States_Massachusetts").
+BASELINE = {
+    "United_States": 889.0833333333334,
+    "United_States_Alabama": 21.083333333333332,
+    "United_States_Alaska": 3.4166666666666665,
+    "United_States_Arizona": 13.0,
+    "United_States_Arkansas": 3.25,
+    "United_States_California": 81.16666666666667,
+    "United_States_Colorado": 3.8333333333333335,
+    "United_States_Connecticut": 6.5,
+    "United_States_Delaware": 0.5,
+    "United_States_District_of_Columbia": 1.0833333333333333,
+    "United_States_Florida": 156.5,
+    "United_States_Georgia": 18.666666666666668,
+    "United_States_Hawaii": 3.5,
+    "United_States_Idaho": 1.5833333333333333,
+    "United_States_Illinois": 10.333333333333334,
+    "United_States_Indiana": 10.083333333333334,
+    "United_States_Iowa": 2.0,
+    "United_States_Kansas": 3.5833333333333335,
+    "United_States_Kentucky": 10.166666666666666,
+    "United_States_Louisiana": 23.75,
+    "United_States_Maine": 0.6666666666666666,
+    "United_States_Maryland": 6.0,
+    "United_States_Massachusetts": 9.75,
+    "United_States_Michigan": 20.916666666666668,
+    "United_States_Minnesota": 2.6666666666666665,
+    "United_States_Mississippi": 13.416666666666666,
+    "United_States_Missouri": 11.583333333333334,
+    "United_States_Montana": 1.5833333333333333,
+    "United_States_Nebraska": 2.1666666666666665,
+    "United_States_Nevada": 6.416666666666667,
+    "United_States_New_Hampshire": 1.8333333333333333,
+    "United_States_New_Jersey": 11.833333333333334,
+    "United_States_New_Mexico": 1.5833333333333333,
+    "United_States_New_York": 17.25,
+    "United_States_North_Carolina": 13.166666666666666,
+    "United_States_North_Dakota": 1.8333333333333333,
+    "United_States_Ohio": 12.0,
+    "United_States_Oklahoma": 8.583333333333334,
+    "United_States_Oregon": 3.6666666666666665,
+    "United_States_Pennsylvania": 105.75,
+    "United_States_Puerto_Rico": 89.75,
+    "United_States_Rhode_Island": 1.25,
+    "United_States_South_Carolina": 8.583333333333334,
+    "United_States_South_Dakota": 1.6666666666666667,
+    "United_States_Tennessee": 29.166666666666668,
+    "United_States_Texas": 100.5,
+    "United_States_Utah": 3.1666666666666665,
+    "United_States_Vermont": 0.16666666666666666,
+    "United_States_Virginia": 10.75,
+    "United_States_Washington": 7.75,
+    "United_States_West_Virginia": 0.5,
+    "United_States_Wisconsin": 5.25,
+    "United_States_Wyoming": 0.75,
+}
+
+
 #############
 ### UTILS ###
 #############
@@ -145,15 +205,15 @@ def pull_trajectory_projections(
         if exit_code == 0:
             logger.info(f"Downloaded: {source.strain}")
             # Load the downloaded data
-            # trajectory_file = f"{target_location}/{source.trajectory_file}"
-            trajectories[source.strain] = pd.read_csv(target_location)  # trajectory_file)
+            trajectories[source.strain] = pd.read_csv(target_location)
         else:
+            prepend_err = ""
             if source.run_id == "any":
                 prepend_err = f"Warning: setting source.run_id to 'any' will\
                 fail if more than one matching trajectory file exists.\n"
                 logger.warn(prepend_err)
             raise ValueError(
-                f"{preprend_err}Failed to download: {source.experiment}\n\
+                f"{prepend_err}Failed to download: {source.experiment}\n\
                     Exit code: {exit_code}\n\
                     Source: {source_location}\n\
                     Target: {target_location}"
@@ -378,3 +438,31 @@ def dispatch_strain_aggregator(
             return _aggregate_sum(merged_trajectories, config)
         case _:
             raise NotImplementedError(f"Invalid aggregation method: {config.aggregation.method}")
+
+
+################
+### BASELINE ###
+################
+
+
+def negbin_baseline_addition(
+    aggregated_trajectories: pd.DataFrame,
+    config: AggregationConfiguration,
+) -> pd.DataFrame:
+    """
+    Dispatch post-aggregation baseline addition.
+
+    Parameters
+    ----------
+    aggregated_trajectories: pd.DataFrame
+        DataFrame with aggregated trajectories in column "target_total"
+    config: AggregationConfiguration
+        Config object with settings
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with baseline noise added to aggregated trajectories in column "target_baseline"
+    """
+    rng = np.random.default_rng()
+    
