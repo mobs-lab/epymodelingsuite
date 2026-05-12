@@ -17,9 +17,9 @@ import numpy as np
 import pandas as pd
 import pytest
 from epydemix.model import EpiModel
-from epydemix.population import load_epydemix_population
 
 from epymodelingsuite.dispatcher.builder import dispatch_builder
+from epymodelingsuite.utils import load_epydemix_population
 from epymodelingsuite.dispatcher.runner import dispatch_runner
 from epymodelingsuite.schema.basemodel import (
     BaseEpiModel,
@@ -240,7 +240,7 @@ class TestABCParameterRecovery:
         model = EpiModel()
 
         population = load_epydemix_population(
-            population_name="United_States_Massachusetts",
+            population_name="United_States__Massachusetts",
             age_group_mapping=AGE_GROUP_MAPPING,
         )
         model.set_population(population)

@@ -175,7 +175,7 @@ def test_flu_calibration_telemetry_builder(flu_configs):
     assert "Distance function: rmse" in text
 
     # Verify population
-    assert "US-MA" in text or "United_States_Massachusetts" in text
+    assert "US-MA" in text or "United_States__Massachusetts" in text
 
 
 def test_flu_calibration_telemetry_runner(flu_configs):

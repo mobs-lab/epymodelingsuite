@@ -9,6 +9,7 @@ This package contains utility functions organized by category:
 - formatting: Formatting utilities for human-readable output
 - common: Common utility functions
 - data: External data fetching utilities
+- epydemix_data: Pinned-ref wrappers around epydemix-data loaders
 """
 
 # Import all public functions from submodules
@@ -17,6 +18,7 @@ from .config import identify_config_type
 from .data import fetch_hhs_hospitalizations
 from .distance import wrmse
 from .distributions import distribution_to_scipy
+from .epydemix_data import EPYDEMIX_DATA_VERSION, get_available_locations, load_epydemix_population
 from .expression_eval import RetrieveName, SafeEvalVisitor, safe_eval
 from .formatting import format_data_size, format_duration
 from .location import convert_location_name_format, get_location_codebook, validate_iso3166
@@ -33,6 +35,10 @@ __all__ = [
     "wrmse",
     # Distribution utilities
     "distribution_to_scipy",
+    # epydemix-data (pinned)
+    "EPYDEMIX_DATA_VERSION",
+    "get_available_locations",
+    "load_epydemix_population",
     # Expression evaluation
     "RetrieveName",
     "SafeEvalVisitor",

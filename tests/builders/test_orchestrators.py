@@ -56,7 +56,7 @@ class TestCreateModelCollection:
         assert resolved_names[0] == "US-CA"
 
         # Model should have correct population (converted to epydemix format)
-        assert models[0].population.name == "United_States_California"
+        assert models[0].population.name == "United_States__California"
 
     def test_creates_multiple_models_for_multiple_populations(self, base_model_config):
         """Test that multiple models are created for a list of population names."""
@@ -69,7 +69,7 @@ class TestCreateModelCollection:
         assert resolved_names == population_names
 
         # Each model should have the correct population (converted to epydemix format)
-        expected_names = ["United_States_California", "United_States_Texas", "United_States_New_York"]
+        expected_names = ["United_States__California", "United_States__Texas", "United_States__New_York"]
         for model, expected_name in zip(models, expected_names, strict=False):
             assert model.population.name == expected_name
 
@@ -80,9 +80,9 @@ class TestCreateModelCollection:
             {
                 "ISO": ["US-CA", "US-VT", "US-WA"],
                 "location_name_epydemix": [
-                    "United_States_California",
-                    "United_States_Vermont",
-                    "United_States_Washington",
+                    "United_States__California",
+                    "United_States__Vermont",
+                    "United_States__Washington",
                 ],
             }
         )
@@ -104,11 +104,11 @@ class TestCreateModelCollection:
             {
                 "ISO": ["US-CA", "US-TX", "US-NY", "US-FL", "US-MA"],
                 "location_name_epydemix": [
-                    "United_States_California",
-                    "United_States_Texas",
-                    "United_States_New_York",
-                    "United_States_Florida",
-                    "United_States_Massachusetts",
+                    "United_States__California",
+                    "United_States__Texas",
+                    "United_States__New_York",
+                    "United_States__Florida",
+                    "United_States__Massachusetts",
                 ],
             }
         )
@@ -241,9 +241,9 @@ class TestCreateModelCollection:
 
         # All should be different (converted to epydemix format)
         assert len(set(model_pop_names)) == 3
-        assert "United_States_California" in model_pop_names
-        assert "United_States_Texas" in model_pop_names
-        assert "United_States_New_York" in model_pop_names
+        assert "United_States__California" in model_pop_names
+        assert "United_States__Texas" in model_pop_names
+        assert "United_States__New_York" in model_pop_names
 
     def test_model_name_is_set_from_config(self, base_model_config):
         """Test that model name is set from basemodel config."""

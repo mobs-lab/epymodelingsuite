@@ -6,12 +6,12 @@ import logging
 import numpy as np
 import scipy
 from epydemix.model import EpiModel
-from epydemix.population import Population, load_epydemix_population
+from epydemix.population import Population
 from epydemix.utils import convert_to_2Darray
 
 from ..schema.basemodel import Compartment, Parameter, Transition
 from ..schema.basemodel import Population as PopulationConfig
-from ..utils import convert_location_name_format
+from ..utils import convert_location_name_format, load_epydemix_population
 from ..utils.expression_eval import RetrieveName, SafeEvalVisitor, safe_eval
 from ..utils.location import (
     METROCAST_PREFIX,

@@ -441,7 +441,7 @@ class TestRunSimulationIntegration:
         assert isinstance(result.results, SimulationResults)
         assert result.primary_id == 0
         assert result.seed == 42
-        assert result.population == "United_States_Massachusetts"
+        assert result.population == "United_States__Massachusetts"
 
     def test_results_have_expected_compartments(self, real_simulation_builder_output):
         """Test that simulation results contain expected compartments."""
@@ -611,4 +611,4 @@ class TestRunCalibrationIntegration:
 
         assert result.primary_id == real_calibration_builder_output.primary_id
         assert result.seed == real_calibration_builder_output.seed
-        assert result.population == "United_States_Massachusetts"
+        assert result.population == "United_States__Massachusetts"
