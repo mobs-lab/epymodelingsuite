@@ -188,7 +188,7 @@ class TestBuildBasemodel:
         result = build_basemodel(basemodel_config=minimal_basemodel_config)
 
         # Population name is converted to epydemix format
-        assert result.model.population.name == "United_States_California"
+        assert result.model.population.name == "United_States__California"
 
     def test_seed_is_preserved(self, minimal_basemodel_config):
         """Test that random seed is preserved in BuilderOutput."""
@@ -357,8 +357,8 @@ class TestBuildSampling:
 
         populations = {output.model.population.name for output in result}
         assert len(populations) == len(result)
-        assert "United_States_California" in populations
-        assert "United_States_Texas" in populations
+        assert "United_States__California" in populations
+        assert "United_States__Texas" in populations
 
 
 # Calibration strategy configurations for parametrized tests

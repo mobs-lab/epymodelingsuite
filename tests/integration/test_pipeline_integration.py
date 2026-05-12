@@ -56,7 +56,7 @@ class TestSimulationPipelineE2E:
         # Verify result type
         assert isinstance(result, SimulationOutput)
         assert result.results is not None
-        assert result.population == "United_States_Massachusetts"
+        assert result.population == "United_States__Massachusetts"
 
         # Verify trajectories exist and have valid structure
         sim_results = result.results
@@ -220,7 +220,8 @@ class TestCalibrationPipelineE2E:
         "observed" data that the calibration should be able to recover.
         """
         from epydemix.model import EpiModel
-        from epydemix.population import load_epydemix_population
+
+        from epymodelingsuite.utils import load_epydemix_population
 
         # Create a simple SIR model with known parameters
         model = EpiModel()
@@ -235,7 +236,7 @@ class TestCalibrationPipelineE2E:
             "65+": [str(i) for i in range(65, 84)] + ["84+"],
         }
         population = load_epydemix_population(
-            population_name="United_States_Massachusetts",
+            population_name="United_States__Massachusetts",
             age_group_mapping=age_group_mapping,
         )
         model.set_population(population)
@@ -344,7 +345,7 @@ class TestCalibrationPipelineE2E:
         # Verify result type
         assert isinstance(result, CalibrationOutput)
         assert result.results is not None
-        assert result.population == "United_States_Massachusetts"
+        assert result.population == "United_States__Massachusetts"
 
         # Verify posterior samples
         posterior_df = result.results.get_posterior_distribution()

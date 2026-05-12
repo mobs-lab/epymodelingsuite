@@ -717,8 +717,8 @@ class TestMakeSimulateWrapper:
         assert captured_context["params"]["gamma"] == 0.1
         assert captured_context["params"]["projection"] is True
         assert captured_context["projection"] is True
-        # Location name is transformed from "US-CA" to "United_States_California"
-        assert captured_context["location"] == "United_States_California"
+        # Location name is transformed from "US-CA" to "United_States__California"
+        assert captured_context["location"] == "United_States__California"
         assert isinstance(captured_context["basemodel"], BaseEpiModel)
         assert isinstance(captured_context["timespan"], Timespan)
         assert isinstance(captured_context["observed_data"], pd.DataFrame)

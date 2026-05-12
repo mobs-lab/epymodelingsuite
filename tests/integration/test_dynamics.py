@@ -10,15 +10,15 @@ import datetime as dt
 import numpy as np
 import pytest
 from epydemix.model import EpiModel
-from epydemix.population import load_epydemix_population
 
 from epymodelingsuite.builders.interventions import add_parameter_interventions_from_config
 from epymodelingsuite.builders.seasonality import add_seasonality_from_config
 from epymodelingsuite.schema.basemodel import Intervention, Seasonality, Timespan
+from epymodelingsuite.utils import load_epydemix_population
 from tests.conftest import AGE_GROUP_MAPPING
 
 
-def create_sir_model(location: str = "United_States_Massachusetts") -> EpiModel:
+def create_sir_model(location: str = "United_States__Massachusetts") -> EpiModel:
     """Create a basic SIR model with age structure.
 
     Parameters

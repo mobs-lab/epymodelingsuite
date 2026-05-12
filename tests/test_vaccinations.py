@@ -198,7 +198,7 @@ class TestScenarioToEpydemix:
 
         # Get epydemix population for California
         codebook = get_population_codebook()
-        ca_pop = codebook["United_States_California"]
+        ca_pop = codebook["United_States__California"]
 
         # Calculate epydemix population for each model age group
         # TODO: Use aggregate_population_by_age_groups utility once merged
@@ -632,7 +632,8 @@ class TestVaccinationE2E:
         Returns a model with no disease transmission (beta=0) to isolate vaccination effects.
         """
         from epydemix.model import EpiModel
-        from epydemix.population import load_epydemix_population
+
+        from epymodelingsuite.utils import load_epydemix_population
 
         model = EpiModel()
 
@@ -644,7 +645,7 @@ class TestVaccinationE2E:
             "65+": [str(i) for i in range(65, 84)] + ["84+"],
         }
         population = load_epydemix_population(
-            population_name="United_States_California",
+            population_name="United_States__California",
             age_group_mapping=age_group_mapping,
         )
         model.set_population(population)
@@ -960,7 +961,8 @@ class TestVaccinationE2E:
         The vaccination scenario should have fewer total infections (S->I transitions) because vaccinated people (in S_vax) cannot be infected.
         """
         from epydemix.model import EpiModel
-        from epydemix.population import load_epydemix_population
+
+        from epymodelingsuite.utils import load_epydemix_population
 
         # Create model with disease (beta > 0)
         def create_model_with_disease():
@@ -974,7 +976,7 @@ class TestVaccinationE2E:
                 "65+": [str(i) for i in range(65, 84)] + ["84+"],
             }
             population = load_epydemix_population(
-                population_name="United_States_California",
+                population_name="United_States__California",
                 age_group_mapping=age_group_mapping,
             )
             model.set_population(population)

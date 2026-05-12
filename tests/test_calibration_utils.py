@@ -2,9 +2,9 @@
 
 import numpy as np
 import pytest
-from epydemix.population import load_epydemix_population
 
 from epymodelingsuite.calibration import calc_beta
+from epymodelingsuite.utils import load_epydemix_population
 
 
 class TestCalcBeta:
@@ -20,7 +20,7 @@ class TestCalcBeta:
             "50-64": [str(i) for i in range(50, 65)],
             "65+": [str(i) for i in range(65, 84)] + ["84+"],
         }
-        return load_epydemix_population("United_States_California", age_group_mapping=age_group_mapping)
+        return load_epydemix_population("United_States__California", age_group_mapping=age_group_mapping)
 
     def test_returns_float(self, population):
         """Test that calc_beta returns a float."""
@@ -123,8 +123,8 @@ class TestCalcBeta:
             "65+": [str(i) for i in range(65, 84)] + ["84+"],
         }
 
-        pop_ca = load_epydemix_population("United_States_California", age_group_mapping=age_group_mapping)
-        pop_ny = load_epydemix_population("United_States_New_York", age_group_mapping=age_group_mapping)
+        pop_ca = load_epydemix_population("United_States__California", age_group_mapping=age_group_mapping)
+        pop_ny = load_epydemix_population("United_States__New_York", age_group_mapping=age_group_mapping)
 
         Rt = 1.5
         mu = 1 / 3.0
