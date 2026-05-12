@@ -8,6 +8,7 @@ from epydemix.population import Population
 
 from .location import METROCAST_PREFIX, get_metrocast_locations
 
+
 logger = logging.getLogger(__name__)
 
 

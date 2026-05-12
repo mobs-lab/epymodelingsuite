@@ -12,7 +12,13 @@ logger = logging.getLogger(__name__)
 
 def _ensure_parameters_present(base_params: set, modelset_params: set) -> None:
     """
-    Validate that all modelset parameters exist in the base model.
+    Warn if modelset parameters are not declared in the base model.
+
+    Modelset parameters may be referenced only inside user-defined functions
+    (custom distance functions, post-hoc transformations, calculated parameter
+    expressions) and thus need not appear in `basemodel.parameters`. We emit a
+    warning rather than raising so legitimate usages are not blocked.
+    typos are still surfaced.
 
     Parameters
     ----------
@@ -20,16 +26,14 @@ def _ensure_parameters_present(base_params: set, modelset_params: set) -> None:
         Parameter names available in the base model.
     modelset_params : set
         Parameter names referenced by the modelset.
-
-    Raises
-    ------
-    ValueError
-        Raised when at least one modelset parameter is missing from the base model.
     """
     missing = modelset_params - base_params
     if missing:
-        err_msg = f"Parameters in modelset not defined in base model: {sorted(missing)}"
-        raise ValueError(err_msg)
+        logger.warning(
+            f"Parameters in modelset not defined in base model: {sorted(missing)}. "
+            "If these are referenced only inside user-defined functions this is fine; "
+            "otherwise check for a typo."
+        )
 
 
 def _ensure_compartments_valid(base_compartments: set, sampling: SamplingConfiguration | None) -> None:
@@ -82,7 +86,11 @@ def _ensure_populations_valid(base_population_name: str | None, modelset_populat
 
 def _ensure_transitions_valid(base_transitions: set, calibration: CalibrationConfiguration | None) -> None:
     """
-    Validate that calibration comparisons reference known transitions.
+    Warn if calibration comparison transitions are not declared in the base model.
+
+    Comparison transitions may be UDF-computed (e.g. derived signals like `ed_signal`)
+    rather than direct basemodel transitions. We warn rather than raise so legitimate
+    UDF transitions are not blocked, while typos are still surfaced.
 
     Parameters
     ----------
@@ -90,19 +98,16 @@ def _ensure_transitions_valid(base_transitions: set, calibration: CalibrationCon
         Transition identifiers defined in the base model.
     calibration : CalibrationConfiguration or None
         Calibration section of the modelset, if present.
-
-    Raises
-    ------
-    ValueError
-        Raised when calibration comparisons contain unknown transitions.
     """
     if not calibration:
         return
     for comparison in calibration.comparison or []:
         missing = set(comparison.simulation) - base_transitions
         if missing:
-            err_msg = f"Transitions in calibration comparison not defined in base model: {sorted(missing)}"
-            raise ValueError(err_msg)
+            logger.warning(
+                f"Transitions in calibration comparison not defined in base model: {sorted(missing)}. "
+                "If these are UDF-computed transitions this is fine; otherwise check for a typo."
+            )
 
 
 def _validate_compartment_list(names: list[str], base_compartments: set, context: str) -> None:
@@ -409,16 +414,26 @@ def validate_cross_config_consistency(
     # Modelset must contain either sampling or calibration section
     sampling = getattr(modelset, "sampling", None)
     calibration = getattr(modelset, "calibration", None)
+
+    # CalibrationConfig must have calibration section
     if isinstance(modelset_config, CalibrationConfig) and not calibration:
         err_msg = "Calibration modelset must provide a 'calibration' section."
         raise ValueError(err_msg)
 
-    # End validation if no variables are sampled (modelset is used only for population)
-    if sampling is None:
+    # SamplingConfig supports population-only mode (sampling=None), skip remaining validation
+    # Example YAML:
+    #   modelset:
+    #     population_names: ["US-CA", "US-TX"]
+    if isinstance(modelset_config, SamplingConfig) and sampling is None:
         logger.info(
             "Sampling modelset received without sampled variables (only populations). Ensure your modelset does not contain any 'sampled' keywords"
         )
         return
+
+    # Require either sampling or calibration for remaining validation
+    if sampling is None and calibration is None:
+        err_msg = "Modelset must provide a 'sampling' or 'calibration' section."
+        raise ValueError(err_msg)
 
     # Parameter consistency checks
     # - Get sets of parameters for basemodel and modelset

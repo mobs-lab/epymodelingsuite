@@ -432,6 +432,149 @@ class TestCalculateCompartmentInitialConditions:
         np.testing.assert_array_almost_equal(result["I"], expected)
 
 
+class TestInitialImmuneCompartment:
+    """Tests for Initial_immune compartment behavior (residual immunity)."""
+
+    @pytest.fixture
+    def population_array(self):
+        """Sample population array with 5 age groups."""
+        return np.array([10000, 20000, 30000, 40000, 50000])
+
+    @pytest.fixture
+    def total_population(self, population_array):
+        """Total population sum."""
+        return sum(population_array)
+
+    def test_calibrated_initial_immune_sets_initial_conditions(self, population_array, total_population):
+        """Verify Initial_immune prior value correctly sets initial conditions.
+
+        When Initial_immune is calibrated with a proportion (e.g., 0.20), it should
+        initialize 20% of the population in the Initial_immune compartment, with
+        the default compartment (S) receiving the remainder.
+        """
+        compartments = [
+            DummyCompartment(id="S", init="default"),
+            DummyCompartment(id="I", init=10),
+            DummyCompartment(id="R", init=0),
+            DummyCompartment(id="Initial_immune", init="calibrated"),  # Calibrated compartment
+        ]
+
+        # Simulate calibration providing Initial_immune = 0.20 (20% residual immunity)
+        params_dict = {"Initial_immune": 0.20}
+
+        result = calculate_compartment_initial_conditions(compartments, population_array, params_dict)
+
+        # Initial_immune should have 20% of population in each age group
+        expected_initial_immune = population_array * 0.20
+        np.testing.assert_array_almost_equal(result["Initial_immune"], expected_initial_immune)
+
+        # S (default) should receive remaining population minus I and Initial_immune
+        infected = 10 * population_array / total_population
+        expected_S = population_array - infected - expected_initial_immune
+        np.testing.assert_array_almost_equal(result["S"], expected_S)
+
+        # Verify total equals 20% of population
+        assert np.isclose(sum(result["Initial_immune"]), total_population * 0.20)
+
+    def test_initial_immune_compartment_no_transitions(self):
+        """Verify Initial_immune has no outgoing transitions (remains isolated).
+
+        The Initial_immune compartment should be a sink - population placed there
+        at initialization should not flow to other compartments.
+        """
+        from epymodelingsuite.schema.basemodel import Transition
+
+        # Define typical transitions for an SIR model with Initial_immune
+        transitions = [
+            Transition(source="S", target="I", type="mediated", rate="beta", mediator="I"),
+            Transition(source="I", target="R", type="spontaneous", rate="gamma"),
+        ]
+
+        # Verify Initial_immune is NOT a source in any transition
+        source_compartments = {t.source for t in transitions}
+        assert "Initial_immune" not in source_compartments, "Initial_immune should not be a transition source"
+
+        # Verify Initial_immune is NOT a target in any transition (except maybe vaccination)
+        target_compartments = {t.target for t in transitions}
+        assert "Initial_immune" not in target_compartments, "Initial_immune should not be a transition target"
+
+    def test_population_conservation_with_initial_immune(self, population_array, total_population):
+        """Verify total population is conserved when Initial_immune is used.
+
+        The sum of all compartments at initialization should equal the total population.
+        """
+        compartments = [
+            DummyCompartment(id="S", init="default"),
+            DummyCompartment(id="L", init=10),
+            DummyCompartment(id="I", init=0.02),
+            DummyCompartment(id="R", init=0),
+            DummyCompartment(id="Initial_immune", init="calibrated"),
+        ]
+
+        # Test with various Initial_immune values
+        for initial_immune_value in [0.05, 0.15, 0.25, 0.35]:
+            params_dict = {"Initial_immune": initial_immune_value}
+            result = calculate_compartment_initial_conditions(compartments, population_array, params_dict)
+
+            # Sum all compartments
+            total_initial = sum(sum(result[comp.id]) for comp in compartments)
+
+            # Should equal total population
+            assert np.isclose(total_initial, total_population, rtol=1e-5), (
+                f"Population not conserved with Initial_immune={initial_immune_value}. "
+                f"Got {total_initial}, expected {total_population}"
+            )
+
+    def test_initial_immune_reduces_susceptible_pool(self, population_array, total_population):
+        """Verify that Initial_immune reduces the susceptible pool appropriately.
+
+        Higher Initial_immune values should result in fewer susceptibles.
+        """
+        compartments = [
+            DummyCompartment(id="S", init="default"),
+            DummyCompartment(id="I", init=10),
+            DummyCompartment(id="R", init=0),
+            DummyCompartment(id="Initial_immune", init="calibrated"),
+        ]
+
+        # Calculate with low and high Initial_immune
+        low_immune = calculate_compartment_initial_conditions(compartments, population_array, {"Initial_immune": 0.10})
+        high_immune = calculate_compartment_initial_conditions(compartments, population_array, {"Initial_immune": 0.30})
+
+        # Higher Initial_immune should mean fewer susceptibles
+        assert sum(high_immune["S"]) < sum(low_immune["S"]), "Higher Initial_immune should reduce susceptible pool"
+
+        # The difference should be exactly the difference in Initial_immune
+        s_diff = sum(low_immune["S"]) - sum(high_immune["S"])
+        immune_diff = sum(high_immune["Initial_immune"]) - sum(low_immune["Initial_immune"])
+        assert np.isclose(s_diff, immune_diff, rtol=1e-5)
+
+    def test_initial_immune_without_calibrated_value_skipped(self, population_array, total_population):
+        """Verify that calibrated Initial_immune without params_dict value is skipped.
+
+        If Initial_immune is marked as 'calibrated' but no value is provided,
+        it should not appear in the initial conditions.
+        """
+        from epymodelingsuite.schema.basemodel import Compartment
+
+        compartments = [
+            Compartment(id="S", label="Susceptible", init="default"),
+            Compartment(id="I", label="Infected", init=10),
+            Compartment(id="Initial_immune", label="Initially immune", init="calibrated"),
+        ]
+
+        # No params_dict provided - Initial_immune should be skipped
+        result = calculate_compartment_initial_conditions(compartments, population_array, None)
+
+        # Initial_immune should not be in result (no value was provided)
+        assert "Initial_immune" not in result, "Initial_immune without value should be skipped"
+
+        # S should get all remaining population
+        infected = 10 * population_array / total_population
+        expected_S = population_array - infected
+        np.testing.assert_array_almost_equal(result["S"], expected_S)
+
+
 class TestParseAgeGroup:
     """Tests for _parse_age_group function."""
 

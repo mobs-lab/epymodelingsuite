@@ -292,6 +292,7 @@ def build_sampling(
         sampled_vars = generate_samples(sampling_config, basemodel.random_seed)
 
     # Extract intervention types
+    intervention_types = []
     if basemodel.interventions:
         intervention_types = [i.type for i in basemodel.interventions]
 

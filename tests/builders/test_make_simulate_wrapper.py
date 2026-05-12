@@ -12,15 +12,12 @@ import pytest
 from epymodelingsuite.builders.orchestrators import create_model_collection, make_simulate_wrapper
 from epymodelingsuite.schema.basemodel import (
     BaseEpiModel,
-    Compartment,
     Intervention,
     Parameter,
-    Population,
     Seasonality,
-    Simulation,
     Timespan,
-    Transition,
 )
+from tests.conftest import make_sir_config
 
 
 class TestMakeSimulateWrapper:
@@ -29,35 +26,7 @@ class TestMakeSimulateWrapper:
     @pytest.fixture
     def base_model_config(self):
         """Create a minimal BaseEpiModel configuration for testing."""
-        compartments = [
-            Compartment(id="S", label="Susceptible", init="default"),
-            Compartment(id="I", label="Infected", init=10),
-            Compartment(id="R", label="Recovered", init=0),
-        ]
-
-        transitions = [
-            Transition(source="S", target="I", type="mediated", rate="beta", mediator="I"),
-            Transition(source="I", target="R", type="spontaneous", rate="gamma"),
-        ]
-
-        parameters = {
-            "beta": Parameter(type="scalar", value=0.5),
-            "gamma": Parameter(type="scalar", value=0.1),
-        }
-
-        population = Population(name="US-CA", age_groups=["0-4", "5-17", "18-49", "50-64", "65+"])
-        timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
-        simulation = Simulation(n_sims=10, resample_frequency="W-SAT")
-
-        return BaseEpiModel(
-            name="test_model",
-            compartments=compartments,
-            transitions=transitions,
-            parameters=parameters,
-            population=population,
-            timespan=timespan,
-            simulation=simulation,
-        )
+        return make_sir_config()
 
     @pytest.fixture
     def mock_calibration(self):
