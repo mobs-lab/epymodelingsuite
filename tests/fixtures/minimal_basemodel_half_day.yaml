@@ -1,0 +1,56 @@
+# Minimal SIR model with half-day timestep for E2E testing
+model:
+  meta:
+    name: "minimal_sir_half_day"
+    version: "1.0.0"
+    date: "2025-01-01"
+    description: "Minimal SIR model with delta_t=0.5 for subdaily pipeline testing"
+
+  timespan:
+    start_date: "2025-01-01"
+    end_date: "2025-02-01"
+    delta_t: 0.5
+
+  simulation:
+    resample_frequency: W-SAT
+    n_sims: 5
+
+  random_seed: 42
+
+  population:
+    name: US-MA
+    age_groups:
+      - "0-4"
+      - "5-17"
+      - "18-49"
+      - "50-64"
+      - "65+"
+
+  compartments:
+    - id: S
+      label: "Susceptible"
+      init: default
+    - id: I
+      label: "Infectious"
+      init: 100
+    - id: R
+      label: "Recovered"
+
+  transitions:
+    - type: mediated
+      source: S
+      target: I
+      mediator: I
+      rate: beta
+    - type: spontaneous
+      source: I
+      target: R
+      rate: mu
+
+  parameters:
+    beta:
+      type: scalar
+      value: 0.3
+    mu:
+      type: scalar
+      value: 0.1
