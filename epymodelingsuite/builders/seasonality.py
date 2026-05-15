@@ -23,7 +23,7 @@ def add_seasonality_from_config(model: EpiModel, seasonality: Seasonality, times
 
     Returns
     -------
-        EpiModel instance with seasonal transmission applied.
+        The same EpiModel instance with seasonal transmission applied (modified in-place).
     """
     # Parameter must already be defined
     try:
