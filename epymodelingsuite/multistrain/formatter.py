@@ -4,24 +4,12 @@ from ..schema.output import (
     get_flusight_categorical_horizons,
     get_flusight_quantiles,
 )
+from ..utils.location import convert_location_name_format
 
 # fmt: off
 
 MIN_COUNT_CHANGE = 10
 RATE_TREND_CATEGORIES = ["large_decrease", "decrease", "stable", "increase", "large_increase"]
-LOCATION_CODES = {
-    "US": "US", "AL": "01", "AK": "02", "AZ": "04", "AR": "05",
-    "CA": "06", "CO": "08", "CT": "09", "DE": "10", "DC": "11",
-    "FL": "12", "GA": "13", "HI": "15", "ID": "16", "IL": "17",
-    "IN": "18", "IA": "19", "KS": "20", "KY": "21", "LA": "22",
-    "ME": "23", "MD": "24", "MA": "25", "MI": "26", "MN": "27",
-    "MS": "28", "MO": "29", "MT": "30", "NE": "31", "NV": "32",
-    "NH": "33", "NJ": "34", "NM": "35", "NY": "36", "NC": "37",
-    "ND": "38", "OH": "39", "OK": "40", "OR": "41", "PA": "42",
-    "RI": "44", "SC": "45", "SD": "46", "TN": "47", "TX": "48",
-    "UT": "49", "VT": "50", "VA": "51", "WA": "53", "WV": "54",
-    "WI": "55", "WY": "56", "PR": "72"
-}
 
 # Population data (2024 Census estimates)
 POPULATION = {
@@ -169,7 +157,11 @@ def compute_rate_trend_categories(
     results = []
 
     for pop in df["location"].unique():
-        abbrev = STATE_ABBREV.get(pop, pop)
+        abbrev = convert_location_name_format(
+            value=pop,
+            output_format="abbreviation",
+            location_type="iso"
+        )
         pop_data = df[df["location"] == pop]
         population_size = POPULATION.get(abbrev, POPULATION.get("US"))
 
@@ -281,8 +273,17 @@ def create_quantile_submission(
     results = []
 
     for pop in df["location"].unique():
-        abbrev = STATE_ABBREV.get(pop, pop)
-        location = LOCATION_CODES.get(abbrev, abbrev)
+        abbrev = convert_location_name_format(
+            value=pop,
+            output_format="abbreviation",
+            location_type="iso"
+        )
+        location = convert_location_name_format(
+            value=abbrev,
+            output_format="FIPS",
+            input_format="abbreviation",
+            location_type="iso"
+        )
         pop_data = df[df["location"] == pop]
 
         for horizon in horizons:
@@ -353,8 +354,17 @@ def create_ed_quantile_submission(
     results = []
 
     for pop in df["location"].unique():
-        abbrev = STATE_ABBREV.get(pop, pop)
-        location = LOCATION_CODES.get(abbrev, abbrev)
+        abbrev = convert_location_name_format(
+            value=pop,
+            output_format="abbreviation",
+            location_type="iso"
+        )
+        location = convert_location_name_format(
+            value=abbrev,
+            output_format="FIPS",
+            input_format="abbreviation",
+            location_type="iso"
+        )
         pop_data = df[df["location"] == pop]
 
         for horizon in horizons:
@@ -463,7 +473,12 @@ def create_pmf_submission(pmf_df: pd.DataFrame, reference_date: str) -> pd.DataF
 
     for _, row in pmf_df.iterrows():
         abbrev = row["abbreviation"]
-        location = LOCATION_CODES.get(abbrev, abbrev)
+        location = convert_location_name_format(
+            value=abbrev,
+            output_format="FIPS",
+            input_format="abbreviation",
+            location_type="iso"
+        )
         horizon = row["horizon"]
         target_date = row["target_date"]
 
