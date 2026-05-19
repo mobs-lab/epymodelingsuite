@@ -1,52 +1,52 @@
-location_name,baseline,epydemix_population,abbreviation
-Alabama,0.0020916666666666,United_States_Alabama,AL
-Alaska,0.0023083333333333,United_States_Alaska,AK
-Arizona,0.000725,United_States_Arizona,AZ
-Arkansas,0.0005833333333333,United_States_Arkansas,AR
-California,0.0011666666666666,United_States_California,CA
-Colorado,0.000575,United_States_Colorado,CO
-Connecticut,0.0005083333333333,United_States_Connecticut,CT
-Delaware,0.0003916666666666,United_States_Delaware,DE
-District of Columbia,0.0007916666666666,United_States_District_of_Columbia,DC
-Florida,0.0030166666666666,United_States_Florida,FL
-Georgia,0.0009,United_States_Georgia,GA
-Hawaii,0.003525,United_States_Hawaii,HI
-Idaho,0.0010166666666666,United_States_Idaho,ID
-Illinois,0.0005083333333333,United_States_Illinois,IL
-Indiana,0.0004333333333333,United_States_Indiana,IN
-Iowa,0.0004083333333333,United_States_Iowa,IA
-Kansas,0.000575,United_States_Kansas,KS
-Kentucky,0.0007166666666666,United_States_Kentucky,KY
-Louisiana,0.0016583333333333,United_States_Louisiana,LA
-Maine,0.0005416666666666,United_States_Maine,ME
-Maryland,0.0007999999999999,United_States_Maryland,MD
-Massachusetts,0.000575,United_States_Massachusetts,MA
-Michigan,0.00035,United_States_Michigan,MI
-Minnesota,0.0007916666666666,United_States_Minnesota,MN
-Mississippi,0.0022083333333333,United_States_Mississippi,MS
-Montana,0.0004666666666666,United_States_Montana,MT
-Nebraska,0.0002916666666666,United_States_Nebraska,NE
-Nevada,0.0011416666666666,United_States_Nevada,NV
-New Hampshire,0.0008916666666666,United_States_New_Hampshire,NH
-New Jersey,0.0009166666666666,United_States_New_Jersey,NJ
-New Mexico,0.000775,United_States_New_Mexico,NM
-New York,0.000475,United_States_New_York,NY
-North Carolina,0.0064833333333333,United_States_North_Carolina,NC
-North Dakota,0.0003749999999999,United_States_North_Dakota,ND
-Ohio,0.0003666666666666,United_States_Ohio,OH
-Oklahoma,0.0008166666666666,United_States_Oklahoma,OK
-Oregon,0.000575,United_States_Oregon,OR
-Pennsylvania,0.000475,United_States_Pennsylvania,PA
-Rhode Island,0.0005,United_States_Rhode_Island,RI
-South Carolina,0.0010083333333333,United_States_South_Carolina,SC
-South Dakota,0.000325,United_States_South_Dakota,SD
-Tennessee,0.0013833333333333,United_States_Tennessee,TN
-Texas,0.0020916666666666,United_States_Texas,TX
-United States,0.001325,United_States,US
-Utah,0.000775,United_States_Utah,UT
-Vermont,0.000325,United_States_Vermont,VT
-Virginia,0.0008666666666666,United_States_Virginia,VA
-Washington,0.0010083333333333,United_States_Washington,WA
-West Virginia,0.0003666666666666,United_States_West_Virginia,WV
-Wisconsin,0.000475,United_States_Wisconsin,WI
-Wyoming,0.0004583333333333,United_States_Wyoming,WY
+location_name,baseline,location_name_epydemix,location_name_epydemix_deprecated,location_abbreviation,location_code,ISO,population_size
+Alabama,0.0020916666666666,United_States__Alabama,United_States_Alabama,AL,01,US-AL,5108468
+Alaska,0.0023083333333333,United_States__Alaska,United_States_Alaska,AK,02,US-AK,733406
+Arizona,0.000725,United_States__Arizona,United_States_Arizona,AZ,04,US-AZ,7431344
+Arkansas,0.0005833333333333,United_States__Arkansas,United_States_Arkansas,AR,05,US-AR,3067732
+California,0.0011666666666666,United_States__California,United_States_California,CA,06,US-CA,38965193
+Colorado,0.000575,United_States__Colorado,United_States_Colorado,CO,08,US-CO,5877610
+Connecticut,0.0005083333333333,United_States__Connecticut,United_States_Connecticut,CT,09,US-CT,3617176
+Delaware,0.0003916666666666,United_States__Delaware,United_States_Delaware,DE,10,US-DE,1031890
+District of Columbia,0.0007916666666666,United_States__District_of_Columbia,United_States_District_of_Columbia,DC,11,US-DC,678972
+Florida,0.0030166666666666,United_States__Florida,United_States_Florida,FL,12,US-FL,22610726
+Georgia,0.0009,United_States__Georgia,United_States_Georgia,GA,13,US-GA,11029227
+Hawaii,0.003525,United_States__Hawaii,United_States_Hawaii,HI,15,US-HI,1435138
+Idaho,0.0010166666666666,United_States__Idaho,United_States_Idaho,ID,16,US-ID,1964726
+Illinois,0.0005083333333333,United_States__Illinois,United_States_Illinois,IL,17,US-IL,12549689
+Indiana,0.0004333333333333,United_States__Indiana,United_States_Indiana,IN,18,US-IN,6862199
+Iowa,0.0004083333333333,United_States__Iowa,United_States_Iowa,IA,19,US-IA,3207004
+Kansas,0.000575,United_States__Kansas,United_States_Kansas,KS,20,US-KS,2940546
+Kentucky,0.0007166666666666,United_States__Kentucky,United_States_Kentucky,KY,21,US-KY,4526154
+Louisiana,0.0016583333333333,United_States__Louisiana,United_States_Louisiana,LA,22,US-LA,4573749
+Maine,0.0005416666666666,United_States__Maine,United_States_Maine,ME,23,US-ME,1395722
+Maryland,0.0007999999999999,United_States__Maryland,United_States_Maryland,MD,24,US-MD,6180253
+Massachusetts,0.000575,United_States__Massachusetts,United_States_Massachusetts,MA,25,US-MA,7001399
+Michigan,0.00035,United_States__Michigan,United_States_Michigan,MI,26,US-MI,10037261
+Minnesota,0.0007916666666666,United_States__Minnesota,United_States_Minnesota,MN,27,US-MN,5737915
+Mississippi,0.0022083333333333,United_States__Mississippi,United_States_Mississippi,MS,28,US-MS,2939690
+Montana,0.0004666666666666,United_States__Montana,United_States_Montana,MT,30,US-MT,1132812
+Nebraska,0.0002916666666666,United_States__Nebraska,United_States_Nebraska,NE,31,US-NE,1978379
+Nevada,0.0011416666666666,United_States__Nevada,United_States_Nevada,NV,32,US-NV,3194176
+New Hampshire,0.0008916666666666,United_States__New_Hampshire,United_States_New_Hampshire,NH,33,US-NH,1402054
+New Jersey,0.0009166666666666,United_States__New_Jersey,United_States_New_Jersey,NJ,34,US-NJ,9290841
+New Mexico,0.000775,United_States__New_Mexico,United_States_New_Mexico,NM,35,US-NM,2114371
+New York,0.000475,United_States__New_York,United_States_New_York,NY,36,US-NY,19571216
+North Carolina,0.0064833333333333,United_States__North_Carolina,United_States_North_Carolina,NC,37,US-NC,10835491
+North Dakota,0.0003749999999999,United_States__North_Dakota,United_States_North_Dakota,ND,38,US-ND,783926
+Ohio,0.0003666666666666,United_States__Ohio,United_States_Ohio,OH,39,US-OH,11785935
+Oklahoma,0.0008166666666666,United_States__Oklahoma,United_States_Oklahoma,OK,40,US-OK,4053824
+Oregon,0.000575,United_States__Oregon,United_States_Oregon,OR,41,US-OR,4233358
+Pennsylvania,0.000475,United_States__Pennsylvania,United_States_Pennsylvania,PA,42,US-PA,12961683
+Rhode Island,0.0005,United_States__Rhode_Island,United_States_Rhode_Island,RI,44,US-RI,1095962
+South Carolina,0.0010083333333333,United_States__South_Carolina,United_States_South_Carolina,SC,45,US-SC,5373555
+South Dakota,0.000325,United_States__South_Dakota,United_States_South_Dakota,SD,46,US-SD,919318
+Tennessee,0.0013833333333333,United_States__Tennessee,United_States_Tennessee,TN,47,US-TN,7126489
+Texas,0.0020916666666666,United_States__Texas,United_States_Texas,TX,48,US-TX,30503301
+United States,0.001325,United_States,United_States,US,US,US,338120586
+Utah,0.000775,United_States__Utah,United_States_Utah,UT,49,US-UT,3417734
+Vermont,0.000325,United_States__Vermont,United_States_Vermont,VT,50,US-VT,647464
+Virginia,0.0008666666666666,United_States__Virginia,United_States_Virginia,VA,51,US-VA,8715698
+Washington,0.0010083333333333,United_States__Washington,United_States_Washington,WA,53,US-WA,7812880
+West Virginia,0.0003666666666666,United_States__West_Virginia,United_States_West_Virginia,WV,54,US-WV,1770071
+Wisconsin,0.000475,United_States__Wisconsin,United_States_Wisconsin,WI,55,US-WI,5910955
+Wyoming,0.0004583333333333,United_States__Wyoming,United_States_Wyoming,WY,56,US-WY,584057
