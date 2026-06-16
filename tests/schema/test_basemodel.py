@@ -157,3 +157,34 @@ class TestWeeklyFrequencyEndDateValidation:
             **base_model_params,
         )
         assert model is not None
+
+
+class TestDeltaTValidation:
+    """Test validation of delta_t in Timespan schema."""
+
+    def test_delta_t_rejects_zero(self):
+        """Test that delta_t=0 raises ValidationError."""
+        with pytest.raises(Exception, match="delta_t"):
+            Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 1, 31), delta_t=0)
+
+    def test_delta_t_rejects_negative(self):
+        """Test that delta_t=-1 raises ValidationError."""
+        with pytest.raises(Exception, match="delta_t"):
+            Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 1, 31), delta_t=-1)
+
+    @pytest.mark.parametrize("delta_t", [0.5, 0.25, 0.1])
+    def test_delta_t_accepts_subdaily(self, delta_t):
+        """Test that subdaily delta_t values are accepted."""
+        t = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 1, 31), delta_t=delta_t)
+        assert t.delta_t == delta_t
+
+    def test_delta_t_coerces_int_to_float(self):
+        """Test that integer delta_t is coerced to float."""
+        t = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 1, 31), delta_t=2)
+        assert type(t.delta_t) is float
+        assert t.delta_t == 2.0
+
+    def test_delta_t_defaults_to_one(self):
+        """Test that delta_t defaults to 1.0 when omitted."""
+        t = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 1, 31))
+        assert t.delta_t == 1.0
