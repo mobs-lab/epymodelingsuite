@@ -1,6 +1,7 @@
 """Visualization functions for calibration/projection outputs."""
 
 import io
+import math
 from datetime import datetime
 from typing import Any
 
@@ -92,7 +93,7 @@ def format_location_name(location: str) -> str:
         if location_type == "metrocast_location":
             return convert_location_name_format(location_name, "name_short", location_type="metrocast_location")
         return convert_location_name_format(location, "name")
-    except (AssertionError, KeyError, IndexError):
+    except (AssertionError, KeyError, IndexError, ValueError):
         # If conversion fails, return original name with underscores replaced
         return location.replace("_", " ")
 
@@ -1476,6 +1477,198 @@ def plot_categorical_stacked_bars_multihorizon(
 
     # Apply tight_layout to make room for legend
     plt.tight_layout(rect=[0, 0, 0.91, 0.99])
+
+    return fig, axes
+
+
+def plot_trajectories_by_parameter(  # noqa: PLR0913
+    df_trajectories: pd.DataFrame,
+    df_posteriors: pd.DataFrame | None = None,
+    df_observed: pd.DataFrame | None = None,
+    value_col: str = "hospitalizations",
+    parameter_col: str = "Reff",
+    date_col: str = "date",
+    id_cols: tuple[str, str, str] = ("primary_id", "seed", "population"),
+    ncols: int = 3,
+    figsize_per_panel: tuple[float, float] = (4.0, 3.0),
+    max_trajectories: int | None = None,
+    observed_date_col: str = "date",
+    observed_value_col: str = "hospitalizations",
+    observed_location_col: str = "location_iso",
+    line_alpha: float = 0.7,
+    subsample_seed: int | None = 0,
+) -> tuple[plt.Figure, np.ndarray]:
+    """
+    Create a multi-panel plot of individual trajectories colored by a parameter.
+
+    This is intended for projection trajectories where each trajectory is
+    indexed by ``sim_id``. Parameters may be either: (1) already in df_trajectories
+    (e.g. from output with embedded projection parameters), or (2) in a separate
+    df_posteriors. For each location (population), a subplot shows all trajectories
+    for the specified value column, colored by the chosen parameter.
+
+    Parameters
+    ----------
+    df_trajectories : pd.DataFrame
+        Trajectory data with columns including ``sim_id``, date, value_col, and id_cols.
+        May include parameter_col if parameters are embedded (df_posteriors can be None).
+    df_posteriors : pd.DataFrame or None, optional
+        Posterior samples with one row per trajectory and columns for id_cols and parameter_col.
+        If None, parameter_col must already exist in df_trajectories.
+    value_col : str, default "hospitalizations"
+        Name of the column in ``df_trajectories`` containing the value to plot.
+    parameter_col : str, default "Reff"
+        Name of the parameter column in ``df_posteriors`` used for coloring trajectories.
+    date_col : str, default "date"
+        Name of the date column in ``df_trajectories``.
+    id_cols : tuple of str, default ("primary_id", "seed", "population")
+        Identifier columns shared between trajectories and posteriors.
+    ncols : int, default 3
+        Number of subplot columns in the grid.
+    figsize_per_panel : tuple of float, default (4.0, 3.0)
+        Size of each subplot in inches (width, height).
+
+    Returns
+    -------
+    fig : plt.Figure
+        The figure containing the grid of subplots.
+    axes : np.ndarray
+        Array of axes with shape (n_rows, ncols). Unused axes are hidden.
+    """
+    required_traj_cols = set(id_cols) | {"sim_id", date_col, value_col}
+    missing_traj = required_traj_cols - set(df_trajectories.columns)
+    if missing_traj:
+        msg = f"Missing required trajectory columns: {missing_traj}"
+        raise ValueError(msg)
+
+    df_traj = df_trajectories.copy()
+    df_traj[date_col] = pd.to_datetime(df_traj[date_col])
+
+    # Get parameter values: from embedded column or merge with posteriors
+    if parameter_col in df_traj.columns:
+        # Parameters already embedded in trajectories
+        pass
+    elif df_posteriors is not None:
+        required_post_cols = set(id_cols) | {parameter_col}
+        missing_post = required_post_cols - set(df_posteriors.columns)
+        if missing_post:
+            msg = f"Missing required posterior columns: {missing_post}"
+            raise ValueError(msg)
+        df_post = df_posteriors.copy().sort_values(list(id_cols)).reset_index(drop=True)
+        df_post["_row_index"] = df_post.groupby(list(id_cols)).cumcount()
+        df_traj = df_traj.sort_values(list(id_cols) + ["sim_id", date_col])
+        df_traj = df_traj.merge(
+            df_post[list(id_cols) + ["_row_index", parameter_col]],
+            left_on=list(id_cols) + ["sim_id"],
+            right_on=list(id_cols) + ["_row_index"],
+            how="left",
+        )
+        df_traj = df_traj.drop(columns=["_row_index"])
+    else:
+        msg = "parameter_col must be in df_trajectories or df_posteriors must be provided."
+        raise ValueError(msg)
+
+    if df_traj[parameter_col].isna().all():
+        msg = "No parameter values found for coloring trajectories."
+        raise ValueError(msg)
+
+    # Prepare observed data lookup keyed by trajectory population name (epydemix_population)
+    observed_by_population: dict[str, pd.DataFrame] = {}
+    if df_observed is not None and not df_observed.empty:
+        required_obs_cols = {observed_date_col, observed_value_col, observed_location_col}
+        missing_obs = required_obs_cols - set(df_observed.columns)
+        if missing_obs:
+            msg = f"Missing required observed-data columns: {missing_obs}"
+            raise ValueError(msg)
+
+        obs = df_observed[[observed_location_col, observed_date_col, observed_value_col]].copy()
+        obs[observed_date_col] = pd.to_datetime(obs[observed_date_col])
+
+        # Map observed locations to epydemix population format used in trajectories
+        def _to_epydemix_population(loc: str) -> str:
+            try:
+                return convert_location_name_format(str(loc), "epydemix_population")
+            except Exception:
+                pass
+            try:
+                return convert_location_name_format(str(loc), "epydemix_population", location_type="metrocast_location")
+            except Exception:
+                return str(loc)
+
+        obs["_population"] = obs[observed_location_col].map(_to_epydemix_population)
+        for pop, df_pop in obs.groupby("_population", dropna=False):
+            observed_by_population[str(pop)] = df_pop.sort_values(observed_date_col)
+
+    locations = sorted(df_traj[id_cols[-1]].unique())
+    n_locations = len(locations)
+    ncols = max(1, ncols)
+    nrows = math.ceil(n_locations / ncols)
+
+    fig_width = figsize_per_panel[0] * ncols
+    fig_height = figsize_per_panel[1] * nrows
+    fig, axes = plt.subplots(nrows, ncols, figsize=(fig_width, fig_height), squeeze=False)
+
+    norm = plt.Normalize(vmin=df_traj[parameter_col].min(), vmax=df_traj[parameter_col].max())
+    cmap = plt.cm.viridis
+
+    for idx, loc in enumerate(locations):
+        row = idx // ncols
+        col = idx % ncols
+        ax = axes[row, col]
+
+        df_loc = df_traj[df_traj[id_cols[-1]] == loc]
+
+        # Optionally subsample trajectories to reduce overplotting
+        if max_trajectories is not None:
+            sim_ids = np.sort(df_loc["sim_id"].unique())
+            if len(sim_ids) > max_trajectories:
+                rng = np.random.default_rng(subsample_seed)
+                keep_ids = rng.choice(sim_ids, size=max_trajectories, replace=False)
+                df_loc = df_loc[df_loc["sim_id"].isin(keep_ids)]
+        for sim_id, df_sim in df_loc.groupby("sim_id"):
+            param_val = df_sim[parameter_col].iloc[0]
+            color = cmap(norm(param_val)) if not pd.isna(param_val) else "lightgray"
+            ax.plot(df_sim[date_col], df_sim[value_col], color=color, alpha=line_alpha, linewidth=1)
+
+        # Overlay observed data as black circles (if available for this location)
+        df_obs_loc = observed_by_population.get(str(loc))
+        if df_obs_loc is not None and not df_obs_loc.empty:
+            # Filter out observed points before the trajectory time window
+            traj_start = pd.to_datetime(df_loc[date_col]).min()
+            df_obs_loc = df_obs_loc[df_obs_loc[observed_date_col] >= traj_start]
+            ax.scatter(
+                df_obs_loc[observed_date_col],
+                df_obs_loc[observed_value_col],
+                s=18,
+                marker="o",
+                facecolors="black",
+                edgecolors="black",
+                linewidths=0.0,
+                zorder=5,
+            )
+
+        ax.set_title(format_location_name(loc))
+        ax.set_ylabel(value_col)
+        ax.set_xlabel("")
+        for tick in ax.get_xticklabels():
+            tick.set_rotation(45)
+            tick.set_ha("right")
+
+    for idx in range(n_locations, nrows * ncols):
+        row = idx // ncols
+        col = idx % ncols
+        axes[row, col].set_visible(False)
+
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+    sm.set_array([])
+
+    # Layout: tighten subplots, then add a completely separate colorbar axis
+    plt.tight_layout(rect=[0, 0, 0.90, 1])
+
+    # cax occupies a narrow strip to the right of all panels
+    cax = fig.add_axes([0.92, 0.15, 0.02, 0.7])
+    cbar = fig.colorbar(sm, cax=cax)
+    cbar.set_label(parameter_col)
 
     return fig, axes
 

@@ -1,0 +1,203 @@
+model:
+
+  meta:
+    name: "EpyStrain_Covid"
+    version: "v0.0.1"
+    date: "2026-02-04" # YYYY-MM-DD
+    description: "Covid model"
+
+  timespan:
+    start_date: "2025-06-08"
+    end_date: "2027-06-05" # Saturday
+    delta_t: 1.0
+
+  simulation:
+    resample_frequency: W-SAT
+
+  random_seed: 198
+
+  population:
+    # population names are specified in modelset.yml
+    age_groups:
+      - "0-4"
+      - "5-17"
+      - "18-49"
+      - "50-64"
+      - "65+"
+
+  compartments:
+    - id: S
+      label: "Susceptible"
+      init: default
+    - id: S_vax
+      label: "Susceptible (vaccinated)"
+    - id: L
+      label: "Latent"
+    - id: L_vax
+      label: "Latent (vaccinated)"
+    - id: I
+      label: "Infectious"
+    - id: I_vax
+      label: "Infectious (vaccinated)"
+    - id: Home
+      label: "Home"
+    - id: Home_vax
+      label: "Home (vaccinated)"
+    - id: Hosp
+      label: "Hospitalized"
+    - id: Hosp_vax
+      label: "Hospitalized (vaccinated)"
+    - id: R
+      label: "Recovered"
+    - id: R_vax
+      label: "Recovered (vaccinated)"
+    - id: Initial_immune
+      label: "Initially immune"
+  
+  transitions:
+    # Mediated
+    - type: mediated # "spontaneous" or "mediated" or "vaccination"
+      source: S
+      target: L
+      mediator: I
+      rate: beta
+    - type: mediated 
+      source: S
+      target: L
+      mediator: I_vax
+      rate: beta
+    - type: mediated 
+      source: S_vax
+      target: L_vax
+      mediator: I
+      rate: beta*(1-VEs)
+    - type: mediated 
+      source: S_vax
+      target: L_vax
+      mediator: I_vax
+      rate: beta*(1-VEs)
+
+    # Vaccination
+    - type: vaccination
+      source: S
+      target: S_vax
+
+    # Spontaneous
+    - type: spontaneous
+      source: L
+      target: I
+      rate: eps
+    - type: spontaneous
+      source: L_vax
+      target: I_vax
+      rate: eps
+    - type: spontaneous
+      source: I
+      target: Home
+      rate: mu
+    - type: spontaneous
+      source: I_vax
+      target: Home_vax
+      rate: mu
+    - type: spontaneous
+      source: Home
+      target: Hosp
+      rate: gamma*phi
+    - type: spontaneous
+      source: Home
+      target: R
+      rate: gamma*(1-phi)
+    - type: spontaneous
+      source: Home_vax
+      target: Hosp_vax
+      rate: gamma*phi*(1-VEp)
+    - type: spontaneous
+      source: Home_vax
+      target: R_vax
+      rate: gamma*(1-phi*(1-VEp))
+    - type: spontaneous
+      source: Hosp
+      target: R
+      rate: mu_h
+    - type: spontaneous
+      source: Hosp_vax
+      target: R_vax
+      rate: mu_h
+    - type: spontaneous
+      source: R
+      target: S
+      rate: eta
+    - type: spontaneous
+      source: R_vax
+      target: S
+      rate: eta
+    - type: spontaneous
+      source: S_vax
+      target: S
+      rate: omega
+  
+  parameters:
+
+    # Scalars
+    VEp:
+      type: scalar
+      value: 0.5 
+    hospital_reporting:
+      type: scalar
+      value: 0.53
+    VEs: 
+      type: scalar
+      value: 0.0
+    eps:
+      type: scalar
+      value: 1/2
+    mu:
+      type: scalar
+      value: 1/2
+    mu_h:
+      type: scalar
+      value: 1/8.7
+    gamma:
+      type: scalar
+      value: 1/3.5
+
+    # Age varying
+    phi:
+      type: age_varying
+      values:
+        - 0.001
+        - 0.001
+        - 0.00956
+        - 0.037305
+        - 0.127043
+
+    # Calculated
+    R0:
+      type: calculated
+      value: Reff/(1-Initial_immune)
+    beta:
+      type: calculated
+      value: R0*mu/eigenvalue
+    
+    # Calibrated
+    Reff:
+      type: calibrated
+    eta:
+      type: calibrated
+    omega:
+      type: calibrated
+    alpha:
+      type: calibrated
+    
+  vaccination:
+    scenario_data_path: "data/covid-schedule-bd.csv"
+    origin_compartment: S
+    eligible_compartments:
+      - S
+      - L
+      - R
+      - Initial_immune
+
+  # interventions:
+  #   - type: school_closure
+  #     scaling_factor: 0.344
