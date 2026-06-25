@@ -83,6 +83,7 @@ class AggregationConfiguration(BaseModel):
     meta: Meta | None = Field(None, description="General metadata.")
     bucket: str = Field(description="")
     random_seed: int | None = Field(None, description="Random seed for reproducibility")
+    submission_week: str | int = Field(description="Epiweek of submission in CDC format, i.e. 'YYYYww'")
     sources: list[SourceExperiment] = Field(description="Identifiers for stage C trajectory outputs to aggregate.")
     sampling: SamplingConfiguration = Field(
         description="Configuration for sampling mappings of individual trajectories across experiments."

@@ -146,7 +146,7 @@ def pull_trajectory_projections(
         if exit_code == 0:
             logger.info(f"Downloaded: {source.strain}")
             # Load the downloaded data
-            trajectories[source.strain] = pd.read_csv(target_location)
+            trajectories[source.strain] = pd.read_csv(target_location, parse_dates=[source.date_column])
         else:
             prepend_err = ""
             if source.run_id == "any":

@@ -1,4 +1,7 @@
-#!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["pandas", "pyarrow", "epiweeks"]
+# ///
 """
 Script to aggregate trajectories from multistrain experiments and create a hubverse submission file.
 Takes a file path to a configuration and, optionally, a directory path for outputs.
@@ -11,6 +14,7 @@ Usage:
 import argparse
 import tempfile
 from pathlib import Path
+from epiweeks import week
 
 from epymodelingsuite.config_loader import load_aggregation_config_from_file
 from epymodelingsuite.multistrain.aggregator import (
@@ -107,13 +111,19 @@ def main():
 
         print(f"  Added {aggregation.baseline.method} baseline noise with dispersion/variance modifiers {aggregation.baseline.dispersion_values}:\n{aggregated_df.tail()}")
 
+    # Add formatting columns
+    ref_date = Week.fromstring(str(aggregation.submission_week)).enddate()
+    aggregated_df['reference_date'] = ref_date
+    aggregated_df['horizon'] = ((aggregated_df['date'] - pd.Timestamp(ref_date)).dt.days // 7).astype(int)
+    aggregated_df['epiweek'] = [Week.fromdate(dat).cdcformat() for dat in aggregated_df.date]
+    
     # Write aggregated trajectories to file
     if aggregation.outputs.aggregated_trajectories:
         if aggregation.outputs.base_fname:
-            fname = f"{args.output}/trajectories_aggregated_{aggregation.outputs.base_fname}.csv.gz"
+            fname = f"{args.output}/trajectories_aggregated_{aggregation.outputs.base_fname}.parquet"
         else:
-            fname = f"{args.output}/trajectories_aggregated.csv.gz"
-        aggregated_df.to_csv(fname, index=False)
+            fname = f"{args.output}/trajectories_aggregated_{aggregation.submission_week}.parquet"
+        aggregated_df.to_parquet(fname, index=False)
         print(f"  Saved aggregated trajectories at {fname}")
 
 
