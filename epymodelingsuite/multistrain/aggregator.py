@@ -9,7 +9,7 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-from ..schema.aggregation import AggregationConfiguration, AggregationStrategyEnum, SamplingStrategyEnum
+from ..schema.aggregation import AggregationConfiguration, AggregationStrategyEnum, SamplingStrategyEnum, BaselineStrategyEnum
 
 
 #############
@@ -337,7 +337,8 @@ def _aggregate_sum(
 
     # Sum target values from all strains
     target_cols = [f"target_{source.strain}" for source in config.sources]
-    aggregated["target_sum"] = aggregated[target_cols].fillna(0).sum(axis=1)
+    agg_colname = f"target_sum"
+    aggregated[agg_colname] = aggregated[target_cols].fillna(0).sum(axis=1)
 
     # Clean up columns
     output_cols = (
@@ -345,7 +346,7 @@ def _aggregate_sum(
         + [f"sim_id_{source.strain}" for source in config.sources]
         + ["location", "date"]
         + target_cols
-        + ["target_sum"]
+        + [agg_colname]
     )
 
     # Filter to only columns that exist
@@ -377,7 +378,7 @@ def dispatch_strain_aggregator(
         case AggregationStrategyEnum.sum:
             return _aggregate_sum(merged_trajectories, config)
         case _:
-            raise NotImplementedError(f"Invalid aggregation method: {config.aggregation.method}")
+            raise NotImplementedError(f"Invalid aggregation method: {config.aggregate_method}")
 
 
 ################
@@ -385,7 +386,41 @@ def dispatch_strain_aggregator(
 ################
 
 
-def negbin_baseline_addition(
+def _baseline_negative_binomial(
+    aggregated_trajectories: pd.DataFrame,
+    combined: pd.DataFrame,
+    kvals: int | list[int],
+) -> pd.DataFrame:
+    """
+    Dispatch post-aggregation baseline addition.
+
+    Parameters
+    ----------
+    aggregated_trajectories: pd.DataFrame
+        DataFrame with aggregated trajectories
+    config: AggregationConfiguration
+        Config object with settings
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with baseline noise added to aggregated trajectories in columns "target_baseline_k{dispersion_parameter}"
+    """
+    rng = np.random.default_rng()
+    aggregated = aggregated_trajectories.copy()
+
+    if not isinstance(kvals, list):
+        kvals = [kvals]
+
+    for k in kvals:
+        p_vals = k / (k + combined["baseline"])
+        baseline_sample = rng.negative_binomial(k, p_vals)
+        aggregated[f"target_baseline_k{k}"] = combined["target_sum"] + baseline_sample
+
+    return aggregated    
+    
+
+def dispatch_baseline(
     aggregated_trajectories: pd.DataFrame,
     config: AggregationConfiguration,
 ) -> pd.DataFrame:
@@ -395,14 +430,36 @@ def negbin_baseline_addition(
     Parameters
     ----------
     aggregated_trajectories: pd.DataFrame
-        DataFrame with aggregated trajectories in column "target_total"
+        DataFrame with aggregated trajectories in column "target_{config.aggregate_method}"
     config: AggregationConfiguration
         Config object with settings
 
     Returns
     -------
     pd.DataFrame
-        DataFrame with baseline noise added to aggregated trajectories in column "target_baseline"
+        DataFrame with baseline noise added to aggregated trajectories in columns "target_baseline_k{config.baseline.dispersion_values}"
     """
-    rng = np.random.default_rng()
+    try:
+        baselines_avg = pd.read_csv(f"epymodelingsuite/data/{config.baseline.observed_means}")
+    except Exception as e:
+        print(os.getcwd())
+        raise ValueError(f"Baseline file {config.baseline.observed_means} not found: {e}")
+
+    traj_loc_fmt = (
+        "location_name_epydemix"
+        if aggregated_trajectories.location.str.contains("__").any()
+        else "location_name_epydemix_deprecated"
+    )
+    combined = aggregated_trajectories\
+        .merge(baselines_avg,
+               how="inner",
+               left_on = "location",
+               right_on=traj_loc_fmt)\
+        [["location","baseline","target_sum"]]
     
+    match config.baseline.method:
+        case BaselineStrategyEnum.negative_binomial:
+            return _baseline_negative_binomial(aggregated_trajectories, combined, config.baseline.dispersion_values)
+        case _:
+            raise NotImplementedError(f"Invalid baseline method: {config.baseline.method}")
+        

@@ -46,6 +46,14 @@ class AggregationStrategyEnum(str, Enum):
     sum = "sum"
 
 
+class BaselineStrategyEnum(str, Enum):
+    """
+    Strategy for post-aggregation baseline noise addition.
+    """
+
+    negative_binomial = "negative_binomial"
+    
+
 class SamplingConfiguration(BaseModel):
     """Configuration for sampling mappings of individual trajectories across experiments."""
 
@@ -61,6 +69,14 @@ class AggregationOutputConfiguration(BaseModel):
     aggregated_trajectories: bool = Field(default=True, description="")
 
 
+class BaselineConfiguration(BaseModel):
+    """Configuration for adding post-hoc baseline noise."""
+    
+    method: BaselineStrategyEnum = Field(description="Strategy for post-aggregation baseline addition.")
+    observed_means: str = Field(description="Filename to look for in data module containing baseline averages.")
+    dispersion_values: int | list[int] = Field(description="Value(s) to use for parameter modifying dispersion/variance of baseline noise.")
+
+
 class AggregationConfiguration(BaseModel):
     """Configuration for aggregating multiple experiment results."""
 
@@ -72,7 +88,7 @@ class AggregationConfiguration(BaseModel):
         description="Configuration for sampling mappings of individual trajectories across experiments."
     )
     aggregate_method: AggregationStrategyEnum = Field(description="Strategy for aggregating multistrain results.")
-    baseline_negbin_k: int | None = Field(None, description="If provided, adds negative binomial noise with dispersion parameter k to aggregated trajectories.")
+    baseline: BaselineConfiguration | None = Field(None, description="Configuration for adding post-hoc baseline noise.")
     outputs: AggregationOutputConfiguration = Field(description="")
 
 

@@ -16,6 +16,7 @@ from epymodelingsuite.config_loader import load_aggregation_config_from_file
 from epymodelingsuite.multistrain.aggregator import (
     dispatch_strain_aggregator,
     dispatch_strain_sampler,
+    dispatch_baseline,
     merge_strain_trajectories,
     pull_trajectory_projections,
 )
@@ -97,6 +98,14 @@ def main():
     aggregated_df = dispatch_strain_aggregator(merged_df, aggregation)
 
     print(f"  Aggregated trajectories with {len(aggregated_df)} rows:\n{aggregated_df.tail()}")
+
+    # Add baseline noise to the aggregated trajectories
+    if aggregation.baseline is not None:
+        print("\nAdding baseline to aggregated trajectories...")
+        
+        aggregated_df = dispatch_baseline(aggregated_df, aggregation)
+
+        print(f"  Added {aggregation.baseline.method} baseline noise with dispersion/variance modifiers {aggregation.baseline.dispersion_values}:\n{aggregated_df.tail()}")
 
     # Write aggregated trajectories to file
     if aggregation.outputs.aggregated_trajectories:
