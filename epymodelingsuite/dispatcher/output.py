@@ -119,22 +119,41 @@ def filter_failed_projections(calibration_results: CalibrationResults) -> Calibr
         # There can be multiple scenarios. The default is "baseline".
         for scenario_id in calibration_results.projections:
             projections = calibration_results.projections[scenario_id]
-            if projections:
-                # Extract valid projections (non-empty dicts)
-                valid_projections = [proj for proj in projections if proj]
-                calibration_results.projections[scenario_id] = valid_projections
+            if not projections:
+                continue
 
-                # Count and log filtered projections
-                filtered_count = len(projections) - len(valid_projections)
-                total_filtered += filtered_count
-                if filtered_count > 0:
+            # Compute mask once so we can apply it to aligned structures (projection_parameters).
+            mask = [bool(proj) for proj in projections]
+            valid_projections = [proj for proj, keep in zip(projections, mask, strict=True) if keep]
+            calibration_results.projections[scenario_id] = valid_projections
+
+            # Keep projection_parameters aligned.
+            # Projections and projection parameters share same sim_id index.
+            projection_parameters = getattr(calibration_results, "projection_parameters", None)
+            if projection_parameters is not None and scenario_id in projection_parameters:
+                scenario_parameters = projection_parameters[scenario_id]
+                if len(scenario_parameters) == len(mask):
+                    projection_parameters[scenario_id] = scenario_parameters.loc[mask].reset_index(drop=True)
+                else:
                     logger.warning(
-                        "Filtered out %d failed projection(s) for scenario '%s' (kept %d/%d)",
-                        filtered_count,
+                        "projection_parameters length (%d) differs from projections length (%d) for "
+                        "scenario '%s'; skipping alignment filter",
+                        len(scenario_parameters),
+                        len(mask),
                         scenario_id,
-                        len(valid_projections),
-                        len(projections),
                     )
+
+            # Count and log filtered projections
+            filtered_count = len(projections) - len(valid_projections)
+            total_filtered += filtered_count
+            if filtered_count > 0:
+                logger.warning(
+                    "Filtered out %d failed projection(s) for scenario '%s' (kept %d/%d)",
+                    filtered_count,
+                    scenario_id,
+                    len(valid_projections),
+                    len(projections),
+                )
 
     # Store filtered count on results object
     calibration_results._filtered_count = total_filtered
@@ -1162,6 +1181,7 @@ def generate_calibration_outputs(
     posteriors_list = []
     hub_format_output_list = []
     meta_dict = defaultdict(list)
+    projection_parameters_long_list: list[pd.DataFrame] = []
 
     # Filter out failed projections
     for calibration in calibrations:
@@ -1672,14 +1692,44 @@ def generate_calibration_outputs(
 
             # Projection parameters
             # No calibration parameters, this is covered by posteriors.
+
+            # FIXME: For metadata file, the per-model `proj_*` cells below are known-broken: pandas truncates str(Series) with `...` for >60 draws. Fix deferred.
+
+            # `projection_parameters_long` table exposes the full per-draw data.
             if output.model_meta.projection_parameters:
+                projection_parameters = getattr(calibration.results, "projection_parameters", {}) or {}
                 for scenario_id in calibration.results.projections:
-                    proj_params = calibration.results.projection_parameters[scenario_id]
-                    for p in proj_params:
+                    scenario_parameters = projection_parameters.get(scenario_id)
+                    if scenario_parameters is None or len(scenario_parameters) == 0:
+                        continue
+
+                    for p in scenario_parameters:
                         colname = f"proj_{scenario_id}_{p}"
-                        meta_dict[colname].append(str(proj_params[p]))
+                        meta_dict[colname].append(str(scenario_parameters[p]))
+
+                    draw_count = len(scenario_parameters)
+                    projection_parameters_long_list.append(
+                        pd.DataFrame(
+                            {
+                                "primary_id": calibration.primary_id,
+                                "sim_id": np.arange(draw_count),
+                                "scenario_id": scenario_id,
+                                "seed": calibration.seed,
+                                "population": calibration.population,
+                                **{
+                                    column: scenario_parameters[column].to_numpy()
+                                    for column in scenario_parameters.columns
+                                },
+                            }
+                        )
+                    )
 
         model_meta = pd.DataFrame(meta_dict)
+        projection_parameters_long = (
+            pd.concat(projection_parameters_long_list, ignore_index=True)
+            if projection_parameters_long_list
+            else pd.DataFrame()
+        )
         if output.flusight_format and output.flusight_format.prop_ed and not rescaling_factors.empty:
             model_meta = model_meta.merge(rescaling_factors, on="population")
 
@@ -1736,6 +1786,12 @@ def generate_calibration_outputs(
         mm_name = "model_metadata"
         mm_objects = [format_tabular_object(model_meta, mm_name, _type) for _type in output.tabular_output_types]
         out_dict[mm_name] = mm_objects
+    if not projection_parameters_long.empty:
+        ppl_name = "projection_parameters_long"
+        ppl_objects = [
+            format_tabular_object(projection_parameters_long, ppl_name, _type) for _type in output.tabular_output_types
+        ]
+        out_dict[ppl_name] = ppl_objects
 
     ### Visualization plots
     if output.plots:
