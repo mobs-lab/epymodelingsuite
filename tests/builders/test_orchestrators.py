@@ -695,7 +695,7 @@ class TestApplyCalibratedParameters:
             # Should call both add and calculate
             mock_add.assert_called_once()
             mock_calc.assert_called_once_with(
-                model=model, parameters=parameter_config, compartment_init=None
+                model=model, parameters=parameter_config, compartment_init=None, param_values=params
             )
 
     def test_calibrated_values_passed_through_unchanged(self):
@@ -856,6 +856,24 @@ class TestApplySeasonalityWithSampledMin:
 
             # Original should not be mutated
             assert basemodel.seasonality.min_value == 0.5
+
+    def test_forwards_sampled_climate_coefficients(self):
+        """Test that sampled b1/b2/b3 are passed as param_overrides for climate seasonality."""
+        model = Mock()
+        seasonality_config = Seasonality(
+            method="climate",
+            target_parameter="beta",
+            climate_data_path="tests/data/climate_daily_test.csv",
+        )
+        basemodel = Mock(seasonality=seasonality_config)
+        timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 1, 3), delta_t=1.0)
+        params = {"b1": 0.002, "b3": 0.1}
+
+        with patch("epymodelingsuite.builders.orchestrators.add_seasonality_from_config") as mock_add:
+            apply_seasonality_with_sampled_min(model, basemodel, timespan, params)
+
+            mock_add.assert_called_once()
+            assert mock_add.call_args.kwargs["param_overrides"] == {"b1": 0.002, "b3": 0.1}
 
 
 class TestFormatCalibrationData:

@@ -6,7 +6,7 @@ import time
 import numpy as np
 import pandas as pd
 from epydemix.calibration import ae, mae, mape, rmse, wmape
-# from ..filtering import filter_projections_on_data_point
+from ..filtering import anchor_projections_on_data
 
 from ..schema.dispatcher import BuilderOutput, CalibrationOutput, SimulationOutput
 from ..telemetry import ExecutionTelemetry
@@ -245,7 +245,7 @@ def run_calibration_with_projection(
                 
                 # Apply filtering
                 original_count = len(projection_results.projections["baseline"])
-                filtered_projections, filtered_projection_parameters = filter_projections_on_data_point(
+                filtered_projections, filtered_projection_parameters = anchor_projections_on_data(
                     runner_output=temp_output,
                     surveillance_data=surveillance_data,
                     top_fraction=configs.anchoring.top_fraction,

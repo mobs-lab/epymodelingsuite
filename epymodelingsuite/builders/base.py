@@ -315,7 +315,10 @@ def add_model_parameters_from_config(model: EpiModel, parameters: dict[str, Para
 
 
 def calculate_parameters_from_config(
-    model: EpiModel, parameters: dict[str, Parameter], compartment_init: dict[str, np.ndarray] | None
+    model: EpiModel,
+    parameters: dict[str, Parameter],
+    compartment_init: dict[str, np.ndarray] | None,
+    param_values: dict | None = None,
 ) -> EpiModel:
     """
     Add calculated parameters to the EpiModel, assuming all non-calculated parameters are already in the model.
@@ -329,6 +332,9 @@ def calculate_parameters_from_config(
     compartment_init: dict[str, np.ndarray] | None
             Dictionary mapping compartment names to initial condition arrays,
             or None if no initial conditions are specified.
+    param_values: dict | None
+            Optional dict of current parameter values (e.g. from ABC sampling).
+            Used as fallback when resolving names not yet on the model.
 
     Returns
     -------
@@ -347,7 +353,7 @@ def calculate_parameters_from_config(
             tree = ast.parse(expr, mode="eval")
 
             # Substitute retrieved parameter values or contact matrix eigenvalue into the tree
-            RetrieveName(model, compartment_init).visit(tree)
+            RetrieveName(model, compartment_init, param_values=param_values).visit(tree)
 
             # Validate the expression
             SafeEvalVisitor().visit(tree)

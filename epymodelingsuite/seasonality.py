@@ -1,7 +1,25 @@
 ### seasonality.py
 # Functions for generating seasonal transmission rates.
 import datetime as dt
+import logging
 from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
+
+import pandas as pd
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class ClimateSeries:
+    """Daily temperature and relative humidity indexed by calendar date."""
+
+    temp_by_date: dict[dt.date, float]
+    rh_by_date: dict[dt.date, float]
+    min_temp: float
+    date_min: dt.date
+    date_max: dt.date
 
 
 def _calc_seasonality_balcan_at_t(
@@ -314,3 +332,187 @@ def get_seasonal_transmission_balcan(
     )
 
     return dates, values
+
+
+def _to_calendar_date(date_t: dt.date | dt.datetime) -> dt.date:
+    if isinstance(date_t, dt.datetime):
+        return date_t.date()
+    return date_t
+
+
+def load_climate_series(
+    climate_data_path: str | Path,
+    date_column: str = "date",
+    temp_column: str = "temp",
+    rh_column: str = "humid_mean",
+    location: str | None = None,
+    location_column: str = "Location",
+) -> ClimateSeries:
+    """
+    Load daily climate observations from CSV.
+
+    Parameters
+    ----------
+    climate_data_path : str or Path
+        Path to daily climate CSV (one row per calendar day).
+    date_column : str, default "date"
+        Column name for observation date.
+    temp_column : str, default "temp"
+        Column name for temperature in degrees Celsius.
+    rh_column : str, default "humid_mean"
+        Column name for relative humidity in percent.
+    location : str, optional
+        If set, filter rows where ``location_column`` equals this value.
+    location_column : str, default "Location"
+        Column used for optional location filtering.
+
+    Returns
+    -------
+    ClimateSeries
+        Daily temp/RH indexed by date with global min temperature over the series.
+    """
+    path = Path(climate_data_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Climate data file not found: {path}")
+
+    df = pd.read_csv(path)
+    required = {date_column, temp_column, rh_column}
+    missing = required - set(df.columns)
+    if missing:
+        raise ValueError(f"Climate CSV missing required columns: {sorted(missing)}")
+
+    if location is not None:
+        if location_column not in df.columns:
+            raise ValueError(
+                f"location={location!r} requested but column {location_column!r} not in climate CSV"
+            )
+        df = df[df[location_column] == location]
+        if df.empty:
+            raise ValueError(f"No climate rows found for location={location!r}")
+
+    df = df.copy()
+    df[date_column] = pd.to_datetime(df[date_column]).dt.date
+    df = df.sort_values(date_column).drop_duplicates(subset=[date_column], keep="last")
+
+    if len(df) > 1:
+        gaps = pd.Series(list(df[date_column])).diff().dropna()
+        max_gap_days = max(g.days for g in gaps)
+        if max_gap_days > 1:
+            logger.warning(
+                "Climate data in %s has gaps up to %d days; missing dates will raise at lookup time",
+                path,
+                max_gap_days,
+            )
+
+    temp_by_date = dict(zip(df[date_column], df[temp_column].astype(float), strict=True))
+    rh_by_date = dict(zip(df[date_column], df[rh_column].astype(float), strict=True))
+    min_temp = float(df[temp_column].min())
+    dates = sorted(temp_by_date.keys())
+
+    return ClimateSeries(
+        temp_by_date=temp_by_date,
+        rh_by_date=rh_by_date,
+        min_temp=min_temp,
+        date_min=dates[0],
+        date_max=dates[-1],
+    )
+
+
+def _calc_seasonality_climate(
+    temp: float,
+    rh: float,
+    min_temp: float,
+    b1: float,
+    b2: float,
+    b3: float,
+    rh_optimum: float = 40.0,
+) -> float:
+    """Climate scaling factor: b1*(RH - rh_optimum)^2 + b2 + b3*(-T + min(T))."""
+    return b1 * (rh - rh_optimum) ** 2 + b2 + b3 * (-temp + min_temp)
+
+
+def calc_seasonality_climate_at_date(
+    date_t: dt.date | dt.datetime,
+    climate: ClimateSeries,
+    b1: float,
+    b2: float,
+    b3: float,
+    rh_optimum: float = 40.0,
+) -> float:
+    """
+    Compute the climate scaling factor for a simulation date using daily observations.
+
+    For subdaily timesteps, the calendar date of ``date_t`` is used (same daily
+    RH/T for all substeps within a day).
+
+    Parameters
+    ----------
+    date_t : date or datetime
+        Target simulation date/datetime.
+    climate : ClimateSeries
+        Loaded daily climate observations.
+    b1, b2, b3 : float
+        Climate seasonality coefficients.
+    rh_optimum : float, default 40.0
+        RH (%) at which the parabolic humidity term is minimized.
+
+    Returns
+    -------
+    float
+        Seasonal scaling factor at ``date_t``.
+
+    Raises
+    ------
+    ValueError
+        If the date is outside the climate file range or scaling factor is non-positive.
+    """
+    cal_date = _to_calendar_date(date_t)
+    if cal_date < climate.date_min or cal_date > climate.date_max:
+        raise ValueError(
+            f"Simulation date {cal_date} is outside climate data range "
+            f"[{climate.date_min}, {climate.date_max}]. Extend the climate CSV."
+        )
+    if cal_date not in climate.temp_by_date:
+        raise ValueError(
+            f"No climate observation for date {cal_date}. "
+            f"Climate file covers [{climate.date_min}, {climate.date_max}] but has a gap on this date."
+        )
+
+    temp = climate.temp_by_date[cal_date]
+    rh = climate.rh_by_date[cal_date]
+    st = _calc_seasonality_climate(temp, rh, climate.min_temp, b1, b2, b3, rh_optimum)
+    return max(st, 1e-6)
+
+
+def get_seasonal_transmission_climate(
+    date_start: dt.date | dt.datetime,
+    date_stop: dt.date | dt.datetime,
+    climate: ClimateSeries,
+    b1: float,
+    b2: float,
+    b3: float,
+    rh_optimum: float = 40.0,
+    delta_t: float = 1.0,
+) -> tuple[list[dt.date | dt.datetime], list[float]]:
+    """
+    Return climate scaling factors for the simulation period.
+
+    Wrapper for ``calc_seasonality_climate_at_date()`` and ``generate_seasonal_values()``.
+    """
+    from functools import partial
+
+    climate_calculator = partial(
+        calc_seasonality_climate_at_date,
+        climate=climate,
+        b1=b1,
+        b2=b2,
+        b3=b3,
+        rh_optimum=rh_optimum,
+    )
+
+    return generate_seasonal_values(
+        date_start=date_start,
+        date_stop=date_stop,
+        seasonality_func=climate_calculator,
+        delta_t=delta_t,
+    )

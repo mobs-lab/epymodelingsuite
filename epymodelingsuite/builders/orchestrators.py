@@ -592,10 +592,11 @@ def apply_seasonality_with_sampled_min(
     params: dict,
 ) -> None:
     """
-    Apply seasonality configuration, using sampled min_value if provided.
+    Apply seasonality configuration, using sampled parameter values if provided.
 
     Creates a deep copy of seasonality config to avoid mutating shared state,
-    optionally overrides min_value if it's being calibrated, then applies to model.
+    optionally overrides min_value (Balcan) or climate coefficients from params,
+    then applies to model.
 
     Parameters
     ----------
@@ -606,7 +607,8 @@ def apply_seasonality_with_sampled_min(
     timespan : Timespan
             Simulation timespan.
     params : dict
-            Simulation parameters, may contain "seasonality_min" if being calibrated.
+            Simulation parameters; may contain ``seasonality_min`` (Balcan) or
+            climate coefficient names (e.g. ``b1``, ``b2``, ``b3``) when calibrated.
     """
     if not basemodel.seasonality:
         return
@@ -614,11 +616,20 @@ def apply_seasonality_with_sampled_min(
     # Use copy to avoid mutating shared basemodel
     seasonality_config = copy.deepcopy(basemodel.seasonality)
 
-    # Override min_value if sampled/calibrated
+    # Override min_value if sampled/calibrated (Balcan)
     if "seasonality_min" in params:
         seasonality_config.min_value = params["seasonality_min"]
 
-    add_seasonality_from_config(model, seasonality_config, timespan)
+    param_overrides = None
+    if seasonality_config.method.value == "climate":
+        coeff_names = (
+            seasonality_config.b1_param,
+            seasonality_config.b2_param,
+            seasonality_config.b3_param,
+        )
+        param_overrides = {name: params[name] for name in coeff_names if name in params}
+
+    add_seasonality_from_config(model, seasonality_config, timespan, param_overrides=param_overrides)
 
 
 def apply_vaccination_for_sampled_start(
@@ -689,7 +700,7 @@ def apply_calibrated_parameters(
     # Extract calibrated parameters
     calibrated_params: dict[str, Parameter] = {}
     for name, raw_value in params.items():
-        if name not in parameter_config or parameter_config[name].type != "calibrated":
+        if name not in parameter_config or parameter_config[name].type.value != "calibrated":
             continue
 
         calibrated_params[name] = Parameter(type="scalar", value=raw_value)
@@ -700,7 +711,12 @@ def apply_calibrated_parameters(
     # Recalculate derived parameters if any exist
     has_calculated = any(param.type.value == "calculated" for param in parameter_config.values())
     if has_calculated:
-        calculate_parameters_from_config(model=model, parameters=parameter_config, compartment_init=compartment_init)
+        calculate_parameters_from_config(
+            model=model,
+            parameters=parameter_config,
+            compartment_init=compartment_init,
+            param_values=params,
+        )
 
 
 def compute_simulation_start_date(
@@ -753,7 +769,8 @@ class SimulateWrapperParams(TypedDict, total=False):
     end_date: dt.date
     projection: bool
     start_date: int  # Offset in days, present if start_date is calibrated
-    seasonality_min: float  # Present if seasonality minimum is calibrated
+    seasonality_min: float  # Present if seasonality minimum is calibrated (Balcan)
+    # b1, b2, b3 may appear when climate seasonality coefficients are calibrated
 
 
 def make_simulate_wrapper(
@@ -855,7 +872,9 @@ def make_simulate_wrapper(
                 - start_date : int, optional
                         Offset in days from reference date (if start_date is calibrated)
                 - seasonality_min : float, optional
-                        Minimum seasonality value (if seasonality is calibrated)
+                        Minimum seasonality value (Balcan, if seasonality min is calibrated)
+                - b1, b2, b3 : float, optional
+                        Climate seasonality coefficients when calibrated
                 - Additional calibrated parameter values (e.g., "beta", "initial_infected")
 
         Returns

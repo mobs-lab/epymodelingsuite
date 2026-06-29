@@ -321,3 +321,96 @@ class TestSeasonalityPrimitivesSubdaily:
                 assert v == scaling_factor, f"Expected {scaling_factor} at {d}, got {v}"
             else:
                 assert v == 1.0, f"Expected 1.0 at {d}, got {v}"
+
+
+CLIMATE_TEST_CSV = "tests/data/climate_daily_test.csv"
+CLIMATE_MULTI_STATE_CSV = "tutorials/data/climate_daily_era5_gee.csv"
+
+
+class TestClimateSeasonalityPrimitives:
+    """Unit tests for climate-driven seasonality functions."""
+
+    def test_calc_at_reference_point_equals_b2(self):
+        from epymodelingsuite.seasonality import _calc_seasonality_climate
+
+        st = _calc_seasonality_climate(temp=5.0, rh=40.0, min_temp=5.0, b1=0.001, b2=1.0, b3=0.05)
+        assert st == pytest.approx(1.0)
+
+    def test_b1_increases_with_rh_deviation(self):
+        from epymodelingsuite.seasonality import _calc_seasonality_climate
+
+        low = _calc_seasonality_climate(temp=5.0, rh=41.0, min_temp=5.0, b1=0.01, b2=1.0, b3=0.0)
+        high = _calc_seasonality_climate(temp=5.0, rh=50.0, min_temp=5.0, b1=0.01, b2=1.0, b3=0.0)
+        assert high > low
+
+    def test_b3_decreases_with_temperature(self):
+        from epymodelingsuite.seasonality import _calc_seasonality_climate
+
+        cold = _calc_seasonality_climate(temp=5.0, rh=40.0, min_temp=5.0, b1=0.0, b2=1.0, b3=0.1)
+        warm = _calc_seasonality_climate(temp=15.0, rh=40.0, min_temp=5.0, b1=0.0, b2=1.0, b3=0.1)
+        assert cold > warm
+
+    def test_load_climate_series(self):
+        from epymodelingsuite.seasonality import load_climate_series
+
+        climate = load_climate_series(CLIMATE_TEST_CSV, location="US-CA")
+        assert climate.date_min == dt.date(2024, 1, 1)
+        assert climate.date_max == dt.date(2024, 1, 3)
+        assert climate.min_temp == pytest.approx(5.0)
+        assert climate.temp_by_date[dt.date(2024, 1, 2)] == pytest.approx(10.0)
+
+    def test_daily_lookup(self):
+        from epymodelingsuite.seasonality import calc_seasonality_climate_at_date, load_climate_series
+
+        climate = load_climate_series(CLIMATE_TEST_CSV, location="US-CA")
+        st = calc_seasonality_climate_at_date(
+            dt.date(2024, 1, 1), climate, b1=0.001, b2=1.0, b3=0.05, rh_optimum=40.0
+        )
+        assert st == pytest.approx(1.0)
+
+    def test_subdaily_reuses_same_daily_values(self):
+        from epymodelingsuite.seasonality import get_seasonal_transmission_climate, load_climate_series
+
+        climate = load_climate_series(CLIMATE_TEST_CSV, location="US-CA")
+        _, values = get_seasonal_transmission_climate(
+            date_start=dt.datetime(2024, 1, 1, 0, 0),
+            date_stop=dt.datetime(2024, 1, 1, 12, 0),
+            climate=climate,
+            b1=0.001,
+            b2=1.0,
+            b3=0.05,
+            delta_t=0.5,
+        )
+        assert len(values) == 2
+        assert values[0] == pytest.approx(values[1])
+
+    def test_out_of_range_date_raises(self):
+        from epymodelingsuite.seasonality import calc_seasonality_climate_at_date, load_climate_series
+
+        climate = load_climate_series(CLIMATE_TEST_CSV, location="US-CA")
+        with pytest.raises(ValueError, match="outside climate data range"):
+            calc_seasonality_climate_at_date(dt.date(2023, 1, 1), climate, 0.001, 1.0, 0.05)
+
+    def test_non_positive_scaling_raises(self):
+        from epymodelingsuite.seasonality import calc_seasonality_climate_at_date, load_climate_series
+
+        climate = load_climate_series(CLIMATE_TEST_CSV, location="US-CA")
+        with pytest.raises(ValueError, match="must be positive"):
+            calc_seasonality_climate_at_date(dt.date(2024, 1, 2), climate, b1=0.0, b2=-1.0, b3=0.0)
+
+    def test_get_seasonal_transmission_climate_multi_state_file(self):
+        from epymodelingsuite.seasonality import get_seasonal_transmission_climate, load_climate_series
+
+        climate = load_climate_series(CLIMATE_MULTI_STATE_CSV, location="US-CO")
+        dates, values = get_seasonal_transmission_climate(
+            date_start=dt.date(2024, 1, 1),
+            date_stop=dt.date(2024, 1, 7),
+            climate=climate,
+            b1=1e-5,
+            b2=1.0,
+            b3=0.01,
+            delta_t=1.0,
+        )
+        assert len(dates) == 7
+        assert len(values) == 7
+        assert all(v > 0 for v in values)

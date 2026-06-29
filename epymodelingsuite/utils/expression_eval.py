@@ -176,9 +176,15 @@ class RetrieveName(ast.NodeTransformer):
     Constructor requires an EpiModel with contact matrices, and optionally a dict with initial conditions.
     """
 
-    def __init__(self, model: EpiModel, compartment_init: dict[str, np.ndarray] | None):
+    def __init__(
+        self,
+        model: EpiModel,
+        compartment_init: dict[str, np.ndarray] | None,
+        param_values: dict[str, Any] | None = None,
+    ):
         self.model = model
         self.compartment_init = compartment_init
+        self.param_values = param_values
 
     def visit_Name(self, node):
         if node.id in _allowed_modules:
@@ -212,8 +218,12 @@ class RetrieveName(ast.NodeTransformer):
                     f"Error calculating proportion of population in compartment{node.id} from initial conditions: {e}"
                 )
 
-        # Model parameter
+        # Model parameter (on model, or from current sample dict during calibration)
         else:
+            if self.param_values is not None and node.id in self.param_values:
+                raw = self.param_values[node.id]
+                if isinstance(raw, (int, float, np.integer, np.floating)):
+                    return ast.fix_missing_locations(ast.Constant(value=float(raw)))
             try:
                 value = self.model.get_parameter(node.id)
                 if isinstance(value, np.ndarray):
