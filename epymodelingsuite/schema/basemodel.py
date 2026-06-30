@@ -295,8 +295,8 @@ class Seasonality(BaseModel):
         ),
     )
     b1_param: str = Field("b1", description="Model parameter name for humidity curvature coefficient")
-    b2_param: str = Field("b2", description="Model parameter name for humidity baseline coefficient")
     b3_param: str = Field("b3", description="Model parameter name for temperature coefficient")
+    s_min_param: str = Field("s_min", description="Model parameter name for minimum seasonality multiplier")
 
     @field_validator("seasonality_min_date")
     @classmethod

@@ -423,27 +423,28 @@ def _calc_seasonality_climate(
     rh: float,
     min_temp: float,
     b1: float,
-    b2: float,
     b3: float,
     rh_optimum: float = 40.0,
 ) -> float:
-    """Climate scaling factor: b1*(RH - rh_optimum)^2 + b2 + b3*(-T + min(T))."""
-    return b1 * (rh - rh_optimum) ** 2 + b2 + b3 * (-temp + min_temp)
+    """Raw climate signal (un-normalised): b1*(RH - rh_optimum)^2 + b3*(min_T - T)."""
+    return b1 * (rh - rh_optimum) ** 2 + b3 * (min_temp - temp)
 
 
 def calc_seasonality_climate_at_date(
     date_t: dt.date | dt.datetime,
     climate: ClimateSeries,
     b1: float,
-    b2: float,
     b3: float,
+    s_min: float,
+    raw_min: float,
+    raw_max: float,
     rh_optimum: float = 40.0,
 ) -> float:
     """
-    Compute the climate scaling factor for a simulation date using daily observations.
+    Compute the normalised climate scaling factor for a simulation date.
 
-    For subdaily timesteps, the calendar date of ``date_t`` is used (same daily
-    RH/T for all substeps within a day).
+    The multiplier is always in [s_min, 1]:
+        multiplier = s_min + (1 - s_min) * (raw - raw_min) / (raw_max - raw_min)
 
     Parameters
     ----------
@@ -451,20 +452,25 @@ def calc_seasonality_climate_at_date(
         Target simulation date/datetime.
     climate : ClimateSeries
         Loaded daily climate observations.
-    b1, b2, b3 : float
-        Climate seasonality coefficients.
+    b1, b3 : float
+        Humidity curvature and temperature coefficients.
+    s_min : float
+        Minimum seasonality multiplier (in [0, 1)).
+    raw_min, raw_max : float
+        Pre-computed minimum and maximum of the raw signal over the full simulation
+        period; used to normalise the series to [0, 1] before rescaling to [s_min, 1].
     rh_optimum : float, default 40.0
         RH (%) at which the parabolic humidity term is minimized.
 
     Returns
     -------
     float
-        Seasonal scaling factor at ``date_t``.
+        Seasonal scaling factor at ``date_t``, guaranteed to be in [s_min, 1].
 
     Raises
     ------
     ValueError
-        If the date is outside the climate file range or scaling factor is non-positive.
+        If the date is outside the climate file range.
     """
     cal_date = _to_calendar_date(date_t)
     if cal_date < climate.date_min or cal_date > climate.date_max:
@@ -480,8 +486,10 @@ def calc_seasonality_climate_at_date(
 
     temp = climate.temp_by_date[cal_date]
     rh = climate.rh_by_date[cal_date]
-    st = _calc_seasonality_climate(temp, rh, climate.min_temp, b1, b2, b3, rh_optimum)
-    return max(st, 1e-6)
+    raw = _calc_seasonality_climate(temp, rh, climate.min_temp, b1, b3, rh_optimum)
+    if raw_max == raw_min:
+        return 1.0
+    return s_min + (1.0 - s_min) * (raw - raw_min) / (raw_max - raw_min)
 
 
 def get_seasonal_transmission_climate(
@@ -489,30 +497,75 @@ def get_seasonal_transmission_climate(
     date_stop: dt.date | dt.datetime,
     climate: ClimateSeries,
     b1: float,
-    b2: float,
     b3: float,
+    s_min: float,
     rh_optimum: float = 40.0,
     delta_t: float = 1.0,
 ) -> tuple[list[dt.date | dt.datetime], list[float]]:
     """
-    Return climate scaling factors for the simulation period.
+    Return normalised climate scaling factors for the simulation period.
 
-    Wrapper for ``calc_seasonality_climate_at_date()`` and ``generate_seasonal_values()``.
+    The multiplier series is rescaled so the maximum equals 1 and the minimum
+    equals ``s_min``:
+
+        raw(t)       = b1*(RH(t) - rh_optimum)^2 + b3*(min_T - T(t))
+        multiplier(t) = s_min + (1 - s_min) * (raw(t) - raw_min) / (raw_max - raw_min)
+
+    Parameters
+    ----------
+    date_start, date_stop : date or datetime
+        Simulation period (inclusive).
+    climate : ClimateSeries
+        Loaded daily climate observations.
+    b1, b3 : float
+        Humidity curvature and temperature coefficients.
+    s_min : float
+        Minimum seasonality multiplier (in [0, 1)).
+    rh_optimum : float, default 40.0
+        RH (%) at which the parabolic humidity term is minimized.
+    delta_t : float, default 1.0
+        Timestep in days.
+
+    Returns
+    -------
+    tuple[list, list]
+        (dates, multipliers) where every multiplier is in [s_min, 1].
     """
-    from functools import partial
+    import numpy as np
 
-    climate_calculator = partial(
-        calc_seasonality_climate_at_date,
-        climate=climate,
-        b1=b1,
-        b2=b2,
-        b3=b3,
-        rh_optimum=rh_optimum,
-    )
-
-    return generate_seasonal_values(
+    # Use a dummy function to obtain the date grid from generate_seasonal_values.
+    dates, _ = generate_seasonal_values(
         date_start=date_start,
         date_stop=date_stop,
-        seasonality_func=climate_calculator,
+        seasonality_func=lambda _: 0.0,
         delta_t=delta_t,
     )
+
+    # First pass: compute raw values for every date.
+    raw = []
+    for d in dates:
+        cal_date = _to_calendar_date(d)
+        if cal_date < climate.date_min or cal_date > climate.date_max:
+            raise ValueError(
+                f"Simulation date {cal_date} is outside climate data range "
+                f"[{climate.date_min}, {climate.date_max}]. Extend the climate CSV."
+            )
+        if cal_date not in climate.temp_by_date:
+            raise ValueError(
+                f"No climate observation for date {cal_date}. "
+                f"Climate file covers [{climate.date_min}, {climate.date_max}] but has a gap on this date."
+            )
+        temp = climate.temp_by_date[cal_date]
+        rh = climate.rh_by_date[cal_date]
+        raw.append(_calc_seasonality_climate(temp, rh, climate.min_temp, b1, b3, rh_optimum))
+
+    raw_arr = np.array(raw, dtype=float)
+    raw_min = float(raw_arr.min())
+    raw_max = float(raw_arr.max())
+
+    if raw_max == raw_min:
+        st = [1.0] * len(raw)
+    else:
+        st = (s_min + (1.0 - s_min) * (raw_arr - raw_min) / (raw_max - raw_min)).tolist()
+
+    return dates, st

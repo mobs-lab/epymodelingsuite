@@ -107,8 +107,8 @@ def add_seasonality_from_config(
         )
     elif seasonality.method == Seasonality.SeasonalityMethodEnum.climate:
         b1 = _resolve_climate_coeff(seasonality.b1_param, model, param_overrides)
-        b2 = _resolve_climate_coeff(seasonality.b2_param, model, param_overrides)
         b3 = _resolve_climate_coeff(seasonality.b3_param, model, param_overrides)
+        s_min = _resolve_climate_coeff(seasonality.s_min_param, model, param_overrides)
         climate_location = resolve_climate_location_from_population(
             model.population.name,
             location_format=seasonality.location_format,
@@ -131,8 +131,8 @@ def add_seasonality_from_config(
             date_stop=timespan.end_date,
             climate=climate,
             b1=b1,
-            b2=b2,
             b3=b3,
+            s_min=s_min,
             rh_optimum=seasonality.rh_optimum,
             delta_t=timespan.delta_t,
         )

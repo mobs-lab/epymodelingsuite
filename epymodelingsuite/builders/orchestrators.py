@@ -624,8 +624,8 @@ def apply_seasonality_with_sampled_min(
     if seasonality_config.method.value == "climate":
         coeff_names = (
             seasonality_config.b1_param,
-            seasonality_config.b2_param,
             seasonality_config.b3_param,
+            seasonality_config.s_min_param,
         )
         param_overrides = {name: params[name] for name in coeff_names if name in params}
 
