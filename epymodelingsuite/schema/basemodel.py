@@ -258,7 +258,9 @@ class Seasonality(BaseModel):
         """Methods for defining a seasonally varying function."""
 
         balcan = "balcan"
-        climate = "climate"
+        data_driven = "data_driven"
+        humidity_only = "humidity_only"
+        temperature_only = "temperature_only"
 
     target_parameter: str = Field(description="Name of parameter to apply seasonality to")
     method: SeasonalityMethodEnum = Field(description="Method for defining a seasonally varying function")
@@ -275,27 +277,31 @@ class Seasonality(BaseModel):
         None,
         description="Together with max_value, determines the trough as min_value/max_value. Required for balcan.",
     )
-    # Climate-specific fields
-    climate_data_path: str | None = Field(
-        None, description="Path to daily climate CSV (temp and RH); required for climate method"
+    # Data-driven fields (temperature, humidity, and/or mobility)
+    seasonality_data_path: str | None = Field(
+        None, description="Path to daily seasonality data CSV (temp, RH, mobility); required for data_driven method"
     )
-    date_column: str = Field("date", description="Date column in climate CSV")
-    temp_column: str = Field("temp", description="Temperature column in climate CSV (degrees C)")
-    rh_column: str = Field("humid_mean", description="Relative humidity column in climate CSV (percent)")
+    date_column: str = Field("date", description="Date column in seasonality data CSV")
+    temp_column: str = Field("temp", description="Temperature column in seasonality data CSV (degrees C)")
+    rh_column: str = Field("humid_mean", description="Relative humidity column in seasonality data CSV (percent)")
+    mobility_column: str | None = Field(
+        None, description="Mobility index column in seasonality data CSV; omit to exclude mobility"
+    )
     rh_optimum: float = Field(40.0, description="RH (%) at minimum of parabolic humidity term")
     location_column: str = Field(
         "Location",
-        description="Location identifier column in climate CSV (values matched to model population)",
+        description="Location identifier column in seasonality data CSV (values matched to model population)",
     )
     location_format: str = Field(
         "ISO",
         description=(
-            "Format of location values in the climate CSV (e.g. ISO for US-CA). "
+            "Format of location values in the seasonality data CSV (e.g. ISO for US-CA). "
             "Population location is resolved automatically from model.population.name."
         ),
     )
     b1_param: str = Field("b1", description="Model parameter name for humidity curvature coefficient")
     b3_param: str = Field("b3", description="Model parameter name for temperature coefficient")
+    b4_param: str = Field("b4", description="Model parameter name for mobility coefficient")
     s_min_param: str = Field("s_min", description="Model parameter name for minimum seasonality multiplier")
 
     @field_validator("seasonality_min_date")
@@ -333,9 +339,13 @@ class Seasonality(BaseModel):
                 missing.append("min_value")
             if missing:
                 raise ValueError(f"Balcan seasonality requires: {', '.join(missing)}")
-        elif self.method == Seasonality.SeasonalityMethodEnum.climate:
-            if not self.climate_data_path:
-                raise ValueError("Climate seasonality requires climate_data_path")
+        elif self.method in (
+            Seasonality.SeasonalityMethodEnum.data_driven,
+            Seasonality.SeasonalityMethodEnum.humidity_only,
+            Seasonality.SeasonalityMethodEnum.temperature_only,
+        ):
+            if not self.seasonality_data_path:
+                raise ValueError("Data-driven seasonality requires seasonality_data_path")
         return self
 
 

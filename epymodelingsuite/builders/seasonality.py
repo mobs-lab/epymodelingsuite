@@ -9,22 +9,22 @@ from epydemix.model import EpiModel
 from ..schema.basemodel import Seasonality, Timespan
 from ..seasonality import (
     get_seasonal_transmission_balcan,
-    get_seasonal_transmission_climate,
-    load_climate_series,
+    get_seasonal_transmission_data_driven,
+    load_seasonality_data,
 )
 
 logger = logging.getLogger(__name__)
 
 
-def resolve_climate_location_from_population(
+def resolve_seasonality_location_from_population(
     population_name: str,
     location_format: str = "ISO",
 ) -> str:
     """
-    Map an epydemix population name to a climate CSV location identifier.
+    Map an epydemix population name to a seasonality data CSV location identifier.
 
     ISO state populations use their ISO code (e.g. US-CA). Metrocast locations
-    inherit the parent state's climate series, matching contact-matrix resolution.
+    inherit the parent state's seasonality series, matching contact-matrix resolution.
     """
     from ..utils.location import convert_location_name_format, get_parent_region, parse_population_name
 
@@ -39,12 +39,12 @@ def resolve_climate_location_from_population(
     return convert_location_name_format(iso, location_format, input_format="ISO")
 
 
-def _resolve_climate_coeff(
+def _resolve_seasonality_coeff(
     param_name: str,
     model: EpiModel,
     param_overrides: dict[str, Any] | None,
 ) -> float:
-    """Resolve a scalar climate coefficient from overrides or model parameters."""
+    """Resolve a scalar seasonality coefficient from overrides or model parameters."""
     if param_overrides is not None and param_name in param_overrides:
         value = param_overrides[param_name]
     else:
@@ -52,13 +52,13 @@ def _resolve_climate_coeff(
             value = model.get_parameter(param_name)
         except KeyError as e:
             raise ValueError(
-                f"Climate seasonality requires coefficient {param_name!r} as a model parameter "
+                f"Data-driven seasonality requires coefficient {param_name!r} as a model parameter "
                 f"or in param_overrides"
             ) from e
 
     if hasattr(value, "__len__") and not isinstance(value, str):
         raise ValueError(
-            f"Climate seasonality coefficient {param_name!r} must be scalar, got shape "
+            f"Data-driven seasonality coefficient {param_name!r} must be scalar, got shape "
             f"{getattr(value, 'shape', len(value))}"
         )
     return float(value)
@@ -105,36 +105,55 @@ def add_seasonality_from_config(
             val_max=seasonality.max_value,
             delta_t=timespan.delta_t,
         )
-    elif seasonality.method == Seasonality.SeasonalityMethodEnum.climate:
-        b1 = _resolve_climate_coeff(seasonality.b1_param, model, param_overrides)
-        b3 = _resolve_climate_coeff(seasonality.b3_param, model, param_overrides)
-        s_min = _resolve_climate_coeff(seasonality.s_min_param, model, param_overrides)
-        climate_location = resolve_climate_location_from_population(
+    elif seasonality.method in (
+        Seasonality.SeasonalityMethodEnum.data_driven,
+        Seasonality.SeasonalityMethodEnum.humidity_only,
+        Seasonality.SeasonalityMethodEnum.temperature_only,
+    ):
+        humidity_only = seasonality.method == Seasonality.SeasonalityMethodEnum.humidity_only
+        temperature_only = seasonality.method == Seasonality.SeasonalityMethodEnum.temperature_only
+        if humidity_only:
+            b1, b3, b4 = 1.0, 0.0, 0.0
+        elif temperature_only:
+            b1, b3, b4 = 0.0, 1.0, 0.0
+        else:
+            b1 = _resolve_seasonality_coeff(seasonality.b1_param, model, param_overrides)
+            b3 = _resolve_seasonality_coeff(seasonality.b3_param, model, param_overrides)
+            b4 = (
+                _resolve_seasonality_coeff(seasonality.b4_param, model, param_overrides)
+                if seasonality.mobility_column
+                else 0.0
+            )
+        s_min = _resolve_seasonality_coeff(seasonality.s_min_param, model, param_overrides)
+        seasonality_location = resolve_seasonality_location_from_population(
             model.population.name,
             location_format=seasonality.location_format,
         )
-        climate = load_climate_series(
-            climate_data_path=seasonality.climate_data_path,
+        seasonality_data = load_seasonality_data(
+            seasonality_data_path=seasonality.seasonality_data_path,
             date_column=seasonality.date_column,
             temp_column=seasonality.temp_column,
             rh_column=seasonality.rh_column,
-            location=climate_location,
+            mobility_column=seasonality.mobility_column,
+            location=seasonality_location,
             location_column=seasonality.location_column,
         )
         logger.info(
-            "Climate seasonality for population %s using location %s",
+            "Data-driven seasonality for population %s using location %s (method=%s)",
             model.population.name,
-            climate_location,
+            seasonality_location,
+            seasonality.method.value,
         )
-        dates, st = get_seasonal_transmission_climate(
+        dates, st = get_seasonal_transmission_data_driven(
             date_start=timespan.start_date,
             date_stop=timespan.end_date,
-            climate=climate,
+            seasonality_data=seasonality_data,
             b1=b1,
             b3=b3,
             s_min=s_min,
             rh_optimum=seasonality.rh_optimum,
             delta_t=timespan.delta_t,
+            b4=b4,
         )
     else:
         raise ValueError(f"Undefined seasonality method recieved: {seasonality.method}")

@@ -25,7 +25,7 @@ class TestClimateBaseModelSchemaValidation:
     def test_seasonality_method_is_climate(self):
         cfg = load_basemodel_config_from_file(str(CLIMATE_FIXTURE))
         assert cfg.model.seasonality is not None
-        assert cfg.model.seasonality.method == Seasonality.SeasonalityMethodEnum.climate
+        assert cfg.model.seasonality.method == Seasonality.SeasonalityMethodEnum.data_driven
 
     def test_seasonality_target_is_beta(self):
         cfg = load_basemodel_config_from_file(str(CLIMATE_FIXTURE))
@@ -39,11 +39,11 @@ class TestClimateBaseModelSchemaValidation:
         assert "b3" in params
 
     def test_missing_climate_data_path_raises(self):
-        with pytest.raises(Exception, match="climate_data_path"):
+        with pytest.raises(Exception, match="seasonality_data_path"):
             Seasonality(
-                method="climate",
+                method="data_driven",
                 target_parameter="beta",
-                # climate_data_path intentionally omitted
+                # seasonality_data_path intentionally omitted
             )
 
 
@@ -120,7 +120,7 @@ class TestClimateModelsetSchemaValidation:
         tutorials_basemodel = FIXTURES_DIR.parent.parent / "tutorials" / "data" / "basemodel_climate.yml"
         cfg = load_basemodel_config_from_file(str(tutorials_basemodel))
         assert cfg.model.seasonality is not None
-        assert cfg.model.seasonality.method == Seasonality.SeasonalityMethodEnum.climate
+        assert cfg.model.seasonality.method == Seasonality.SeasonalityMethodEnum.data_driven
         assert "b1" in cfg.model.parameters
         assert "b2" in cfg.model.parameters
         assert "b3" in cfg.model.parameters

@@ -621,10 +621,14 @@ def apply_seasonality_with_sampled_min(
         seasonality_config.min_value = params["seasonality_min"]
 
     param_overrides = None
-    if seasonality_config.method.value == "climate":
+    if seasonality_config.method.value in ("humidity_only", "temperature_only"):
+        coeff_names = (seasonality_config.s_min_param,)
+        param_overrides = {name: params[name] for name in coeff_names if name in params}
+    elif seasonality_config.method.value == "data_driven":
         coeff_names = (
             seasonality_config.b1_param,
             seasonality_config.b3_param,
+            seasonality_config.b4_param,
             seasonality_config.s_min_param,
         )
         param_overrides = {name: params[name] for name in coeff_names if name in params}

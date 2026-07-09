@@ -861,9 +861,9 @@ class TestApplySeasonalityWithSampledMin:
         """Test that sampled b1/b2/b3 are passed as param_overrides for climate seasonality."""
         model = Mock()
         seasonality_config = Seasonality(
-            method="climate",
+            method="data_driven",
             target_parameter="beta",
-            climate_data_path="tests/data/climate_daily_test.csv",
+            seasonality_data_path="tests/data/climate_daily_test.csv",
         )
         basemodel = Mock(seasonality=seasonality_config)
         timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 1, 3), delta_t=1.0)

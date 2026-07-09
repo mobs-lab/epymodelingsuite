@@ -8,7 +8,10 @@ import pytest
 from epydemix.model import EpiModel
 
 from epymodelingsuite.builders.base import set_population_from_config
-from epymodelingsuite.builders.seasonality import add_seasonality_from_config, resolve_climate_location_from_population
+from epymodelingsuite.builders.seasonality import (
+    add_seasonality_from_config,
+    resolve_seasonality_location_from_population,
+)
 from epymodelingsuite.schema.basemodel import Population, Seasonality, Timespan
 
 
@@ -458,18 +461,18 @@ class TestAddClimateSeasonalityFromConfig:
     CLIMATE_TEST_CSV = "tests/data/climate_daily_test.csv"
 
     def test_resolve_climate_location_from_iso_population(self):
-        assert resolve_climate_location_from_population("United_States__California") == "US-CA"
-        assert resolve_climate_location_from_population("US-MA") == "US-MA"
+        assert resolve_seasonality_location_from_population("United_States__California") == "US-CA"
+        assert resolve_seasonality_location_from_population("US-MA") == "US-MA"
 
     def test_resolve_climate_location_from_metrocast_population(self):
-        assert resolve_climate_location_from_population("metrocast_location_denver") == "US-CO"
+        assert resolve_seasonality_location_from_population("metrocast_location_denver") == "US-CO"
 
     @pytest.fixture
     def climate_seasonality_config(self):
         return Seasonality(
-            method="climate",
+            method="data_driven",
             target_parameter="beta",
-            climate_data_path=TestAddClimateSeasonalityFromConfig.CLIMATE_TEST_CSV,
+            seasonality_data_path=TestAddClimateSeasonalityFromConfig.CLIMATE_TEST_CSV,
         )
 
     @pytest.fixture
@@ -517,7 +520,7 @@ class TestAddClimateSeasonalityFromConfig:
     def test_missing_coefficient_raises(self, climate_seasonality_config, climate_timespan):
         model = _model_with_mock_population()
         model.add_parameter("beta", 0.5)
-        with pytest.raises(ValueError, match="Climate seasonality requires coefficient"):
+        with pytest.raises(ValueError, match="Data-driven seasonality requires coefficient"):
             add_seasonality_from_config(model, climate_seasonality_config, climate_timespan)
 
     def test_climate_with_age_varying_beta(
