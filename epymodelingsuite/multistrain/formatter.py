@@ -39,63 +39,20 @@ RATE_TREND_THRESHOLDS = {
 
 MIN_COUNT_CHANGE = 10
 RATE_TREND_CATEGORIES = ["large_decrease", "decrease", "stable", "increase", "large_increase"]
-
-# State abbreviation mapping
-STATE_ABBREV = {
-    "United_States": "US",
-    "United_States_Alabama": "AL",
-    "United_States_Alaska": "AK",
-    "United_States_Arizona": "AZ",
-    "United_States_Arkansas": "AR",
-    "United_States_California": "CA",
-    "United_States_Colorado": "CO",
-    "United_States_Connecticut": "CT",
-    "United_States_Delaware": "DE",
-    "United_States_District_of_Columbia": "DC",
-    "United_States_Florida": "FL",
-    "United_States_Georgia": "GA",
-    "United_States_Hawaii": "HI",
-    "United_States_Idaho": "ID",
-    "United_States_Illinois": "IL",
-    "United_States_Indiana": "IN",
-    "United_States_Iowa": "IA",
-    "United_States_Kansas": "KS",
-    "United_States_Kentucky": "KY",
-    "United_States_Louisiana": "LA",
-    "United_States_Maine": "ME",
-    "United_States_Maryland": "MD",
-    "United_States_Massachusetts": "MA",
-    "United_States_Michigan": "MI",
-    "United_States_Minnesota": "MN",
-    "United_States_Mississippi": "MS",
-    "United_States_Missouri": "MO",
-    "United_States_Montana": "MT",
-    "United_States_Nebraska": "NE",
-    "United_States_Nevada": "NV",
-    "United_States_New_Hampshire": "NH",
-    "United_States_New_Jersey": "NJ",
-    "United_States_New_Mexico": "NM",
-    "United_States_New_York": "NY",
-    "United_States_North_Carolina": "NC",
-    "United_States_North_Dakota": "ND",
-    "United_States_Ohio": "OH",
-    "United_States_Oklahoma": "OK",
-    "United_States_Oregon": "OR",
-    "United_States_Pennsylvania": "PA",
-    "United_States_Rhode_Island": "RI",
-    "United_States_South_Carolina": "SC",
-    "United_States_South_Dakota": "SD",
-    "United_States_Tennessee": "TN",
-    "United_States_Texas": "TX",
-    "United_States_Utah": "UT",
-    "United_States_Vermont": "VT",
-    "United_States_Virginia": "VA",
-    "United_States_Washington": "WA",
-    "United_States_West_Virginia": "WV",
-    "United_States_Wisconsin": "WI",
-    "United_States_Wyoming": "WY",
-}
 # fmt: on
+
+
+def cols_to_dt(
+    dataframe: pd.DataFrame,
+    names: list,
+):
+    """
+    Convert given columns to datetime objects.
+    """
+    df = dataframe.copy()
+    for name in names:
+        df[name] = pd.to_datetime(df[name])
+    return df
 
 
 def classify_rate_trend(count_change: float, population: int, horizon: int) -> str:
@@ -115,21 +72,20 @@ def classify_rate_trend(count_change: float, population: int, horizon: int) -> s
     return "decrease"
 
 
-def compute_quantiles(df: pd.DataFrame, quantiles: list = None, value_col: str = "target_total") -> pd.DataFrame:
+def compute_quantiles(
+    df: pd.DataFrame,
+    quantiles: list[float] | None = None,
+    value_col: str = "target_total",
+    date_col: str = "date",
+    location_col: str = "location",
+) -> pd.DataFrame:
     """Compute quantiles from sampled trajectories."""
     if quantiles is None:
         quantiles = get_flusight_quantiles()
 
-    result = df.groupby(["location", "date"])[value_col].quantile(quantiles).unstack()
+    result = df.groupby([location_col, date_col])[value_col].quantile(quantiles).unstack()
     result.columns = [f"q{int(q * 1000):03d}" for q in quantiles]
     return result.reset_index()
-
-
-def add_state_abbreviations(df: pd.DataFrame) -> pd.DataFrame:
-    """Add state abbreviation column based on population name."""
-    df = df.copy()
-    df["abbreviation"] = df["location"].map(STATE_ABBREV)
-    return df
 
 
 def compute_rate_trend_categories(

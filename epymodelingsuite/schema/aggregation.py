@@ -61,14 +61,6 @@ class SamplingConfiguration(BaseModel):
     n_samples: int = Field(description="Number of trajectory mapping samples to take.")
 
 
-class AggregationOutputConfiguration(BaseModel):
-    """"""
-
-    base_fname: str | None = Field(default=None, description="If provided, output files will include the base file name.")
-    raw_trajectories: bool = Field(default=True, description="")
-    aggregated_trajectories: bool = Field(default=True, description="")
-
-
 class BaselineConfiguration(BaseModel):
     """Configuration for adding post-hoc baseline noise."""
     
@@ -81,7 +73,7 @@ class AggregationConfiguration(BaseModel):
     """Configuration for aggregating multiple experiment results."""
 
     meta: Meta | None = Field(None, description="General metadata.")
-    bucket: str = Field(description="")
+    bucket: str = Field(description="Path to bucket on cloud e.g. 'gs://gs_mobs_jessica/pipeline/flu'")
     random_seed: int | None = Field(None, description="Random seed for reproducibility")
     submission_week: str | int = Field(description="Epiweek of submission in CDC format, i.e. 'YYYYww'")
     sources: list[SourceExperiment] = Field(description="Identifiers for stage C trajectory outputs to aggregate.")
@@ -90,7 +82,6 @@ class AggregationConfiguration(BaseModel):
     )
     aggregate_method: AggregationStrategyEnum = Field(description="Strategy for aggregating multistrain results.")
     baseline: BaselineConfiguration | None = Field(None, description="Configuration for adding post-hoc baseline noise.")
-    outputs: AggregationOutputConfiguration = Field(description="")
 
 
 class AggregationConfig(BaseModel):

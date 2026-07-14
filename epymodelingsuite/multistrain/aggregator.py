@@ -1,4 +1,5 @@
 import logging
+import sys
 import os
 import subprocess
 import tempfile
@@ -49,6 +50,7 @@ def validate_strains(
 
 def pull_single_strain_submission(source_location: str, fname: str) -> pd.DataFrame:
     """
+    TO BE DEPRECATED
     Pull single-strain submission files from Google Cloud Storage.
     Requires cloud authorization and gcloud.
 
@@ -430,7 +432,7 @@ def dispatch_baseline(
     Parameters
     ----------
     aggregated_trajectories: pd.DataFrame
-        DataFrame with aggregated trajectories in column "target_{config.aggregate_method}"
+        DataFrame with aggregated trajectories in column "target_sum"
     config: AggregationConfiguration
         Config object with settings
 
@@ -440,10 +442,17 @@ def dispatch_baseline(
         DataFrame with baseline noise added to aggregated trajectories in columns "target_baseline_k{config.baseline.dispersion_values}"
     """
     try:
-        baselines_avg = pd.read_csv(f"epymodelingsuite/data/{config.baseline.observed_means}")
+        filename = os.path.join(
+            os.path.dirname(sys.modules[__name__].__file__),
+            f"../data/{config.baseline.observed_means}"
+        )
+        baselines_avg = pd.read_csv(filename)
     except Exception as e:
         print(os.getcwd())
-        raise ValueError(f"Baseline file {config.baseline.observed_means} not found: {e}")
+        raise ValueError(
+            f"Baseline file {config.baseline.observed_means} not found: {e}\n\
+            Tried to read location {filename}"
+        )
 
     traj_loc_fmt = (
         "location_name_epydemix"
