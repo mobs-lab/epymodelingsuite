@@ -7,6 +7,7 @@ from .schema.aggregation import AggregationConfig, validate_aggregation
 from .schema.basemodel import BasemodelConfig, validate_basemodel
 from .schema.calibration import CalibrationConfig, validate_calibration
 from .schema.output import OutputConfig, validate_output
+from .schema.post_aggregation import PostAggregationConfig, validate_post_aggregation
 from .schema.sampling import SamplingConfig, validate_sampling
 
 __all__ = [
@@ -137,4 +138,28 @@ def load_aggregation_config_from_file(path: str) -> AggregationConfig:
 
     root = validate_aggregation(raw)
     logger.info("Aggregation configuration loaded successfully.")
+    return root
+
+
+def load_post_aggregation_config_from_file(path: str) -> AggregationConfig:
+    """
+    Load post-aggregation configuration YAML from the given path and validate against the schema.
+
+    Parameters
+    ----------
+        path: The file path to the YAML configuration file.
+
+    Returns
+    -------
+        The validated configuration object.
+    """
+    from pathlib import Path
+
+    import yaml
+
+    with Path(path).open() as f:
+        raw = yaml.safe_load(f)
+
+    root = validate_post_aggregation(raw)
+    logger.info("Post-aggregation configuration loaded successfully.")
     return root
