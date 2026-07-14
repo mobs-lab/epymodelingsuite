@@ -139,7 +139,7 @@ def plot_hosp_multistrain_quantiles(
 ) -> (Figure, np.ndarray[Axes]):
     """"""
     sp_rows = int(np.floor(len(populations) / subplots_per_row)) + int(bool(len(populations) % subplots_per_row))
-    figheight = int(np.floor((sp_rows / subplots_per_row) * 20))
+    figheight = int(np.floor((sp_rows / subplots_per_row) * 15))
     fig, axes = plt.subplots(sp_rows, subplots_per_row, figsize=(20, figheight))
     axes = axes.flatten()
 

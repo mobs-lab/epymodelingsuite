@@ -126,7 +126,6 @@ def main():
     aggregated = aggregated[
         [
             config.aggregated.date_column,
-            config.aggregated.week_column,
             config.aggregated.location_column,
             config.aggregated.target_column,
             "sample_id",
