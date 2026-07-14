@@ -1,7 +1,7 @@
 import logging
-import sys
 import os
 import subprocess
+import sys
 import tempfile
 from tempfile import TemporaryDirectory
 
@@ -10,8 +10,12 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-from ..schema.aggregation import AggregationConfiguration, AggregationStrategyEnum, SamplingStrategyEnum, BaselineStrategyEnum
-
+from ..schema.aggregation import (
+    AggregationConfiguration,
+    AggregationStrategyEnum,
+    BaselineStrategyEnum,
+    SamplingStrategyEnum,
+)
 
 #############
 ### UTILS ###
@@ -73,8 +77,7 @@ def pull_single_strain_submission(source_location: str, fname: str) -> pd.DataFr
     with tempfile.TemporaryDirectory() as tempdir:
         # Retrieve latest run
         command = f"gcloud storage ls '{source_location}'"
-        output = subprocess.run(["gcloud","storage","ls",f"{source_location}"], 
-                                capture_output=True, text=True)
+        output = subprocess.run(["gcloud", "storage", "ls", f"{source_location}"], capture_output=True, text=True)
         if output.returncode == 0:
             assert type(output.stdout) is str
             run_id = output.stdout.split("/")[-2]
@@ -122,8 +125,9 @@ def pull_trajectory_projections(
     for source in config.sources:
         # Download trajectory projections (not runner artifacts)
         if source.run_id == "latest":
-            output = subprocess.run(["gcloud","storage","ls",f"{config.bucket}/{source.experiment}"], 
-                                    capture_output=True, text=True)
+            output = subprocess.run(
+                ["gcloud", "storage", "ls", f"{config.bucket}/{source.experiment}"], capture_output=True, text=True
+            )
             if output.returncode == 0:
                 assert type(output.stdout) is str
                 run_id = output.stdout.split("/")[-2]
@@ -141,7 +145,6 @@ def pull_trajectory_projections(
         source_location = f"{config.bucket}/{source.experiment}/{run_id}/outputs/*/{source.trajectory_file}"
         target_location = f"{tempdir}/{source.strain}_{source.trajectory_file}"
 
-        
         command = f"gcloud storage cp -r {source_location} {target_location}"
         exit_code = os.system(command)
 
@@ -152,9 +155,9 @@ def pull_trajectory_projections(
         else:
             prepend_err = ""
             if source.run_id == "any":
-                prepend_err = f"Warning: setting source.run_id to 'any' will\
+                prepend_err = "Warning: setting source.run_id to 'any' will\
                 fail if more than one matching trajectory file exists.\n"
-                logger.warn(prepend_err)
+                logger.warning(prepend_err)
             raise ValueError(
                 f"{prepend_err}Failed to download: {source.experiment}\n\
                     Exit code: {exit_code}\n\
@@ -339,7 +342,7 @@ def _aggregate_sum(
 
     # Sum target values from all strains
     target_cols = [f"target_{source.strain}" for source in config.sources]
-    agg_colname = f"target_sum"
+    agg_colname = "target_sum"
     aggregated[agg_colname] = aggregated[target_cols].fillna(0).sum(axis=1)
 
     # Clean up columns
@@ -419,8 +422,8 @@ def _baseline_negative_binomial(
         baseline_sample = rng.negative_binomial(k, p_vals)
         aggregated[f"target_baseline_k{k}"] = combined["target_sum"] + baseline_sample
 
-    return aggregated    
-    
+    return aggregated
+
 
 def dispatch_baseline(
     aggregated_trajectories: pd.DataFrame,
@@ -443,8 +446,7 @@ def dispatch_baseline(
     """
     try:
         filename = os.path.join(
-            os.path.dirname(sys.modules[__name__].__file__),
-            f"../data/{config.baseline.observed_means}"
+            os.path.dirname(sys.modules[__name__].__file__), f"../data/{config.baseline.observed_means}"
         )
         baselines_avg = pd.read_csv(filename)
     except Exception as e:
@@ -459,16 +461,12 @@ def dispatch_baseline(
         if aggregated_trajectories.location.str.contains("__").any()
         else "location_name_epydemix_deprecated"
     )
-    combined = aggregated_trajectories\
-        .merge(baselines_avg,
-               how="inner",
-               left_on = "location",
-               right_on=traj_loc_fmt)\
-        [["location","baseline","target_sum"]]
-    
+    combined = aggregated_trajectories.merge(baselines_avg, how="inner", left_on="location", right_on=traj_loc_fmt)[
+        ["location", "baseline", "target_sum"]
+    ]
+
     match config.baseline.method:
         case BaselineStrategyEnum.negative_binomial:
             return _baseline_negative_binomial(aggregated_trajectories, combined, config.baseline.dispersion_values)
         case _:
             raise NotImplementedError(f"Invalid baseline method: {config.baseline.method}")
-        

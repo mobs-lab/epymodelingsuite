@@ -276,7 +276,7 @@ def setup_interventions(
         return models
 
     # Determine the effective timespan for date-dependent interventions
-    effective_timespan = sampled_start_timespan if sampled_start_timespan else basemodel.timespan
+    effective_timespan = sampled_start_timespan or basemodel.timespan
 
     for model in models:
         # School closure
@@ -491,7 +491,7 @@ def format_projection_trajectories(
     target_date_range = pd.date_range(
         start=reference_start_date,
         end=target_end_date,
-        freq=resample_frequency if resample_frequency else "D",
+        freq=resample_frequency or "D",
     )
     target_length = len(target_date_range)
 
@@ -519,7 +519,7 @@ def format_projection_trajectories(
         prepend_dates = pd.date_range(
             start=reference_start_date,
             periods=pad_len,
-            freq=resample_frequency if resample_frequency else "D",
+            freq=resample_frequency or "D",
         )
 
         # Convert to Timestamp and concatenate with existing dates

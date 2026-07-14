@@ -19,7 +19,6 @@ import pytest
 from epydemix.model import EpiModel
 
 from epymodelingsuite.dispatcher.builder import dispatch_builder
-from epymodelingsuite.utils import load_epydemix_population
 from epymodelingsuite.dispatcher.runner import dispatch_runner
 from epymodelingsuite.schema.basemodel import (
     BaseEpiModel,
@@ -40,6 +39,7 @@ from epymodelingsuite.schema.calibration import (
     FittingWindow,
 )
 from epymodelingsuite.schema.common import Distribution, Meta
+from epymodelingsuite.utils import load_epydemix_population
 from tests.conftest import AGE_GROUP_MAPPING, AGE_GROUPS
 
 

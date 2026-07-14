@@ -113,11 +113,7 @@ def compute_rate_trend_categories(
     results = []
 
     for pop in df["location"].unique():
-        abbrev = convert_location_name_format(
-            value=pop,
-            output_format="abbreviation",
-            location_type="iso"
-        )
+        abbrev = convert_location_name_format(value=pop, output_format="abbreviation", location_type="iso")
         pop_data = df[df["location"] == pop]
         population_size = POPULATION.get(abbrev, POPULATION.get("US"))
 
@@ -229,16 +225,9 @@ def create_quantile_submission(
     results = []
 
     for pop in df["location"].unique():
-        abbrev = convert_location_name_format(
-            value=pop,
-            output_format="abbreviation",
-            location_type="iso"
-        )
+        abbrev = convert_location_name_format(value=pop, output_format="abbreviation", location_type="iso")
         location = convert_location_name_format(
-            value=abbrev,
-            output_format="FIPS",
-            input_format="abbreviation",
-            location_type="iso"
+            value=abbrev, output_format="FIPS", input_format="abbreviation", location_type="iso"
         )
         pop_data = df[df["location"] == pop]
 
@@ -310,16 +299,9 @@ def create_ed_quantile_submission(
     results = []
 
     for pop in df["location"].unique():
-        abbrev = convert_location_name_format(
-            value=pop,
-            output_format="abbreviation",
-            location_type="iso"
-        )
+        abbrev = convert_location_name_format(value=pop, output_format="abbreviation", location_type="iso")
         location = convert_location_name_format(
-            value=abbrev,
-            output_format="FIPS",
-            input_format="abbreviation",
-            location_type="iso"
+            value=abbrev, output_format="FIPS", input_format="abbreviation", location_type="iso"
         )
         pop_data = df[df["location"] == pop]
 
@@ -430,10 +412,7 @@ def create_pmf_submission(pmf_df: pd.DataFrame, reference_date: str) -> pd.DataF
     for _, row in pmf_df.iterrows():
         abbrev = row["abbreviation"]
         location = convert_location_name_format(
-            value=abbrev,
-            output_format="FIPS",
-            input_format="abbreviation",
-            location_type="iso"
+            value=abbrev, output_format="FIPS", input_format="abbreviation", location_type="iso"
         )
         horizon = row["horizon"]
         target_date = row["target_date"]
