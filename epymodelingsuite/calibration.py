@@ -1,7 +1,96 @@
+import copy
 from collections.abc import Callable
 from datetime import date
+from typing import Any
 
+import numpy as np
+import pandas as pd
 from epydemix.calibration import ABCSampler, CalibrationResults
+
+
+def run_reproducible_projections(
+    calibrator: ABCSampler,
+    parameters: dict[str, Any],
+    iterations: int,
+    seed: int,
+    generation: int | None = None,
+    scenario_id: str = "baseline",
+) -> CalibrationResults:
+    """
+    Run projections with reproducible particle selection, in place of
+    ABCSampler.run_projections().
+
+    epydemix's ABCSampler.run_projections() has two properties that make its
+    output impossible to reproduce after the fact:
+    - it selects which posterior particle to simulate via `np.random.choice`
+      on NumPy's *global* random state, so the same call never picks the same
+      particles twice, and there's no way to know afterwards which particle
+      produced a given trajectory.
+    - it never captures or records RNG state, so even for a known particle the
+      exact noise realization used is lost.
+
+    This function reproduces the same behavior (weighted sampling from the
+    posterior, one simulation per iteration) but:
+    - draws particle indices with a seeded `np.random.Generator`, so the same
+      `seed` always selects the same sequence of particles.
+    - records which particle was used for each trajectory, in a
+      "particle_index" column of the returned `projection_parameters`.
+    - relies on `simulate_wrapper` (built by `make_simulate_wrapper`) already
+      returning a "random_state" key for every simulation — including
+      projections, since `format_projection_trajectories` was updated to
+      include it — so every returned trajectory can later be replayed exactly
+      via `reproduce_trajectory`, the same way calibration trajectories can.
+
+    Parameters
+    ----------
+    calibrator : ABCSampler
+        Calibrator whose `.results` holds the posterior to sample from and
+        whose `.simulation_function` runs each projection.
+    parameters : dict
+        Fixed parameters merged into every simulation call (e.g. "projection": True,
+        "end_date": ..., "epimodel": ...). Same role as the `parameters` argument
+        to ABCSampler.run_projections().
+    iterations : int
+        Number of projection trajectories to generate.
+    seed : int
+        Seed for the particle-selection RNG. The same seed, posterior, and
+        weights always produce the same sequence of chosen particles.
+    generation : int, optional
+        Which generation's posterior to sample from. Defaults to the last.
+    scenario_id : str, default "baseline"
+        Key under which results are stored in `.projections` / `.projection_parameters`.
+
+    Returns
+    -------
+    CalibrationResults
+        Deep copy of `calibrator.results` with `.projections[scenario_id]` and
+        `.projection_parameters[scenario_id]` (including a "particle_index"
+        column) populated.
+    """
+    results = calibrator.results
+    posterior = results.get_posterior_distribution(generation)
+    weights = np.asarray(results.get_weights(generation), dtype=float)
+    weights = weights / weights.sum()
+
+    selection_rng = np.random.default_rng(seed)
+    particle_indices = selection_rng.choice(len(posterior), size=iterations, p=weights)
+
+    projections = []
+    posterior_samples: dict[str, list[Any]] = {"particle_index": []}
+    for idx in particle_indices:
+        posterior_sample = posterior.iloc[idx]
+        for k, v in posterior_sample.items():
+            posterior_samples.setdefault(k, []).append(v)
+        posterior_samples["particle_index"].append(int(idx))
+
+        proj_params = parameters.copy()
+        proj_params.update(posterior_sample.to_dict())
+        projections.append(calibrator.simulation_function(proj_params))
+
+    results_copy = copy.deepcopy(results)
+    results_copy.projections[scenario_id] = projections
+    results_copy.projection_parameters[scenario_id] = pd.DataFrame(posterior_samples)
+    return results_copy
 
 
 def reproduce_trajectory(

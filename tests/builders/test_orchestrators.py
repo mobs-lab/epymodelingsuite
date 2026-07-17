@@ -1038,6 +1038,29 @@ class TestFormatProjectionTrajectories:
         assert result["date"] == results.dates
         np.testing.assert_array_equal(result["Hosp"], np.array([10, 20]))
 
+    def test_random_state_included_when_provided(self):
+        """random_state should be carried through into the output dict, like format_calibration_data."""
+        results = Mock()
+        results.dates = [date(2024, 1, 1), date(2024, 1, 2)]
+        results.transitions = {"Hosp": np.array([10, 20])}
+        results.compartments = {"S": np.array([1000, 990])}
+        random_state = {"bit_generator": "PCG64", "state": {"state": 1, "inc": 2}}
+
+        result = format_projection_trajectories(results=results, random_state=random_state)
+
+        assert result["random_state"] == random_state
+
+    def test_random_state_omitted_when_not_provided(self):
+        """Existing callers that don't pass random_state should see no such key (backward compat)."""
+        results = Mock()
+        results.dates = [date(2024, 1, 1), date(2024, 1, 2)]
+        results.transitions = {"Hosp": np.array([10, 20])}
+        results.compartments = {"S": np.array([1000, 990])}
+
+        result = format_projection_trajectories(results=results)
+
+        assert "random_state" not in result
+
     def test_pads_to_target_length(self):
         """Test that trajectories are padded to match target length."""
         results = Mock()

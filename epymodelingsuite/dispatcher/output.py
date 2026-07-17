@@ -1306,6 +1306,10 @@ def generate_calibration_outputs(
             # Collect all trajectories
             try:
                 traj = calibration.results.get_projection_trajectories()
+                # random_state is a per-trajectory dict, not a per-timestep array;
+                # get_projection_trajectories() stacks every key indiscriminately,
+                # which would corrupt the DataFrame built below if left in.
+                traj.pop("random_state", None)
             except Exception:
                 warnings.add(
                     f"OUTPUT GENERATOR: failed to obtain projection trajectories for model with primary_id={calibration.primary_id}, continuing to next model."
@@ -1567,6 +1571,7 @@ def generate_calibration_outputs(
                 # Get trajectories
                 try:
                     traj = calibration.results.get_projection_trajectories()
+                    traj.pop("random_state", None)
                 except Exception:
                     warnings.add(
                         f"OUTPUT GENERATOR: failed to obtain projection trajectories for model with primary_id={calibration.primary_id}, continuing to next model."

@@ -6,6 +6,7 @@ import time
 import numpy as np
 import pandas as pd
 from epydemix.calibration import ae, mae, mape, rmse, wmape
+from ..calibration import run_reproducible_projections
 from ..filtering import anchor_projections_on_data
 
 from ..schema.dispatcher import BuilderOutput, CalibrationOutput, SimulationOutput
@@ -212,14 +213,16 @@ def run_calibration_with_projection(
     # Projection phase
     projection_start = time.time()
     try:
-        projection_results = configs.calibrator.run_projections(
+        projection_results = run_reproducible_projections(
+            calibrator=configs.calibrator,
             parameters={
                 "projection": True,
                 "end_date": configs.projection.end_date,
-                "generation": configs.projection.generation_number,
                 "epimodel": configs.model,
             },
             iterations=configs.projection.n_trajectories,
+            seed=configs.seed,
+            generation=configs.projection.generation_number,
         )
         projection_duration = time.time() - projection_start
         logger.info("RUNNER: completed calibration and projection.")

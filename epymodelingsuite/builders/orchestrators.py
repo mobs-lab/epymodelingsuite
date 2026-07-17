@@ -437,6 +437,7 @@ def format_projection_trajectories(
     target_end_date: dt.date | None = None,
     resample_frequency: str | None = None,
     comparison_specs: list[ComparisonSpec] | None = None,
+    random_state: dict[str, Any] | None = None,
 ) -> dict:
     """
     Format simulation results for projection mode (flatten + pad for stacking).
@@ -464,6 +465,11 @@ def format_projection_trajectories(
     comparison_specs : list[ComparisonSpec] | None, optional
             List of comparison specifications for aggregating transitions.
             Each spec defines which transitions to sum and the output column name.
+    random_state : dict[str, Any] | None, optional
+            Random number generator state from rng.bit_generator.state, as used
+            for this simulation. Included in the output (mirroring
+            format_calibration_data) so projection trajectories can be
+            reproduced later the same way calibration trajectories are.
 
     Returns
     -------
@@ -472,6 +478,7 @@ def format_projection_trajectories(
             Arrays are padded with zeros at the beginning to match target length.
             If comparison_specs provided, also includes aggregated transition arrays
             with keys based on observed_value_column (e.g., "total_hosp").
+            If random_state is provided, included under the "random_state" key.
     """
     # Flatten results structure
     output = flatten_simulation_results(results)
@@ -482,6 +489,9 @@ def format_projection_trajectories(
         for spec in comparison_specs:
             aggregated = get_aggregated_comparison_transition(results, spec.simulation)
             output[spec.observed_value_column] = aggregated
+
+    if random_state is not None:
+        output["random_state"] = random_state
 
     # If no padding needed, return as-is
     if reference_start_date is None or actual_start_date is None or target_end_date is None:
@@ -1014,6 +1024,7 @@ def make_simulate_wrapper(
                 target_end_date=params["end_date"],
                 resample_frequency=basemodel.simulation.resample_frequency,
                 comparison_specs=calibration.comparison,
+                random_state=random_state,
             )
 
         # Calibration: return aggregated data (aligned to observed dates)
