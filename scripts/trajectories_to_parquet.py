@@ -25,9 +25,7 @@ def convert(csv_path: Path, reference_date: pd.Timestamp, n_horizons: int = 4) -
     horizon_dates = [reference_date + pd.Timedelta(weeks=h) for h in range(n_horizons)]
     missing = [d for d in horizon_dates if d not in set(df["date"])]
     if missing:
-        raise ValueError(
-            f"CSV is missing dates for horizons: {[d.date().isoformat() for d in missing]}"
-        )
+        raise ValueError(f"CSV is missing dates for horizons: {[d.date().isoformat() for d in missing]}")
 
     out = df[df["date"].isin(horizon_dates)].copy()
     out["reference_date"] = reference_date

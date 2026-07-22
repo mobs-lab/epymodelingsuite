@@ -28,15 +28,6 @@ from epymodelingsuite.dispatcher.runner import (
     run_calibration_with_projection,
     run_simulation,
 )
-from epymodelingsuite.schema.basemodel import (
-    BaseEpiModel,
-    Compartment,
-    Parameter,
-    Population,
-    Simulation,
-    Timespan,
-    Transition,
-)
 from epymodelingsuite.schema.calibration import CalibrationStrategy
 from epymodelingsuite.schema.dispatcher import (
     BuilderOutput,

@@ -3,7 +3,7 @@
 # dependencies = ["pandas", "pyarrow", "epiweeks"]
 # ///
 """
-Script to aggregate trajectories from multistrain experiments and create a hubverse submission file.
+Script to aggregate trajectories from multistrain experiments and add baseline noise.
 Takes a file path to a configuration and, optionally, a directory path for outputs.
 All other options specified via yaml file.
 
@@ -20,9 +20,9 @@ from epiweeks import Week
 
 from epymodelingsuite.config_loader import load_aggregation_config_from_file
 from epymodelingsuite.multistrain.aggregator import (
+    dispatch_baseline,
     dispatch_strain_aggregator,
     dispatch_strain_sampler,
-    dispatch_baseline,
     merge_strain_trajectories,
     pull_trajectory_projections,
 )
@@ -74,16 +74,6 @@ def main():
     for strain, traj_df in strains.items():
         print(f"  {strain}: shape {traj_df.shape}")
 
-    # Write raw trajectories to file
-    if aggregation.outputs.raw_trajectories:
-        for strain, traj_df in strains.items():
-            if aggregation.outputs.base_fname:
-                fname = f"{args.output}/trajectories_{aggregation.outputs.base_fname}_{strain}.csv.gz"
-            else:
-                fname = f"{args.output}/trajectories_{strain}.csv.gz"
-            traj_df.to_csv(fname, index=False)
-            print(f"  Saved trajectory file at {fname}")
-
     print("\nCreating strain sim_id mapping...")
 
     # Create an n-sample mapping of trajectories from each strain
@@ -108,25 +98,26 @@ def main():
     # Add baseline noise to the aggregated trajectories
     if aggregation.baseline is not None:
         print("\nAdding baseline to aggregated trajectories...")
-        
+
         aggregated_df = dispatch_baseline(aggregated_df, aggregation)
 
-        print(f"  Added {aggregation.baseline.method} baseline noise with dispersion/variance modifiers {aggregation.baseline.dispersion_values}:\n{aggregated_df.tail()}")
+        print(
+            f"  Added {aggregation.baseline.method} baseline noise with dispersion/variance modifiers {aggregation.baseline.dispersion_values}:\n{aggregated_df.tail()}"
+        )
 
     # Add formatting columns
     ref_date = Week.fromstring(str(aggregation.submission_week)).enddate()
-    aggregated_df['reference_date'] = ref_date
-    aggregated_df['horizon'] = ((aggregated_df['date'] - pd.Timestamp(ref_date)).dt.days // 7).astype(int)
-    aggregated_df['epiweek'] = [Week.fromdate(dat).cdcformat() for dat in aggregated_df.date]
-    
+    aggregated_df["reference_date"] = ref_date
+    aggregated_df["horizon"] = ((aggregated_df["date"] - pd.Timestamp(ref_date)).dt.days // 7).astype(int)
+    aggregated_df["epiweek"] = [Week.fromdate(dat).cdcformat() for dat in aggregated_df.date]
+
     # Write aggregated trajectories to file
-    if aggregation.outputs.aggregated_trajectories:
-        if aggregation.outputs.base_fname:
-            fname = f"{args.output}/trajectories_aggregated_{aggregation.outputs.base_fname}.parquet"
-        else:
-            fname = f"{args.output}/trajectories_aggregated_{aggregation.submission_week}.parquet"
-        aggregated_df.to_parquet(fname, index=False)
-        print(f"  Saved aggregated trajectories at {fname}")
+    if aggregation.outputs.base_fname:
+        fname = f"{args.output}/trajectories_aggregated_{aggregation.outputs.base_fname}.parquet"
+    else:
+        fname = f"{args.output}/trajectories_aggregated_{ref_date.strftime('%Y-%m-%d')}.parquet"
+    aggregated_df.to_parquet(fname, index=False)
+    print(f"  Saved aggregated trajectories at {fname}")
 
 
 if __name__ == "__main__":

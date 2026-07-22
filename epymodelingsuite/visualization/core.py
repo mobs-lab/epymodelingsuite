@@ -49,7 +49,7 @@ def _get_location_sort_key(location: str) -> tuple[str, str]:
         # For ISO locations or unknown, extract state code or sort last
         if "-" in location:
             # ISO format like "US-MA" -> use "MA" as state key
-            return (location.split("-")[-1], location)
+            return (location.rsplit("-", maxsplit=1)[-1], location)
         return ("ZZZ", location)
 
 
