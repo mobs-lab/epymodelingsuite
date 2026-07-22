@@ -1,6 +1,8 @@
 """Builder functions for constructing EpiModels and ABCSamplers from configuration."""
 
 import copy
+import hashlib
+import inspect
 import logging
 from collections.abc import Callable
 
@@ -8,6 +10,9 @@ import numpy as np
 import pandas as pd
 from epydemix.calibration import ABCSampler, ae, mae, mape, rmse, wmape
 from epydemix.model import EpiModel
+
+# Whether the installed epydemix exposes the seedable ABCSampler (rng=...)
+_ABCSAMPLER_SUPPORTS_RNG = "rng" in inspect.signature(ABCSampler.__init__).parameters
 
 from ..builders.base import (
     add_model_compartments_from_config,
@@ -60,6 +65,17 @@ dist_func_dict = {
     "mape": mape,
     "wrmse": wrmse,
 }
+
+
+def location_seed_key(population_name: str) -> tuple[int, int]:
+    """Derive a stable SeedSequence spawn_key from a location name.
+
+    Keying the per-location RNG on the location (not its position in the batch) makes
+    a location's calibration reproducible regardless of which other locations are run
+    or in what order, while keeping locations independent of each other.
+    """
+    digest = hashlib.sha256(population_name.encode("utf-8")).digest()
+    return int.from_bytes(digest[0:4], "big"), int.from_bytes(digest[4:8], "big")
 
 
 def count_nans_at_start(arr: np.ndarray) -> int:
@@ -432,9 +448,6 @@ def build_calibration(
     modelset = calibration_config.modelset
     calibration = modelset.calibration
 
-    # Create random number generator
-    rng = np.random.default_rng(basemodel.random_seed)
-
     # Build a collection of EpiModels
     models, population_names = create_model_collection(basemodel, modelset.population_names)
 
@@ -510,6 +523,15 @@ def build_calibration(
     location_format = calibration.comparison[0].observed_location_format
 
     for model in models:
+        # Per-location RNG keyed on the location name, so it is
+        # reproducible from random_seed, independent across locations, and stable
+        # regardless of batch composition.
+        # If None seed -> OS entropy (non-reproducible).
+        # Passed to both the wrapper (fallback) and the ABCSampler
+        location_rng = np.random.default_rng(
+            np.random.SeedSequence(basemodel.random_seed, spawn_key=location_seed_key(model.population.name))
+        )
+
         observed_data = get_data_in_location(
             observed_in_window, model.population.name, location_column, location_format
         )
@@ -526,7 +548,7 @@ def build_calibration(
             sampled_start_timespan=sampled_start_timespan,
             earliest_vax=vax_state,
             post_hoc_transformation=post_hoc_func,
-            rng=rng,
+            rng=location_rng,
         )
 
         # Parse priors into scipy functions
@@ -547,13 +569,17 @@ def build_calibration(
         fixed_parameters.update({"end_date": fit_end, "projection": False, "epimodel": model})
 
         # ABCSamplers are the main outputs
-        abc_sampler = ABCSampler(
-            simulation_function=simulate_wrapper,
-            priors=priors,
-            parameters=fixed_parameters,
-            observed_data=observed_data[calibration.comparison[0].observed_value_column].values,
-            distance_function=dist_func_date_alignment_wrapper(dist_func),
-        )
+        sampler_kwargs = {
+            "simulation_function": simulate_wrapper,
+            "priors": priors,
+            "parameters": fixed_parameters,
+            "observed_data": observed_data[calibration.comparison[0].observed_value_column].values,
+            "distance_function": dist_func_date_alignment_wrapper(dist_func),
+        }
+        # Pass the location-specific rng to the ABCSampler if supported
+        if _ABCSAMPLER_SUPPORTS_RNG:
+            sampler_kwargs["rng"] = location_rng
+        abc_sampler = ABCSampler(**sampler_kwargs)
 
         calibrators.append(abc_sampler)
 

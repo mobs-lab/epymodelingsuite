@@ -17,6 +17,7 @@ from epymodelingsuite.dispatcher.builder import (
     dispatch_builder,
     dist_func_date_alignment_wrapper,
     dist_func_dict,
+    location_seed_key,
 )
 from epymodelingsuite.schema.basemodel import (
     BaseEpiModel,
@@ -30,6 +31,21 @@ from epymodelingsuite.schema.basemodel import (
 )
 from epymodelingsuite.schema.dispatcher import BuilderOutput, SimulationArguments
 from tests.conftest import create_builder_output, make_sir_config
+
+
+class TestLocationSeedKey:
+    """Tests for location_seed_key: stable, deterministic, location-dependent."""
+
+    def test_returns_pair_of_ints(self):
+        key = location_seed_key("US-MA")
+        assert isinstance(key, tuple) and len(key) == 2
+        assert all(isinstance(k, int) for k in key)
+
+    def test_stable_for_same_name(self):
+        assert location_seed_key("US-MA") == location_seed_key("US-MA")
+
+    def test_differs_between_names(self):
+        assert location_seed_key("US-MA") != location_seed_key("US-CA")
 
 
 class TestCountNansAtStart:
