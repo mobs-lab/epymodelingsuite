@@ -14,7 +14,9 @@ Usage:
 import argparse
 import tempfile
 from pathlib import Path
-from epiweeks import week
+
+import pandas as pd
+from epiweeks import Week
 
 from epymodelingsuite.config_loader import load_aggregation_config_from_file
 from epymodelingsuite.multistrain.aggregator import (
