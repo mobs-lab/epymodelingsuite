@@ -914,9 +914,12 @@ def make_simulate_wrapper(
             )
 
         # 8. Handle random state
+        # Prefer the rng epydemix injects into params (seeded sampler rng in calibration,
+        # per-trajectory child in projection); fall back to the closure rng otherwise.
+        sim_rng = params.get("rng", rng)
         if "random_state" in params.keys():
-            rng.bit_generator.state = params["random_state"]
-        random_state = rng.bit_generator.state
+            sim_rng.bit_generator.state = params["random_state"]
+        random_state = sim_rng.bit_generator.state
 
         # 9. Collect settings for simulation
         sim_params = {
@@ -926,7 +929,7 @@ def make_simulate_wrapper(
             "end_date": params["end_date"],
             "dt": basemodel.timespan.delta_t,
             "resample_frequency": basemodel.simulation.resample_frequency,
-            "rng": rng,
+            "rng": sim_rng,
         }
 
         # 10. Extract observed dates for calibration (before simulation to avoid duplication)

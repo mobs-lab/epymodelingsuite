@@ -780,3 +780,95 @@ class TestMakeSimulateWrapper:
         if result:
             assert "basic_compartment" in result
             assert isinstance(result["basic_compartment"], np.ndarray)
+
+
+class TestMakeSimulateWrapperRng:
+    """RNG handling in simulate_wrapper: prefers ``params["rng"]`` (injected by
+    epydemix), falls back to the closure rng. Runs without ABCSampler(rng=...).
+    """
+
+    @pytest.fixture
+    def base_model_config(self):
+        return make_sir_config()
+
+    @pytest.fixture
+    def mock_calibration(self):
+        calibration = Mock()
+        calibration.comparison = [Mock()]
+        calibration.comparison[0].simulation = ["S_to_I_total"]
+        calibration.comparison[0].observed_date_column = "target_end_date"
+        return calibration
+
+    @pytest.fixture
+    def data_state(self):
+        dates = [date(2024, 1, 1) + timedelta(days=i * 7) for i in range(10)]
+        return pd.DataFrame({"target_end_date": dates, "observed": np.arange(10, dtype=float) * 10})
+
+    def _simulate_wrapper(self, base_model_config, mock_calibration, data_state, closure_seed=999):
+        return make_simulate_wrapper(
+            basemodel=base_model_config,
+            calibration=mock_calibration,
+            observed_data=data_state,
+            intervention_types=[],
+            rng=np.random.default_rng(closure_seed),
+        )
+
+    def _model(self, base_model_config):
+        models, _ = create_model_collection(base_model_config, None)
+        return models[0]
+
+    @staticmethod
+    def _calib_params(model, **overrides):
+        params = {"epimodel": model, "end_date": date(2024, 3, 31), "projection": False, "beta": 0.5, "gamma": 0.1}
+        params.update(overrides)
+        return params
+
+    def test_injected_rng_governs_and_is_reproducible(self, base_model_config, mock_calibration, data_state):
+        """Positive: equally-seeded injected rngs give identical output, even after the
+        closure rng is advanced between calls.
+        """
+        simulate = self._simulate_wrapper(base_model_config, mock_calibration, data_state, closure_seed=1)
+        model = self._model(base_model_config)
+
+        first_run = simulate(self._calib_params(model, rng=np.random.default_rng(7)))
+        simulate(self._calib_params(model, rng=np.random.default_rng(12345)))  # advance closure rng
+        rerun_same_seed = simulate(self._calib_params(model, rng=np.random.default_rng(7)))
+
+        np.testing.assert_array_equal(
+            first_run["data"],
+            rerun_same_seed["data"],
+            err_msg="equally-seeded injected rngs should give identical output",
+        )
+
+    def test_different_injected_rng_changes_output(self, base_model_config, mock_calibration, data_state):
+        """Negative: different injected rng seeds produce different simulated data."""
+        simulate = self._simulate_wrapper(base_model_config, mock_calibration, data_state)
+        model = self._model(base_model_config)
+
+        result_seed_1 = simulate(self._calib_params(model, rng=np.random.default_rng(1)))
+        result_seed_2 = simulate(self._calib_params(model, rng=np.random.default_rng(2)))
+
+        assert not np.array_equal(result_seed_1["data"], result_seed_2["data"]), (
+            "different injected rng seeds should produce different simulated data"
+        )
+
+    def test_random_state_restore_reproduces_trajectory(self, base_model_config, mock_calibration, data_state):
+        """Backward-compat with reproduce_trajectory: restoring a stored random_state
+        (a snapshot of the rng's state, not a separate rng) rewinds the rng and
+        reproduces the trajectory. The middle call advances the closure rng first, so
+        the match proves the restore worked rather than coincidental rng alignment.
+        """
+        simulate = self._simulate_wrapper(base_model_config, mock_calibration, data_state)
+        model = self._model(base_model_config)
+
+        first = simulate(self._calib_params(model))
+        assert "random_state" in first, "calibration output should carry a 'random_state' for reproduction"
+
+        simulate(self._calib_params(model))  # advance the closure rng away from first's starting state
+        restored = simulate(self._calib_params(model, random_state=first["random_state"]))
+
+        np.testing.assert_array_equal(
+            first["data"],
+            restored["data"],
+            err_msg="restoring a stored random_state should reproduce the trajectory",
+        )
