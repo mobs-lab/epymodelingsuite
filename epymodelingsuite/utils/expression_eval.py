@@ -67,11 +67,18 @@ class SafeEvalVisitor(ast.NodeVisitor):
         raise ValueError(f"Disallowed expression: {t.__name__}")
 
     def visit_BinOp(self, node):
+        if type(node.op) not in _allowed_operators:
+            raise ValueError(f"Operator {type(node.op).__name__} not allowed")
+
         left = self.visit(node.left)
         right = self.visit(node.right)
 
-        if type(node.op) not in _allowed_operators:
-            raise ValueError(f"Operator {type(node.op).__name__} not allowed")
+        # If either side isn't a pre-computable scalar/array (e.g. it's a
+        # np.xxx(...) call or a nested expression containing one), skip
+        # pre-computation and return None to signal "valid but not reducible".
+        # The actual evaluation is handled by eval() in the caller.
+        if left is None or right is None:
+            return None
 
         # Access node data, handle arrays
         if isinstance(left, ast.Constant) and isinstance(right, ast.Constant):
@@ -99,6 +106,9 @@ class SafeEvalVisitor(ast.NodeVisitor):
             calc_val = np.multiply(left, right, dtype=float)
         elif isinstance(node.op, ast.Div):
             calc_val = np.divide(left, right, dtype=float)
+
+        if calc_val is None:
+            return None
 
         if isinstance(calc_val, np.ndarray):
             ast_nodes = [ast.Constant(value=item) for item in calc_val.flatten()]

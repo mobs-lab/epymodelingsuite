@@ -592,10 +592,11 @@ def apply_seasonality_with_sampled_min(
     params: dict,
 ) -> None:
     """
-    Apply seasonality configuration, using sampled min_value if provided.
+    Apply seasonality configuration, using sampled parameter values if provided.
 
     Creates a deep copy of seasonality config to avoid mutating shared state,
-    optionally overrides min_value if it's being calibrated, then applies to model.
+    optionally overrides min_value (Balcan) or climate coefficients from params,
+    then applies to model.
 
     Parameters
     ----------
@@ -606,7 +607,8 @@ def apply_seasonality_with_sampled_min(
     timespan : Timespan
             Simulation timespan.
     params : dict
-            Simulation parameters, may contain "seasonality_min" if being calibrated.
+            Simulation parameters; may contain ``seasonality_min`` (Balcan) or
+            climate coefficient names (e.g. ``b1``, ``b2``, ``b3``) when calibrated.
     """
     if not basemodel.seasonality:
         return
@@ -614,11 +616,24 @@ def apply_seasonality_with_sampled_min(
     # Use copy to avoid mutating shared basemodel
     seasonality_config = copy.deepcopy(basemodel.seasonality)
 
-    # Override min_value if sampled/calibrated
+    # Override min_value if sampled/calibrated (Balcan)
     if "seasonality_min" in params:
         seasonality_config.min_value = params["seasonality_min"]
 
-    add_seasonality_from_config(model, seasonality_config, timespan)
+    param_overrides = None
+    if seasonality_config.method.value in ("humidity_only", "temperature_only"):
+        coeff_names = (seasonality_config.s_min_param,)
+        param_overrides = {name: params[name] for name in coeff_names if name in params}
+    elif seasonality_config.method.value == "data_driven":
+        coeff_names = (
+            seasonality_config.b1_param,
+            seasonality_config.b3_param,
+            seasonality_config.b4_param,
+            seasonality_config.s_min_param,
+        )
+        param_overrides = {name: params[name] for name in coeff_names if name in params}
+
+    add_seasonality_from_config(model, seasonality_config, timespan, param_overrides=param_overrides)
 
 
 def apply_vaccination_for_sampled_start(
