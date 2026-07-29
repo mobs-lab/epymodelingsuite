@@ -1,5 +1,6 @@
 import datetime as dt
 import logging
+import re
 from collections.abc import Callable
 
 import pandas as pd
@@ -16,39 +17,75 @@ from .utils.populations import aggregate_population_by_age_groups, get_age_group
 logger = logging.getLogger(__name__)
 
 
-def get_age_groups_from_data(data: pd.DataFrame) -> dict[str, str]:
+def _normalize_age_label(raw: str) -> str:
+    """
+    Normalize a raw vaccination age-group label to canonical ``"lo-hi"`` / ``"lo+"`` form.
+
+    Handles the CDC-style labels used historically (``"6 Months - 4 Years"``,
+    ``"5-12 Years"``, ``"65+ Years"``) as well as lower/mixed-case and combined-youth
+    variants (``"6 months-17 years"``, ``"18-49 years"``, ``"65+ years"``). Groups that
+    begin in months (infancy) are treated as starting at age 0.
+    """
+    s = str(raw).strip().lower()
+    m = re.match(r"^(\d+)\s*\+", s)
+    if m:
+        return f"{int(m.group(1))}+"
+    m = re.match(r"^\d+\s*months?\s*-\s*(\d+)", s)
+    if m:
+        return f"0-{int(m.group(1))}"
+    m = re.match(r"^(\d+)\s*-\s*(\d+)", s)
+    if m:
+        return f"{int(m.group(1))}-{int(m.group(2))}"
+    raise ValueError(f"Unrecognized vaccination age-group label: {raw!r}")
+
+
+def _age_group_bounds(label: str) -> tuple[int, int]:
+    """Return the (lower, upper) age bounds of a canonical age-group label."""
+    if label.endswith("+"):
+        return int(label[:-1]), 200
+    lower, upper = label.split("-")
+    return int(lower), int(upper)
+
+
+def _is_combined_youth(label: str) -> bool:
+    """A combined youth block spans infancy through age 17 (e.g. ``"0-17"``)."""
+    lower, upper = _age_group_bounds(label)
+    return lower == 0 and upper == 17
+
+
+def get_age_groups_from_data(data: pd.DataFrame) -> dict[str, list[str]]:
     """
     Extract and clean age group labels from a dataset, returning a mapping from
-    data-provided age group names to standardized model age group names.
+    each (normalized) data age group to the single-year ages it covers.
+
+    Labels are normalized with :func:`_normalize_age_label`, so mixed naming
+    conventions ("6 Months - 4 Years", "6 months-17 years", "18-49 years", ...) are
+    all accepted. A combined youth block ("0-17") is excluded only when finer youth
+    groups are also present; when it is the only youth group it is kept so that the
+    age groups start at 0.
 
     Parameters
     ----------
     data : pd.DataFrame
-        DataFrame containing an 'Age' column with age group labels. The label
-        "6 Months - 17 Years" is excluded, since it overlaps with finer-grained
-        groups in the data.
+        DataFrame containing an 'Age' column with age group labels.
 
     Returns
     -------
-    dict[str, str]
-        A dictionary mapping raw age group labels from the data to the cleaned
-        and standardized model age group labels.
+    dict[str, list[str]]
+        A dictionary mapping each cleaned age group label to the list of
+        single-year ages it covers.
     """
-    age_groups_data = data.Age.unique().tolist()  # Get unique age groups
-    # Remove 6 Months - 17 Years because data includes finer resolution age groups which cover this range
-    if "6 Months - 17 Years" in age_groups_data:
-        age_groups_data.remove("6 Months - 17 Years")
+    labels = [_normalize_age_label(a) for a in data.Age.unique().tolist()]
 
-    age_groups_data_cleaned = []
-    for a in age_groups_data:
-        b = a.replace(" Years", "").replace("6 Months ", "0").replace(" ", "")
-        age_groups_data_cleaned.append(b)
+    # Drop a combined youth block (e.g. "0-17") only when finer youth groups exist.
+    combined_youth = [a for a in labels if _is_combined_youth(a)]
+    if combined_youth:
+        has_finer_youth = any(a not in combined_youth and _age_group_bounds(a)[1] <= 17 for a in labels)
+        if has_finer_youth:
+            labels = [a for a in labels if a not in combined_youth]
 
-    # data_to_model_age_groups = dict(zip(age_groups_data, age_groups_data_cleaned))
-
-    age_group_map_data = get_age_group_mapping(age_groups_data_cleaned)
-
-    return age_group_map_data
+    labels = sorted(set(labels), key=lambda a: _age_group_bounds(a)[0])
+    return get_age_group_mapping(labels)
 
 
 def resample_vaccination_schedule(df: pd.DataFrame, delta_t: float) -> pd.DataFrame:
@@ -326,6 +363,10 @@ def scenario_to_epydemix(
             f"(min={invalid_values.min():.1f}, max={invalid_values.max():.1f})."
         )
 
+    # Normalize age-group labels up front so downstream mapping is convention-agnostic
+    # (accepts CDC finer-youth labels and lower/mixed-case combined-youth labels alike).
+    vaccines["Age"] = vaccines["Age"].map(_normalize_age_label)
+
     # Get age groups from data
     data_age_groups_dict = get_age_groups_from_data(vaccines)
     data_age_groups = list(data_age_groups_dict.keys())
@@ -349,25 +390,16 @@ def scenario_to_epydemix(
         location_data = vaccines.query("Geography == @location").copy()
         loc_epydemix = convert_location_name_format(location, "epydemix_population")
 
-        # Keep other age groups and combine with aggregated youth data
-        vaccine_schedule = location_data.query("Age not in ['6 Months - 17 Years']")
+        # Restrict to the selected data age groups (drops a redundant combined-youth block).
+        vaccine_schedule = location_data[location_data["Age"].isin(data_age_groups)]
         vaccine_schedule = vaccine_schedule.sort_values(["Week_Ending_Sat", "Age"]).reset_index(drop=True)
 
         # ========== MAP TO MODEL POPULATION ==========
-        age_to_index = {
-            "6 Months - 4 Years": 0,
-            "5-12 Years": 1,
-            "13-17 Years": 2,
-            "18-49 Years": 3,
-            "50-64 Years": 4,
-            "65+ Years": 5,
-        }
+        # Population per data age group, keyed by canonical label (no hardcoded index map).
         pop_by_agegroup = aggregate_population_by_age_groups(population_codebook[loc_epydemix], data_age_groups)
 
         # Add model population and calculate cumulative doses
-        vaccine_schedule["population_data"] = vaccine_schedule["Age"].map(
-            lambda age: list(pop_by_agegroup.values())[age_to_index[age]] if age in age_to_index else 0
-        )
+        vaccine_schedule["population_data"] = vaccine_schedule["Age"].map(pop_by_agegroup).fillna(0)
 
         vaccine_schedule["cumulative_doses"] = (
             vaccine_schedule["Coverage"] / 100 * vaccine_schedule["population_data"]
@@ -437,17 +469,8 @@ def scenario_to_epydemix(
         ).reset_index()
 
         this_location_wide.columns.name = None
-        this_location_wide.rename(
-            columns={
-                "6 Months - 4 Years": "0-4",
-                "5-12 Years": "5-12",
-                "13-17 Years": "13-17",
-                "18-49 Years": "18-49",
-                "50-64 Years": "50-64",
-                "65+ Years": "65+",
-            },
-            inplace=True,
-        )
+        # Age labels were normalized up front (e.g. "0-4", "18-49", "65+"), so the
+        # pivoted columns are already in canonical form and need no renaming.
 
         # Format locations as ISO codes
         # this_location_wide["location"] = [

@@ -1891,3 +1891,78 @@ class TestGetVaccinationScalingFactors:
 
         # NENC is part of North Carolina, factors should be < 1.0
         assert all(0 < factor < 1.0 for factor in result.values())
+
+
+def _make_combined_youth_df() -> pd.DataFrame:
+    """Scenario dataset with a combined youth block (0-17) in lowercase labels.
+
+    This mirrors schedules whose only youth group is "6 months-17 years" rather than the
+    finer 0-4 / 5-12 / 13-17 breakdown, in a lower-case naming convention.
+    """
+    ages = {
+        "6 months-17 years": (30.0, 9_000_000),
+        "18-49 years": (25.0, 17_225_750),
+        "50-64 years": (45.0, 7_219_051),
+        "65+ years": (60.0, 5_976_166),
+    }
+    rows = []
+    # two weeks so cumulative coverage produces non-zero weekly doses
+    for week in ("2025-09-06", "2025-09-13"):
+        for age, (coverage, pop) in ages.items():
+            rows.append(
+                {
+                    "Week_Ending_Sat": week,
+                    "Geography": "California",
+                    "Age": age,
+                    "Population": pop,
+                    "Coverage": coverage,
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+class TestFlexibleAgeGroupLabels:
+    """Age-label normalization so mixed conventions / combined-youth schedules are accepted."""
+
+    def test_normalize_cdc_and_lowercase_labels(self):
+        from epymodelingsuite.vaccinations import _normalize_age_label
+
+        assert _normalize_age_label("6 Months - 4 Years") == "0-4"
+        assert _normalize_age_label("5-12 Years") == "5-12"
+        assert _normalize_age_label("65+ Years") == "65+"
+        assert _normalize_age_label("6 months-17 years") == "0-17"
+        assert _normalize_age_label("18-49 years") == "18-49"
+        assert _normalize_age_label("65+ years") == "65+"
+        # combined-youth CDC label normalizes the same as its lowercase variant
+        assert _normalize_age_label("6 Months - 17 Years") == "0-17"
+
+    def test_normalize_rejects_garbage(self):
+        from epymodelingsuite.vaccinations import _normalize_age_label
+
+        with pytest.raises(ValueError, match="Unrecognized"):
+            _normalize_age_label("toddlers")
+
+    def test_get_age_groups_keeps_combined_youth_when_only_youth_group(self):
+        """When 0-17 is the only youth group, it is kept so groups start at 0."""
+        data = pd.DataFrame({"Age": ["6 months-17 years", "18-49 years", "50-64 years", "65+ years"]})
+        result = get_age_groups_from_data(data)
+        assert set(result.keys()) == {"0-17", "18-49", "50-64", "65+"}
+
+    def test_scenario_to_epydemix_handles_combined_youth_lowercase(self, tmp_path):
+        """Combined-youth + lowercase schedules map onto model groups with non-zero doses."""
+        csv = tmp_path / "combined_youth.csv"
+        _make_combined_youth_df().to_csv(csv, index=False)
+
+        result = scenario_to_epydemix(
+            input_filepath=str(csv),
+            start_date=date(2025, 8, 31),
+            end_date=date(2025, 9, 13),
+        )
+
+        # Output is mapped onto the default model age groups, all present
+        for col in ["0-4", "5-17", "18-49", "50-64", "65+"]:
+            assert col in result.columns
+        # Vaccination actually happens (the 0-17 block feeds the model's 0-4 and 5-17 groups)
+        total = result[["0-4", "5-17", "18-49", "50-64", "65+"]].to_numpy().sum()
+        assert total > 0
+        assert result[["0-4", "5-17"]].to_numpy().sum() > 0
