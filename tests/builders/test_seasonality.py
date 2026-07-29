@@ -1,14 +1,28 @@
 """Tests for epymodelingsuite.builders.seasonality module."""
 
 from datetime import date
+from unittest.mock import Mock
 
 import numpy as np
 import pytest
 from epydemix.model import EpiModel
 
 from epymodelingsuite.builders.base import set_population_from_config
-from epymodelingsuite.builders.seasonality import add_seasonality_from_config
+from epymodelingsuite.builders.seasonality import (
+    add_seasonality_from_config,
+    resolve_seasonality_location_from_population,
+)
 from epymodelingsuite.schema.basemodel import Population, Seasonality, Timespan
+
+
+def _model_with_mock_population(n_age_groups: int = 5) -> EpiModel:
+    """EpiModel with a lightweight mock population (no network fetch)."""
+    model = EpiModel()
+    mock_pop = Mock()
+    mock_pop.num_groups = n_age_groups
+    mock_pop.name = "United_States__California"
+    model.population = mock_pop
+    return model
 
 
 class TestAddSeasonalityFromConfig:
@@ -439,3 +453,84 @@ class TestAddSeasonalityWithSubdailyTimesteps:
             ratio = beta[t, 2] / beta[t, 0]
             expected_ratio = 0.5 / 0.3
             assert np.isclose(ratio, expected_ratio, rtol=1e-6), f"Age ratio not preserved at t={t}"
+
+
+class TestAddClimateSeasonalityFromConfig:
+    """Integration tests for climate seasonality."""
+
+    CLIMATE_TEST_CSV = "tests/data/climate_daily_test.csv"
+
+    def test_resolve_climate_location_from_iso_population(self):
+        assert resolve_seasonality_location_from_population("United_States__California") == "US-CA"
+        assert resolve_seasonality_location_from_population("US-MA") == "US-MA"
+
+    def test_resolve_climate_location_from_metrocast_population(self):
+        assert resolve_seasonality_location_from_population("metrocast_location_denver") == "US-CO"
+
+    @pytest.fixture
+    def climate_seasonality_config(self):
+        return Seasonality(
+            method="data_driven",
+            target_parameter="beta",
+            seasonality_data_path=TestAddClimateSeasonalityFromConfig.CLIMATE_TEST_CSV,
+        )
+
+    @pytest.fixture
+    def climate_timespan(self):
+        return Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 1, 3), delta_t=1.0)
+
+    @pytest.fixture
+    def model_with_climate_coeffs(self):
+        model = _model_with_mock_population()
+        model.add_parameter("beta", 0.5)
+        model.add_parameter("b1", 0.001)
+        model.add_parameter("s_min", 0.2)
+        model.add_parameter("b3", 0.05)
+        return model
+
+    def test_applies_climate_seasonality_to_scalar_beta(
+        self, model_with_climate_coeffs, climate_seasonality_config, climate_timespan
+    ):
+        add_seasonality_from_config(model_with_climate_coeffs, climate_seasonality_config, climate_timespan)
+        beta = model_with_climate_coeffs.get_parameter("beta")
+        assert beta.shape[0] == 3
+        assert np.all(beta > 0)
+
+    def test_param_overrides_change_scaling(
+        self, model_with_climate_coeffs, climate_seasonality_config, climate_timespan
+    ):
+        add_seasonality_from_config(
+            model_with_climate_coeffs,
+            climate_seasonality_config,
+            climate_timespan,
+            param_overrides={"b3": 0.0},
+        )
+        beta_no_temp = model_with_climate_coeffs.get_parameter("beta").copy()
+
+        model2 = _model_with_mock_population()
+        model2.add_parameter("beta", 0.5)
+        model2.add_parameter("b1", 0.001)
+        model2.add_parameter("s_min", 0.2)
+        model2.add_parameter("b3", 0.05)
+        add_seasonality_from_config(model2, climate_seasonality_config, climate_timespan)
+        beta_with_temp = model2.get_parameter("beta")
+
+        assert not np.allclose(beta_no_temp, beta_with_temp)
+
+    def test_missing_coefficient_raises(self, climate_seasonality_config, climate_timespan):
+        model = _model_with_mock_population()
+        model.add_parameter("beta", 0.5)
+        with pytest.raises(ValueError, match="Data-driven seasonality requires coefficient"):
+            add_seasonality_from_config(model, climate_seasonality_config, climate_timespan)
+
+    def test_climate_with_age_varying_beta(
+        self, climate_seasonality_config, climate_timespan
+    ):
+        model = _model_with_mock_population()
+        model.add_parameter("beta", np.array([[0.3, 0.4, 0.5, 0.4, 0.3]]))
+        model.add_parameter("b1", 0.001)
+        model.add_parameter("s_min", 0.2)
+        model.add_parameter("b3", 0.05)
+        add_seasonality_from_config(model, climate_seasonality_config, climate_timespan)
+        beta = model.get_parameter("beta")
+        assert beta.shape == (3, 5)

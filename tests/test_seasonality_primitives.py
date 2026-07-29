@@ -1,5 +1,6 @@
 # Unit tests for seasonality.py primitives
 import datetime as dt
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -321,3 +322,261 @@ class TestSeasonalityPrimitivesSubdaily:
                 assert v == scaling_factor, f"Expected {scaling_factor} at {d}, got {v}"
             else:
                 assert v == 1.0, f"Expected 1.0 at {d}, got {v}"
+
+
+CLIMATE_TEST_CSV = "tests/data/climate_daily_test.csv"
+CLIMATE_MULTI_STATE_CSV = "tutorials/data/climate_daily_era5_gee.csv"
+
+
+class TestClimateSeasonalityPrimitives:
+    """Unit tests for data-driven (climate + mobility) seasonality functions."""
+
+    def test_calc_at_reference_point_is_zero(self):
+        from epymodelingsuite.seasonality import _calc_seasonality_raw
+
+        # At rh_optimum and min_temp, both terms are zero
+        st = _calc_seasonality_raw(temp=5.0, rh=40.0, min_temp=5.0, b1=0.001, b3=0.05)
+        assert st == pytest.approx(0.0)
+
+    def test_b1_increases_with_rh_deviation(self):
+        from epymodelingsuite.seasonality import _calc_seasonality_raw
+
+        low = _calc_seasonality_raw(temp=5.0, rh=41.0, min_temp=5.0, b1=0.01, b3=0.0)
+        high = _calc_seasonality_raw(temp=5.0, rh=50.0, min_temp=5.0, b1=0.01, b3=0.0)
+        assert high > low
+
+    def test_b3_decreases_with_temperature(self):
+        from epymodelingsuite.seasonality import _calc_seasonality_raw
+
+        cold = _calc_seasonality_raw(temp=5.0, rh=40.0, min_temp=5.0, b1=0.0, b3=0.1)
+        warm = _calc_seasonality_raw(temp=15.0, rh=40.0, min_temp=5.0, b1=0.0, b3=0.1)
+        assert cold > warm
+
+    def test_load_seasonality_data(self):
+        from epymodelingsuite.seasonality import load_seasonality_data
+
+        seasonality_data = load_seasonality_data(CLIMATE_TEST_CSV, location="US-CA")
+        assert seasonality_data.date_min == dt.date(2024, 1, 1)
+        assert seasonality_data.date_max == dt.date(2024, 1, 3)
+        assert seasonality_data.min_temp == pytest.approx(5.0)
+        assert seasonality_data.temp_by_date[dt.date(2024, 1, 2)] == pytest.approx(10.0)
+
+    def test_daily_lookup_bounds(self):
+        from epymodelingsuite.seasonality import calc_seasonality_data_at_date, load_seasonality_data
+
+        seasonality_data = load_seasonality_data(CLIMATE_TEST_CSV, location="US-CA")
+        # With a 3-day series the raw_min/raw_max must be supplied by the caller.
+        # For a single-date call where raw==raw_max the result must equal 1.0.
+        raw_vals = [
+            0.001 * (seasonality_data.rh_by_date[d] - 40.0) ** 2 + 0.05 * (seasonality_data.min_temp - seasonality_data.temp_by_date[d])
+            for d in [dt.date(2024, 1, 1), dt.date(2024, 1, 2), dt.date(2024, 1, 3)]
+        ]
+        raw_min, raw_max = min(raw_vals), max(raw_vals)
+        st = calc_seasonality_data_at_date(
+            dt.date(2024, 1, 1), seasonality_data,
+            b1=0.001, b3=0.05, s_min=0.1, raw_min=raw_min, raw_max=raw_max,
+        )
+        assert 0.1 <= st <= 1.0
+
+    def test_subdaily_reuses_same_daily_values(self):
+        from epymodelingsuite.seasonality import get_seasonal_transmission_data_driven, load_seasonality_data
+
+        seasonality_data = load_seasonality_data(CLIMATE_TEST_CSV, location="US-CA")
+        _, values = get_seasonal_transmission_data_driven(
+            date_start=dt.datetime(2024, 1, 1, 0, 0),
+            date_stop=dt.datetime(2024, 1, 1, 12, 0),
+            seasonality_data=seasonality_data,
+            b1=0.001,
+            b3=0.05,
+            s_min=0.1,
+            delta_t=0.5,
+        )
+        assert len(values) == 2
+        assert values[0] == pytest.approx(values[1])
+
+    def test_out_of_range_date_raises(self):
+        from epymodelingsuite.seasonality import calc_seasonality_data_at_date, load_seasonality_data
+
+        seasonality_data = load_seasonality_data(CLIMATE_TEST_CSV, location="US-CA")
+        with pytest.raises(ValueError, match="outside seasonality data range"):
+            calc_seasonality_data_at_date(dt.date(2023, 1, 1), seasonality_data, b1=0.001, b3=0.05, s_min=0.1, raw_min=0.0, raw_max=1.0)
+
+    def test_multiplier_bounded_in_s_min_to_1(self):
+        from epymodelingsuite.seasonality import get_seasonal_transmission_data_driven, load_seasonality_data
+
+        seasonality_data = load_seasonality_data(CLIMATE_TEST_CSV, location="US-CA")
+        s_min = 0.2
+        _, values = get_seasonal_transmission_data_driven(
+            date_start=dt.date(2024, 1, 1),
+            date_stop=dt.date(2024, 1, 3),
+            seasonality_data=seasonality_data,
+            b1=0.001,
+            b3=0.05,
+            s_min=s_min,
+        )
+        assert min(values) >= s_min - 1e-9
+        assert max(values) <= 1.0 + 1e-9
+
+    @pytest.mark.skipif(
+        not Path(CLIMATE_MULTI_STATE_CSV).exists(),
+        reason=f"multi-state climate fixture {CLIMATE_MULTI_STATE_CSV} not present in this repo",
+    )
+    def test_get_seasonal_transmission_data_driven_multi_state_file(self):
+        from epymodelingsuite.seasonality import get_seasonal_transmission_data_driven, load_seasonality_data
+
+        seasonality_data = load_seasonality_data(CLIMATE_MULTI_STATE_CSV, location="US-CO")
+        dates, values = get_seasonal_transmission_data_driven(
+            date_start=dt.date(2024, 1, 1),
+            date_stop=dt.date(2024, 1, 7),
+            seasonality_data=seasonality_data,
+            b1=1e-5,
+            b3=0.01,
+            s_min=0.1,
+            delta_t=1.0,
+        )
+        assert len(dates) == 7
+        assert len(values) == 7
+        assert all(v >= 0.1 for v in values)
+        assert all(v <= 1.0 + 1e-9 for v in values)
+    def test_humidity_only_b1_cancels(self):
+        """b1 should not affect the shape of humidity_only multipliers."""
+        from epymodelingsuite.seasonality import get_seasonal_transmission_data_driven, load_seasonality_data
+
+        seasonality_data = load_seasonality_data(CLIMATE_TEST_CSV, location="US-CA")
+        s_min = 0.2
+        _, v1 = get_seasonal_transmission_data_driven(
+            date_start=dt.date(2024, 1, 1),
+            date_stop=dt.date(2024, 1, 3),
+            seasonality_data=seasonality_data,
+            b1=0.001,
+            b3=0.0,
+            s_min=s_min,
+        )
+        _, v2 = get_seasonal_transmission_data_driven(
+            date_start=dt.date(2024, 1, 1),
+            date_stop=dt.date(2024, 1, 3),
+            seasonality_data=seasonality_data,
+            b1=999.0,
+            b3=0.0,
+            s_min=s_min,
+        )
+        for a, b in zip(v1, v2):
+            assert abs(a - b) < 1e-9
+        assert min(v1) >= s_min - 1e-9
+        assert max(v1) <= 1.0 + 1e-9
+
+    def test_temperature_only_b3_cancels(self):
+        """b3 should not affect the shape of temperature_only multipliers."""
+        from epymodelingsuite.seasonality import get_seasonal_transmission_data_driven, load_seasonality_data
+
+        seasonality_data = load_seasonality_data(CLIMATE_TEST_CSV, location="US-CA")
+        s_min = 0.2
+        _, v1 = get_seasonal_transmission_data_driven(
+            date_start=dt.date(2024, 1, 1),
+            date_stop=dt.date(2024, 1, 3),
+            seasonality_data=seasonality_data,
+            b1=0.0,
+            b3=0.05,
+            s_min=s_min,
+        )
+        _, v2 = get_seasonal_transmission_data_driven(
+            date_start=dt.date(2024, 1, 1),
+            date_stop=dt.date(2024, 1, 3),
+            seasonality_data=seasonality_data,
+            b1=0.0,
+            b3=999.0,
+            s_min=s_min,
+        )
+        for a, b in zip(v1, v2):
+            assert abs(a - b) < 1e-9
+        assert min(v1) >= s_min - 1e-9
+        assert max(v1) <= 1.0 + 1e-9
+
+
+class TestMobilitySeasonalityPrimitives:
+    """Unit tests for the mobility (b4) term in data-driven seasonality."""
+
+    MOBILITY_CSV = "tests/data/climate_mobility_daily_test.csv"
+    MOBILITY_NAN_CSV = "tests/data/climate_mobility_nan_test.csv"
+
+    def test_load_seasonality_data_populates_mobility(self):
+        from epymodelingsuite.seasonality import load_seasonality_data
+
+        seasonality_data = load_seasonality_data(
+            self.MOBILITY_CSV, mobility_column="mobility", location="US-CA"
+        )
+        assert seasonality_data.mobility_by_date[dt.date(2024, 1, 1)] == pytest.approx(100.0)
+        assert seasonality_data.mobility_by_date[dt.date(2024, 1, 2)] == pytest.approx(110.0)
+
+    def test_mobility_column_omitted_leaves_mobility_none(self):
+        from epymodelingsuite.seasonality import load_seasonality_data
+
+        seasonality_data = load_seasonality_data(self.MOBILITY_CSV, location="US-CA")
+        assert seasonality_data.mobility_by_date is None
+
+    def test_b4_zero_matches_climate_only_result(self):
+        """b4=0.0 (default) must reproduce the climate-only signal even when mobility is loaded."""
+        from epymodelingsuite.seasonality import get_seasonal_transmission_data_driven, load_seasonality_data
+
+        with_mobility = load_seasonality_data(self.MOBILITY_CSV, mobility_column="mobility", location="US-CA")
+        without_mobility = load_seasonality_data(self.MOBILITY_CSV, location="US-CA")
+
+        _, v_with = get_seasonal_transmission_data_driven(
+            date_start=dt.date(2024, 1, 1),
+            date_stop=dt.date(2024, 1, 3),
+            seasonality_data=with_mobility,
+            b1=0.001,
+            b3=0.05,
+            s_min=0.2,
+        )
+        _, v_without = get_seasonal_transmission_data_driven(
+            date_start=dt.date(2024, 1, 1),
+            date_stop=dt.date(2024, 1, 3),
+            seasonality_data=without_mobility,
+            b1=0.001,
+            b3=0.05,
+            s_min=0.2,
+        )
+        for a, b in zip(v_with, v_without):
+            assert a == pytest.approx(b)
+
+    def test_b4_nonzero_changes_raw_signal(self):
+        from epymodelingsuite.seasonality import _calc_seasonality_raw
+
+        without_mobility = _calc_seasonality_raw(temp=5.0, rh=40.0, min_temp=5.0, b1=0.0, b3=0.0)
+        with_mobility = _calc_seasonality_raw(temp=5.0, rh=40.0, min_temp=5.0, b1=0.0, b3=0.0, b4=0.5, mobility=100.0)
+        assert with_mobility == pytest.approx(50.0)
+        assert without_mobility == pytest.approx(0.0)
+
+    def test_b4_nonzero_without_mobility_column_raises(self):
+        from epymodelingsuite.seasonality import get_seasonal_transmission_data_driven, load_seasonality_data
+
+        seasonality_data = load_seasonality_data(self.MOBILITY_CSV, location="US-CA")
+        with pytest.raises(ValueError, match="loaded without a mobility_column"):
+            get_seasonal_transmission_data_driven(
+                date_start=dt.date(2024, 1, 1),
+                date_stop=dt.date(2024, 1, 3),
+                seasonality_data=seasonality_data,
+                b1=0.0,
+                b3=0.0,
+                s_min=0.2,
+                b4=0.5,
+            )
+
+    def test_nan_mobility_value_raises(self):
+        from epymodelingsuite.seasonality import get_seasonal_transmission_data_driven, load_seasonality_data
+
+        seasonality_data = load_seasonality_data(
+            self.MOBILITY_NAN_CSV, mobility_column="mobility", location="US-CA"
+        )
+        with pytest.raises(ValueError, match="is NaN"):
+            get_seasonal_transmission_data_driven(
+                date_start=dt.date(2024, 1, 1),
+                date_stop=dt.date(2024, 1, 3),
+                seasonality_data=seasonality_data,
+                b1=0.0,
+                b3=0.0,
+                s_min=0.2,
+                b4=0.5,
+            )
+

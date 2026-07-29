@@ -1,7 +1,26 @@
 ### seasonality.py
 # Functions for generating seasonal transmission rates.
 import datetime as dt
+import logging
 from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
+
+import pandas as pd
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class SeasonalityData:
+    """Daily temperature, relative humidity, and (optionally) mobility indexed by calendar date."""
+
+    temp_by_date: dict[dt.date, float]
+    rh_by_date: dict[dt.date, float]
+    min_temp: float
+    date_min: dt.date
+    date_max: dt.date
+    mobility_by_date: dict[dt.date, float] | None = None
 
 
 def _calc_seasonality_balcan_at_t(
@@ -314,3 +333,276 @@ def get_seasonal_transmission_balcan(
     )
 
     return dates, values
+
+
+def _to_calendar_date(date_t: dt.date | dt.datetime) -> dt.date:
+    if isinstance(date_t, dt.datetime):
+        return date_t.date()
+    return date_t
+
+
+def load_seasonality_data(
+    seasonality_data_path: str | Path,
+    date_column: str = "date",
+    temp_column: str = "temp",
+    rh_column: str = "humid_mean",
+    mobility_column: str | None = None,
+    location: str | None = None,
+    location_column: str = "Location",
+) -> SeasonalityData:
+    """
+    Load daily temperature/humidity (and optionally mobility) observations from CSV.
+
+    Parameters
+    ----------
+    seasonality_data_path : str or Path
+        Path to daily seasonality data CSV (one row per calendar day).
+    date_column : str, default "date"
+        Column name for observation date.
+    temp_column : str, default "temp"
+        Column name for temperature in degrees Celsius.
+    rh_column : str, default "humid_mean"
+        Column name for relative humidity in percent.
+    mobility_column : str, optional
+        Column name for a mobility index. If omitted, mobility is not loaded and
+        the mobility term is treated as zero wherever it is used.
+    location : str, optional
+        If set, filter rows where ``location_column`` equals this value.
+    location_column : str, default "Location"
+        Column used for optional location filtering.
+
+    Returns
+    -------
+    SeasonalityData
+        Daily temp/RH/mobility indexed by date with global min temperature over the series.
+    """
+    path = Path(seasonality_data_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Seasonality data file not found: {path}")
+
+    df = pd.read_csv(path)
+    required = {date_column, temp_column, rh_column}
+    if mobility_column is not None:
+        required.add(mobility_column)
+    missing = required - set(df.columns)
+    if missing:
+        raise ValueError(f"Seasonality CSV missing required columns: {sorted(missing)}")
+
+    if location is not None:
+        if location_column not in df.columns:
+            raise ValueError(
+                f"location={location!r} requested but column {location_column!r} not in seasonality CSV"
+            )
+        df = df[df[location_column] == location]
+        if df.empty:
+            raise ValueError(f"No seasonality rows found for location={location!r}")
+
+    df = df.copy()
+    df[date_column] = pd.to_datetime(df[date_column]).dt.date
+    df = df.sort_values(date_column).drop_duplicates(subset=[date_column], keep="last")
+
+    if len(df) > 1:
+        gaps = pd.Series(list(df[date_column])).diff().dropna()
+        max_gap_days = max(g.days for g in gaps)
+        if max_gap_days > 1:
+            logger.warning(
+                "Seasonality data in %s has gaps up to %d days; missing dates will raise at lookup time",
+                path,
+                max_gap_days,
+            )
+
+    temp_by_date = dict(zip(df[date_column], df[temp_column].astype(float), strict=True))
+    rh_by_date = dict(zip(df[date_column], df[rh_column].astype(float), strict=True))
+    mobility_by_date = None
+    if mobility_column is not None:
+        mobility_by_date = dict(zip(df[date_column], df[mobility_column].astype(float), strict=True))
+    min_temp = float(df[temp_column].min())
+    dates = sorted(temp_by_date.keys())
+
+    return SeasonalityData(
+        temp_by_date=temp_by_date,
+        rh_by_date=rh_by_date,
+        min_temp=min_temp,
+        date_min=dates[0],
+        date_max=dates[-1],
+        mobility_by_date=mobility_by_date,
+    )
+
+
+def _calc_seasonality_raw(
+    temp: float,
+    rh: float,
+    min_temp: float,
+    b1: float,
+    b3: float,
+    rh_optimum: float = 40.0,
+    b4: float = 0.0,
+    mobility: float = 0.0,
+) -> float:
+    """Raw data-driven signal (un-normalised): b1*(RH - rh_optimum)^2 + b3*(min_T - T) + b4*mobility."""
+    return b1 * (rh - rh_optimum) ** 2 + b3 * (min_temp - temp) + b4 * mobility
+
+
+def _lookup_mobility(seasonality_data: "SeasonalityData", cal_date: dt.date, b4: float) -> float:
+    """Look up the mobility value for a date, validating coverage when b4 is used."""
+    if b4 == 0.0:
+        return 0.0
+    if seasonality_data.mobility_by_date is None:
+        raise ValueError("b4 is nonzero but seasonality data was loaded without a mobility_column")
+    if cal_date not in seasonality_data.mobility_by_date:
+        raise ValueError(f"No mobility observation for date {cal_date}.")
+    mobility = seasonality_data.mobility_by_date[cal_date]
+    if mobility != mobility:  # NaN check without importing numpy/math here
+        raise ValueError(f"Mobility observation for date {cal_date} is NaN.")
+    return mobility
+
+
+def calc_seasonality_data_at_date(
+    date_t: dt.date | dt.datetime,
+    seasonality_data: "SeasonalityData",
+    b1: float,
+    b3: float,
+    s_min: float,
+    raw_min: float,
+    raw_max: float,
+    rh_optimum: float = 40.0,
+    b4: float = 0.0,
+) -> float:
+    """
+    Compute the normalised seasonality scaling factor for a simulation date.
+
+    The multiplier is always in [s_min, 1]:
+        multiplier = s_min + (1 - s_min) * (raw - raw_min) / (raw_max - raw_min)
+
+    Parameters
+    ----------
+    date_t : date or datetime
+        Target simulation date/datetime.
+    seasonality_data : SeasonalityData
+        Loaded daily temperature/humidity/mobility observations.
+    b1, b3 : float
+        Humidity curvature and temperature coefficients.
+    s_min : float
+        Minimum seasonality multiplier (in [0, 1)).
+    raw_min, raw_max : float
+        Pre-computed minimum and maximum of the raw signal over the full simulation
+        period; used to normalise the series to [0, 1] before rescaling to [s_min, 1].
+    rh_optimum : float, default 40.0
+        RH (%) at which the parabolic humidity term is minimized.
+    b4 : float, default 0.0
+        Mobility coefficient. Requires ``seasonality_data`` to have been loaded with
+        a ``mobility_column``.
+
+    Returns
+    -------
+    float
+        Seasonal scaling factor at ``date_t``, guaranteed to be in [s_min, 1].
+
+    Raises
+    ------
+    ValueError
+        If the date is outside the seasonality data range.
+    """
+    cal_date = _to_calendar_date(date_t)
+    if cal_date < seasonality_data.date_min or cal_date > seasonality_data.date_max:
+        raise ValueError(
+            f"Simulation date {cal_date} is outside seasonality data range "
+            f"[{seasonality_data.date_min}, {seasonality_data.date_max}]. Extend the CSV."
+        )
+    if cal_date not in seasonality_data.temp_by_date:
+        raise ValueError(
+            f"No temperature/humidity observation for date {cal_date}. "
+            f"Data covers [{seasonality_data.date_min}, {seasonality_data.date_max}] but has a gap on this date."
+        )
+
+    temp = seasonality_data.temp_by_date[cal_date]
+    rh = seasonality_data.rh_by_date[cal_date]
+    mobility = _lookup_mobility(seasonality_data, cal_date, b4)
+    raw = _calc_seasonality_raw(temp, rh, seasonality_data.min_temp, b1, b3, rh_optimum, b4, mobility)
+    if raw_max == raw_min:
+        return 1.0
+    return s_min + (1.0 - s_min) * (raw - raw_min) / (raw_max - raw_min)
+
+
+def get_seasonal_transmission_data_driven(
+    date_start: dt.date | dt.datetime,
+    date_stop: dt.date | dt.datetime,
+    seasonality_data: "SeasonalityData",
+    b1: float,
+    b3: float,
+    s_min: float,
+    rh_optimum: float = 40.0,
+    delta_t: float = 1.0,
+    b4: float = 0.0,
+) -> tuple[list[dt.date | dt.datetime], list[float]]:
+    """
+    Return normalised seasonality scaling factors for the simulation period.
+
+    The multiplier series is rescaled so the maximum equals 1 and the minimum
+    equals ``s_min``:
+
+        raw(t)       = b1*(RH(t) - rh_optimum)^2 + b3*(min_T - T(t)) + b4*mobility(t)
+        multiplier(t) = s_min + (1 - s_min) * (raw(t) - raw_min) / (raw_max - raw_min)
+
+    Parameters
+    ----------
+    date_start, date_stop : date or datetime
+        Simulation period (inclusive).
+    seasonality_data : SeasonalityData
+        Loaded daily temperature/humidity/mobility observations.
+    b1, b3 : float
+        Humidity curvature and temperature coefficients.
+    s_min : float
+        Minimum seasonality multiplier (in [0, 1)).
+    rh_optimum : float, default 40.0
+        RH (%) at which the parabolic humidity term is minimized.
+    delta_t : float, default 1.0
+        Timestep in days.
+    b4 : float, default 0.0
+        Mobility coefficient. Requires ``seasonality_data`` to have been loaded with
+        a ``mobility_column``.
+
+    Returns
+    -------
+    tuple[list, list]
+        (dates, multipliers) where every multiplier is in [s_min, 1].
+    """
+    import numpy as np
+
+    # Use a dummy function to obtain the date grid from generate_seasonal_values.
+    dates, _ = generate_seasonal_values(
+        date_start=date_start,
+        date_stop=date_stop,
+        seasonality_func=lambda _: 0.0,
+        delta_t=delta_t,
+    )
+
+    # First pass: compute raw values for every date.
+    raw = []
+    for d in dates:
+        cal_date = _to_calendar_date(d)
+        if cal_date < seasonality_data.date_min or cal_date > seasonality_data.date_max:
+            raise ValueError(
+                f"Simulation date {cal_date} is outside seasonality data range "
+                f"[{seasonality_data.date_min}, {seasonality_data.date_max}]. Extend the CSV."
+            )
+        if cal_date not in seasonality_data.temp_by_date:
+            raise ValueError(
+                f"No temperature/humidity observation for date {cal_date}. "
+                f"Data covers [{seasonality_data.date_min}, {seasonality_data.date_max}] but has a gap on this date."
+            )
+        temp = seasonality_data.temp_by_date[cal_date]
+        rh = seasonality_data.rh_by_date[cal_date]
+        mobility = _lookup_mobility(seasonality_data, cal_date, b4)
+        raw.append(_calc_seasonality_raw(temp, rh, seasonality_data.min_temp, b1, b3, rh_optimum, b4, mobility))
+
+    raw_arr = np.array(raw, dtype=float)
+    raw_min = float(raw_arr.min())
+    raw_max = float(raw_arr.max())
+
+    if raw_max == raw_min:
+        st = [1.0] * len(raw)
+    else:
+        st = (s_min + (1.0 - s_min) * (raw_arr - raw_min) / (raw_max - raw_min)).tolist()
+
+    return dates, st
