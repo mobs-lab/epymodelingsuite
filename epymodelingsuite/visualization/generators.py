@@ -1163,6 +1163,13 @@ def generate_quantile_grid_plot(
             if output_type_name in ["filtered", "full"]:
                 logger.info("    Creating %s grid plot", output_type_name)
                 try:
+                    xlim = None
+                    if output_config.xlim_start is not None or output_config.xlim_end is not None:
+                        xlim = (
+                            pd.Timestamp(output_config.xlim_start) if output_config.xlim_start else None,
+                            pd.Timestamp(output_config.xlim_end) if output_config.xlim_end else None,
+                        )
+
                     fig, axes = plot_calibration_projection_grid(
                         location_calibration_quantiles=(
                             cal_quants_to_use if output_config.show_calibration and cal_quants_to_use else None
@@ -1186,6 +1193,7 @@ def generate_quantile_grid_plot(
                         ylabel=plots_config.quantiles.ylabel,
                         xlabel_interval=output_config.xlabel_interval,
                         suptitle=plots_config.quantiles.suptitle,
+                        xlim=xlim,
                     )
 
                     # Add generation notice to grid panel titles

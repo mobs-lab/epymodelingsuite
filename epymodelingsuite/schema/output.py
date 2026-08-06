@@ -432,6 +432,14 @@ class QuantilesOutputConfig(BaseModel):
         None,
         description="X-axis label interval as pandas offset string (e.g., 'W-SAT', '2W-SAT', 'MS'). None = auto. For SIDE_BY_SIDE, use panel configs instead.",
     )
+    xlim_start: str | None = Field(
+        None,
+        description="Left x-axis limit for grid plot (YYYY-MM-DD). None = autoscale.",
+    )
+    xlim_end: str | None = Field(
+        None,
+        description="Right x-axis limit for grid plot (YYYY-MM-DD). None = autoscale.",
+    )
 
     # Panel settings (only for SIDE_BY_SIDE type)
     full_panel: SideBySidePanelConfig | None = Field(

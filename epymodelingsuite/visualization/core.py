@@ -778,6 +778,7 @@ def plot_calibration_projection_grid(  # noqa: PLR0913
     ylabel: str | None = None,
     xlabel_interval: str | None = None,
     suptitle: str | None = None,
+    xlim: tuple | None = None,
 ) -> tuple[plt.Figure, np.ndarray]:
     """
     Create multipanel grid of calibration and projection quantile plots.
@@ -827,6 +828,9 @@ def plot_calibration_projection_grid(  # noqa: PLR0913
         None = auto (matplotlib default), by default None.
     suptitle : str | None, optional
         Super title for the entire figure. If None, no super title is shown, by default None.
+    xlim : tuple | None, optional
+        (xmin, xmax) applied to every panel. Values can be dates or strings.
+        If None, each panel autoscales independently.
 
     Returns
     -------
@@ -917,6 +921,9 @@ def plot_calibration_projection_grid(  # noqa: PLR0913
             xlabel_interval=xlabel_interval,
             ylabel=ylabel if c == 0 else None,
         )
+
+        if xlim is not None:
+            ax.set_xlim(xlim)
 
         # Hide legend for non-leftmost columns (c != 0)
         if c != 0:
