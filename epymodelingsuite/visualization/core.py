@@ -277,6 +277,7 @@ def plot_quantiles_grid(  # noqa: PLR0913
     color: str = "C0",
     panels_per_row: int = 4,
     figsize: tuple[float, float] | None = None,
+    xlim: tuple | None = None,
 ) -> tuple[plt.Figure, np.ndarray]:
     """
     Create grid of quantile plots for multiple locations.
@@ -301,6 +302,9 @@ def plot_quantiles_grid(  # noqa: PLR0913
         Number of panels per row, by default 4.
     figsize : tuple[float, float] | None, optional
         Figure size. If None, auto-calculated as (4*ncols, 3.6*nrows).
+    xlim : tuple | None, optional
+        (xmin, xmax) applied to every panel. Values can be dates or strings.
+        If None, each panel autoscales independently.
 
     Returns
     -------
@@ -349,6 +353,9 @@ def plot_quantiles_grid(  # noqa: PLR0913
             title=format_location_name(location),
             ax=ax,
         )
+
+        if xlim is not None:
+            ax.set_xlim(xlim)
 
         # Hide legend for non-leftmost columns (c != 0)
         if c != 0:
