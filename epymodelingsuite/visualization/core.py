@@ -759,6 +759,54 @@ def plot_calibration_projection_sidebyside(  # noqa: PLR0913
     return fig, (ax_full, ax_filtered)
 
 
+def _compute_ylim_for_window(
+    xlim: tuple,
+    quantile_dfs: list,
+    value_col: str,
+    date_col: str,
+    surv_df=None,
+    surv_date_col: str = "date",
+    surv_value_col: str = "value",
+    margin: float = 0.05,
+):
+    """Return (0, ymax*(1+margin)) from data within xlim, or None if window is empty."""
+    xmin = pd.Timestamp(xlim[0]) if xlim[0] is not None else None
+    xmax = pd.Timestamp(xlim[1]) if xlim[1] is not None else None
+
+    ymax = 0.0
+    found = False
+
+    for df in quantile_dfs:
+        if df is None or df.empty:
+            continue
+        dates = pd.to_datetime(df[date_col])
+        mask = pd.Series(True, index=df.index)
+        if xmin is not None:
+            mask &= dates >= xmin
+        if xmax is not None:
+            mask &= dates <= xmax
+        sub = df.loc[mask, value_col].dropna()
+        if not sub.empty:
+            ymax = max(ymax, float(sub.max()))
+            found = True
+
+    if surv_df is not None and not surv_df.empty and surv_value_col in surv_df.columns:
+        dates = pd.to_datetime(surv_df[surv_date_col])
+        mask = pd.Series(True, index=surv_df.index)
+        if xmin is not None:
+            mask &= dates >= xmin
+        if xmax is not None:
+            mask &= dates <= xmax
+        sub = surv_df.loc[mask, surv_value_col].dropna()
+        if not sub.empty:
+            ymax = max(ymax, float(sub.max()))
+            found = True
+
+    if not found:
+        return None
+    return (0, ymax * (1 + margin))
+
+
 def plot_calibration_projection_grid(  # noqa: PLR0913
     location_calibration_quantiles: dict[str, pd.DataFrame] | None = None,
     location_projection_quantiles: dict[str, pd.DataFrame] | None = None,
@@ -924,6 +972,17 @@ def plot_calibration_projection_grid(  # noqa: PLR0913
 
         if xlim is not None:
             ax.set_xlim(xlim)
+            ylim = _compute_ylim_for_window(
+                xlim=xlim,
+                quantile_dfs=[cal_quant, proj_quant],
+                value_col=value_col,
+                date_col=date_col,
+                surv_df=surv_df,
+                surv_date_col=surveillance_date_col,
+                surv_value_col=surveillance_value_col,
+            )
+            if ylim is not None:
+                ax.set_ylim(ylim)
 
         # Hide legend for non-leftmost columns (c != 0)
         if c != 0:
