@@ -293,12 +293,12 @@ def _prepare_projection_quantiles(
     return proj_quant_full, proj_quant_filtered
 
 
-def _rename_value_column(df: pd.DataFrame | None, old_name: str) -> pd.DataFrame | None:
+def _rename_value_column(df: pd.DataFrame | None, old_name: str | list[str]) -> pd.DataFrame | None:
     """
-    Select the specified value column and rename it to 'value', keeping only metadata columns.
+    Select the specified value column(s) and produce a 'value' column, keeping only metadata columns.
 
-    This function filters the DataFrame to keep only metadata columns (date, quantile, population)
-    plus the specified value column, then renames that column to 'value'.
+    When ``old_name`` is a string, the column is renamed to 'value'.
+    When ``old_name`` is a list, all available columns in the list are summed into 'value'.
 
     NOTE: The rename to 'value' is necessary because plot_calibration_projection() uses a single
     value_col parameter for both calibration and projection quantiles. Since calibration uses
@@ -314,27 +314,43 @@ def _rename_value_column(df: pd.DataFrame | None, old_name: str) -> pd.DataFrame
     ----------
     df : pd.DataFrame or None
         DataFrame containing quantile data with multiple value columns.
-    old_name : str
-        Column name to select and rename to 'value'.
+    old_name : str or list[str]
+        Column name to select and rename to 'value', or list of column names to sum into 'value'.
 
     Returns
     -------
     pd.DataFrame or None
-        DataFrame with only metadata columns plus the selected value column renamed to 'value',
-        or None if input is None.
+        DataFrame with only metadata columns plus a 'value' column, or None if input is None.
 
     Raises
     ------
     ValueError
-        If df is not None and old_name is not found in columns.
+        If df is not None and no requested column(s) are found.
     """
     if df is None:
         return None
 
+    metadata_cols = ["date", "quantile", "population"]
+
+    if isinstance(old_name, list):
+        available = [c for c in old_name if c in df.columns]
+        if not available:
+            metadata_cols_for_error = {"date", "location", "quantile", "population"}
+            available_value_cols = [c for c in df.columns if c not in metadata_cols_for_error]
+            msg = (
+                f"None of {old_name} found in quantiles DataFrame. "
+                f"Available value columns: {available_value_cols}. "
+                f"Check output.plots.quantiles.value_column in your config matches "
+                f"transition name(s) in output.quantiles.transitions."
+            )
+            raise ValueError(msg)
+        result = df[[c for c in metadata_cols if c in df.columns]].copy()
+        result["value"] = df[available].sum(axis=1)
+        return result
+
     if old_name in df.columns:
         # Select only metadata columns plus the specified value column
         # This excludes the pre-existing 'value' column and all other transitions/compartments
-        metadata_cols = ["date", "quantile", "population"]
         cols_to_keep = [c for c in metadata_cols if c in df.columns] + [old_name]
         return df[cols_to_keep].rename(columns={old_name: "value"})
 

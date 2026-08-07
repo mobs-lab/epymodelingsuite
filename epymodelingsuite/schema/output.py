@@ -536,9 +536,9 @@ class QuantilesPlotConfig(BaseModel):
         description="Projection period quantile ribbons (default enabled). Set true to use default options, or set options in subfields.",
     )
 
-    value_column: str = Field(
+    value_column: str | list[str] = Field(
         "hospitalizations",
-        description="Column name for projection quantiles to plot. Common values: 'hospitalizations', 'ed_signal', 'value'. Must match a transition name in output.quantiles.transitions.",
+        description="Column name (or list of column names to sum) for projection quantiles to plot. Common values: 'hospitalizations', 'ed_signal', 'value'. Must match transition name(s) in output.quantiles.transitions.",
     )
     ylabel: str | None = Field(
         default=None,
