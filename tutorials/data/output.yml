@@ -1,0 +1,135 @@
+output:
+  meta:
+    description: "Output config for Epiweek 202605."
+    author: "MOBS lab"
+    version: "0.0.1"
+    date: "2026-02-04"
+
+  # Shared options. Surveillance data defined here can be referenced in other sections.
+  # Use the key to reference the surveillance source elsewhere (e.g. rate_trends_source: hosp)
+  options:
+    surveillance:
+      hosp:
+        data_path: data/covid-hospital-admissions2.csv
+        value_column: hospitalizations
+        date_column: date
+        location_column: location_iso
+
+
+  # Output formats for tabular data (CSVBytes saves as .csv.gz files)
+  tabular_output_types:
+    - CSVBytes
+
+  # Default format outputs quantiles of compartments and transitions
+  quantiles:
+    # Output all compartments if 'true', or supply list
+    compartments:
+      - Hosp_total
+      - Hosp_vax_total
+    # Output selected transitions
+    transitions:
+      - hospitalizations
+      - hospitalizations_rescaled
+      - Home_to_Hosp_total
+      - Home_vax_to_Hosp_vax_total
+    calibration: true
+
+  # Optional: specify which trajectories to output
+  trajectories:
+    compartments:
+      - Hosp_total
+      - Hosp_vax_total
+    transitions:
+      - hospitalizations
+      - hospitalizations_rescaled
+      - Home_to_Hosp_total
+      - Home_vax_to_Hosp_vax_total
+
+  # Set true for default behavior or use subfield 'generations'
+  posteriors: true
+
+  # # Hub format
+  # flusight_format:
+  #   reference_date: "2026-02-07"
+  #   rate_trends_source: hosp  # References surveillance source from options.surveillance
+
+  # Model metadata is always generated, even if the model_meta field is not present.
+  # Use the model_meta field to record projection parameters.
+  model_meta:
+    projection_parameters: true
+
+  # Visualization plots
+  plots:
+
+    # Output formats for plots. You can specify multiple formats.
+    # Supported formats: PDF, PNG, SVG
+    figure_output_types:
+      - PDF
+    dpi: 150                # DPI for raster formats (PNG)
+
+    reference_date: "2026-02-07"  # Forecast reference date (horizon 0 for forecast horizon calculation)
+
+    # Posterior distribution plots
+    posterior:
+      single: false          # One plot per location (uses all locations from calibrations). Boolean or list of locations.
+      grid: true            # Grid plot with all locations
+      bins: 10              # Number of histogram bins
+    
+    # Categorical plots
+    categorical:
+      horizons: [0, 1, 2, 3]
+
+    # Quantile ribbon plots
+    quantiles:
+
+      # Shared settings
+      quantiles: [0.025, 0.25, 0.5, 0.75, 0.975]  # 95% CrI + IQR + median
+      horizon_max: 3                              # Base maximum forecast horizon (weeks ahead). Can be overridden per output.
+
+      # Plot layout settings
+      single: false         # One plot per location. Boolean or list of locations.
+      grid:
+        enabled: true       # Create multi-location grid
+        panels_per_row: 4   # Number of panels per row in grid
+
+      # Output configurations - specify which plot types to generate
+      outputs:
+        # Filtered output: limited surveillance points for forecast focus
+        - type: filtered
+          show_calibration: false
+          show_projection: true
+          show_surveillance: true
+          surveillance_source: hosp       # Reference surveillance source from options.surveillance
+          show_fitting_window_line: true
+          surveillance_points: 32          # Show most recent 8 points
+          horizon_max: null               # Use base config value
+
+        # Full output: all surveillance points for full context
+        - type: full
+          show_calibration: false
+          show_projection: true
+          show_surveillance: true
+          surveillance_source: hosp        # Reference surveillance source from options.surveillance
+          show_fitting_window_line: true
+          surveillance_start_date: "2024-10-12"  # Show surveillance from this date forward
+          horizon_max: null                # Use base config value
+
+        # Side-by-side output: filtered and full combined
+        - type: side_by_side
+          show_calibration: false
+          show_projection: true
+          show_surveillance: true
+          surveillance_source: hosp        # Reference surveillance source from options.surveillance
+          show_fitting_window_line: true
+          full_panel:
+            surveillance_start_date: "2024-10-12"  # Show from this date forward
+          filtered_panel:
+            surveillance_points: 32         # Show last 8 points
+          spacing: 0.3
+          figsize: null                    # Auto-size
+
+      calibration:
+        color: "C0"
+
+      projection:
+        color: "C1"

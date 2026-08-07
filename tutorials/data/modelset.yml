@@ -1,0 +1,91 @@
+modelset:
+  meta:
+    description: "Calibration/projection for 2025-2026 Covid season"
+    author: "MOBS lab"
+    version: 1.0.0
+
+  population_names:
+    - US-MA
+    - US-CA
+  
+  calibration:
+    strategy:
+      name: top_fraction
+      options: 
+        top_fraction: 0.05
+        Nsim: 500
+    distance_function: rmse
+    observed_data_path: data/covid-hospital-admissions2.csv
+
+    post_hoc_transformation:
+      user_script_path: data/covid_rescaling.py
+      user_function_name: covid_rescaling
+      
+    comparison:
+      - observed_date_column: date
+        observed_value_column: hospitalizations 
+        observed_location_column: location_iso
+        simulation: 
+          - hospitalizations_rescaled
+
+    fitting_window: 
+      start_epiweek: 202523 
+      end_epiweek: 202622
+    
+    projection:
+      n_trajectories: 50
+    
+    compartments:
+      L:
+        prior:
+          type: scipy
+          name: uniform
+          args:
+            - 0.0001
+            - 0.0009
+      Initial_immune:
+        prior:
+          type: scipy
+          name: uniform
+          args:
+            - 0.05
+            - 0.45
+      
+    start_date:
+      reference_date: 2025-04-29 # Sunday
+      prior:
+        type: scipy
+        name: randint
+        args:
+        - 0
+        - 56
+      
+    parameters:
+      Reff:
+        prior:
+          type: scipy
+          name: uniform
+          args:
+            - 0.7
+            - 1.3
+      omega:
+        prior:
+          type: scipy
+          name: randint
+          args: 
+            - 4
+            - 9
+      eta:
+        prior:
+          type: scipy
+          name: randint
+          args:
+            - 4
+            - 9
+      alpha:
+        prior:
+          type: scipy
+          name: uniform
+          args:
+            - 0.5
+            - 1.0

@@ -437,6 +437,7 @@ def format_projection_trajectories(
     target_end_date: dt.date | None = None,
     resample_frequency: str | None = None,
     comparison_specs: list[ComparisonSpec] | None = None,
+    random_state: dict[str, Any] | None = None,
 ) -> dict:
     """
     Format simulation results for projection mode (flatten + pad for stacking).
@@ -464,6 +465,11 @@ def format_projection_trajectories(
     comparison_specs : list[ComparisonSpec] | None, optional
             List of comparison specifications for aggregating transitions.
             Each spec defines which transitions to sum and the output column name.
+    random_state : dict[str, Any] | None, optional
+            Random number generator state from rng.bit_generator.state, as used
+            for this simulation. Included in the output (mirroring
+            format_calibration_data) so projection trajectories can be
+            reproduced later the same way calibration trajectories are.
 
     Returns
     -------
@@ -472,6 +478,7 @@ def format_projection_trajectories(
             Arrays are padded with zeros at the beginning to match target length.
             If comparison_specs provided, also includes aggregated transition arrays
             with keys based on observed_value_column (e.g., "total_hosp").
+            If random_state is provided, included under the "random_state" key.
     """
     # Flatten results structure
     output = flatten_simulation_results(results)
@@ -482,6 +489,9 @@ def format_projection_trajectories(
         for spec in comparison_specs:
             aggregated = get_aggregated_comparison_transition(results, spec.simulation)
             output[spec.observed_value_column] = aggregated
+
+    if random_state is not None:
+        output["random_state"] = random_state
 
     # If no padding needed, return as-is
     if reference_start_date is None or actual_start_date is None or target_end_date is None:
@@ -592,10 +602,11 @@ def apply_seasonality_with_sampled_min(
     params: dict,
 ) -> None:
     """
-    Apply seasonality configuration, using sampled min_value if provided.
+    Apply seasonality configuration, using sampled parameter values if provided.
 
     Creates a deep copy of seasonality config to avoid mutating shared state,
-    optionally overrides min_value if it's being calibrated, then applies to model.
+    optionally overrides min_value (Balcan) or climate coefficients from params,
+    then applies to model.
 
     Parameters
     ----------
@@ -606,7 +617,8 @@ def apply_seasonality_with_sampled_min(
     timespan : Timespan
             Simulation timespan.
     params : dict
-            Simulation parameters, may contain "seasonality_min" if being calibrated.
+            Simulation parameters; may contain ``seasonality_min`` (Balcan) or
+            climate coefficient names (e.g. ``b1``, ``b2``, ``b3``) when calibrated.
     """
     if not basemodel.seasonality:
         return
@@ -614,11 +626,24 @@ def apply_seasonality_with_sampled_min(
     # Use copy to avoid mutating shared basemodel
     seasonality_config = copy.deepcopy(basemodel.seasonality)
 
-    # Override min_value if sampled/calibrated
+    # Override min_value if sampled/calibrated (Balcan)
     if "seasonality_min" in params:
         seasonality_config.min_value = params["seasonality_min"]
 
-    add_seasonality_from_config(model, seasonality_config, timespan)
+    param_overrides = None
+    if seasonality_config.method.value in ("humidity_only", "temperature_only"):
+        coeff_names = (seasonality_config.s_min_param,)
+        param_overrides = {name: params[name] for name in coeff_names if name in params}
+    elif seasonality_config.method.value == "data_driven":
+        coeff_names = (
+            seasonality_config.b1_param,
+            seasonality_config.b3_param,
+            seasonality_config.b4_param,
+            seasonality_config.s_min_param,
+        )
+        param_overrides = {name: params[name] for name in coeff_names if name in params}
+
+    add_seasonality_from_config(model, seasonality_config, timespan, param_overrides=param_overrides)
 
 
 def apply_vaccination_for_sampled_start(
@@ -687,11 +712,12 @@ def apply_calibrated_parameters(
             or None if no initial conditions are specified.
     """
     # Extract calibrated parameters
-    calibrated_params = {
-        k: Parameter(type="scalar", value=v)
-        for k, v in params.items()
-        if k in parameter_config and parameter_config[k].type == "calibrated"
-    }
+    calibrated_params: dict[str, Parameter] = {}
+    for name, raw_value in params.items():
+        if name not in parameter_config or parameter_config[name].type.value != "calibrated":
+            continue
+
+        calibrated_params[name] = Parameter(type="scalar", value=raw_value)
 
     if calibrated_params:
         add_model_parameters_from_config(model, calibrated_params)
@@ -699,7 +725,12 @@ def apply_calibrated_parameters(
     # Recalculate derived parameters if any exist
     has_calculated = any(param.type.value == "calculated" for param in parameter_config.values())
     if has_calculated:
-        calculate_parameters_from_config(model=model, parameters=parameter_config, compartment_init=compartment_init)
+        calculate_parameters_from_config(
+            model=model,
+            parameters=parameter_config,
+            compartment_init=compartment_init,
+            param_values=params,
+        )
 
 
 def compute_simulation_start_date(
@@ -752,7 +783,8 @@ class SimulateWrapperParams(TypedDict, total=False):
     end_date: dt.date
     projection: bool
     start_date: int  # Offset in days, present if start_date is calibrated
-    seasonality_min: float  # Present if seasonality minimum is calibrated
+    seasonality_min: float  # Present if seasonality minimum is calibrated (Balcan)
+    # b1, b2, b3 may appear when climate seasonality coefficients are calibrated
 
 
 def make_simulate_wrapper(
@@ -854,7 +886,9 @@ def make_simulate_wrapper(
                 - start_date : int, optional
                         Offset in days from reference date (if start_date is calibrated)
                 - seasonality_min : float, optional
-                        Minimum seasonality value (if seasonality is calibrated)
+                        Minimum seasonality value (Balcan, if seasonality min is calibrated)
+                - b1, b2, b3 : float, optional
+                        Climate seasonality coefficients when calibrated
                 - Additional calibrated parameter values (e.g., "beta", "initial_infected")
 
         Returns
@@ -990,6 +1024,7 @@ def make_simulate_wrapper(
                 target_end_date=params["end_date"],
                 resample_frequency=basemodel.simulation.resample_frequency,
                 comparison_specs=calibration.comparison,
+                random_state=random_state,
             )
 
         # Calibration: return aggregated data (aligned to observed dates)

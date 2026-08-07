@@ -33,7 +33,7 @@ from ..builders.utils import get_data_in_location, get_data_in_window
 from ..builders.vaccination import add_vaccination_schedules_from_config
 from ..schema.basemodel import BasemodelConfig, Parameter, Timespan
 from ..schema.calibration import CalibrationConfig
-from ..schema.dispatcher import BuilderOutput, ProjectionArguments, SimulationArguments
+from ..schema.dispatcher import BuilderOutput, ProjectionArguments, SimulationArguments, AnchoringArguments
 from ..schema.general import validate_cross_config_consistency
 from ..schema.sampling import SamplingConfig
 from ..school_closures import make_school_closure_dict
@@ -568,6 +568,24 @@ def build_calibration(
         projection_options = ProjectionArguments(**proj_options_dict)
     else:
         projection_options = None
+    
+    # Construct anchoring arguments if anchoring is specified
+    anchoring_options = None
+    if calibration.anchoring is not None:
+        # Use anchoring spec values, falling back to first comparison spec if not provided
+        first_comparison = calibration.comparison[0]
+        anchoring_options = AnchoringArguments(
+            anchor_start_date=calibration.anchoring.anchor_start_date,
+            anchor_end_date=calibration.anchoring.anchor_end_date,
+            top_fraction=calibration.anchoring.top_fraction,
+            distance_function=calibration.anchoring.distance_function,
+            observed_data_path=calibration.observed_data_path,
+            observed_value_column=calibration.anchoring.observed_value_column or first_comparison.observed_value_column,
+            observed_date_column=calibration.anchoring.observed_date_column or first_comparison.observed_date_column,
+            observed_location_column=calibration.anchoring.observed_location_column or first_comparison.observed_location_column,
+            simulation_target=calibration.anchoring.simulation or first_comparison.simulation,
+        )
+
 
     # Ensure models and specifications align
     assert len(models) == len(calibrators), (
@@ -584,6 +602,7 @@ def build_calibration(
             calibrator=t[1],
             calibration=calibration.strategy,
             projection=projection_options,
+            anchoring=anchoring_options,
             start_date_reference=calibration.start_date.reference_date if calibration.start_date else None,
         )
         for i, t in enumerate(zip(models, calibrators, strict=True))

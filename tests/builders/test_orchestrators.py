@@ -694,7 +694,26 @@ class TestApplyCalibratedParameters:
 
             # Should call both add and calculate
             mock_add.assert_called_once()
-            mock_calc.assert_called_once_with(model=model, parameters=parameter_config, compartment_init=None)
+            mock_calc.assert_called_once_with(
+                model=model, parameters=parameter_config, compartment_init=None, param_values=params
+            )
+
+    def test_calibrated_values_passed_through_unchanged(self):
+        """Calibrated parameter values are applied as-is without transformation."""
+        model = Mock()
+        params = {"omega_months": 5, "eta_months": 3}
+        parameter_config = {
+            "omega_months": Parameter(type="calibrated"),
+            "eta_months": Parameter(type="calibrated"),
+        }
+
+        with patch("epymodelingsuite.builders.orchestrators.add_model_parameters_from_config") as mock_add:
+            apply_calibrated_parameters(model, params, parameter_config, compartment_init=None)
+
+            mock_add.assert_called_once()
+            added_params = mock_add.call_args[0][1]
+            assert added_params["omega_months"].value == 5
+            assert added_params["eta_months"].value == 3
 
 
 class TestApplyVaccinationForSampledStart:
@@ -837,6 +856,24 @@ class TestApplySeasonalityWithSampledMin:
 
             # Original should not be mutated
             assert basemodel.seasonality.min_value == 0.5
+
+    def test_forwards_sampled_climate_coefficients(self):
+        """Test that sampled b1/b2/b3 are passed as param_overrides for climate seasonality."""
+        model = Mock()
+        seasonality_config = Seasonality(
+            method="data_driven",
+            target_parameter="beta",
+            seasonality_data_path="tests/data/climate_daily_test.csv",
+        )
+        basemodel = Mock(seasonality=seasonality_config)
+        timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 1, 3), delta_t=1.0)
+        params = {"b1": 0.002, "b3": 0.1}
+
+        with patch("epymodelingsuite.builders.orchestrators.add_seasonality_from_config") as mock_add:
+            apply_seasonality_with_sampled_min(model, basemodel, timespan, params)
+
+            mock_add.assert_called_once()
+            assert mock_add.call_args.kwargs["param_overrides"] == {"b1": 0.002, "b3": 0.1}
 
 
 class TestFormatCalibrationData:
@@ -1000,6 +1037,29 @@ class TestFormatProjectionTrajectories:
         # Should just flatten without padding
         assert result["date"] == results.dates
         np.testing.assert_array_equal(result["Hosp"], np.array([10, 20]))
+
+    def test_random_state_included_when_provided(self):
+        """random_state should be carried through into the output dict, like format_calibration_data."""
+        results = Mock()
+        results.dates = [date(2024, 1, 1), date(2024, 1, 2)]
+        results.transitions = {"Hosp": np.array([10, 20])}
+        results.compartments = {"S": np.array([1000, 990])}
+        random_state = {"bit_generator": "PCG64", "state": {"state": 1, "inc": 2}}
+
+        result = format_projection_trajectories(results=results, random_state=random_state)
+
+        assert result["random_state"] == random_state
+
+    def test_random_state_omitted_when_not_provided(self):
+        """Existing callers that don't pass random_state should see no such key (backward compat)."""
+        results = Mock()
+        results.dates = [date(2024, 1, 1), date(2024, 1, 2)]
+        results.transitions = {"Hosp": np.array([10, 20])}
+        results.compartments = {"S": np.array([1000, 990])}
+
+        result = format_projection_trajectories(results=results)
+
+        assert "random_state" not in result
 
     def test_pads_to_target_length(self):
         """Test that trajectories are padded to match target length."""
