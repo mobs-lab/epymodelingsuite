@@ -33,6 +33,7 @@ from epymodelingsuite.schema.basemodel import (
     Vaccination,
 )
 from epymodelingsuite.schema.calibration import ComparisonSpec
+from tests.conftest import make_sir_config
 
 
 class TestCreateModelCollection:
@@ -41,48 +42,7 @@ class TestCreateModelCollection:
     @pytest.fixture
     def base_model_config(self):
         """Create a minimal BaseEpiModel configuration for testing."""
-        compartments = [
-            Compartment(id="S", label="Susceptible", init="default"),
-            Compartment(id="I", label="Infected", init=10),
-            Compartment(id="R", label="Recovered", init=0),
-        ]
-
-        transitions = [
-            Transition(
-                source="S",
-                target="I",
-                type="mediated",
-                rate="beta",
-                mediator="I",
-            ),
-            Transition(
-                source="I",
-                target="R",
-                type="spontaneous",
-                rate="gamma",
-            ),
-        ]
-
-        parameters = {
-            "beta": Parameter(type="scalar", value=0.5),
-            "gamma": Parameter(type="scalar", value=0.1),
-        }
-
-        population = Population(name="US-CA", age_groups=["0-4", "5-17", "18-49", "50-64", "65+"])
-
-        timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
-
-        simulation = Simulation(n_sims=10, resample_frequency="W-SAT")
-
-        return BaseEpiModel(
-            name="test_model",
-            compartments=compartments,
-            transitions=transitions,
-            parameters=parameters,
-            population=population,
-            timespan=timespan,
-            simulation=simulation,
-        )
+        return make_sir_config()
 
     def test_creates_single_model_when_population_names_none(self, base_model_config):
         """Test that a single model is created when population_names is None."""
@@ -96,7 +56,7 @@ class TestCreateModelCollection:
         assert resolved_names[0] == "US-CA"
 
         # Model should have correct population (converted to epydemix format)
-        assert models[0].population.name == "United_States_California"
+        assert models[0].population.name == "United_States__California"
 
     def test_creates_multiple_models_for_multiple_populations(self, base_model_config):
         """Test that multiple models are created for a list of population names."""
@@ -109,7 +69,7 @@ class TestCreateModelCollection:
         assert resolved_names == population_names
 
         # Each model should have the correct population (converted to epydemix format)
-        expected_names = ["United_States_California", "United_States_Texas", "United_States_New_York"]
+        expected_names = ["United_States__California", "United_States__Texas", "United_States__New_York"]
         for model, expected_name in zip(models, expected_names, strict=False):
             assert model.population.name == expected_name
 
@@ -120,9 +80,9 @@ class TestCreateModelCollection:
             {
                 "ISO": ["US-CA", "US-VT", "US-WA"],
                 "location_name_epydemix": [
-                    "United_States_California",
-                    "United_States_Vermont",
-                    "United_States_Washington",
+                    "United_States__California",
+                    "United_States__Vermont",
+                    "United_States__Washington",
                 ],
             }
         )
@@ -144,11 +104,11 @@ class TestCreateModelCollection:
             {
                 "ISO": ["US-CA", "US-TX", "US-NY", "US-FL", "US-MA"],
                 "location_name_epydemix": [
-                    "United_States_California",
-                    "United_States_Texas",
-                    "United_States_New_York",
-                    "United_States_Florida",
-                    "United_States_Massachusetts",
+                    "United_States__California",
+                    "United_States__Texas",
+                    "United_States__New_York",
+                    "United_States__Florida",
+                    "United_States__Massachusetts",
                 ],
             }
         )
@@ -281,9 +241,9 @@ class TestCreateModelCollection:
 
         # All should be different (converted to epydemix format)
         assert len(set(model_pop_names)) == 3
-        assert "United_States_California" in model_pop_names
-        assert "United_States_Texas" in model_pop_names
-        assert "United_States_New_York" in model_pop_names
+        assert "United_States__California" in model_pop_names
+        assert "United_States__Texas" in model_pop_names
+        assert "United_States__New_York" in model_pop_names
 
     def test_model_name_is_set_from_config(self, base_model_config):
         """Test that model name is set from basemodel config."""
@@ -374,48 +334,7 @@ class TestSetupVaccinationSchedules:
     @pytest.fixture
     def base_model_config(self):
         """Create a minimal BaseEpiModel configuration for testing."""
-        compartments = [
-            Compartment(id="S", label="Susceptible", init="default"),
-            Compartment(id="I", label="Infected", init=10),
-            Compartment(id="R", label="Recovered", init=0),
-        ]
-
-        transitions = [
-            Transition(
-                source="S",
-                target="I",
-                type="mediated",
-                rate="beta",
-                mediator="I",
-            ),
-            Transition(
-                source="I",
-                target="R",
-                type="spontaneous",
-                rate="gamma",
-            ),
-        ]
-
-        parameters = {
-            "beta": Parameter(type="scalar", value=0.5),
-            "gamma": Parameter(type="scalar", value=0.1),
-        }
-
-        population = Population(name="US-CA", age_groups=["0-4", "5-17", "18-49", "50-64", "65+"])
-
-        timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
-
-        simulation = Simulation(n_sims=10, resample_frequency="W-SAT")
-
-        return BaseEpiModel(
-            name="test_model",
-            compartments=compartments,
-            transitions=transitions,
-            parameters=parameters,
-            population=population,
-            timespan=timespan,
-            simulation=simulation,
-        )
+        return make_sir_config()
 
     @pytest.fixture
     def base_model_with_vaccination(self, base_model_config, tmp_path):
@@ -733,7 +652,7 @@ class TestApplyCalibratedParameters:
         }
 
         with patch("epymodelingsuite.builders.orchestrators.add_model_parameters_from_config") as mock_add:
-            apply_calibrated_parameters(model, params, parameter_config)
+            apply_calibrated_parameters(model, params, parameter_config, compartment_init=None)
 
             # Should only extract beta and gamma (calibrated params)
             mock_add.assert_called_once()
@@ -753,7 +672,7 @@ class TestApplyCalibratedParameters:
         parameter_config = {"alpha": Parameter(type="scalar", value=0.1)}
 
         with patch("epymodelingsuite.builders.orchestrators.add_model_parameters_from_config") as mock_add:
-            apply_calibrated_parameters(model, params, parameter_config)
+            apply_calibrated_parameters(model, params, parameter_config, compartment_init=None)
 
             # Should not call add since no calibrated params
             mock_add.assert_not_called()
@@ -771,11 +690,11 @@ class TestApplyCalibratedParameters:
             patch("epymodelingsuite.builders.orchestrators.add_model_parameters_from_config") as mock_add,
             patch("epymodelingsuite.builders.orchestrators.calculate_parameters_from_config") as mock_calc,
         ):
-            apply_calibrated_parameters(model, params, parameter_config)
+            apply_calibrated_parameters(model, params, parameter_config, compartment_init=None)
 
             # Should call both add and calculate
             mock_add.assert_called_once()
-            mock_calc.assert_called_once_with(model, parameter_config)
+            mock_calc.assert_called_once_with(model=model, parameters=parameter_config, compartment_init=None)
 
 
 class TestApplyVaccinationForSampledStart:
@@ -855,15 +774,14 @@ class TestApplySeasonalityWithSampledMin:
         model = Mock()
         seasonality_config = Seasonality(
             method="balcan",
-            latitude=40.0,
             min_value=0.5,
             max_value=1.5,
             target_parameter="beta",
-            seasonality_min_date=date(2024, 7, 1),
-            seasonality_max_date=date(2024, 1, 1),
+            seasonality_max_date=date(2025, 12, 31),
+            seasonality_min_date=date(2026, 6, 15),
         )
         basemodel = Mock(seasonality=seasonality_config)
-        timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
+        timespan = Timespan(start_date=date(2025, 10, 1), end_date=date(2026, 5, 31), delta_t=1.0)
         params = {}
 
         with patch("epymodelingsuite.builders.orchestrators.add_seasonality_from_config") as mock_add:
@@ -880,15 +798,14 @@ class TestApplySeasonalityWithSampledMin:
         model = Mock()
         seasonality_config = Seasonality(
             method="balcan",
-            latitude=40.0,
             min_value=0.5,
             max_value=1.5,
             target_parameter="beta",
-            seasonality_min_date=date(2024, 7, 1),
-            seasonality_max_date=date(2024, 1, 1),
+            seasonality_max_date=date(2025, 12, 31),
+            seasonality_min_date=date(2026, 6, 15),
         )
         basemodel = Mock(seasonality=seasonality_config)
-        timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
+        timespan = Timespan(start_date=date(2025, 10, 1), end_date=date(2026, 5, 31), delta_t=1.0)
         params = {"seasonality_min": 0.3}
 
         with patch("epymodelingsuite.builders.orchestrators.add_seasonality_from_config") as mock_add:
@@ -905,15 +822,14 @@ class TestApplySeasonalityWithSampledMin:
         model = Mock()
         seasonality_config = Seasonality(
             method="balcan",
-            latitude=40.0,
             min_value=0.5,
             max_value=1.5,
             target_parameter="beta",
-            seasonality_min_date=date(2024, 7, 1),
-            seasonality_max_date=date(2024, 1, 1),
+            seasonality_max_date=date(2025, 12, 31),
+            seasonality_min_date=date(2026, 6, 15),
         )
         basemodel = Mock(seasonality=seasonality_config)
-        timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
+        timespan = Timespan(start_date=date(2025, 10, 1), end_date=date(2026, 5, 31), delta_t=1.0)
         params = {"seasonality_min": 0.3}
 
         with patch("epymodelingsuite.builders.orchestrators.add_seasonality_from_config"):
