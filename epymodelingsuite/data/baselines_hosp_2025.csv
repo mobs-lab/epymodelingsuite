@@ -1,0 +1,53 @@
+location_name,baseline,location_name_epydemix,location_name_epydemix_deprecated,location_abbreviation,location_code,ISO
+Alabama,21.08333333333333,United_States__Alabama,United_States_Alabama,AL,01,US-AL
+Alaska,3.4166666666666665,United_States__Alaska,United_States_Alaska,AK,02,US-AK
+Arizona,13.0,United_States__Arizona,United_States_Arizona,AZ,04,US-AZ
+Arkansas,3.25,United_States__Arkansas,United_States_Arkansas,AR,05,US-AR
+California,81.16666666666667,United_States__California,United_States_California,CA,06,US-CA
+Colorado,3.8333333333333335,United_States__Colorado,United_States_Colorado,CO,08,US-CO
+Connecticut,6.5,United_States__Connecticut,United_States_Connecticut,CT,09,US-CT
+Delaware,0.5,United_States__Delaware,United_States_Delaware,DE,10,US-DE
+District of Columbia,1.0833333333333333,United_States__District_of_Columbia,United_States_District_of_Columbia,DC,11,US-DC
+Florida,156.5,United_States__Florida,United_States_Florida,FL,12,US-FL
+Georgia,18.666666666666668,United_States__Georgia,United_States_Georgia,GA,13,US-GA
+Hawaii,3.5,United_States__Hawaii,United_States_Hawaii,HI,15,US-HI
+Idaho,1.5833333333333333,United_States__Idaho,United_States_Idaho,ID,16,US-ID
+Illinois,10.333333333333334,United_States__Illinois,United_States_Illinois,IL,17,US-IL
+Indiana,10.083333333333334,United_States__Indiana,United_States_Indiana,IN,18,US-IN
+Iowa,2.0,United_States__Iowa,United_States_Iowa,IA,19,US-IA
+Kansas,3.583333333333333,United_States__Kansas,United_States_Kansas,KS,20,US-KS
+Kentucky,10.166666666666666,United_States__Kentucky,United_States_Kentucky,KY,21,US-KY
+Louisiana,23.75,United_States__Louisiana,United_States_Louisiana,LA,22,US-LA
+Maine,0.6666666666666666,United_States__Maine,United_States_Maine,ME,23,US-ME
+Maryland,6.0,United_States__Maryland,United_States_Maryland,MD,24,US-MD
+Massachusetts,9.75,United_States__Massachusetts,United_States_Massachusetts,MA,25,US-MA
+Michigan,20.916666666666668,United_States__Michigan,United_States_Michigan,MI,26,US-MI
+Minnesota,2.6666666666666665,United_States__Minnesota,United_States_Minnesota,MN,27,US-MN
+Mississippi,13.416666666666666,United_States__Mississippi,United_States_Mississippi,MS,28,US-MS
+Missouri,11.583333333333334,United_States__Missouri,United_States_Missouri,MO,29,US-MO
+Montana,1.5833333333333333,United_States__Montana,United_States_Montana,MT,30,US-MT
+Nebraska,2.1666666666666665,United_States__Nebraska,United_States_Nebraska,NE,31,US-NE
+Nevada,6.416666666666667,United_States__Nevada,United_States_Nevada,NV,32,US-NV
+New Hampshire,1.8333333333333333,United_States__New_Hampshire,United_States_New_Hampshire,NH,33,US-NH
+New Jersey,11.833333333333334,United_States__New_Jersey,United_States_New_Jersey,NJ,34,US-NJ
+New Mexico,1.5833333333333333,United_States__New_Mexico,United_States_New_Mexico,NM,35,US-NM
+New York,17.25,United_States__New_York,United_States_New_York,NY,36,US-NY
+North Carolina,13.166666666666666,United_States__North_Carolina,United_States_North_Carolina,NC,37,US-NC
+North Dakota,1.8333333333333333,United_States__North_Dakota,United_States_North_Dakota,ND,38,US-ND
+Ohio,12.0,United_States__Ohio,United_States_Ohio,OH,39,US-OH
+Oklahoma,8.583333333333334,United_States__Oklahoma,United_States_Oklahoma,OK,40,US-OK
+Oregon,3.6666666666666665,United_States__Oregon,United_States_Oregon,OR,41,US-OR
+Pennsylvania,105.75,United_States__Pennsylvania,United_States_Pennsylvania,PA,42,US-PA
+Rhode Island,1.25,United_States__Rhode_Island,United_States_Rhode_Island,RI,44,US-RI
+South Carolina,8.583333333333334,United_States__South_Carolina,United_States_South_Carolina,SC,45,US-SC
+South Dakota,1.6666666666666667,United_States__South_Dakota,United_States_South_Dakota,SD,46,US-SD
+Tennessee,29.166666666666668,United_States__Tennessee,United_States_Tennessee,TN,47,US-TN
+Texas,100.5,United_States__Texas,United_States_Texas,TX,48,US-TX
+Utah,3.1666666666666665,United_States__Utah,United_States_Utah,UT,49,US-UT
+United States,889.0833333333334,United_States,United_States,US,US,US
+Vermont,0.1666666666666666,United_States__Vermont,United_States_Vermont,VT,50,US-VT
+Virginia,10.75,United_States__Virginia,United_States_Virginia,VA,51,US-VA
+Washington,7.75,United_States__Washington,United_States_Washington,WA,53,US-WA
+West Virginia,0.5,United_States__West_Virginia,United_States_West_Virginia,WV,54,US-WV
+Wisconsin,5.25,United_States__Wisconsin,United_States_Wisconsin,WI,55,US-WI
+Wyoming,0.75,United_States__Wyoming,United_States_Wyoming,WY,56,US-WY
