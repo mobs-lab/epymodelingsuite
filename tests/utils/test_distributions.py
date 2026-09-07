@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from epymodelingsuite.schema.common import Distribution
-from epymodelingsuite.utils.distributions import distribution_to_scipy
+from epymodelingsuite.utils.distributions import distribution_to_scipy, validate_distribution
 
 
 class TestDistributionToScipy:
@@ -56,20 +56,62 @@ class TestDistributionToScipy:
         assert all(0 <= s <= 1 for s in samples)
 
     def test_invalid_type_raises_error(self):
-        """Non-scipy type raises clear error (not UnboundLocalError)."""
+        """Custom distributions cannot be converted to SciPy distributions."""
         dist_config = Distribution(type="custom", name="foo", args=[])
 
-        # Currently raises UnboundLocalError - this test documents expected behavior
-        # The function should raise ValueError with a helpful message
-        with pytest.raises((ValueError, UnboundLocalError)):
+        with pytest.raises(ValueError, match="Cannot convert distribution type 'custom' to scipy"):
             distribution_to_scipy(dist_config)
 
-    def test_invalid_name_raises_attribute_error(self):
-        """Invalid scipy distribution name raises AttributeError."""
-        dist_config = Distribution(type="scipy", name="not_a_distribution", args=[])
+    def test_invalid_name_rejected_during_configuration(self):
+        """Invalid SciPy distribution names fail during model validation."""
+        with pytest.raises(ValueError, match=r"Unknown scipy\.stats distribution 'not_a_distribution'"):
+            Distribution(type="scipy", name="not_a_distribution", args=[])
 
-        with pytest.raises(AttributeError):
-            distribution_to_scipy(dist_config)
+    def test_non_distribution_scipy_name_rejected(self):
+        """Other scipy.stats functions are not accepted as random variables."""
+        with pytest.raises(ValueError, match="not a supported scalar continuous or discrete random variable"):
+            Distribution(type="scipy", name="describe", args=[])
+
+    def test_uniform_zero_scale_rejected_during_configuration(self):
+        """A zero-scale uniform prior is rejected before calibration starts."""
+        with pytest.raises(
+            ValueError,
+            match=r"scale must be a finite scalar greater than 0.*upper bound = loc \+ scale",
+        ):
+            Distribution(type="scipy", name="uniform", args=[1.0, 0.0])
+
+    def test_negative_keyword_scale_rejected_during_configuration(self):
+        """Scale validation supports keyword arguments."""
+        with pytest.raises(ValueError, match="scale must be a finite scalar greater than 0"):
+            Distribution(type="scipy", name="norm", kwargs={"loc": 0, "scale": -1})
+
+    @pytest.mark.parametrize("scale", [float("inf"), float("nan")])
+    def test_non_finite_scale_rejected(self, scale):
+        """Continuous distributions require finite scale values."""
+        with pytest.raises(ValueError, match="scale must be a finite scalar greater than 0"):
+            Distribution(type="scipy", name="norm", kwargs={"scale": scale})
+
+    def test_non_finite_location_rejected(self):
+        """All supported distributions require finite scalar locations."""
+        with pytest.raises(ValueError, match="loc must be a finite scalar"):
+            Distribution(type="scipy", name="poisson", kwargs={"mu": 2, "loc": float("inf")})
+
+    def test_invalid_discrete_parameters_rejected(self):
+        """Distribution-specific discrete constraints are checked through support."""
+        with pytest.raises(ValueError, match=r"Invalid parameters for scipy\.stats\.randint"):
+            Distribution(type="scipy", name="randint", args=[1, 1])
+
+    def test_invalid_continuous_shape_parameters_rejected(self):
+        """Distribution-specific continuous shape constraints are checked through support."""
+        with pytest.raises(ValueError, match=r"Invalid parameters for scipy\.stats\.beta"):
+            Distribution(type="scipy", name="beta", args=[-1, 2])
+
+    def test_validate_distribution_includes_runtime_context(self):
+        """Defensive validation errors identify the parameter being converted."""
+        dist_config = Distribution.model_construct(type="scipy", name="uniform", args=[1.0, 0.0], kwargs={})
+
+        with pytest.raises(ValueError, match=r"calibration parameter 'alpha'.*scale"):
+            validate_distribution(dist_config, context="calibration parameter 'alpha'")
 
     def test_default_type_is_scipy(self):
         """Distribution with default type (scipy) works correctly."""

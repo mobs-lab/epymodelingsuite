@@ -4,7 +4,7 @@ import datetime
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class Distribution(BaseModel):
@@ -27,6 +27,15 @@ class Distribution(BaseModel):
     kwargs: dict[str, Any] = Field(
         default_factory=dict, description="Keyword arguments for the distribution initializer"
     )
+
+    @model_validator(mode="after")
+    def validate_distribution_configuration(self) -> "Distribution":
+        """Validate distribution arguments when configuration models are created."""
+        # Import locally because the conversion utility uses Distribution for type checking.
+        from epymodelingsuite.utils.distributions import validate_distribution
+
+        validate_distribution(self)
+        return self
 
 
 class DateParameter(BaseModel):
