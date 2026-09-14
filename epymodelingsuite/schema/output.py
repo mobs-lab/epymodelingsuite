@@ -434,6 +434,14 @@ class QuantilesOutputConfig(BaseModel):
         None,
         description="X-axis label interval as pandas offset string (e.g., 'W-SAT', '2W-SAT', 'MS'). None = auto. For SIDE_BY_SIDE, use panel configs instead.",
     )
+    xlim_start: str | None = Field(
+        None,
+        description="Left x-axis limit for grid plot (YYYY-MM-DD). None = autoscale.",
+    )
+    xlim_end: str | None = Field(
+        None,
+        description="Right x-axis limit for grid plot (YYYY-MM-DD). None = autoscale.",
+    )
 
     # Panel settings (only for SIDE_BY_SIDE type)
     full_panel: SideBySidePanelConfig | None = Field(
@@ -530,9 +538,9 @@ class QuantilesPlotConfig(BaseModel):
         description="Projection period quantile ribbons (default enabled). Set true to use default options, or set options in subfields.",
     )
 
-    value_column: str = Field(
+    value_column: str | list[str] = Field(
         "hospitalizations",
-        description="Column name for projection quantiles to plot. Common values: 'hospitalizations', 'ed_signal', 'value'. Must match a transition name in output.quantiles.transitions.",
+        description="Column name (or list of column names to sum) for projection quantiles to plot. Common values: 'hospitalizations', 'ed_signal', 'value'. Must match transition name(s) in output.quantiles.transitions.",
     )
     ylabel: str | None = Field(
         default=None,

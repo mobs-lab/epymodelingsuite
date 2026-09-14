@@ -1,17 +1,75 @@
 """Seasonality building functions for EpiModel instances."""
 
 import logging
+from typing import Any
 
 import numpy as np
 from epydemix.model import EpiModel
 
 from ..schema.basemodel import Seasonality, Timespan
-from ..seasonality import get_seasonal_transmission_balcan
+from ..seasonality import (
+    get_seasonal_transmission_balcan,
+    get_seasonal_transmission_data_driven,
+    load_seasonality_data,
+)
 
 logger = logging.getLogger(__name__)
 
 
-def add_seasonality_from_config(model: EpiModel, seasonality: Seasonality, timespan: Timespan) -> EpiModel:
+def resolve_seasonality_location_from_population(
+    population_name: str,
+    location_format: str = "ISO",
+) -> str:
+    """
+    Map an epydemix population name to a seasonality data CSV location identifier.
+
+    ISO state populations use their ISO code (e.g. US-CA). Metrocast locations
+    inherit the parent state's seasonality series, matching contact-matrix resolution.
+    """
+    from ..utils.location import convert_location_name_format, get_parent_region, parse_population_name
+
+    location_name, location_type = parse_population_name(population_name)
+    if location_type == "iso":
+        iso = convert_location_name_format(location_name, "ISO")
+    else:
+        iso = get_parent_region(location_name, output_format="ISO", granularity="state")
+
+    if location_format == "ISO":
+        return iso
+    return convert_location_name_format(iso, location_format, input_format="ISO")
+
+
+def _resolve_seasonality_coeff(
+    param_name: str,
+    model: EpiModel,
+    param_overrides: dict[str, Any] | None,
+) -> float:
+    """Resolve a scalar seasonality coefficient from overrides or model parameters."""
+    if param_overrides is not None and param_name in param_overrides:
+        value = param_overrides[param_name]
+    else:
+        try:
+            value = model.get_parameter(param_name)
+        except KeyError as e:
+            raise ValueError(
+                f"Data-driven seasonality requires coefficient {param_name!r} as a model parameter "
+                f"or in param_overrides"
+            ) from e
+
+    if hasattr(value, "__len__") and not isinstance(value, str):
+        raise ValueError(
+            f"Data-driven seasonality coefficient {param_name!r} must be scalar, got shape "
+            f"{getattr(value, 'shape', len(value))}"
+        )
+    return float(value)
+
+
+def add_seasonality_from_config(
+    model: EpiModel,
+    seasonality: Seasonality,
+    timespan: Timespan,
+    param_overrides: dict[str, Any] | None = None,
+) -> EpiModel:
     """
     Add seasonally varying transmission rate to the EpiModel.
 
@@ -20,6 +78,7 @@ def add_seasonality_from_config(model: EpiModel, seasonality: Seasonality, times
         model: The EpiModel instance to apply seasonality to.
         seasonality: Seasonality configuration object.
         timespan: Timespan configuration object with simulation dates.
+        param_overrides: Optional sampled parameter values (e.g. calibrated b1, b2, b3).
 
     Returns
     -------
@@ -32,13 +91,11 @@ def add_seasonality_from_config(model: EpiModel, seasonality: Seasonality, times
         raise ValueError(f"Attempted to apply seasonality to undefined parameter {seasonality.target_parameter}")
 
     # Calculate rescaling factor with requested method
-    if seasonality.method == "balcan":
-        # Minimum transmission date is optional
+    if seasonality.method == Seasonality.SeasonalityMethodEnum.balcan:
         if seasonality.seasonality_min_date is not None:
             date_tmin = seasonality.seasonality_min_date
         else:
             date_tmin = None
-        # Do the calculation
         dates, st = get_seasonal_transmission_balcan(
             date_start=timespan.start_date,
             date_stop=timespan.end_date,
@@ -47,6 +104,56 @@ def add_seasonality_from_config(model: EpiModel, seasonality: Seasonality, times
             val_min=seasonality.min_value,
             val_max=seasonality.max_value,
             delta_t=timespan.delta_t,
+        )
+    elif seasonality.method in (
+        Seasonality.SeasonalityMethodEnum.data_driven,
+        Seasonality.SeasonalityMethodEnum.humidity_only,
+        Seasonality.SeasonalityMethodEnum.temperature_only,
+    ):
+        humidity_only = seasonality.method == Seasonality.SeasonalityMethodEnum.humidity_only
+        temperature_only = seasonality.method == Seasonality.SeasonalityMethodEnum.temperature_only
+        if humidity_only:
+            b1, b3, b4 = 1.0, 0.0, 0.0
+        elif temperature_only:
+            b1, b3, b4 = 0.0, 1.0, 0.0
+        else:
+            b1 = _resolve_seasonality_coeff(seasonality.b1_param, model, param_overrides)
+            b3 = _resolve_seasonality_coeff(seasonality.b3_param, model, param_overrides)
+            b4 = (
+                _resolve_seasonality_coeff(seasonality.b4_param, model, param_overrides)
+                if seasonality.mobility_column
+                else 0.0
+            )
+        s_min = _resolve_seasonality_coeff(seasonality.s_min_param, model, param_overrides)
+        seasonality_location = resolve_seasonality_location_from_population(
+            model.population.name,
+            location_format=seasonality.location_format,
+        )
+        seasonality_data = load_seasonality_data(
+            seasonality_data_path=seasonality.seasonality_data_path,
+            date_column=seasonality.date_column,
+            temp_column=seasonality.temp_column,
+            rh_column=seasonality.rh_column,
+            mobility_column=seasonality.mobility_column,
+            location=seasonality_location,
+            location_column=seasonality.location_column,
+        )
+        logger.info(
+            "Data-driven seasonality for population %s using location %s (method=%s)",
+            model.population.name,
+            seasonality_location,
+            seasonality.method.value,
+        )
+        dates, st = get_seasonal_transmission_data_driven(
+            date_start=timespan.start_date,
+            date_stop=timespan.end_date,
+            seasonality_data=seasonality_data,
+            b1=b1,
+            b3=b3,
+            s_min=s_min,
+            rh_optimum=seasonality.rh_optimum,
+            delta_t=timespan.delta_t,
+            b4=b4,
         )
     else:
         raise ValueError(f"Undefined seasonality method recieved: {seasonality.method}")

@@ -1,0 +1,77 @@
+# Minimal SIR model with climate seasonality for testing
+# Uses tests/data/climate_daily_test.csv (US-CA, 3 days: 2024-01-01 to 2024-01-03)
+model:
+  meta:
+    name: "minimal_sir_climate"
+    version: "1.0.0"
+    date: "2025-01-01"
+    description: "Minimal SIR model with climate seasonality for E2E testing"
+
+  timespan:
+    start_date: "2024-01-01"
+    end_date: "2024-01-03"
+    delta_t: 1.0
+
+  simulation:
+    resample_frequency: W-SAT
+    n_sims: 3
+
+  random_seed: 42
+
+  population:
+    name: US-CA
+    age_groups:
+      - "0-4"
+      - "5-17"
+      - "18-49"
+      - "50-64"
+      - "65+"
+
+  compartments:
+    - id: S
+      label: "Susceptible"
+      init: default
+    - id: I
+      label: "Infectious"
+      init: 100
+    - id: R
+      label: "Recovered"
+
+  transitions:
+    - type: mediated
+      source: S
+      target: I
+      mediator: I
+      rate: beta
+    - type: spontaneous
+      source: I
+      target: R
+      rate: mu
+
+  parameters:
+    beta:
+      type: scalar
+      value: 0.3
+    mu:
+      type: scalar
+      value: 0.1
+    b1:
+      type: scalar
+      value: 1.0e-4
+    b2:
+      type: scalar
+      value: 1.0
+    b3:
+      type: scalar
+      value: 0.01
+
+  seasonality:
+    target_parameter: beta
+    method: climate
+    climate_data_path: tests/data/climate_daily_test.csv
+    date_column: date
+    temp_column: temp
+    rh_column: humid_mean
+    location_column: Location
+    location_format: ISO
+    rh_optimum: 40.0

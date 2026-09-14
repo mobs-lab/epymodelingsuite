@@ -37,6 +37,18 @@ class ProjectionArguments(BaseModel):
         default=None, description="SMC generation number from which to draw parameter sets for projection."
     )
 
+class AnchoringArguments(BaseModel):
+    """Arguments for anchoring/filtering projections based on surveillance data."""
+
+    anchor_start_date: date = Field(description="Start date (inclusive) of the anchor date range")
+    anchor_end_date: date = Field(description="End date (inclusive) of the anchor date range")
+    top_fraction: float = Field(description="Fraction of projections to keep (between 0 and 1)")
+    distance_function: str = Field(description="Distance function name for comparing data")
+    observed_data_path: str = Field(description="Path to observed data CSV file")
+    observed_value_column: str = Field(description="Name of column containing observed values")
+    observed_date_column: str = Field(description="Name of column containing target dates")
+    observed_location_column: str = Field(description="Name of column containing location identifiers")
+    simulation_target: list[str] = Field(description="List of transition names to sum for comparison")
 
 class BuilderOutput(BaseModel):
     """
@@ -60,6 +72,9 @@ class BuilderOutput(BaseModel):
     )
     projection: ProjectionArguments | None = Field(
         None, description="Arguments for a single call to ABCSampler.run_projections"
+    )
+    anchoring: AnchoringArguments | None = Field(
+        None, description="Arguments for anchoring/filtering projections based on surveillance data"
     )
     start_date_reference: date | None = Field(
         None, description="Reference date for start_date parameter in calibration (used for posterior visualization)"

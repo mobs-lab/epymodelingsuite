@@ -67,11 +67,18 @@ class SafeEvalVisitor(ast.NodeVisitor):
         raise ValueError(f"Disallowed expression: {t.__name__}")
 
     def visit_BinOp(self, node):
+        if type(node.op) not in _allowed_operators:
+            raise ValueError(f"Operator {type(node.op).__name__} not allowed")
+
         left = self.visit(node.left)
         right = self.visit(node.right)
 
-        if type(node.op) not in _allowed_operators:
-            raise ValueError(f"Operator {type(node.op).__name__} not allowed")
+        # If either side isn't a pre-computable scalar/array (e.g. it's a
+        # np.xxx(...) call or a nested expression containing one), skip
+        # pre-computation and return None to signal "valid but not reducible".
+        # The actual evaluation is handled by eval() in the caller.
+        if left is None or right is None:
+            return None
 
         # Access node data, handle arrays
         if isinstance(left, ast.Constant) and isinstance(right, ast.Constant):
@@ -99,6 +106,9 @@ class SafeEvalVisitor(ast.NodeVisitor):
             calc_val = np.multiply(left, right, dtype=float)
         elif isinstance(node.op, ast.Div):
             calc_val = np.divide(left, right, dtype=float)
+
+        if calc_val is None:
+            return None
 
         if isinstance(calc_val, np.ndarray):
             ast_nodes = [ast.Constant(value=item) for item in calc_val.flatten()]
@@ -166,53 +176,65 @@ class RetrieveName(ast.NodeTransformer):
     Constructor requires an EpiModel with contact matrices, and optionally a dict with initial conditions.
     """
 
-    def __init__(self, model: EpiModel, compartment_init: dict[str, np.ndarray] | None):
+    def __init__(
+        self,
+        model: EpiModel,
+        compartment_init: dict[str, np.ndarray] | None,
+        param_values: dict[str, Any] | None = None,
+    ):
         self.model = model
         self.compartment_init = compartment_init
+        self.param_values = param_values
 
     def visit_Name(self, node):
-        if node.id not in _allowed_modules:
-            # Eigenvalue of contact matrix
-            if node.id == "eigenvalue":
-                try:
-                    C = np.sum([c for _, c in self.model.population.contact_matrices.items()], axis=0)
-                    eigenvalue = np.linalg.eigvals(C).real.max()
-                    return ast.fix_missing_locations(ast.Constant(value=float(eigenvalue)))
-                except Exception as e:
-                    raise ValueError(f"Error calculating eigenvalue of contact matrix: {e}")
+        if node.id in _allowed_modules:
+            return node
 
-            # Proportion of population in compartment from initial conditions
-            elif node.id in self.model.compartments:
-                if self.compartment_init is None:
-                    raise ValueError(
-                        f"Parameter calculation received compartment id {node.id} but initial conditions were not provided."
-                    )
-                if node.id not in self.compartment_init:
-                    raise ValueError(
-                        f"Parameter calculation received compartment id {node.id} but compartment is missing from provided initial conditions."
-                    )
-                try:
-                    init_count = self.compartment_init.get(node.id).sum()
-                    proportion = init_count / self.model.population.Nk.sum()
-                    return ast.fix_missing_locations(ast.Constant(value=float(proportion)))
-                except Exception as e:
-                    raise ValueError(
-                        f"Error calculating proportion of population in compartment{node.id} from initial conditions: {e}"
-                    )
+        # Eigenvalue of contact matrix
+        if node.id == "eigenvalue":
+            try:
+                C = np.sum([c for _, c in self.model.population.contact_matrices.items()], axis=0)
+                eigenvalue = np.linalg.eigvals(C).real.max()
+                return ast.fix_missing_locations(ast.Constant(value=float(eigenvalue)))
+            except Exception as e:
+                raise ValueError(f"Error calculating eigenvalue of contact matrix: {e}")
 
-            # Model parameter
-            else:
-                try:
-                    value = self.model.get_parameter(node.id)
-                    if isinstance(value, np.ndarray):
-                        assert value.shape[0] == 1, (
-                            "Parameter calculation using parameters with array values is only implemented for age-varying parameters."
-                        )
-                        ast_nodes = [ast.Constant(value=float(item)) for item in value.flatten()]
-                        return ast.fix_missing_locations(ast.List(elts=ast_nodes, ctx=ast.Load()))
-                    return ast.fix_missing_locations(ast.Constant(value=float(value)))
-                except Exception as e:
-                    raise ValueError(f"Error obtaining parameter value during calculation: {e}")
+        # Proportion of population in compartment from initial conditions
+        elif node.id in self.model.compartments:
+            if self.compartment_init is None:
+                raise ValueError(
+                    f"Parameter calculation received compartment id {node.id} but initial conditions were not provided."
+                )
+            if node.id not in self.compartment_init:
+                raise ValueError(
+                    f"Parameter calculation received compartment id {node.id} but compartment is missing from provided initial conditions."
+                )
+            try:
+                init_count = self.compartment_init.get(node.id).sum()
+                proportion = init_count / self.model.population.Nk.sum()
+                return ast.fix_missing_locations(ast.Constant(value=float(proportion)))
+            except Exception as e:
+                raise ValueError(
+                    f"Error calculating proportion of population in compartment{node.id} from initial conditions: {e}"
+                )
+
+        # Model parameter (on model, or from current sample dict during calibration)
+        else:
+            if self.param_values is not None and node.id in self.param_values:
+                raw = self.param_values[node.id]
+                if isinstance(raw, (int, float, np.integer, np.floating)):
+                    return ast.fix_missing_locations(ast.Constant(value=float(raw)))
+            try:
+                value = self.model.get_parameter(node.id)
+                if isinstance(value, np.ndarray):
+                    assert value.shape[0] == 1, (
+                        "Parameter calculation using parameters with array values is only implemented for age-varying parameters."
+                    )
+                    ast_nodes = [ast.Constant(value=float(item)) for item in value.flatten()]
+                    return ast.fix_missing_locations(ast.List(elts=ast_nodes, ctx=ast.Load()))
+                return ast.fix_missing_locations(ast.Constant(value=float(value)))
+            except Exception as e:
+                raise ValueError(f"Error obtaining parameter value during calculation: {e}")
 
 
 def safe_eval(expr: str) -> Any:
