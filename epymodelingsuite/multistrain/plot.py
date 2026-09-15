@@ -128,7 +128,7 @@ def make_fit_start_labels(
 def plot_hosp_multistrain_quantiles(
     populations: list[str],
     reference_date: date,
-    multistrain_quantiles: pd.DataFrame,
+    multistrain_quantiles: dict[str,pd.DataFrame],
     single_strain_quantiles: pd.DataFrame | None,
     surveillance_fit: pd.DataFrame,
     surveillance_recent: pd.DataFrame | None,
@@ -148,7 +148,9 @@ def plot_hosp_multistrain_quantiles(
         abbrev = convert_location_name_format(value=pop, output_format="abbreviation", location_type="iso")
 
         # Get data for this population
-        agg_pop = multistrain_quantiles[multistrain_quantiles["abbreviation"] == abbrev]
+        agg_pops = {}
+        for label, agg_df in multistrain_quantiles.items():
+            agg_pops[label] = agg_df[agg_df["abbreviation"] == abbrev]
         surv_fit_pop = surveillance_fit[surveillance_fit["abbreviation"] == abbrev]
         if surveillance_recent is not None:
             surv_recent_pop = surveillance_recent[surveillance_recent["abbreviation"] == abbrev]
@@ -156,24 +158,28 @@ def plot_hosp_multistrain_quantiles(
             single_pop = single_strain_quantiles[single_strain_quantiles["abbreviation"] == abbrev]
 
         # Plot multistrain (blue)
-        ax.fill_between(
-            agg_pop["date"], agg_pop["q025"], agg_pop["q975"], alpha=0.15, color="blue", label="Multistrain 95% PI"
-        )
-        ax.fill_between(
-            agg_pop["date"], agg_pop["q250"], agg_pop["q750"], alpha=0.3, color="blue", label="Multistrain 50% PI"
-        )
-        ax.plot(agg_pop["date"], agg_pop["q500"], "b-", linewidth=1.5, label="Multistrain median")
+        agg_idx = 0
+        colors = ["blue","darkorange","darkred","aqua","olive"]
+        for agg_label, agg_pop in agg_pops.items():
+            ax.fill_between(
+                agg_pop["date"], agg_pop["q025"], agg_pop["q975"], alpha=0.15, color=colors[agg_idx], label=f"{agg_label} 95% PI"
+            )
+            ax.fill_between(
+                agg_pop["date"], agg_pop["q250"], agg_pop["q750"], alpha=0.3, color=colors[agg_idx], label=f"{agg_label} 50% PI"
+            )
+            ax.plot(agg_pop["date"], agg_pop["q500"], color=colors[agg_idx], ls="-", linewidth=1.5)#, label=f"{agg_label} median"
+            agg_idx += 1
 
         # Plot single strain (green)
         if single_strain_quantiles is not None:
-            ax.fill_between(
-                single_pop["date"],
-                single_pop["q025"],
-                single_pop["q975"],
-                alpha=0.15,
-                color="green",
-                label="Single strain 95% PI",
-            )
+            #ax.fill_between(
+            #    single_pop["date"],
+            #    single_pop["q025"],
+            #    single_pop["q975"],
+            #    alpha=0.15,
+            #    color="green",
+            #    label="Single strain 95% PI",
+            #)
             ax.fill_between(
                 single_pop["date"],
                 single_pop["q250"],
@@ -229,7 +235,7 @@ def plot_hosp_multistrain_quantiles(
 
         # Only show legend for first subplot
         if idx == 0:
-            ax.legend(fontsize=8, loc="upper right")
+            ax.legend(fontsize=7)#, loc="upper right"
         # Hide any unused subplots
         for idx in range(len(populations), len(axes)):
             axes[idx].set_visible(False)

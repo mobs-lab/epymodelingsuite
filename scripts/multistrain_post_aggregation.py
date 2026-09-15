@@ -111,28 +111,33 @@ def main():
     ### Load aggregated trajectories
 
     print(f"\nLoading aggregated trajectories from {args.aggregated} ...")
-    try:
-        aggregated = pd.read_parquet(args.aggregated)
-    except Exception as e1:
+    aggregated_trajectories = {}
+    for traj_label, agg_config in config.aggregated.items(): 
+        read_path = f"{args.aggregated}{agg_config.trajectory_file}"
         try:
-            aggregated = pd.read_csv(args.aggregated)
-        except Exception as e2:
-            raise ValueError(
-                f"Failed to read {args.aggregated} as either parquet or csv:\n\
-                Parquet error: \n{e1}\n\
-                CSV error: \n{e2}"
-            )
-    # Format trajectories
-    aggregated = aggregated[
-        [
-            config.aggregated.date_column,
-            config.aggregated.location_column,
-            config.aggregated.target_column,
-            "sample_id",
+            aggregated = pd.read_parquet(read_path)
+        except Exception as e1:
+            try:
+                aggregated = pd.read_csv(read_path)
+            except Exception as e2:
+                raise ValueError(
+                    f"Failed to read {read_path} as either parquet or csv:\n\
+                    Parquet error: \n{e1}\n\
+                    CSV error: \n{e2}"
+                )
+        # Format trajectories
+        aggregated = aggregated[
+            [
+                agg_config.date_column,
+                agg_config.location_column,
+                agg_config.target_column,
+                "sample_id",
+            ]
         ]
-    ]
-    aggregated = cols_to_dt(aggregated, [config.aggregated.date_column])
-    print(aggregated.tail())
+        aggregated = cols_to_dt(aggregated, [agg_config.date_column])
+        aggregated_trajectories[traj_label] = aggregated
+        print(f"  Loaded '{traj_label}' trajectories from {read_path}")
+        print(aggregated.tail(5))
 
     ### Load single strain trajectories
     if config.single_strain is None:
@@ -151,96 +156,101 @@ def main():
         print(single_strain.tail())
 
     ### Submission file
+    
+    if config.submission is not None:
+        print("\nGenerating submission file ...")
 
-    print("\nGenerating submission file ...")
+        # Compute rate trend categories for each trajectory
+        # Baseline comes from surveillance data, target from trajectories
+        print("  Computing rate-trends ...")
+        categories_df = compute_rate_trend_categories(
+            df=aggregated_trajectories[config.submission.trajectories_label],
+            reference_date=reference_date,
+            surveillance_df=surv_fit,
+            horizons=get_flusight_categorical_horizons(),
+            value_col=config.aggregated[config.submission.trajectories_label].target_column,
+            surveillance_date_col=config.surveillance.date_column,
+            surveillance_value_col=config.surveillance.target_column,
+            surveillance_location_col="abbreviation",
+        )
+        print(f"    Categories computed: {len(categories_df):,} rows")
+        print(f"    Unique populations: {categories_df['population'].nunique()}")
+        print(f"    Horizons: {sorted(categories_df['horizon'].unique())}")
+        print("\n    Category distribution:")
+        print(categories_df["category"].value_counts())
+        print("\n    Baseline values come from surveillance (same for all samples per location):")
+        print(categories_df.tail())
 
-    # Compute rate trend categories for each trajectory
-    # Baseline comes from surveillance data, target from trajectories
-    print("  Computing rate-trends ...")
-    categories_df = compute_rate_trend_categories(
-        df=aggregated,
-        reference_date=reference_date,
-        surveillance_df=surv_fit,
-        horizons=get_flusight_categorical_horizons(),
-        value_col=config.aggregated.target_column,
-        surveillance_date_col=config.surveillance.date_column,
-        surveillance_value_col=config.surveillance.target_column,
-        surveillance_location_col="abbreviation",
-    )
-    print(f"    Categories computed: {len(categories_df):,} rows")
-    print(f"    Unique populations: {categories_df['population'].nunique()}")
-    print(f"    Horizons: {sorted(categories_df['horizon'].unique())}")
-    print("\n    Category distribution:")
-    print(categories_df["category"].value_counts())
-    print("\n    Baseline values come from surveillance (same for all samples per location):")
-    print(categories_df.tail())
+        # Compute PMF from categories
+        pmf_df = compute_rate_trend_pmf(categories_df)
+        print(f"    PMF shape: {pmf_df.shape}")
+        print(f"    Columns: {pmf_df.columns.tolist()}")
+        print(f"\n    Probabilities sum to 1: {(pmf_df[RATE_TREND_CATEGORIES].sum(axis=1).round(6) == 1).all()}")
+        # Format PMF for hub submission (long format)
+        pmf_long = pmf_df.melt(
+            id_vars=["population", "abbreviation", "horizon", "target_date"],
+            value_vars=RATE_TREND_CATEGORIES,
+            var_name="output_type_id",
+            value_name="value",
+        )
+        # Add required columns for FluSight format
+        pmf_long["target"] = "wk flu hosp rate change"
+        pmf_long["output_type"] = "pmf"
+        pmf_long["location"] = pmf_long["abbreviation"]
+        # Reorder columns
+        hub_pmf = pmf_long[["location", "target", "horizon", "target_date", "output_type", "output_type_id", "value"]]
+        print(f"    PMF hub submission format shape: {hub_pmf.shape}")
+        print("\n    Sample rows:")
+        print(hub_pmf.head(15))
+        # Verify probabilities sum to 1 for each location/horizon
+        verification = hub_pmf.groupby(["location", "horizon"])["value"].sum()
+        print("    All PMFs sum to 1:", (verification.round(6) == 1).all())
+        print(f"\n    Total PMF entries: {len(hub_pmf)}")
+        print(f"    Locations: {hub_pmf['location'].nunique()}")
+        print(f"    Horizons: {sorted(hub_pmf['horizon'].unique())}")
+        print(f"    Categories per location/horizon: {len(RATE_TREND_CATEGORIES)}")
 
-    # Compute PMF from categories
-    pmf_df = compute_rate_trend_pmf(categories_df)
-    print(f"    PMF shape: {pmf_df.shape}")
-    print(f"    Columns: {pmf_df.columns.tolist()}")
-    print(f"\n    Probabilities sum to 1: {(pmf_df[RATE_TREND_CATEGORIES].sum(axis=1).round(6) == 1).all()}")
-    # Format PMF for hub submission (long format)
-    pmf_long = pmf_df.melt(
-        id_vars=["population", "abbreviation", "horizon", "target_date"],
-        value_vars=RATE_TREND_CATEGORIES,
-        var_name="output_type_id",
-        value_name="value",
-    )
-    # Add required columns for FluSight format
-    pmf_long["target"] = "wk flu hosp rate change"
-    pmf_long["output_type"] = "pmf"
-    pmf_long["location"] = pmf_long["abbreviation"]
-    # Reorder columns
-    hub_pmf = pmf_long[["location", "target", "horizon", "target_date", "output_type", "output_type_id", "value"]]
-    print(f"    PMF hub submission format shape: {hub_pmf.shape}")
-    print("\n    Sample rows:")
-    print(hub_pmf.head(15))
-    # Verify probabilities sum to 1 for each location/horizon
-    verification = hub_pmf.groupby(["location", "horizon"])["value"].sum()
-    print("    All PMFs sum to 1:", (verification.round(6) == 1).all())
-    print(f"\n    Total PMF entries: {len(hub_pmf)}")
-    print(f"    Locations: {hub_pmf['location'].nunique()}")
-    print(f"    Horizons: {sorted(hub_pmf['horizon'].unique())}")
-    print(f"    Categories per location/horizon: {len(RATE_TREND_CATEGORIES)}")
-
-    # Create complete FluSight submission
-    print("  Creating submission file ...")
-    submission = create_flusight_submission(
-        trajectories_df=aggregated,
-        pmf_df=pmf_df,
-        reference_date=reference_date,
-        horizons=get_flusight_horizons(),
-        value_col=config.aggregated.target_column,
-    )
-    print(f"    Submission shape: {submission.shape}")
-    print(f"\n    Columns: {submission.columns.tolist()}")
-    print(f"\n    Targets: {submission['target'].unique()}")
-    print(f"    Output types: {submission['output_type'].unique()}")
-    print(f"    Horizons: {sorted(submission['horizon'].unique())}")
-    print(f"    Locations: {submission['location'].nunique()}")
-    print("\n    Rows per target:")
-    print(submission.groupby(["target", "output_type"]).size())
-    sub_file = f"{reference_date}-{config.submission.model_name}.parquet"
-    submission.to_parquet(f"{subs_path}/{sub_file}")
-    print(f"Saved submission to {subs_path}/{sub_file}\n")
+        # Create complete FluSight submission
+        print("  Creating submission file ...")
+        submission = create_flusight_submission(
+            trajectories_df=aggregated_trajectories[config.submission.trajectories_label],
+            pmf_df=pmf_df,
+            reference_date=reference_date,
+            horizons=get_flusight_horizons(),
+            value_col=config.aggregated[config.submission.trajectories_label].target_column,
+        )
+        print(f"    Submission shape: {submission.shape}")
+        print(f"\n    Columns: {submission.columns.tolist()}")
+        print(f"\n    Targets: {submission['target'].unique()}")
+        print(f"    Output types: {submission['output_type'].unique()}")
+        print(f"    Horizons: {sorted(submission['horizon'].unique())}")
+        print(f"    Locations: {submission['location'].nunique()}")
+        print("\n    Rows per target:")
+        print(submission.groupby(["target", "output_type"]).size())
+        sub_file = f"{reference_date}-{config.submission.model_name}.parquet"
+        submission.to_parquet(f"{subs_path}/{sub_file}")
+        print(f"Saved submission to {subs_path}/{sub_file}\n")
 
     ### Generate plots
 
     print("\nGenerating plots ...")
-    # Compute quantiles
-    agg_quantiles = compute_quantiles(
-        aggregated,
-        value_col=config.aggregated.target_column,
-        date_col=config.aggregated.date_column,
-        location_col=config.aggregated.location_column,
-    )
-    # Add state abbreviations
-    agg_quantiles["abbreviation"] = agg_quantiles[config.aggregated.location_column].apply(
-        lambda l: convert_location_name_format(
-            value=l, output_format="abbreviation", input_format="epydemix_population", location_type="iso"
+    # Handle aggregated trajectories
+    aggregated_quantiles = {}
+    for traj_label, aggregated in aggregated_trajectories.items():
+        # Compute quantiles
+        agg_quantiles = compute_quantiles(
+            aggregated,
+            value_col=config.aggregated[traj_label].target_column,
+            date_col=config.aggregated[traj_label].date_column,
+            location_col=config.aggregated[traj_label].location_column,
         )
-    )
+        # Add state abbreviations
+        agg_quantiles["abbreviation"] = agg_quantiles[config.aggregated[traj_label].location_column].apply(
+            lambda l: convert_location_name_format(
+                value=l, output_format="abbreviation", input_format="epydemix_population", location_type="iso"
+            )
+        )
+        aggregated_quantiles[traj_label] = agg_quantiles
     # Do the same for single strain
     if single_strain is not None:
         single_quantiles = compute_quantiles(
@@ -257,13 +267,16 @@ def main():
     else:
         single_quantiles = None
     # Get sorted list of populations (US first, then states alphabetically)
-    populations = sorted(agg_quantiles[config.aggregated.location_column].unique())
+    print(aggregated_quantiles.keys())
+    print(config.plot.use_pops_from_agg_label)
+    populations = sorted(aggregated_quantiles[config.plot.use_pops_from_agg_label][config.aggregated[config.plot.use_pops_from_agg_label].location_column].unique())
     if "United_States" in populations:
         populations = ["United_States"] + [p for p in populations if p != "United_States"]
-    print(f"  Plotting {len(populations)} locations")
-    print(f"  Quantiles shape: {agg_quantiles.shape}")
-    print(f"  Quantile columns: {[c for c in agg_quantiles.columns if c.startswith('q')]}")
-    print(agg_quantiles.tail())
+    print(f"  Plotting {len(populations)} locations (based on {config.plot.use_pops_from_agg_label})")
+    #print(f"  Quantiles shape: {agg_quantiles.shape}")
+    #print(f"  Quantile columns: {[c for c in agg_quantiles.columns if c.startswith('q')]}")
+    #print(agg_quantiles.tail())
+    
     # Handle dates
     plotting_windows = make_plotting_windows(config)
     fit_start_labels = make_fit_start_labels(config)
@@ -273,27 +286,35 @@ def main():
         plot_start_date = pd.Timestamp(plotting_window[0])
         plot_end_date = pd.Timestamp(plotting_window[1])
         include_single = "" if config.single_strain is None else " vs Single Strain"
-        plot_title = f"{config.submission_week} Multistrain {config.aggregated.target_column}{include_single}"
-        plot_fname = f"{plot_focus.lower()}-{config.submission_week}-{config.aggregated.target_column}-multistrain{include_single.lower().replace(' ', '_')}.pdf"
+        multi_labels = ""
+        for traj_label in aggregated_quantiles.keys():
+            multi_labels += f"{traj_label} "
+        plot_title = f"{config.submission_week} {multi_labels}{include_single}"
+        plot_fname = f"{plot_focus.lower()}-{config.submission_week}-multistrain{include_single.lower().replace(' ', '_')}.pdf"
         plot_fpath = f"{plots_path}/{plot_fname}"
 
         # Format data
-        agg_quantiles_filter = (
-            agg_quantiles[
-                (agg_quantiles[config.aggregated.date_column] >= plot_start_date)
-                & (agg_quantiles[config.aggregated.date_column] < plot_end_date)
-            ]
-            .sort_values(config.aggregated.date_column)
-            .rename(columns={config.aggregated.date_column: "date"})
-        )
-        single_quantiles_filter = (
-            single_quantiles[
-                (single_quantiles[config.single_strain.date_column] >= plot_start_date)
-                & (single_quantiles[config.single_strain.date_column] < plot_end_date)
-            ]
-            .sort_values(config.single_strain.date_column)
-            .rename(columns={config.single_strain.date_column: "date"})
-        )
+        aggregated_quantiles_filter = {}
+        for traj_label, agg_quantiles in aggregated_quantiles.items():
+            agg_quantiles_filter = (
+                agg_quantiles[
+                    (agg_quantiles[config.aggregated[traj_label].date_column] >= plot_start_date)
+                    & (agg_quantiles[config.aggregated[traj_label].date_column] < plot_end_date)
+                ]
+                .sort_values(config.aggregated[traj_label].date_column)
+                .rename(columns={config.aggregated[traj_label].date_column: "date"})
+            )
+            aggregated_quantiles_filter[traj_label] = agg_quantiles_filter
+        single_quantiles_filter = None
+        if single_quantiles is not None:
+            single_quantiles_filter = (
+                single_quantiles[
+                    (single_quantiles[config.single_strain.date_column] >= plot_start_date)
+                    & (single_quantiles[config.single_strain.date_column] < plot_end_date)
+                ]
+                .sort_values(config.single_strain.date_column)
+                .rename(columns={config.single_strain.date_column: "date"})
+            )
         surv_fit_filter = (
             surv_fit[
                 (surv_fit[config.surveillance.date_column] >= plot_start_date)
@@ -318,7 +339,7 @@ def main():
         plot_hosp_multistrain_quantiles(
             populations=populations,
             reference_date=reference_dt,
-            multistrain_quantiles=agg_quantiles_filter,
+            multistrain_quantiles=aggregated_quantiles_filter,
             single_strain_quantiles=single_quantiles_filter,
             surveillance_fit=surv_fit_filter,
             surveillance_recent=surv_recent_filter,
@@ -327,6 +348,7 @@ def main():
             },
             plot_title=plot_title,
             save_path=plot_fpath,
+            subplots_per_row=config.plot.subplots_per_row,
         )
 
 

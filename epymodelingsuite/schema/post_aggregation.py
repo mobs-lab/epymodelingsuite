@@ -29,11 +29,12 @@ class SurveillanceConfig(BaseModel):
     )
 
 
-class AggregatedTrajectoriesConfig(BaseModel):
+class LocalTrajectoriesConfig(BaseModel):
     """
-    Specifications for aggregated trajectories.
+    Specifications for local trajectories file.
     """
 
+    trajectory_file: str = Field("", description="Path relative to `--aggregated` script argument.")
     target_column: str = Field(description="Name of column in trajectory file with target values.")
     date_column: str = Field("date", description="Name of column in trajectory file with target date.")
     location_column: str = Field("location", description="Name of column in trajectory file with location/population.")
@@ -42,10 +43,7 @@ class AggregatedTrajectoriesConfig(BaseModel):
 
 class SingleStrainConfig(BaseModel):
     """
-    Source experiment specification for single-strain comparison.
-
-    Experiment identifiers for integration with an external pipeline, e.g. epycloud.
-    Used to locate single-strain trajectories for comparison with multistrain.
+    Remote trajectories specification for single-strain plot comparison.
     """
 
     bucket: str = Field(description="Path to bucket on cloud e.g. 'gs://gs_mobs_jessica/pipeline/flu'")
@@ -67,7 +65,7 @@ class FitStartConfig(BaseModel):
     Configuration for marking the beginning of a strain's fitting window.
     """
 
-    label: str = Field(description="Label for strain.")
+    label: str = Field(description="Label for strain(s).")
     week: str | int = Field(description="Epiweek in CDC format, i.e. 'YYYYww'")
 
     @field_validator("week")
@@ -87,6 +85,8 @@ class MultistrainPlotConfig(BaseModel):
     Configuration for multistrain plots.
     """
 
+    use_pops_from_agg_label: str = Field(description="Label of aggregated trajectories to use for population selection (defined in `post_aggregation.aggregated`).")
+    subplots_per_row: int | None = Field(4, description="Number of subplots to place in each row, default 4.")
     season_start_week: str | int = Field(description="Epiweek in CDC format, i.e. 'YYYYww'")
     season_end_week: str | int = Field(description="Epiweek in CDC format, i.e. 'YYYYww'")
     focus_start_week: str | int = Field(description="Epiweek in CDC format, i.e. 'YYYYww'")
@@ -124,7 +124,8 @@ class MultistrainSubmissionConfig(BaseModel):
     Configuration for submission file.
     """
 
-    model_name: str = Field(description="")
+    trajectories_label: str = Field(description="Label of aggregated trajectories to use for submission (defined in `post_aggregation.aggregated`).")
+    model_name: str = Field(description="Model name for submission file.")
 
 
 class PostAggregationConfiguration(BaseModel):
@@ -135,12 +136,12 @@ class PostAggregationConfiguration(BaseModel):
     surveillance: SurveillanceConfig = Field(
         description="Specification for surveillance file. Expected to be either on GitHub or local."
     )
-    aggregated: AggregatedTrajectoriesConfig = Field(description="Specifications for aggregated trajectories.")
+    aggregated: dict[str,LocalTrajectoriesConfig] = Field(description="Labels and specifications for local trajectories. If supplying multiple, all will be plotted.")
     single_strain: SingleStrainConfig | None = Field(
         None, description="Source experiment specification for single-strain comparison."
     )
-    submission: MultistrainSubmissionConfig = Field(description="Configuration for submission file.")
-    plot: MultistrainPlotConfig = Field(description="Configuration for multistrain plots.")
+    submission: MultistrainSubmissionConfig | None = Field(None, description="Configuration for submission file.")
+    plot: MultistrainPlotConfig | None = Field(None, description="Configuration for multistrain plots.")
 
 
 class PostAggregationConfig(BaseModel):
