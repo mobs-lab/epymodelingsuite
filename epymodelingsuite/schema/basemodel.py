@@ -5,7 +5,6 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from ..utils import validate_iso3166
 from .common import Meta
 
 logger = logging.getLogger(__name__)
@@ -55,21 +54,40 @@ class Simulation(BaseModel):
     )
 
 
+class LocationTypeEnum(str, Enum):
+    """Types of location identifiers."""
+
+    iso = "iso"
+    metrocast_location = "metrocast_location"
+
+
 class Population(BaseModel):
     """Population configuration."""
 
     name: str | None = Field(
         None,
-        description="Location code in ISO 3166. Use ISO 3166-2 for states (e.g., 'US-NY') and ISO 3166-1 alpha 2 for countries (e.g., 'US')",
+        description="Location identifier (ISO 3166 code or metrocast location name). Use ISO 3166-2 for states (e.g., 'US-NY') and ISO 3166-1 alpha 2 for countries (e.g., 'US'). For metrocast locations, use the location name (e.g., 'denver').",
+    )
+    location_type: LocationTypeEnum = Field(
+        LocationTypeEnum.iso,
+        description="Location type (iso or metrocast_location)",
+    )
+    contact_matrix: str | None = Field(
+        None,
+        description="Override contact matrix source (ISO code, e.g., US-MA)",
     )
     age_groups: list[str] = Field(
         description="List of age groups in the population (e.g., ['0-4', '5-17', '18-49', '50-64', '65+'])"
     )
 
-    @field_validator("name")
-    @classmethod
-    def validate_name(cls, v: str):
-        return validate_iso3166(v)
+    @model_validator(mode="after")
+    def validate_location(self):
+        """Validate location using type-specific validator."""
+        from ..utils.location import validate_location_by_type
+
+        if self.name:
+            validate_location_by_type(self.name, self.location_type)
+        return self
 
 
 class Compartment(BaseModel):
@@ -245,8 +263,12 @@ class Seasonality(BaseModel):
     method: SeasonalityMethodEnum = Field(description="Method for defining a seasonally varying function")
     seasonality_max_date: date = Field(description="Date of seasonality peak (max transmissibility)")
     seasonality_min_date: date | None = Field(None, description="Date of seasonality trough (min transmissibility)")
-    max_value: float = Field(description="Maximum value that the parameter can take after scaling.")
-    min_value: float = Field(description="Minimum value that the parameter can take after scaling.")
+    max_value: float = Field(
+        description="Together with min_value, determines the trough as min_value/max_value. Typically set to 1.0. The output always peaks at 1.0 regardless of this value."
+    )
+    min_value: float = Field(
+        description="Together with max_value, determines the trough as min_value/max_value. When max_value=1.0, this directly equals the trough factor (e.g., 0.2 = 20% of peak)."
+    )
 
     @field_validator("seasonality_min_date")
     @classmethod
@@ -260,10 +282,10 @@ class Seasonality(BaseModel):
     @field_validator("min_value")
     @classmethod
     def check_scaling_minimum(cls, v: float, info: Any) -> float:
-        """Ensure minimum post-scaling seasonal parameter value is lesser than maximum value."""
+        """Ensure minimum scaling factor is less than maximum scaling factor."""
         max_val = info.data.get("max_value")
         if max_val and v > max_val:
-            raise ValueError("Seasonality min_value must be lesser than max_value")
+            raise ValueError("Seasonality min_value must be less than max_value")
         return v
 
 
@@ -484,6 +506,48 @@ class BaseEpiModel(BaseModel):
         if sampled_vars and calibrated_vars:
             msg = f"Cannot mix sampling and calibration workflows.\nDeclared sampled variables: {sampled_vars}\nDeclared calibrated variables: {calibrated_vars}"
             raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def check_weekly_frequency_end_date(self: "BaseEpiModel") -> "BaseEpiModel":
+        """Warn if end_date doesn't match the expected day for weekly resample_frequency."""
+        if not self.simulation or not self.simulation.resample_frequency:
+            return self
+
+        freq = self.simulation.resample_frequency
+        # Check if it's a weekly frequency (W-MON, W-TUE, ..., W-SUN)
+        if not freq.startswith("W-"):
+            return self
+
+        # Map day abbreviation to (weekday number, full day name)
+        # weekday(): Monday=0, ..., Sunday=6
+        day_info = {
+            "MON": (0, "Monday"),
+            "TUE": (1, "Tuesday"),
+            "WED": (2, "Wednesday"),
+            "THU": (3, "Thursday"),
+            "FRI": (4, "Friday"),
+            "SAT": (5, "Saturday"),
+            "SUN": (6, "Sunday"),
+        }
+        day_abbrev = freq[2:]  # Extract "SAT" from "W-SAT"
+
+        if day_abbrev not in day_info:
+            return self  # Not a recognized weekly frequency, skip validation
+
+        expected_weekday, expected_day_name = day_info[day_abbrev]
+        actual_weekday = self.timespan.end_date.weekday()
+
+        if actual_weekday != expected_weekday:
+            actual_day = self.timespan.end_date.strftime("%A")
+            logger.warning(
+                "When resample_frequency is '%s', %s is preferred for timespan.end_date. "
+                "Received end_date=%s which is a %s.",
+                freq,
+                expected_day_name,
+                self.timespan.end_date,
+                actual_day,
+            )
         return self
 
     @field_validator("interventions")

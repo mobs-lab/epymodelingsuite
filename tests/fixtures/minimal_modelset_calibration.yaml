@@ -1,0 +1,48 @@
+# Minimal modelset config for calibration E2E testing
+modelset:
+  meta:
+    description: "Minimal calibration config for E2E testing"
+    author: "Test"
+    version: "1.0.0"
+
+  population_names:
+    - US-MA
+
+  calibration:
+    strategy:
+      name: rejection
+      options:
+        num_particles: 20
+        epsilon: 100000  # Large epsilon for E2E test to ensure acceptance
+
+    distance_function: rmse
+    # observed_data_path is set dynamically in test
+
+    comparison:
+      - observed_date_column: date
+        observed_value_column: value
+        observed_location_column: location
+        simulation:
+          - I_to_R_total
+
+    fitting_window:
+      start_date: "2025-01-04"
+      end_date: "2025-02-22"
+
+    compartments:
+      I:
+        prior:
+          type: scipy
+          name: randint
+          args:
+            - 50
+            - 200
+
+    parameters:
+      beta:
+        prior:
+          type: scipy
+          name: uniform
+          args:
+            - 0.1
+            - 0.4

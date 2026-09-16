@@ -1,0 +1,13 @@
+modelset:
+  meta:
+    description: "Example SLIR sampling"
+    author: "epymodelingsuite"
+    version: "0.0.1"
+    date: "2038-01-19"
+
+  population_names:
+    - US-MA
+    - US-NY # or 'all'
+
+  # Sampling section can be omitted if we are only duplicating the basemodel for different populations
+  #  sampling:
