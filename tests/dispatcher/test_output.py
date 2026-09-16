@@ -9,8 +9,16 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from epymodelingsuite.dispatcher.output import filter_failed_projections
-from epymodelingsuite.schema.output import CategoricalPlotConfig, FigureOutputTypeEnum, PlotsConfig
+from epymodelingsuite.dispatcher.output import filter_failed_projections, generate_calibration_outputs
+from epymodelingsuite.schema.output import (
+    CategoricalPlotConfig,
+    FigureOutputTypeEnum,
+    ModelMetaOutput,
+    OutputConfig,
+    OutputConfiguration,
+    PlotsConfig,
+    TabularOutputTypeEnum,
+)
 from epymodelingsuite.visualization.generators import generate_categorical_plots
 
 
@@ -274,6 +282,286 @@ class TestFilterFailedProjections:
         # Should aggregate count across scenarios (1 + 2 = 3)
         assert hasattr(filtered, "_filtered_count")
         assert filtered._filtered_count == 3
+
+
+class TestFilterFailedProjectionsAlignsProjectionParameters:
+    """filter_failed_projections must filter projection_parameters with the same mask."""
+
+    @staticmethod
+    def _make_projection(seed_value: int) -> dict:
+        return {
+            "date": [date(2024, 1, 1), date(2024, 1, 8)],
+            "S_0-4": np.array([1000, 990 - seed_value]),
+        }
+
+    def test_mask_applied_to_projection_parameters(self):
+        results = MagicMock()
+        results.projections = {
+            "baseline": [
+                self._make_projection(0),
+                {},
+                self._make_projection(2),
+                {},
+                self._make_projection(4),
+            ]
+        }
+        results.projection_parameters = {
+            "baseline": pd.DataFrame({"Reff": [1.0, 2.0, 3.0, 4.0, 5.0]}),
+        }
+
+        filter_failed_projections(results)
+
+        assert len(results.projections["baseline"]) == 3
+        assert results.projection_parameters["baseline"]["Reff"].tolist() == [1.0, 3.0, 5.0]
+        assert results.projection_parameters["baseline"].index.tolist() == [0, 1, 2]
+
+    def test_missing_projection_parameters_does_not_raise(self):
+        # spec=["projections"] -> no projection_parameters attribute
+        results = MagicMock(spec=["projections"])
+        results.projections = {
+            "baseline": [self._make_projection(0), {}, self._make_projection(2)],
+        }
+
+        filter_failed_projections(results)
+
+        assert len(results.projections["baseline"]) == 2
+
+    def test_length_mismatch_logs_and_skips(self, caplog):
+        results = MagicMock()
+        results.projections = {
+            "baseline": [
+                self._make_projection(0),
+                {},
+                self._make_projection(2),
+                {},
+                self._make_projection(4),
+            ]
+        }
+        # Mismatched length (3 vs projections length 5).
+        results.projection_parameters = {
+            "baseline": pd.DataFrame({"Reff": [1.0, 2.0, 3.0]}),
+        }
+
+        with caplog.at_level("WARNING"):
+            filter_failed_projections(results)
+
+        # Projections still filtered.
+        assert len(results.projections["baseline"]) == 3
+        # projection_parameters left untouched on mismatch.
+        assert results.projection_parameters["baseline"]["Reff"].tolist() == [1.0, 2.0, 3.0]
+        assert any("differs from projections length" in rec.message for rec in caplog.records)
+
+    def test_multi_scenario_filtered_independently(self):
+        results = MagicMock()
+        results.projections = {
+            "baseline": [self._make_projection(0), {}, self._make_projection(2)],
+            "intervention": [{}, self._make_projection(1), self._make_projection(3), {}],
+        }
+        results.projection_parameters = {
+            "baseline": pd.DataFrame({"Reff": [0.1, 0.2, 0.3]}),
+            "intervention": pd.DataFrame({"Reff": [1.0, 1.1, 1.2, 1.3]}),
+        }
+
+        filter_failed_projections(results)
+
+        assert len(results.projections["baseline"]) == 2
+        assert results.projection_parameters["baseline"]["Reff"].tolist() == [0.1, 0.3]
+        assert len(results.projections["intervention"]) == 2
+        assert results.projection_parameters["intervention"]["Reff"].tolist() == [1.1, 1.2]
+
+
+class TestProjectionParametersLongFile:
+    """generate_calibration_outputs must emit projection_parameters_long as a tidy per-draw table."""
+
+    @staticmethod
+    def _build_output_config(*, projection_parameters: bool = True) -> OutputConfig:
+        return OutputConfig(
+            output=OutputConfiguration(
+                tabular_output_types=[TabularOutputTypeEnum.DataFrame],
+                quantiles=None,
+                trajectories=None,
+                posteriors=False,
+                flusight_format=None,
+                covid19_format=None,
+                flusmh_format=None,
+                model_meta=ModelMetaOutput(projection_parameters=projection_parameters),
+                plots=None,
+            )
+        )
+
+    @staticmethod
+    def _valid_projection() -> dict:
+        return {
+            "date": [pd.Timestamp("2024-05-01"), pd.Timestamp("2024-05-08")],
+            "S_0-4": np.array([1000, 990]),
+        }
+
+    def _make_calibration(
+        self,
+        *,
+        primary_id: int = 1,
+        seed: int = 42,
+        population: str = "United_States_California",
+        projections: dict | None = None,
+        projection_parameters: dict | None = None,
+    ) -> MagicMock:
+        calibration = MagicMock()
+        calibration.primary_id = primary_id
+        calibration.seed = seed
+        calibration.delta_t = 1.0
+        calibration.population = population
+        calibration.start_date_reference = None
+        calibration.results.projections = projections if projections is not None else {}
+        if projection_parameters is not None:
+            calibration.results.projection_parameters = projection_parameters
+        # Empty dicts make the fitting/projection-window branches skip to the None-append branch
+        # without triggering the exception-handling warning path.
+        calibration.results.get_calibration_trajectories.return_value = {}
+        calibration.results.get_projection_trajectories.return_value = {}
+        return calibration
+
+    def test_long_file_shape_and_columns(self):
+        projections = {"baseline": [self._valid_projection() for _ in range(1000)]}
+        proj_params = pd.DataFrame(
+            {
+                "Reff": np.linspace(1.0, 2.0, 1000),
+                "alpha": np.linspace(3.0, 9.0, 1000),
+            }
+        )
+        calibration = self._make_calibration(
+            projections=projections,
+            projection_parameters={"baseline": proj_params},
+        )
+
+        outputs = generate_calibration_outputs(calibrations=[calibration], output_config=self._build_output_config())
+
+        assert "projection_parameters_long" in outputs
+        long_df = outputs["projection_parameters_long"][0].data
+        assert long_df.shape == (1000, 7)
+        assert list(long_df.columns) == [
+            "primary_id",
+            "sim_id",
+            "scenario_id",
+            "seed",
+            "population",
+            "Reff",
+            "alpha",
+        ]
+
+    def test_long_file_content_matches_source(self):
+        projections = {"baseline": [self._valid_projection() for _ in range(1000)]}
+        proj_params = pd.DataFrame(
+            {
+                "Reff": np.linspace(1.0, 2.0, 1000),
+                "alpha": np.linspace(3.0, 9.0, 1000),
+            }
+        )
+        calibration = self._make_calibration(
+            projections=projections,
+            projection_parameters={"baseline": proj_params},
+        )
+
+        outputs = generate_calibration_outputs(calibrations=[calibration], output_config=self._build_output_config())
+        long_df = outputs["projection_parameters_long"][0].data
+
+        assert long_df.iloc[0]["Reff"] == proj_params.iloc[0]["Reff"]
+        assert long_df.iloc[999]["Reff"] == proj_params.iloc[999]["Reff"]
+        assert long_df["sim_id"].tolist() == list(range(1000))
+        assert (long_df["scenario_id"] == "baseline").all()
+        # Guard against regression to pandas-Series repr text (which truncates with "...").
+        for column in ("Reff", "alpha"):
+            assert long_df[column].dtype.kind == "f"
+            assert not long_df[column].astype(str).str.contains(r"\.\.\.", regex=True).any()
+
+    def test_sim_id_aligns_after_filter(self):
+        projections = [self._valid_projection() for _ in range(1000)]
+        for failed_index in (5, 17, 999):
+            projections[failed_index] = {}
+        proj_params = pd.DataFrame({"Reff": np.linspace(1.0, 2.0, 1000)})
+        calibration = self._make_calibration(
+            projections={"baseline": projections},
+            projection_parameters={"baseline": proj_params.copy()},
+        )
+
+        outputs = generate_calibration_outputs(calibrations=[calibration], output_config=self._build_output_config())
+        long_df = outputs["projection_parameters_long"][0].data
+
+        assert len(long_df) == 997
+        assert long_df["sim_id"].tolist() == list(range(997))
+        assert long_df.loc[0, "Reff"] == proj_params.iloc[0]["Reff"]
+        # Original row 5 was dropped, so long-file row 5 comes from original row 6.
+        assert long_df.loc[5, "Reff"] == proj_params.iloc[6]["Reff"]
+        # Original row 999 dropped; last kept row in params is original 998.
+        assert long_df.loc[996, "Reff"] == proj_params.iloc[998]["Reff"]
+
+    def test_multi_scenario_long_file(self):
+        projections = {
+            "baseline": [self._valid_projection() for _ in range(100)],
+            "counterfactual": [self._valid_projection() for _ in range(100)],
+        }
+        projection_parameters = {
+            "baseline": pd.DataFrame({"Reff": np.linspace(1.0, 2.0, 100)}),
+            "counterfactual": pd.DataFrame({"Reff": np.linspace(0.5, 1.5, 100)}),
+        }
+        calibration = self._make_calibration(projections=projections, projection_parameters=projection_parameters)
+
+        outputs = generate_calibration_outputs(calibrations=[calibration], output_config=self._build_output_config())
+        long_df = outputs["projection_parameters_long"][0].data
+
+        assert len(long_df) == 200
+        assert set(long_df["scenario_id"].unique()) == {"baseline", "counterfactual"}
+        assert set(long_df.columns) == {"primary_id", "sim_id", "scenario_id", "seed", "population", "Reff"}
+
+    def test_missing_projection_parameters_key(self):
+        # projections has "baseline" but projection_parameters is empty -> no long file,
+        # and no KeyError from the per-model proj_* block.
+        calibration = self._make_calibration(
+            projections={"baseline": [self._valid_projection()]},
+            projection_parameters={},
+        )
+
+        outputs = generate_calibration_outputs(calibrations=[calibration], output_config=self._build_output_config())
+
+        assert "projection_parameters_long" not in outputs
+
+    def test_flag_off_emits_nothing(self):
+        projections = {"baseline": [self._valid_projection() for _ in range(10)]}
+        proj_params = pd.DataFrame({"Reff": np.linspace(1.0, 2.0, 10)})
+        calibration = self._make_calibration(
+            projections=projections,
+            projection_parameters={"baseline": proj_params},
+        )
+
+        outputs = generate_calibration_outputs(
+            calibrations=[calibration],
+            output_config=self._build_output_config(projection_parameters=False),
+        )
+
+        assert "projection_parameters_long" not in outputs
+
+    def test_multi_calibration_concat(self):
+        params_a = pd.DataFrame({"Reff": np.linspace(1.0, 2.0, 50)})
+        params_b = pd.DataFrame({"Reff": np.linspace(0.5, 1.0, 30)})
+        calibration_a = self._make_calibration(
+            primary_id=101,
+            projections={"baseline": [self._valid_projection() for _ in range(50)]},
+            projection_parameters={"baseline": params_a},
+        )
+        calibration_b = self._make_calibration(
+            primary_id=202,
+            projections={"baseline": [self._valid_projection() for _ in range(30)]},
+            projection_parameters={"baseline": params_b},
+        )
+
+        outputs = generate_calibration_outputs(
+            calibrations=[calibration_a, calibration_b], output_config=self._build_output_config()
+        )
+        long_df = outputs["projection_parameters_long"][0].data
+
+        assert len(long_df) == 80
+        assert set(long_df["primary_id"].unique()) == {101, 202}
+        assert (long_df.loc[long_df["primary_id"] == 101, "sim_id"] == np.arange(50)).all()
+        assert (long_df.loc[long_df["primary_id"] == 202, "sim_id"] == np.arange(30)).all()
 
 
 class TestGenerateCategoricalPlots:

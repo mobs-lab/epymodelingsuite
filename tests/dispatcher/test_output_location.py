@@ -42,7 +42,7 @@ class TestConvertLocationNameFormatISO:
     def test_iso_to_epydemix_population(self):
         """Test ISO to epydemix_population."""
         result = convert_location_name_format("US-MA", "epydemix_population")
-        assert result == "United_States_Massachusetts"
+        assert result == "United_States__Massachusetts"
 
     def test_iso_to_name(self):
         """Test ISO to name."""
@@ -66,9 +66,14 @@ class TestConvertLocationNameFormatISO:
         assert result == "US-MA"
 
     def test_epydemix_population_to_epydemix_population(self):
-        """Test epydemix_population to epydemix_population (identity)."""
+        """Test epydemix_population (legacy single-underscore) to epydemix_population (canonical double-underscore)."""
         result = convert_location_name_format("United_States_Massachusetts", "epydemix_population")
-        assert result == "United_States_Massachusetts"
+        assert result == "United_States__Massachusetts"
+
+    def test_epydemix_population_canonical_to_canonical(self):
+        """Test that the canonical double-underscore name is also accepted as input."""
+        result = convert_location_name_format("United_States__Massachusetts", "epydemix_population")
+        assert result == "United_States__Massachusetts"
 
     def test_epydemix_population_to_name(self):
         """Test epydemix_population to name."""
@@ -94,7 +99,7 @@ class TestConvertLocationNameFormatISO:
     def test_name_to_epydemix_population(self):
         """Test name to epydemix_population."""
         result = convert_location_name_format("Massachusetts", "epydemix_population")
-        assert result == "United_States_Massachusetts"
+        assert result == "United_States__Massachusetts"
 
     def test_name_to_name(self):
         """Test name to name (identity)."""
@@ -120,7 +125,7 @@ class TestConvertLocationNameFormatISO:
     def test_abbreviation_to_epydemix_population(self):
         """Test abbreviation to epydemix_population."""
         result = convert_location_name_format("MA", "epydemix_population")
-        assert result == "United_States_Massachusetts"
+        assert result == "United_States__Massachusetts"
 
     def test_abbreviation_to_name(self):
         """Test abbreviation to name."""
@@ -146,7 +151,7 @@ class TestConvertLocationNameFormatISO:
     def test_fips_to_epydemix_population(self):
         """Test FIPS to epydemix_population."""
         result = convert_location_name_format("25", "epydemix_population")
-        assert result == "United_States_Massachusetts"
+        assert result == "United_States__Massachusetts"
 
     def test_fips_to_name(self):
         """Test FIPS to name."""

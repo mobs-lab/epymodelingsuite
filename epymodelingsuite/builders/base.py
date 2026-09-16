@@ -6,12 +6,12 @@ import logging
 import numpy as np
 import scipy
 from epydemix.model import EpiModel
-from epydemix.population import Population, load_epydemix_population
+from epydemix.population import Population
 from epydemix.utils import convert_to_2Darray
 
 from ..schema.basemodel import Compartment, Parameter, Transition
 from ..schema.basemodel import Population as PopulationConfig
-from ..utils import convert_location_name_format
+from ..utils import convert_location_name_format, load_epydemix_population
 from ..utils.expression_eval import RetrieveName, SafeEvalVisitor, safe_eval
 from ..utils.location import (
     METROCAST_PREFIX,
@@ -210,7 +210,7 @@ def add_model_compartments_from_config(model: EpiModel, compartments: list[Compa
 
     Returns
     -------
-        EpiModel instance with compartments added.
+        The same EpiModel instance with compartments added (modified in-place).
     """
     # Add compartments to the model
     try:
@@ -234,7 +234,7 @@ def add_model_transitions_from_config(model: EpiModel, transitions: list[Transit
 
     Returns
     -------
-        EpiModel instance with compartment transitions added.
+        The same EpiModel instance with compartment transitions added (modified in-place).
     """
     # Check that required attributes of model configuration are not None
     if transitions is None:
@@ -278,7 +278,7 @@ def add_model_parameters_from_config(model: EpiModel, parameters: dict[str, Para
 
     Returns
     -------
-        EpiModel instance with parameters added.
+        The same EpiModel instance with parameters added (modified in-place).
     """
     # Add parameters to the model
     parameters_dict = {}
@@ -303,8 +303,11 @@ def add_model_parameters_from_config(model: EpiModel, parameters: dict[str, Para
             pass
 
     try:
-        model.add_parameter(parameters_dict=parameters_dict)
-        logger.info(f"Added parameters: {list(parameters_dict.keys())}")
+        if parameters_dict:
+            model.add_parameter(parameters_dict=parameters_dict)
+            logger.info(f"Added parameters: {list(parameters_dict.keys())}")
+        else:
+            logger.info("No scalar/age_varying parameters to add (all parameters are calibrated/sampled)")
 
         return model
     except Exception as e:

@@ -1,0 +1,57 @@
+# Minimal SIR model for E2E testing
+# Based on production config structure but simplified for fast execution
+model:
+  meta:
+    name: "minimal_sir_e2e"
+    version: "1.0.0"
+    date: "2025-01-01"
+    description: "Minimal SIR model for E2E pipeline testing"
+
+  timespan:
+    start_date: "2025-01-01"
+    end_date: "2025-03-01"
+    delta_t: 1.0
+
+  simulation:
+    resample_frequency: W-SAT
+    n_sims: 5
+
+  random_seed: 42
+
+  population:
+    name: US-MA
+    age_groups:
+      - "0-4"
+      - "5-17"
+      - "18-49"
+      - "50-64"
+      - "65+"
+
+  compartments:
+    - id: S
+      label: "Susceptible"
+      init: default
+    - id: I
+      label: "Infectious"
+      init: 100  # Start with 100 infections
+    - id: R
+      label: "Recovered"
+
+  transitions:
+    - type: mediated
+      source: S
+      target: I
+      mediator: I
+      rate: beta
+    - type: spontaneous
+      source: I
+      target: R
+      rate: mu
+
+  parameters:
+    beta:
+      type: scalar
+      value: 0.3
+    mu:
+      type: scalar
+      value: 0.1

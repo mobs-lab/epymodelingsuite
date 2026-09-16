@@ -37,7 +37,7 @@ def add_vaccination_schedules_from_config(
 
     Returns
     -------
-        EpiModel instance with vaccination schedules added.
+        The same EpiModel instance with vaccination schedules added (modified in-place).
     """
     # Extract compartment transitions due to vaccination
     vaccination_transitions = [transition for transition in transitions if transition.type == "vaccination"]

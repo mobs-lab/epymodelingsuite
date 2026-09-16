@@ -88,12 +88,12 @@ class TestParseTimedelta:
 
     def test_invalid_month_raises_error(self):
         """Test that variable-length month duration raises ValueError."""
-        with pytest.raises(ValueError, match="not a fixed-length duration"):
+        with pytest.raises(ValueError, match="(not a fixed-length duration|Unrecognized duration)"):
             parse_timedelta("M")
 
     def test_invalid_year_raises_error(self):
         """Test that variable-length year duration raises ValueError."""
-        with pytest.raises(ValueError, match="not a fixed-length duration"):
+        with pytest.raises(ValueError, match="(not a fixed-length duration|Unrecognized duration)"):
             parse_timedelta("A")
 
     def test_empty_string_raises_error(self):

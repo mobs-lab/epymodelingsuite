@@ -35,9 +35,9 @@ def get_age_groups_from_data(data: pd.DataFrame) -> dict[str, str]:
         and standardized model age group labels.
     """
     age_groups_data = data.Age.unique().tolist()  # Get unique age groups
-    age_groups_data.remove(
-        "6 Months - 17 Years"
-    )  # Remove 6 Months - 17 Years because because data includes finer resolution age groups which cover this range
+    # Remove 6 Months - 17 Years because data includes finer resolution age groups which cover this range
+    if "6 Months - 17 Years" in age_groups_data:
+        age_groups_data.remove("6 Months - 17 Years")
 
     age_groups_data_cleaned = []
     for a in age_groups_data:
@@ -104,6 +104,66 @@ def resample_vaccination_schedule(df: pd.DataFrame, delta_t: float) -> pd.DataFr
     return vaccines_fine
 
 
+def _calculate_overlap_weight(
+    population: list, overlap_start: int, overlap_end: int, start_data: int, end_data: int
+) -> float:
+    """
+    Calculate the reweighting factor based on population overlap between age ranges.
+
+    Formula: weight = population(overlap) / population(data_group)
+
+    Parameters
+    ----------
+    population : array-like
+        Single-year population counts indexed by age (0-84).
+    overlap_start : int
+        Start age of the overlap region.
+    overlap_end : int
+        End age of the overlap region (inclusive).
+    start_data : int
+        Start age of the data age group.
+    end_data : int
+        End age of the data age group (inclusive).
+
+    Returns
+    -------
+    float
+        Reweighting factor, capped at 1.0.
+    """
+    weight = sum(population[overlap_start : overlap_end + 1]) / sum(population[start_data : end_data + 1])
+    return min(weight, 1.0)
+
+
+def _parse_age_group_bounds(group_str: str, max_age: int = 84) -> tuple[int, int]:
+    """
+    Parse an age group string into (start, end) tuple.
+
+    Parameters
+    ----------
+    group_str : str
+        Age group in format "start-end" (e.g., "0-9") or "start+" (e.g., "65+").
+    max_age : int, default 84
+        Maximum age to use for open-ended groups.
+
+    Returns
+    -------
+    tuple[int, int]
+        (start_age, end_age) tuple.
+
+    Raises
+    ------
+    ValueError
+        If group_str is not in a recognized format.
+    """
+    if "-" in group_str:
+        start, end = group_str.split("-")
+        return int(start), int(end)
+    if "+" in group_str:
+        return int(group_str.split("+")[0]), max_age
+    msg = f"Invalid age group format: {group_str}. Expected 'start-end' or 'start+'."
+    raise ValueError(msg)
+
+
 def make_reweighting_factors(
     population_dict_model: dict[str, int], data_age_groups: list[str], loc_epydemix: str
 ) -> dict[str, list[float]]:
@@ -115,9 +175,10 @@ def make_reweighting_factors(
     ----------
     population_dict_model : dict[str, int]
         Dictionary mapping model age group names (e.g., "0-4", "5-17") to their populations.
+        Typically obtained from EpiModel.population (dict keyed by age group).
     data_age_groups : list[str]
-        Ordered list of data age group labels, with ranges given as "start-end"
-        or "start+" for the final open-ended group.
+        Ordered list of data age group labels from vaccination data source.
+        Typically obtained via get_age_groups_from_data().
     loc_epydemix : str
         Key used to select the population distribution from the Epydemix codebook.
 
@@ -126,102 +187,48 @@ def make_reweighting_factors(
     dict[str, list[float]]
         A dictionary mapping each model age group name to a list of reweighting factors,
         one for each data age group. Each list is the same length as `data_age_groups`.
+
+    Notes
+    -----
+    Age groups must be in one of two formats:
+    - Bounded: "start-end" (e.g., "0-4", "5-17", "50-64")
+    - Open-ended: "start+" (e.g., "65+")
+
+    Single ages (e.g., "65") are not supported. Use "65-65" for a single-year group.
     """
     import numpy as np
 
     from .utils import get_population_codebook
 
+    # Get single-year population data (index 0-84 for ages 0-84)
     population_codebook = get_population_codebook()
     population = population_codebook[loc_epydemix].values
+    max_age = len(population) - 1  # 84
+
     model_age_groups = list(population_dict_model.keys())
-    reweighting_factors_dict = {}  # dict of lists of len(model_age_groups) to store reweighting factors for each model age group,
-    for i, a in enumerate(model_age_groups):
-        reweighting_factors = np.tile(
-            0.0, len(data_age_groups)
-        )  # list of len(data_age_groups) to store reweighting factors for each data age group
-        if i != len(model_age_groups) - 1:
-            start_model, end_model = a.split("-")
-            start_model = int(start_model)
-            end_model = int(end_model)
-            for j, b in enumerate(data_age_groups):
-                if j != len(data_age_groups) - 1:
-                    start_data, end_data = b.split("-")
-                    start_data = int(start_data)
-                    end_data = int(end_data)
-                    if start_data > end_model:
-                        continue
-                    if end_data < start_model:
-                        continue
+    reweighting_factors_dict = {}
 
-                    if start_data > start_model and end_data > end_model:
-                        factor = sum(population[start_data : end_model + 1]) / sum(
-                            population[start_data : end_data + 1]
-                        )
-                        reweighting_factors[j] = np.min([factor, 1.0])
+    # For each model age group, calculate weights from all data age groups
+    # Formula: weight = population(overlap) / population(data_group)
+    for model_group in model_age_groups:
+        reweighting_factors = np.zeros(len(data_age_groups))
+        start_model, end_model = _parse_age_group_bounds(model_group, max_age)
 
-                    if start_data > start_model and end_data <= end_model:
-                        factor = sum(population[start_data : end_data + 1]) / sum(population[start_data : end_data + 1])
-                        reweighting_factors[j] = np.min([factor, 1.0])
+        for data_idx, data_group in enumerate(data_age_groups):
+            start_data, end_data = _parse_age_group_bounds(data_group, max_age)
 
-                    if start_data <= start_model and end_data <= end_model:
-                        factor = sum(population[start_model : end_data + 1]) / sum(
-                            population[start_data : end_data + 1]
-                        )
-                        reweighting_factors[j] = np.min([factor, 1.0])
+            # Skip if no overlap
+            if start_data > end_model or end_data < start_model:
+                continue
 
-                    if start_data <= start_model and end_data > end_model:
-                        factor = sum(population[start_model : end_model + 1]) / sum(
-                            population[start_data : end_data + 1]
-                        )
-                        reweighting_factors[j] = np.min([factor, 1.0])
+            overlap_start = max(start_data, start_model)
+            overlap_end = min(end_data, end_model)
 
-                elif "+" in b:
-                    start_data = int(b.split("+")[0])
-                    end_data = 84
+            reweighting_factors[data_idx] = _calculate_overlap_weight(
+                population, overlap_start, overlap_end, start_data, end_data
+            )
 
-                    if start_data > start_model and end_data > end_model:
-                        factor = sum(population[start_data : end_model + 1]) / sum(
-                            population[start_data : end_data + 1]
-                        )
-                        reweighting_factors[j] = np.min([factor, 1.0])
-
-                    if start_data > start_model and end_data <= end_model:
-                        factor = sum(population[start_data : end_data + 1]) / sum(population[start_data : end_data + 1])
-                        reweighting_factors[j] = np.min([factor, 1.0])
-
-                    if start_data <= start_model and end_data <= end_model:
-                        factor = sum(population[start_model : end_data + 1]) / sum(
-                            population[start_data : end_data + 1]
-                        )
-                        reweighting_factors[j] = np.min([factor, 1.0])
-
-                    if start_data <= start_model and end_data > end_model:
-                        factor = sum(population[start_model : end_model + 1]) / sum(
-                            population[start_data : end_data + 1]
-                        )
-                        reweighting_factors[j] = np.min([factor, 1.0])
-        elif "+" in a:
-            start_model = a.split("+")[0]
-            start_model = int(start_model)
-            end_model = 84
-
-            if start_data > start_model and end_data > end_model:
-                factor = sum(population[start_data : end_model + 1]) / sum(population[start_data : end_data + 1])
-                reweighting_factors[j] = np.min([factor, 1.0])
-
-            if start_data > start_model and end_data <= end_model:
-                factor = sum(population[start_data : end_data + 1]) / sum(population[start_data : end_data + 1])
-                reweighting_factors[j] = np.min([factor, 1.0])
-
-            if start_data <= start_model and end_data <= end_model:
-                factor = sum(population[start_model : end_data + 1]) / sum(population[start_data : end_data + 1])
-                reweighting_factors[j] = np.min([factor, 1.0])
-
-            if start_data <= start_model and end_data > end_model:
-                factor = sum(population[start_model : end_model + 1]) / sum(population[start_data : end_data + 1])
-                reweighting_factors[j] = np.min([factor, 1.0])
-
-        reweighting_factors_dict[a] = reweighting_factors
+        reweighting_factors_dict[model_group] = reweighting_factors
 
     return reweighting_factors_dict
 
@@ -268,7 +275,9 @@ def scenario_to_epydemix(
     Raises
     ------
     ValueError
-        If required columns are missing from the input CSV or if age groups are invalid.
+        - if required columns are missing from the input CSV, or
+        - if age groups are invalid, or
+        - if Coverage values are not within the [0, 100] range
 
     Notes
     -----
@@ -305,6 +314,16 @@ def scenario_to_epydemix(
     if missing_columns:
         raise ValueError(
             f"Input data must contain the following columns: {required_columns}. Missing columns: {missing_columns}"
+        )
+
+    # Validate Coverage values are within [0, 100]
+    invalid_coverage = vaccines.query("Coverage < 0 or Coverage > 100")
+    if not invalid_coverage.empty:
+        invalid_values = invalid_coverage["Coverage"]
+        raise ValueError(
+            f"Coverage values must be between 0 and 100 (percentage). "
+            f"Found {len(invalid_coverage)} invalid rows "
+            f"(min={invalid_values.min():.1f}, max={invalid_values.max():.1f})."
         )
 
     # Get age groups from data
@@ -480,26 +499,35 @@ def smh_data_to_epydemix(
     states: list[str] | None = None,
 ) -> pd.DataFrame:
     """
-    Process age-specific influenza vaccine coverage data from the scenario modeling hub into
-    daily vaccination schedules by age group for ALL scenarios and ALL locations.
+    Process age-specific SMH vaccine coverage data into daily vaccination schedules for all scenarios.
 
-    This function handles multiple scenarios by extracting them from the input data, creating
-    temporary single-scenario files, and calling scenario_to_epydemix for each scenario.
-    The results are then combined into a single DataFrame with scenario information.
+    This function handles multiple scenarios by extracting columns containing 'sc_' from the input data, processing each scenario through scenario_to_epydemix, and combining results into a single DataFrame with scenario information.
 
-    Args:
-        input_filepath (str): Path to CSV containing SMH vaccination data with scenario columns.
-        start_date (str or Timestamp): Start date of the simulation period.
-        end_date (str or Timestamp): End date of the simulation period.
-        target_age_groups (list[str]): Age groups to map the data to for the output schedule.
-        output_filepath (str, optional): If provided, the output DataFrame will be saved as a CSV.
-        states (list[str], optional): If provided, only data for these specific states/locations will be processed.
+    Parameters
+    ----------
+    input_filepath : str
+        Path to CSV containing SMH vaccination data. Scenario columns must contain 'sc_'
+        (e.g., 'flu.coverage.rd2526.sc_A', 'flu.coverage.rd2526.sc_B').
+    start_date : str or pd.Timestamp
+        Start date of the simulation period.
+    end_date : str or pd.Timestamp
+        End date of the simulation period.
+    target_age_groups : list of str, default ["0-4", "5-17", "18-49", "50-64", "65+"]
+        Age groups to map the data to for the output schedule.
+    output_filepath : str, optional
+        If provided, the output DataFrame will be saved as a CSV at this path.
+    states : list of str, optional
+        If provided, only data for these specific states/locations will be processed.
 
     Returns
     -------
-        pd.DataFrame: DataFrame with columns ['dates', 'scenario', 'location', <age groups>] giving the
-                      daily vaccination counts per age group for each scenario across all geographies.
-                      Returns daily vaccination schedules (dt=1.0).
+    pd.DataFrame
+        DataFrame containing daily vaccination counts per age group for each scenario. Returns daily schedules (dt=1.0).
+        Columns:
+        - 'dates'
+        - 'scenario'
+        - 'location'
+        - [each age groups]
     """
     import os
     import tempfile
@@ -509,33 +537,29 @@ def smh_data_to_epydemix(
     # ========== LOAD AND EXTRACT SCENARIOS ==========
     vaccines = pd.read_csv(input_filepath)
 
-    # Extract scenario columns directly (keep full column names)
-    scenario_columns = [name for name in vaccines.columns if name.find("sc_") > -1]
-    scenario_columns = [name.split("sc_")[-1] for name in scenario_columns if name.find("sc_") > -1]
+    # Extract scenario names from columns containing "sc_"
+    sc_columns = [name for name in vaccines.columns if "sc_" in name]
+    scenario_names = [name.split("sc_")[-1] for name in sc_columns]
 
-    vaccines = vaccines.rename(
-        columns={name: name.split("sc_")[-1] for name in list(vaccines.columns) if name.find("sc_") > -1}
-    )
+    # Rename columns: "sc_A" -> "A"
+    vaccines = vaccines.rename(columns=dict(zip(sc_columns, scenario_names)))
 
-    if not scenario_columns:
-        raise ValueError("No scenario columns found in the input data. Expected columns with 'sc_' prefix.")
+    if not scenario_names:
+        raise ValueError("No scenario columns found in the input data. Expected columns containing 'sc_'.")
 
     # ========== PROCESS EACH SCENARIO ==========
     all_scenarios_df = pd.DataFrame()
 
-    for scenario_column in scenario_columns:
-        # Extract scenario name for labeling
-        scenario_name = scenario_column
-
+    for scenario_name in scenario_names:
         # Create a temporary dataset for this scenario with single Coverage column
         scenario_data = vaccines.copy()
 
         # Rename the scenario column to "Coverage" (expected by scenario_to_epydemix)
-        scenario_data["Coverage"] = scenario_data[scenario_column]
+        scenario_data["Coverage"] = scenario_data[scenario_name]
 
         # Remove all other scenario columns to avoid confusion
-        other_scenario_columns = [col for col in scenario_columns if col != scenario_column]
-        scenario_data = scenario_data.drop(columns=other_scenario_columns)
+        other_scenario_names = [col for col in scenario_names if col != scenario_name]
+        scenario_data = scenario_data.drop(columns=other_scenario_names)
 
         # Create temporary file for this scenario
         with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as temp_file:
@@ -573,8 +597,14 @@ def smh_data_to_epydemix(
 
 def reaggregate_vaccines(schedule: pd.DataFrame, actual_start_date: dt.date | pd.Timestamp) -> pd.DataFrame:
     """
-    Reaggregate a vaccination schedule so that it begins at the specified
-    actual start date.
+    Reaggregate a vaccination schedule so that it begins at the specified actual start date.
+
+    When a simulation starts mid-week, this function redistributes vaccination doses so the total
+    weekly doses are preserved but compressed into the remaining days of the week.
+
+    The function sums all doses from the beginning of the schedule up to and including the next
+    Saturday after `actual_start_date`, then redistributes them evenly across just the days from
+    `actual_start_date` to that Saturday.
 
     Parameters
     ----------
@@ -593,16 +623,23 @@ def reaggregate_vaccines(schedule: pd.DataFrame, actual_start_date: dt.date | pd
     -------
     pd.DataFrame
         A reaggregated vaccination schedule where:
-        - Doses from the actual start date up to the next Saturday are
-        redistributed evenly across that period.
+        - Doses from the start of the schedule up to the next Saturday are redistributed evenly from `actual_start_date` to that Saturday.
         - All subsequent rows from the original schedule are preserved.
-        - Returned DataFrame is sorted by 'dates'.
 
     Raises
     ------
     ValueError
         If `actual_start_date` is earlier than the first date or later
         than the last date in `schedule['dates']`.
+
+    Example
+    -------
+    If the original schedule has 100 doses/day from Sept 1 (Sun) to Sept 7 (Sat),
+    and `actual_start_date` is Sept 4 (Wed):
+
+    - Total doses for the week: 100 * 7 = 700
+    - Days remaining (Wed-Sat): 4
+    - Redistributed: 700 / 4 = 175 doses/day for Sept 4-7
     """
     # Normalize type
     actual_start_date = pd.Timestamp(actual_start_date)
@@ -626,9 +663,9 @@ def reaggregate_vaccines(schedule: pd.DataFrame, actual_start_date: dt.date | pd
     # e.g. ['0-4', '5-17', '18-49', '50-64', '65+']
     age_groups = [c for c in schedule.columns if "-" in c or "+" in c]
 
-    # Aggregate doses for the period before the next Saturday
-    before_saturday = schedule.query("dates < @next_saturday")
-    aggregated_doses = before_saturday[age_groups].sum(axis=0)
+    # Aggregate doses for the period up to and including next Saturday
+    up_to_saturday = schedule.query("dates <= @next_saturday")
+    aggregated_doses = up_to_saturday[age_groups].sum(axis=0)
 
     # Create a new date range for the redistribution period
     new_dates = pd.date_range(start=actual_start_date, end=next_saturday, freq="D")
@@ -827,21 +864,36 @@ def add_vaccination_schedule(
 
     Parameters
     ----------
-        model (EpiModel): The model object to which the vaccination schedule will be added. Must have a population
-                          age groups same as the columns in `vaccination_schedule`.
-        vaccine_rate_function (Callable): A function defining time-dependent vaccination rates.
-        vaccination_schedule (pd.DataFrame): Vaccination schedule with age groups as columns and time as rows.
-                                             Must include all age groups used in the model.
-        source_comp (str): The name of the source compartment (e.g., "S").
-        target_comp (str): The name of the target compartment (e.g., "SV").
+    model : EpiModel
+        The model object to which the vaccination schedule will be added.
+        Must have population age groups matching the columns in `vaccination_schedule`.
+    vaccine_rate_function : Callable
+        A function defining time-dependent vaccination rates. Typically created by `make_vaccination_rate_function()`. The function signature should be `(params, data) -> np.ndarray` where params contains the vaccination schedule.
+    source_comp : str
+        The name of the source compartment (e.g., "S").
+    target_comp : str
+        The name of the target compartment (e.g., "S_vax").
+    vaccination_schedule : pd.DataFrame
+        Vaccination schedule DataFrame with the following structure:
+        - **Required columns**: "dates", "location", and one column per age group
+        - **Age group columns**: Must match model's age groups (e.g., "0-4", "5-17", "65+")
+        - **Values**: Number of doses available for each age group on each day
+
+        Example structure::
+
+            dates       location  0-4   5-17  18-49  50-64  65+
+            2024-10-01  US-CA     100   200   500    300    400
+            2024-10-02  US-CA     110   210   510    310    410
 
     Returns
     -------
-        EpiModel: The model with the vaccination transition added.
+    EpiModel
+        The same model instance with the vaccination transition added (modified in-place).
 
     Raises
     ------
-        ValueError: If any age groups required by the model are missing from the DataFrame.
+    ValueError
+        If any age groups required by the model are missing from the DataFrame.
     """
     from .utils import convert_location_name_format
 
@@ -883,7 +935,7 @@ def add_vaccination_schedule(
 
     vaccine_schedule = (vaccination_schedule[age_groups_model].values,)
 
-    # Usage:
+    # Remove existing vaccination transitions first to avoid duplicates
     model = remove_vaccination_transitions(model, source_comp, target_comp)
     model.add_transition(source_comp, target_comp, params=vaccine_schedule, kind="vaccination")
 
@@ -892,8 +944,27 @@ def add_vaccination_schedule(
 
 def remove_vaccination_transitions(model: EpiModel, source_comp: str, target_comp: str) -> EpiModel:
     """
-    Manually remove vaccination transitions from model.
-    This prevents `add_vaccination_schedule` from creating duplicate transitions if it is called multiple times.
+    Remove vaccination transitions from the model.
+
+    This function removes any existing vaccination transitions between source_comp and target_comp. It is called internally by `add_vaccination_schedule` to prevent duplicate transitions when the function is called multiple times (e.g., when reaggregating vaccination schedules for different sampled start dates).
+
+    Parameters
+    ----------
+    model : EpiModel
+        The model from which to remove vaccination transitions.
+    source_comp : str
+        The source compartment of the transition to remove (e.g., "S").
+    target_comp : str
+        The target compartment of the transition to remove (e.g., "S_vax").
+
+    Returns
+    -------
+    EpiModel
+        The same model instance with the specified vaccination transition removed (modified in-place).
+
+    Notes
+    -----
+    This function modifies both `model.transitions_list` and `model.transitions` dict to ensure the transition is fully removed from the model's internal state.
     """
     # Remove from transitions_list
     model.transitions_list = [

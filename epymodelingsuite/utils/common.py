@@ -91,7 +91,12 @@ def parse_timedelta(text: str) -> timedelta:
         # Not a valid Timedelta string, try frequency alias next
         pass
 
-    # 2) Next try frequency aliases (e.g., 'W', '2H', '30T', '3S')
+    # 2) Replace deprecated pandas frequency aliases before trying to_offset
+    _DEPRECATED_ALIASES = {"T": "min", "t": "min"}
+    for old, new in _DEPRECATED_ALIASES.items():
+        s = s.replace(old, new)
+
+    # 3) Next try frequency aliases (e.g., 'W', '2H', '30min', '3S')
     try:
         off = to_offset(s)
     except Exception as e:

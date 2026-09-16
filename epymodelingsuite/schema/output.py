@@ -364,7 +364,9 @@ class ModelMetaOutput(BaseModel):
 
     projection_parameters: bool = Field(
         False,
-        description="Whether to record projection parameters (calibration parameters always recorded in calibration workflow).",
+        description=(
+            "Whether to record projection parameters (calibration parameters always recorded in calibration workflow). Emits projection_parameters_long.csv.gz (tidy per-draw table). Also populates proj_* columns in model_metadata.csv.gz, but these are known-broken due to pandas truncation of str(Series) with >60 draws."
+        ),
     )
 
 
