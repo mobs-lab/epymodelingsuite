@@ -368,6 +368,35 @@ def calculate_parameters_from_config(
     return model
 
 
+def _allocate_integer_counts(total: float, weights: np.ndarray) -> np.ndarray:
+    """
+    Split a total count into integers proportional to weights, preserving the rounded total.
+
+    Uses the largest remainder method: each group receives the floor of its proportional share,
+    and the leftover units go to the groups with the largest fractional remainders.
+
+    Parameters
+    ----------
+    total : float
+        Total count to allocate. Rounded to the nearest integer before allocation.
+    weights : np.ndarray
+        Non-negative weights (e.g., population by age group).
+
+    Returns
+    -------
+    np.ndarray
+        Integer counts per group summing to ``round(total)``.
+    """
+    total_int = int(np.rint(total))
+    shares = total_int * weights / weights.sum()
+    counts = np.floor(shares).astype(np.int64)
+    leftover = total_int - counts.sum()
+    if leftover > 0:
+        largest_remainders = np.argsort(-(shares - counts), kind="stable")[:leftover]
+        counts[largest_remainders] += 1
+    return counts
+
+
 def calculate_compartment_initial_conditions(
     compartments: list,
     population_array: np.ndarray,
@@ -420,7 +449,7 @@ def calculate_compartment_initial_conditions(
     # Initialize tracking variables
     default_compartment_ids = []
     initial_conditions_dict = {}
-    remaining_population = population_array.astype(float)
+    remaining_population = np.rint(population_array).astype(np.int64)
 
     # First pass: identify default compartments
     for compartment in compartments:
@@ -450,14 +479,14 @@ def calculate_compartment_initial_conditions(
 
         # Case 1: Age-varying initialization (list)
         if isinstance(initial_value, list):
-            initial_conditions = np.zeros_like(population_array, dtype=float)
+            initial_conditions = np.zeros_like(population_array, dtype=np.int64)
             for age_idx, val in enumerate(initial_value):
                 if val >= 1:
                     # Count for this age group (applied directly)
-                    initial_conditions[age_idx] = val
+                    initial_conditions[age_idx] = np.rint(val)
                 elif 0 < val < 1:
                     # Proportion for this age group
-                    initial_conditions[age_idx] = population_array[age_idx] * val
+                    initial_conditions[age_idx] = np.rint(population_array[age_idx] * val)
                 elif val == 0:
                     initial_conditions[age_idx] = 0
                 else:
@@ -470,20 +499,20 @@ def calculate_compartment_initial_conditions(
         # Case 2: Scalar count-based initialization (value >= 1)
         elif initial_value >= 1:
             # Distribute total count proportionally across age groups
-            initial_conditions = initial_value * population_array / population_array.sum()
+            initial_conditions = _allocate_integer_counts(initial_value, population_array)
             initial_conditions_dict[compartment.id] = initial_conditions
             remaining_population -= initial_conditions
 
         # Case 3: Scalar proportion-based initialization (0 < value < 1)
         elif 0 < initial_value < 1:
             # Apply proportion to each age group
-            initial_conditions = population_array * initial_value
+            initial_conditions = np.rint(population_array * initial_value).astype(np.int64)
             initial_conditions_dict[compartment.id] = initial_conditions
             remaining_population -= initial_conditions
 
         # Case 4: Zero initialization
         elif initial_value == 0:
-            initial_conditions_dict[compartment.id] = np.zeros_like(population_array)
+            initial_conditions_dict[compartment.id] = np.zeros_like(population_array, dtype=np.int64)
 
         else:
             raise ValueError(f"Invalid initial value for compartment {compartment.id}: {initial_value}")
@@ -494,11 +523,12 @@ def calculate_compartment_initial_conditions(
             raise ValueError(
                 f"Initial conditions exceed population in some age groups. Remaining population: {remaining_population}"
             )
-        # If multiple default compartments, split remaining population equally
+        # If multiple default compartments, split remaining population equally,
+        # giving any leftover individuals to the earlier default compartments
         num_defaults = len(default_compartment_ids)
-        per_default = remaining_population / num_defaults
+        per_default, leftover = np.divmod(remaining_population, num_defaults)
 
-        for compartment_id in default_compartment_ids:
-            initial_conditions_dict[compartment_id] = per_default
+        for default_idx, compartment_id in enumerate(default_compartment_ids):
+            initial_conditions_dict[compartment_id] = per_default + (leftover > default_idx)
 
     return initial_conditions_dict if initial_conditions_dict else None
