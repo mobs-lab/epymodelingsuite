@@ -52,17 +52,10 @@ dev = [
 Homepage = "https://github.com/mobs-lab/epymodelingsuite"
 
 [tool.setuptools]
-packages = [
-    "epymodelingsuite",
-    "epymodelingsuite.schema",
-    "epymodelingsuite.builders",
-    "epymodelingsuite.dispatcher",
-    "epymodelingsuite.utils",
-    "epymodelingsuite.data",
-    "epymodelingsuite.visualization",
-    "epymodelingsuite.telemetry",
-]
 include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["epymodelingsuite*"]
 
 [tool.sphinx-pyproject]
 project = "epymodelingsuite"
