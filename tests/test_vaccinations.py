@@ -1332,6 +1332,16 @@ class TestPreprocessedScenarioSelection:
         assert len(schedule) == 2 * 91
 
 
+def test_multi_scenario_file_error_points_to_preprocessing(tmp_path):
+    """A multi-scenario SMH file passed as scenario data explains how to preprocess it."""
+    path = tmp_path / "multi.csv"
+    pd.DataFrame(
+        columns=["Geography", "Age", "Population", "Week_Ending_Sat", "flu.coverage.sc_A", "flu.coverage.sc_B"]
+    ).to_csv(path, index=False)
+    with pytest.raises(ValueError, match="smh_data_to_epydemix"):
+        scenario_to_epydemix(input_filepath=str(path), start_date="2024-09-01", end_date="2024-12-31")
+
+
 class TestGetAgeGroupsFromData:
     """Unit tests for get_age_groups_from_data function."""
 
