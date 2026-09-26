@@ -223,6 +223,11 @@ class Vaccination(BaseModel):
     preprocessed_vaccination_data_path: str | None = Field(
         None, description="Path to preprocessed vaccination coverage data file."
     )
+    scenario: str | None = Field(
+        None,
+        description="Vaccination scenario. With preprocessed data that has a 'scenario' column, selects that "
+        "scenario (required when there are several). Otherwise informational only.",
+    )
     origin_compartment: str = Field(description="Origin compartment for vaccination.")
     eligible_compartments: list[str] = Field(description="Eligible compartments for vaccination.")
 

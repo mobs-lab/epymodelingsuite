@@ -18,6 +18,47 @@ from ..vaccinations import (
 logger = logging.getLogger(__name__)
 
 
+def load_preprocessed_vaccination_schedule(vaccination: Vaccination) -> DataFrame:
+    """
+    Load a preprocessed vaccination schedule CSV, selecting a single scenario if present.
+
+    Parameters
+    ----------
+    vaccination : Vaccination
+        Vaccination configuration with ``preprocessed_vaccination_data_path`` set.
+
+    Returns
+    -------
+    DataFrame
+        Vaccination schedule with parsed ``dates`` and no ``scenario`` column.
+
+    Raises
+    ------
+    ValueError
+        If ``scenario`` is not in the data's ``scenario`` column, or the data has several scenarios and none is selected.
+    """
+    schedule = pd.read_csv(vaccination.preprocessed_vaccination_data_path, parse_dates=["dates"])
+    logger.info(f"Loaded preprocessed vaccination schedule from {vaccination.preprocessed_vaccination_data_path}")
+    if "scenario" not in schedule.columns:
+        if vaccination.scenario is not None:
+            logger.warning(
+                f"Vaccination scenario '{vaccination.scenario}' is set, but the preprocessed data has no "
+                "'scenario' column; using the data as-is."
+            )
+        return schedule
+
+    scenarios = schedule["scenario"].astype(str).unique().tolist()
+    if vaccination.scenario is None:
+        if len(scenarios) > 1:
+            raise ValueError(f"Preprocessed vaccination data has several scenarios {scenarios}; set 'scenario'.")
+        selected = scenarios[0]
+    elif vaccination.scenario in scenarios:
+        selected = vaccination.scenario
+    else:
+        raise ValueError(f"Vaccination scenario '{vaccination.scenario}' not found. Available: {scenarios}")
+    return schedule[schedule["scenario"].astype(str) == selected].drop(columns="scenario")
+
+
 def add_vaccination_schedules_from_config(
     model: EpiModel,
     transitions: list[Transition],
@@ -56,8 +97,7 @@ def add_vaccination_schedules_from_config(
         vaccination_schedule = use_schedule
     # Preprocessed vaccination schedule
     elif vaccination.preprocessed_vaccination_data_path:
-        vaccination_schedule = pd.read_csv(vaccination.preprocessed_vaccination_data_path, parse_dates=["dates"])
-        logger.info(f"Loaded preprocessed vaccination schedule from {vaccination.preprocessed_vaccination_data_path}")
+        vaccination_schedule = load_preprocessed_vaccination_schedule(vaccination)
     # Create schedule from SMH scenario
     else:
         try:

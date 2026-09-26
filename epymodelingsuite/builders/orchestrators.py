@@ -33,7 +33,7 @@ from .interventions import (
     add_school_closure_intervention_from_config,
 )
 from .seasonality import add_seasonality_from_config
-from .vaccination import add_vaccination_schedules_from_config
+from .vaccination import add_vaccination_schedules_from_config, load_preprocessed_vaccination_schedule
 
 logger = logging.getLogger(__name__)
 
@@ -181,7 +181,7 @@ def setup_vaccination_schedules(
     # If start_date is sampled, precalculate schedule with earliest start for later reaggregation
     if sampled_start_timespan:
         if basemodel.vaccination.preprocessed_vaccination_data_path:
-            earliest_vax = pd.read_csv(basemodel.vaccination.preprocessed_vaccination_data_path, parse_dates=["dates"])
+            earliest_vax = load_preprocessed_vaccination_schedule(basemodel.vaccination)
             return models, earliest_vax
         earliest_vax = scenario_to_epydemix(
             input_filepath=basemodel.vaccination.scenario_data_path,
