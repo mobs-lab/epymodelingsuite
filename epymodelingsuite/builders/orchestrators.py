@@ -180,6 +180,9 @@ def setup_vaccination_schedules(
 
     # If start_date is sampled, precalculate schedule with earliest start for later reaggregation
     if sampled_start_timespan:
+        if basemodel.vaccination.preprocessed_vaccination_data_path:
+            earliest_vax = pd.read_csv(basemodel.vaccination.preprocessed_vaccination_data_path, parse_dates=["dates"])
+            return models, earliest_vax
         earliest_vax = scenario_to_epydemix(
             input_filepath=basemodel.vaccination.scenario_data_path,
             start_date=sampled_start_timespan.start_date,

@@ -319,6 +319,9 @@ def build_sampling(
     simulation_args = []
     final_models = []
     for model in models:
+        vax_state = (
+            get_data_in_location(earliest_vax, model.population.name, "location") if earliest_vax is not None else None
+        )
         for varset in sampled_vars:
             m = copy.deepcopy(model)
 
@@ -348,7 +351,7 @@ def build_sampling(
 
             # Vaccination (if start_date is sampled)
             if basemodel.vaccination and sampled_start_timespan:
-                reaggregated_vax = reaggregate_vaccines(earliest_vax, timespan.start_date)
+                reaggregated_vax = reaggregate_vaccines(vax_state, timespan.start_date)
                 add_vaccination_schedules_from_config(
                     m, basemodel.transitions, basemodel.vaccination, timespan, use_schedule=reaggregated_vax
                 )
