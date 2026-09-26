@@ -219,14 +219,19 @@ class Parameter(BaseModel):
 class Vaccination(BaseModel):
     """Vaccination configuration, such as data paths."""
 
-    scenario_data_path: str | None = Field(None, description="Path to SMH vaccination scenario data file.")
+    scenario_data_path: str | None = Field(
+        None,
+        description="Path to SMH vaccination scenario data file with a single 'Coverage' column (one scenario). "
+        "For files with several scenario columns, preprocess them with smh_data_to_epydemix() and use "
+        "preprocessed_vaccination_data_path with 'scenario' instead.",
+    )
     preprocessed_vaccination_data_path: str | None = Field(
         None, description="Path to preprocessed vaccination coverage data file."
     )
     scenario: str | None = Field(
         None,
         description="Vaccination scenario. With preprocessed data that has a 'scenario' column, selects that "
-        "scenario (required when there are several). Otherwise informational only.",
+        "scenario (required when there are several). Not used with scenario_data_path.",
     )
     origin_compartment: str = Field(description="Origin compartment for vaccination.")
     eligible_compartments: list[str] = Field(description="Eligible compartments for vaccination.")
