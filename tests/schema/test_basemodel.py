@@ -218,6 +218,14 @@ class TestInterventionValueValidation:
         with pytest.raises(ValueError, match="exactly one"):
             self._parameter_intervention(**kwargs)
 
+    def test_explicit_null_scaling_factor_is_a_validation_error(self):
+        with pytest.raises(ValueError, match="must specify 'scaling_factor'"):
+            Intervention(type="school_closure", scaling_factor=None)
+
+    def test_negative_scaling_factor_rejected(self):
+        with pytest.raises(ValueError, match="must be >= 0"):
+            self._parameter_intervention(scaling_factor=-1)
+
     def test_zero_override_rejected_for_non_parameter(self):
         with pytest.raises(ValueError, match="cannot use 'override_value'"):
             Intervention(type="school_closure", scaling_factor=0.5, override_value=0)

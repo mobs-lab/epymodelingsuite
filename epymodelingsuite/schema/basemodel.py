@@ -316,9 +316,10 @@ class Intervention(BaseModel):
 
     @field_validator("scaling_factor")
     @classmethod
-    def check_scaling_factor(cls, v: float) -> float:
+    def check_scaling_factor(cls, v: float | None) -> float | None:
         """Ensure scaling_factor >= 0."""
-        assert v >= 0, f"Provided scaling_factor={v} must be >= 0."
+        if v is not None and v < 0:
+            raise ValueError(f"Provided scaling_factor={v} must be >= 0.")
         return v
 
     @model_validator(mode="after")
