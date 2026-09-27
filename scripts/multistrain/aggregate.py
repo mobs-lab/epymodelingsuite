@@ -109,9 +109,9 @@ def main():
         )
 
     # Add formatting columns
-    ref_date = Week.fromstring(str(aggregation.submission_week)).enddate()
+    ref_date = pd.Timestamp(Week.fromstring(str(aggregation.submission_week)).enddate()).as_unit("us")
     aggregated_df["reference_date"] = ref_date
-    aggregated_df["horizon"] = ((aggregated_df["date"] - pd.Timestamp(ref_date)).dt.days // 7).astype(int)
+    aggregated_df["horizon"] = ((aggregated_df["date"] - ref_date).dt.days // 7).astype(int)
     aggregated_df["epiweek"] = [Week.fromdate(dat).cdcformat() for dat in aggregated_df.date]
 
     # Write aggregated trajectories to file, named after the config (e.g.
