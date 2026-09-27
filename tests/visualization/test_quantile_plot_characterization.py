@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
+from pydantic import ValidationError
 from quantile_plot_test_utils import (
     PlotCapture,
     make_calibration,
@@ -403,12 +404,10 @@ class TestSideBySideAllCalibrationClipped:
 
 class TestColorBool:
     @pytest.mark.parametrize("layer", ["calibration", "projection"])
-    def test_false_skips_every_plot(self, capture, hosp_only, layer):
-        """What calibration: false / projection: false in the styling section do."""
-        outputs = [QuantilesOutputConfig(type="full", show_calibration=True, show_projection=layer != "projection")]
-        config = make_plots_config(single=True, grid=True, outputs=outputs, **{layer: False})
-        # CURRENT BEHAVIOR: reading `.color` on False raises, and the plot is silently skipped.
-        assert run_generators([make_calibration(CA)], config, hosp_only) == {}
+    def test_false_fails_validation(self, layer):
+        """calibration: false / projection: false fail validation with a migration hint."""
+        with pytest.raises(ValidationError, match=f"outputs\\[\\].show_{layer}: false"):
+            make_plots_config(single=True, grid=True, **{layer: False})
 
 
 class TestGenerationNotice:
