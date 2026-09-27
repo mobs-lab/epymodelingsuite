@@ -8,7 +8,7 @@ import pytest
 
 from epymodelingsuite.schema.calibration import CalibrationStrategy
 from epymodelingsuite.schema.dispatcher import CalibrationOutput
-from epymodelingsuite.schema.output import ObservedValuesConfig, PlotsConfig, QuantilesPlotConfig
+from epymodelingsuite.schema.output import ObservedValuesConfig, PlotsConfig, PosteriorPlotConfig, QuantilesPlotConfig
 from epymodelingsuite.visualization.generators import (
     _check_incomplete_generations,
     _clip_surveillance,
@@ -18,7 +18,9 @@ from epymodelingsuite.visualization.generators import (
     _select_surveillance,
     _rename_value_column,
     generate_quantile_grid_plot,
+    generate_single_location_posterior_plots,
     generate_single_quantile_plots,
+    get_locations_to_plot,
 )
 
 
@@ -712,3 +714,36 @@ class TestGeneratorsDoNotFilterResults:
         assert mock_grid.called
         mock_filter.assert_not_called()
         assert calibration.results is original_results
+
+
+class TestLocationsToPlot:
+    """ISO locations in `single` must match epydemix population names."""
+
+    def test_iso_list_is_accepted_by_quantiles_schema(self):
+        assert QuantilesPlotConfig(single=["US-CA"]).single == ["US-CA"]
+
+    def test_invalid_location_rejected_by_quantiles_schema(self):
+        with pytest.raises(ValueError, match="Invalid ISO 3166"):
+            QuantilesPlotConfig(single=["XX-INVALID"])
+
+    @pytest.mark.parametrize("requested", ["US-CA", "United_States__California", "United_States_California"])
+    def test_matches_epydemix_population_names(self, requested):
+        calibrations = [_make_mock_calibration("United_States__California"), _make_mock_calibration("United_States")]
+        assert get_locations_to_plot(calibrations, [requested]) == {"United_States__California"}
+
+    def test_single_quantile_plots_with_iso_input(self):
+        calibrations = [_make_mock_calibration("United_States__California"), _make_mock_calibration("United_States")]
+        plots_config = PlotsConfig(reference_date=date(2024, 1, 15), quantiles=QuantilesPlotConfig(single=["US-CA"]))
+        out_dict = {}
+        generate_single_quantile_plots(calibrations, plots_config, out_dict)
+
+        assert out_dict
+        assert all("United_States__California" in output_name for output_name in out_dict)
+
+    def test_single_posterior_plots_with_iso_input(self):
+        calibrations = [_make_mock_calibration("United_States__California"), _make_mock_calibration("United_States")]
+        plots_config = PlotsConfig(reference_date=date(2024, 1, 15), posterior=PosteriorPlotConfig(single=["US-CA"]))
+        out_dict = {}
+        generate_single_location_posterior_plots(calibrations, plots_config, out_dict)
+
+        assert set(out_dict) == {"posterior_United_States__California"}
