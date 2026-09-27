@@ -33,7 +33,7 @@ def _trajectories(populations: list[str]) -> pd.DataFrame:
 
 def _surveillance() -> pd.DataFrame:
     baseline_date = pd.Timestamp(REFERENCE_DATE) - pd.Timedelta(weeks=1)
-    return pd.DataFrame({"date": [baseline_date] * 2, "abbreviation": ["US", "MA"], "target": [1000.0, 50.0]})
+    return pd.DataFrame({"date": [baseline_date] * 2, "location": ["US", "25"], "target": [1000.0, 50.0]})
 
 
 def test_schema_profiles_match_formatter():

@@ -96,9 +96,9 @@ def compute_rate_trend_categories(
     value_col: str = "target_total",
     surveillance_date_col: str = "date",
     surveillance_value_col: str = "hospitalizations",
-    surveillance_location_col: str = "abbreviation",
+    surveillance_location_col: str = "location",
 ) -> pd.DataFrame:
-    """Compute rate trend category for each trajectory at each horizon."""
+    """Compute rate trend category for each trajectory at each horizon. Surveillance is keyed by FIPS code."""
     if horizons is None:
         horizons = get_flusight_categorical_horizons()
 
@@ -114,14 +114,15 @@ def compute_rate_trend_categories(
 
     for pop in df["location"].unique():
         abbrev = convert_location_name_format(value=pop, output_format="abbreviation", location_type="iso")
+        location = _epydemix_to_fips(pop)
         pop_data = df[df["location"] == pop]
         population_size = POPULATION.get(abbrev, POPULATION.get("US"))
 
-        surv_pop = surv[surv[surveillance_location_col] == abbrev]
+        surv_pop = surv[surv[surveillance_location_col] == location]
         baseline_row = surv_pop[surv_pop[surveillance_date_col] == baseline_date]
 
         if len(baseline_row) == 0:
-            print(f"Warning: No surveillance data for {abbrev} on {baseline_date}")
+            print(f"Warning: No surveillance data for {abbrev} ({location}) on {baseline_date}")
             continue
 
         baseline_val = baseline_row[surveillance_value_col].values[0]
@@ -146,6 +147,7 @@ def compute_rate_trend_categories(
                         "sample_id": sample_id,
                         "population": pop,
                         "abbreviation": abbrev,
+                        "location": location,
                         "baseline_date": baseline_date,
                         "horizon": horizon,
                         "target_date": target_date,
@@ -163,7 +165,7 @@ def compute_rate_trend_categories(
 def compute_rate_trend_pmf(categories_df: pd.DataFrame) -> pd.DataFrame:
     """Compute probability mass function for rate trend categories."""
     counts = (
-        categories_df.groupby(["population", "abbreviation", "horizon", "target_date", "category"])
+        categories_df.groupby(["population", "abbreviation", "location", "horizon", "target_date", "category"])
         .size()
         .unstack(fill_value=0)
     )
@@ -247,7 +249,7 @@ def create_submission(
     value_col : str
         Column with the values to summarize.
     surveillance_df : pd.DataFrame | None
-        Observed `date`, `abbreviation`, `target` (see `read_surveillance`) for the rate-trend baseline.
+        Observed `date`, `location`, `target` (see `read_surveillance`) for the rate-trend baseline.
         Required when the profile has `pmf`.
 
     Returns
@@ -310,10 +312,7 @@ def _pmf_rows(pmf_df: pd.DataFrame, reference_date: str) -> pd.DataFrame:
     results = []
 
     for _, row in pmf_df.iterrows():
-        abbrev = row["abbreviation"]
-        location = convert_location_name_format(
-            value=abbrev, output_format="FIPS", input_format="abbreviation", location_type="iso"
-        )
+        location = row["location"]
         horizon = row["horizon"]
         target_date = row["target_date"]
 
@@ -355,13 +354,20 @@ def read_aggregated(path: str, config) -> pd.DataFrame:
 
 
 def read_surveillance(config) -> tuple[pd.DataFrame, pd.DataFrame | None]:
-    """Read in-sample (fit) and optional out-of-sample (recent) surveillance as `date`, `abbreviation`, `target`."""
+    """
+    Read in-sample (fit) and optional out-of-sample (recent) surveillance as `date`, `location`, `target`.
+
+    `config.location_column` must hold the hub location ids of the submission profile, e.g. FIPS codes
+    (`location_code` in hosp files, `location` in ED files) or metrocast ids (`location`).
+    """
 
     def _read(fname: str) -> pd.DataFrame:
-        surv = cols_to_dt(pd.read_csv(f"{config.directory}/{fname}"), [config.date_column])
-        surv["abbreviation"] = surv["location_iso"].apply(lambda k: k.split("-")[-1])
-        surv = surv.rename(columns={config.date_column: "date", config.target_column: "target"})
-        return surv[["date", "abbreviation", "target"]]
+        surv = pd.read_csv(f"{config.directory}/{fname}", dtype={config.location_column: str})
+        surv = cols_to_dt(surv, [config.date_column])
+        surv = surv.rename(
+            columns={config.date_column: "date", config.location_column: "location", config.target_column: "target"}
+        )
+        return surv[["date", "location", "target"]]
 
     fit = _read(config.fit_fname)
     recent = _read(config.recent_fname) if config.recent_fname is not None else None

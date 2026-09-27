@@ -4,7 +4,7 @@ from epiweeks import Week
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from .common import Meta
-from .submission import AggregatedTrajectoriesConfig, SurveillanceConfig
+from .submission import AggregatedTrajectoriesConfig, SubmissionProfile, SurveillanceConfig
 
 logger = logging.getLogger(__name__)
 
@@ -60,8 +60,9 @@ class PlotConfiguration(BaseModel):
 
     meta: Meta | None = Field(None, description="General metadata.")
     submission_week: str | int = Field(description="Epiweek of submission in CDC format, i.e. 'YYYYww'")
-    surveillance: SurveillanceConfig = Field(
-        description="Specification for surveillance file. Expected to be either on GitHub or local."
+    profile: SubmissionProfile = Field(description="Submission profile whose location ids label the panels.")
+    surveillance: SurveillanceConfig | None = Field(
+        None, description="Specification for surveillance file. Expected to be either on GitHub or local."
     )
     aggregated: AggregatedTrajectoriesConfig = Field(description="Specifications for aggregated trajectories.")
     single_strain: SingleStrainConfig | None = Field(

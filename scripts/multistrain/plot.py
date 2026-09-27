@@ -20,6 +20,7 @@ from epiweeks import Week
 
 from epymodelingsuite.config_loader import load_plot_config_from_file
 from epymodelingsuite.multistrain.formatter import (
+    SUBMISSION_PROFILES,
     cols_to_dt,
     compute_quantiles,
     read_aggregated,
@@ -28,10 +29,23 @@ from epymodelingsuite.multistrain.formatter import (
 from epymodelingsuite.multistrain.plot import (
     make_fit_start_labels,
     make_plotting_windows,
-    plot_hosp_multistrain_quantiles,
+    plot_multistrain_quantiles,
     pull_single_strain_trajectories,
 )
-from epymodelingsuite.utils.location import convert_location_name_format
+
+
+def _quantiles(df: pd.DataFrame, value_col: str, date_col: str, location_col: str, to_location) -> pd.DataFrame:
+    """Quantiles per location and date, with `date` and hub-id `location` columns."""
+    q = compute_quantiles(df, value_col=value_col, date_col=date_col, location_col=location_col)
+    q = q.rename(columns={date_col: "date"})
+    q["location"] = q.pop(location_col).map(to_location)
+    return q
+
+
+def _window(df: pd.DataFrame | None, start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame | None:
+    if df is None:
+        return None
+    return df[(df["date"] >= start) & (df["date"] < end)].sort_values("date")
 
 
 def main():
@@ -59,8 +73,10 @@ def main():
     plots_path = Path(args.output)
     plots_path.mkdir(parents=True, exist_ok=True)
 
-    print("\nLoading surveillance ...")
-    surv_fit, surv_recent = read_surveillance(config.surveillance)
+    surv_fit, surv_recent = None, None
+    if config.surveillance is not None:
+        print("\nLoading surveillance ...")
+        surv_fit, surv_recent = read_surveillance(config.surveillance)
 
     print(f"\nLoading aggregated trajectories from {args.aggregated} ...")
     aggregated = read_aggregated(args.aggregated, config.aggregated)
@@ -81,38 +97,26 @@ def main():
         print(single_strain.tail())
 
     print("\nGenerating plots ...")
-    agg_quantiles = compute_quantiles(
+    to_location = SUBMISSION_PROFILES[config.profile]["location"]
+    agg_quantiles = _quantiles(
         aggregated,
-        value_col=config.aggregated.target_column,
-        date_col=config.aggregated.date_column,
-        location_col=config.aggregated.location_column,
+        config.aggregated.target_column,
+        config.aggregated.date_column,
+        config.aggregated.location_column,
+        to_location,
     )
-    # Add state abbreviations
-    agg_quantiles["abbreviation"] = agg_quantiles[config.aggregated.location_column].apply(
-        lambda l: convert_location_name_format(
-            value=l, output_format="abbreviation", input_format="epydemix_population", location_type="iso"
-        )
-    )
-    # Do the same for single strain
+    single_quantiles = None
     if single_strain is not None:
-        single_quantiles = compute_quantiles(
+        single_quantiles = _quantiles(
             single_strain,
-            value_col=config.single_strain.target_column,
-            date_col=config.single_strain.date_column,
-            location_col=config.single_strain.location_column,
+            config.single_strain.target_column,
+            config.single_strain.date_column,
+            config.single_strain.location_column,
+            to_location,
         )
-        single_quantiles["abbreviation"] = single_quantiles[config.single_strain.location_column].apply(
-            lambda l: convert_location_name_format(
-                value=l, output_format="abbreviation", input_format="epydemix_population", location_type="iso"
-            )
-        )
-    else:
-        single_quantiles = None
-    # Get sorted list of populations (US first, then states alphabetically)
-    populations = sorted(agg_quantiles[config.aggregated.location_column].unique())
-    if "United_States" in populations:
-        populations = ["United_States"] + [p for p in populations if p != "United_States"]
-    print(f"  Plotting {len(populations)} locations")
+    # US first, then the rest alphabetically
+    locations = sorted(agg_quantiles["location"].unique(), key=lambda loc: (loc != "US", loc))
+    print(f"  Plotting {len(locations)} locations")
 
     plotting_windows = make_plotting_windows(config)
     fit_start_labels = make_fit_start_labels(config)
@@ -123,48 +127,23 @@ def main():
         include_single = "" if config.single_strain is None else " vs Single Strain"
         plot_title = f"{config.submission_week} Multistrain {config.aggregated.target_column}{include_single}"
         plot_fname = f"{plot_focus.lower()}-{config.submission_week}-{config.aggregated.target_column}-multistrain{include_single.lower().replace(' ', '_')}.pdf"
-        plot_fpath = f"{plots_path}/{plot_fname}"
 
-        agg_quantiles_filter = (
-            agg_quantiles[
-                (agg_quantiles[config.aggregated.date_column] >= plot_start_date)
-                & (agg_quantiles[config.aggregated.date_column] < plot_end_date)
-            ]
-            .sort_values(config.aggregated.date_column)
-            .rename(columns={config.aggregated.date_column: "date"})
-        )
-        single_quantiles_filter = None
-        if single_quantiles is not None:
-            single_quantiles_filter = (
-                single_quantiles[
-                    (single_quantiles[config.single_strain.date_column] >= plot_start_date)
-                    & (single_quantiles[config.single_strain.date_column] < plot_end_date)
-                ]
-                .sort_values(config.single_strain.date_column)
-                .rename(columns={config.single_strain.date_column: "date"})
-            )
-        surv_fit_filter = surv_fit[
-            (surv_fit["date"] >= plot_start_date) & (surv_fit["date"] < plot_end_date)
-        ].sort_values("date")
-        surv_recent_filter = None
-        if surv_recent is not None:
-            surv_fit_filter = surv_fit_filter[surv_fit_filter["date"] < reference_dt]
-            surv_recent_filter = surv_recent[
-                (surv_recent["date"] >= reference_dt) & (surv_recent["date"] < plot_end_date)
-            ].sort_values("date")
+        # With out-of-sample data, in-sample points stop at the reference date
+        surv_fit_filter = _window(surv_fit, plot_start_date, reference_dt if surv_recent is not None else plot_end_date)
+        surv_recent_filter = _window(surv_recent, reference_dt, plot_end_date)
 
-        plot_hosp_multistrain_quantiles(
-            populations=populations,
+        plot_multistrain_quantiles(
+            locations=locations,
             reference_date=reference_dt,
-            multistrain_quantiles=agg_quantiles_filter,
-            single_strain_quantiles=single_quantiles_filter,
+            multistrain_quantiles=_window(agg_quantiles, plot_start_date, plot_end_date),
+            single_strain_quantiles=_window(single_quantiles, plot_start_date, plot_end_date),
             surveillance_fit=surv_fit_filter,
             surveillance_recent=surv_recent_filter,
             fit_start_labels={
                 s: l for s, l in fit_start_labels.items() if plot_start_date <= pd.Timestamp(s) <= plot_end_date
             },
             plot_title=plot_title,
-            save_path=plot_fpath,
+            save_path=f"{plots_path}/{plot_fname}",
         )
 
 

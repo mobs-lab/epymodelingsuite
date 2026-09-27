@@ -27,8 +27,9 @@ class SurveillanceConfig(BaseModel):
         "hospitalizations", description="Name of column in trajectory file with target values."
     )
     date_column: str | None = Field("target_end_date", description="Name of column in trajectory file with date.")
-    location_column: str | None = Field(
-        "location_iso", description="Name of column in trajectory file with location/population."
+    location_column: str = Field(
+        "location",
+        description="Column with hub location ids (FIPS for FluSight, e.g. 'location_code' in hosp files; metrocast id).",
     )
 
 

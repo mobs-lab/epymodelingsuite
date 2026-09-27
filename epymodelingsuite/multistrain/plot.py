@@ -12,7 +12,6 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
 from ..schema.plot import PlotConfiguration
-from ..utils.location import convert_location_name_format
 
 logger = logging.getLogger(__name__)
 
@@ -125,35 +124,40 @@ def make_fit_start_labels(
     return fit_start_labels
 
 
-def plot_hosp_multistrain_quantiles(
-    populations: list[str],
+def plot_multistrain_quantiles(
+    locations: list[str],
     reference_date: date,
     multistrain_quantiles: pd.DataFrame,
     single_strain_quantiles: pd.DataFrame | None,
-    surveillance_fit: pd.DataFrame,
+    surveillance_fit: pd.DataFrame | None,
     surveillance_recent: pd.DataFrame | None,
     fit_start_labels: dict[date, str],
     plot_title: str,
     save_path: str | None = None,
     subplots_per_row: int = 4,
 ) -> (Figure, np.ndarray[Axes]):
-    """"""
-    sp_rows = int(np.floor(len(populations) / subplots_per_row)) + int(bool(len(populations) % subplots_per_row))
+    """
+    Plot multistrain (and optionally single-strain) quantile ribbons against surveillance, one panel per location.
+
+    All data frames are keyed by a `location` column holding hub location ids (the submission profile's
+    location transform), which is also used as the panel title.
+    """
+    sp_rows = int(np.floor(len(locations) / subplots_per_row)) + int(bool(len(locations) % subplots_per_row))
     figheight = int(np.floor((sp_rows / subplots_per_row) * 15))
     fig, axes = plt.subplots(sp_rows, subplots_per_row, figsize=(20, figheight))
     axes = axes.flatten()
 
-    for idx, pop in enumerate(populations):
+    for idx, location in enumerate(locations):
         ax = axes[idx]
-        abbrev = convert_location_name_format(value=pop, output_format="abbreviation", location_type="iso")
 
-        # Get data for this population
-        agg_pop = multistrain_quantiles[multistrain_quantiles["abbreviation"] == abbrev]
-        surv_fit_pop = surveillance_fit[surveillance_fit["abbreviation"] == abbrev]
+        # Get data for this location
+        agg_pop = multistrain_quantiles[multistrain_quantiles["location"] == location]
+        if surveillance_fit is not None:
+            surv_fit_pop = surveillance_fit[surveillance_fit["location"] == location]
         if surveillance_recent is not None:
-            surv_recent_pop = surveillance_recent[surveillance_recent["abbreviation"] == abbrev]
+            surv_recent_pop = surveillance_recent[surveillance_recent["location"] == location]
         if single_strain_quantiles is not None:
-            single_pop = single_strain_quantiles[single_strain_quantiles["abbreviation"] == abbrev]
+            single_pop = single_strain_quantiles[single_strain_quantiles["location"] == location]
 
         # Plot multistrain (blue)
         ax.fill_between(
@@ -196,10 +200,11 @@ def plot_hosp_multistrain_quantiles(
                 label="Out of sample",
             )
         # Plot in-sample surveillance (black markers)
-        ax.scatter(surv_fit_pop["date"], surv_fit_pop["target"], color="black", s=15, zorder=5, label="Observed")
+        if surveillance_fit is not None:
+            ax.scatter(surv_fit_pop["date"], surv_fit_pop["target"], color="black", s=15, zorder=5, label="Observed")
 
         # Formatting
-        ax.set_title(abbrev, fontsize=14, fontweight="bold")
+        ax.set_title(location, fontsize=14, fontweight="bold")
         ax.tick_params(axis="x", rotation=45, labelsize=7)
         ax.tick_params(axis="y", labelsize=7)
 
@@ -231,7 +236,7 @@ def plot_hosp_multistrain_quantiles(
         if idx == 0:
             ax.legend(fontsize=8, loc="upper right")
         # Hide any unused subplots
-        for idx in range(len(populations), len(axes)):
+        for idx in range(len(locations), len(axes)):
             axes[idx].set_visible(False)
 
     # Finish
