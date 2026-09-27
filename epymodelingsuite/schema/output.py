@@ -455,7 +455,7 @@ class QuantilesOutputConfig(BaseModel):
 class QuantilesGridConfig(BaseModel):
     """Configuration for quantiles grid plot."""
 
-    enabled: bool = Field(False, description="Create grid plot.")
+    enabled: bool = Field(True, description="Create grid plot.")
     panels_per_row: int = Field(4, description="Number of panels per row in grid.")
 
 
@@ -480,7 +480,7 @@ class QuantilesPlotConfig(BaseModel):
     )
     grid: QuantilesGridConfig | bool = Field(
         default_factory=QuantilesGridConfig,
-        description="Grid plot with all locations (default disabled). Set true to enable with default options, or set options in subfields (grid.enabled must be true to draw).",
+        description="Grid plot with all locations (default enabled). Set true to use default options, false or {enabled: false} to disable, or set options in subfields.",
     )
 
     # Output configuration

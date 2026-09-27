@@ -754,7 +754,14 @@ class TestQuantileGridEnabled:
 
     @pytest.mark.parametrize(
         ("grid_value", "expected_drawn"),
-        [(True, True), (False, False), ({"enabled": False}, False), ({"enabled": True}, True), (None, False)],
+        [
+            (True, True),
+            (False, False),
+            ({"enabled": False}, False),
+            ({"enabled": True}, True),
+            ({"panels_per_row": 2}, True),
+            (None, True),  # missing key: default grid
+        ],
     )
     def test_grid_enabled(self, grid_value, expected_drawn):
         quantiles_kwargs = {} if grid_value is None else {"grid": grid_value}
