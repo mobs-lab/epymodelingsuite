@@ -1,6 +1,9 @@
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["pandas", "pyarrow", "epiweeks"]
+# dependencies = ["epymodelingsuite", "pyarrow"]
+#
+# [tool.uv.sources]
+# epymodelingsuite = { path = "../../", editable = true }
 # ///
 """
 Script to aggregate trajectories from multistrain experiments and add baseline noise.
@@ -8,7 +11,7 @@ Takes a file path to a configuration and, optionally, a directory path for outpu
 All other options specified via yaml file.
 
 Usage:
-    python aggregate.py --config aggregation.yml --output ./multistrain
+    uv run aggregate.py --config aggregation.yml --output ./multistrain
 """
 
 import argparse

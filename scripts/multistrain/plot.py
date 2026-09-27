@@ -1,6 +1,9 @@
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["pandas", "pyarrow", "epiweeks"]
+# dependencies = ["epymodelingsuite", "pyarrow"]
+#
+# [tool.uv.sources]
+# epymodelingsuite = { path = "../../", editable = true }
 # ///
 """
 Script to create multistrain comparison plots from aggregated trajectories.
@@ -8,7 +11,7 @@ Takes a file path to a configuration, a file path to aggregated trajectories, an
 All other options specified via yaml file.
 
 Usage:
-    python plot.py --config plot.yml \
+    uv run plot.py --config plot.yml \
     --aggregated trajectories_aggregated.parquet --output ./multistrain
 """
 
