@@ -111,12 +111,11 @@ def main():
     aggregated_df["horizon"] = ((aggregated_df["date"] - pd.Timestamp(ref_date)).dt.days // 7).astype(int)
     aggregated_df["epiweek"] = [Week.fromdate(dat).cdcformat() for dat in aggregated_df.date]
 
-    # Write aggregated trajectories to file. The base name is derived from the first
-    # source experiment and the submission week (e.g. "climate-seasonality01_202548"),
-    # since the outputs.base_fname config field was removed from the schema.
-    experiment = aggregation.sources[0].experiment.split("/")[0]
-    base_fname = f"{experiment}_{aggregation.submission_week}"
-    fname = f"{args.output}/trajectories_aggregated_{base_fname}.parquet"
+    # Write aggregated trajectories to file, named after the config (e.g.
+    # "202613_bphc_ed.yaml" -> "trajectories_aggregated_202613_bphc_ed.parquet").
+    # Deriving it from sources[0].experiment instead gives useless names, because
+    # the leading path segment is the epiweek for flu and "test" for bphc.
+    fname = f"{args.output}/trajectories_aggregated_{Path(args.config).stem}.parquet"
     aggregated_df.to_parquet(fname, index=False)
     print(f"  Saved aggregated trajectories at {fname}")
 
