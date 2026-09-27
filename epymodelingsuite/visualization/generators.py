@@ -1092,7 +1092,8 @@ def generate_quantile_grid_plot(
     None
         Modifies out_dict in-place by adding quantile grid plot output.
     """
-    if not plots_config.quantiles.grid:
+    grid_config = plots_config.quantiles.grid
+    if grid_config is False or not grid_config.enabled:
         return
 
     logger.info("Generating grid quantile plots for %d locations", len(calibrations))

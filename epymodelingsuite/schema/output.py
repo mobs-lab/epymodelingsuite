@@ -480,7 +480,7 @@ class QuantilesPlotConfig(BaseModel):
     )
     grid: QuantilesGridConfig | bool = Field(
         default_factory=QuantilesGridConfig,
-        description="Grid plot with all locations (default enabled). Set true to use default options, or set options in subfields.",
+        description="Grid plot with all locations (default disabled). Set true to enable with default options, or set options in subfields (grid.enabled must be true to draw).",
     )
 
     # Output configuration
@@ -550,9 +550,9 @@ class QuantilesPlotConfig(BaseModel):
     @field_validator("grid")
     @classmethod
     def validate_grid(cls, v: QuantilesGridConfig | bool) -> QuantilesGridConfig | bool:
-        """If passed True, use default factory."""
+        """If passed True, enable the grid with default options."""
         if v is True:
-            return QuantilesGridConfig()
+            return QuantilesGridConfig(enabled=True)
         return v
 
     @field_validator("calibration", "projection", mode="before")

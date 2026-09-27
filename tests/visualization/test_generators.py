@@ -747,3 +747,20 @@ class TestLocationsToPlot:
         generate_single_location_posterior_plots(calibrations, plots_config, out_dict)
 
         assert set(out_dict) == {"posterior_United_States__California"}
+
+
+class TestQuantileGridEnabled:
+    """`grid.enabled` decides whether the quantile grid is drawn."""
+
+    @pytest.mark.parametrize(
+        ("grid_value", "expected_drawn"),
+        [(True, True), (False, False), ({"enabled": False}, False), ({"enabled": True}, True), (None, False)],
+    )
+    def test_grid_enabled(self, grid_value, expected_drawn):
+        quantiles_kwargs = {} if grid_value is None else {"grid": grid_value}
+        plots_config = PlotsConfig(reference_date=date(2024, 1, 15), quantiles=QuantilesPlotConfig(**quantiles_kwargs))
+        with patch("epymodelingsuite.visualization.generators.plot_calibration_projection_grid") as mock_grid:
+            mock_grid.return_value = (MagicMock(), MagicMock())
+            generate_quantile_grid_plot([_make_mock_calibration("US-CA")], plots_config, {})
+
+        assert mock_grid.called is expected_drawn
