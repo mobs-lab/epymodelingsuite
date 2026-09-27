@@ -342,7 +342,7 @@ def _aggregate_sum(
 
     # Sum target values from all strains
     target_cols = [f"target_{source.strain}" for source in config.sources]
-    agg_colname = "target_sum"
+    agg_colname = "target_total"
     aggregated[agg_colname] = aggregated[target_cols].fillna(0).sum(axis=1)
 
     # Clean up columns
@@ -420,7 +420,7 @@ def _baseline_negative_binomial(
     for k in kvals:
         p_vals = k / (k + combined["baseline"])
         baseline_sample = rng.negative_binomial(k, p_vals)
-        aggregated[f"target_baseline_k{k}"] = combined["target_sum"] + baseline_sample
+        aggregated[f"target_baseline_k{k}"] = combined["target_total"] + baseline_sample
 
     return aggregated
 
@@ -435,7 +435,7 @@ def dispatch_baseline(
     Parameters
     ----------
     aggregated_trajectories: pd.DataFrame
-        DataFrame with aggregated trajectories in column "target_sum"
+        DataFrame with aggregated trajectories in column "target_total"
     config: AggregationConfiguration
         Config object with settings
 
@@ -462,7 +462,7 @@ def dispatch_baseline(
         else "location_name_epydemix_deprecated"
     )
     combined = aggregated_trajectories.merge(baselines_avg, how="inner", left_on="location", right_on=traj_loc_fmt)[
-        ["location", "baseline", "target_sum"]
+        ["location", "baseline", "target_total"]
     ]
 
     match config.baseline.method:
