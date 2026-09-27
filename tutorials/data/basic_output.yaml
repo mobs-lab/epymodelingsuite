@@ -110,7 +110,7 @@ output:
           spacing: 0.3
           figsize: null                    # Auto-size
 
-      # Shared styling (colors only, show flags moved to outputs)
+      # Shared styling (colors only; use outputs[].show_calibration / show_projection to hide ribbons)
       calibration:
         color: "C0"
 

@@ -3,7 +3,7 @@ from datetime import date
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, ValidationInfo, field_validator, model_validator
 
 from .common import Meta
 
@@ -393,15 +393,16 @@ class SideBySidePanelConfig(BaseModel):
     """Configuration for a single panel in side-by-side plot."""
 
     surveillance_points: int | None = Field(
-        None, description="Number of most recent surveillance points to display. None = all points."
+        None,
+        description="Number of most recent surveillance points on or before reference_date to display; all points after reference_date are kept. None = inherit from the output. If this panel sets surveillance_points or surveillance_start_date, neither is inherited.",
     )
     surveillance_start_date: str | None = Field(
         None,
-        description="Filter surveillance to show only points >= this date (YYYY-MM-DD). Overrides surveillance_points if both set.",
+        description="Filter surveillance to show only points >= this date (YYYY-MM-DD). Overrides surveillance_points if both set. None = inherit from the output.",
     )
     xlabel_interval: str | None = Field(
         None,
-        description="X-axis label interval as pandas offset string (e.g., 'W-SAT', '2W-SAT', 'MS'). None = auto (matplotlib default).",
+        description="X-axis label interval as pandas offset string (e.g., 'W-SAT', '2W-SAT', 'MS'). None = inherit from the output.",
     )
 
 
@@ -420,19 +421,21 @@ class QuantilesOutputConfig(BaseModel):
         description="Name of surveillance source from surveillance dict. If None and surveillance dict has one entry, use that entry.",
     )
 
-    # Filter settings (only for FILTERED and FULL types)
+    # Filter settings (for SIDE_BY_SIDE, these are the defaults for both panels)
     surveillance_points: int | None = Field(
         None,
-        description="Number of most recent surveillance points to display. None = all points. Not used for SIDE_BY_SIDE.",
+        description="Number of most recent surveillance points on or before reference_date to display; all points after reference_date are kept. None = no limit (full) or start at the first projection date (filtered).",
     )
     surveillance_start_date: str | None = Field(
         None,
-        description="Filter surveillance to show only points >= this date (YYYY-MM-DD). Overrides surveillance_points if both set. Not used for SIDE_BY_SIDE.",
+        description="Filter surveillance to show only points >= this date (YYYY-MM-DD). Overrides surveillance_points if both set.",
     )
-    horizon_max: int | None = Field(None, description="Override base horizon_max. None = use base config value.")
+    horizon_max: int | None = Field(
+        None, description="Override base horizon_max (shorter or longer). None = use base config value."
+    )
     xlabel_interval: str | None = Field(
         None,
-        description="X-axis label interval as pandas offset string (e.g., 'W-SAT', '2W-SAT', 'MS'). None = auto. For SIDE_BY_SIDE, use panel configs instead.",
+        description="X-axis label interval as pandas offset string (e.g., 'W-SAT', '2W-SAT', 'MS'). None = auto.",
     )
 
     # Panel settings (only for SIDE_BY_SIDE type)
@@ -517,17 +520,17 @@ class QuantilesPlotConfig(BaseModel):
         validate_default=True,
     )
     horizon_max: int | None = Field(
-        3, description="Base maximum forecast horizon (weeks ahead). Can be overridden per output."
+        3, description="Base maximum forecast horizon (weeks ahead). None = no limit. Can be overridden per output."
     )
 
     # Shared styling (data source and colors)
-    calibration: QuantilesCalibrationConfig | bool = Field(
+    calibration: QuantilesCalibrationConfig = Field(
         default_factory=QuantilesCalibrationConfig,
-        description="Calibration period quantile ribbons (default enabled). Set true to use default options, or set options in subfields.",
+        description="Calibration ribbon styling. Use outputs[].show_calibration to show or hide the ribbons.",
     )
-    projection: QuantilesProjectionConfig | bool = Field(
+    projection: QuantilesProjectionConfig = Field(
         default_factory=QuantilesProjectionConfig,
-        description="Projection period quantile ribbons (default enabled). Set true to use default options, or set options in subfields.",
+        description="Projection ribbon styling. Use outputs[].show_projection to show or hide the ribbons.",
     )
 
     value_column: str = Field(
@@ -551,20 +554,17 @@ class QuantilesPlotConfig(BaseModel):
             return QuantilesGridConfig()
         return v
 
-    @field_validator("calibration")
+    @field_validator("calibration", "projection", mode="before")
     @classmethod
-    def validate_calibration(cls, v: QuantilesCalibrationConfig | bool) -> QuantilesCalibrationConfig | bool:
-        """If passed True, use default factory."""
-        if v is True:
-            return QuantilesCalibrationConfig()
-        return v
-
-    @field_validator("projection")
-    @classmethod
-    def validate_projection(cls, v: QuantilesProjectionConfig | bool) -> QuantilesProjectionConfig | bool:
-        """If passed True, use default factory."""
-        if v is True:
-            return QuantilesProjectionConfig()
+    def reject_bool_styling(cls, v: Any, info: ValidationInfo) -> Any:
+        """Reject the old bool form; these sections only hold colors now."""
+        if isinstance(v, bool):
+            msg = (
+                f"plots.quantiles.{info.field_name} no longer accepts true/false. "
+                f"For true, remove the key or use {{}}. "
+                f"For false, set outputs[].show_{info.field_name}: false."
+            )
+            raise ValueError(msg)  # noqa: TRY004
         return v
 
     @field_validator("quantiles")

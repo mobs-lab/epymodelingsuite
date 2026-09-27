@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
+from pydantic import ValidationError
 from quantile_plot_test_utils import (
     QUANTILES,
     PlotCapture,
@@ -653,19 +654,13 @@ class TestSideBySideAllCalibrationClipped:
 
 
 class TestColorBool:
-    """Calibration or projection styling set to false in single and grid full outputs."""
+    """Reject boolean calibration or projection styling with a migration hint."""
 
     @pytest.mark.parametrize("layer", ["calibration", "projection"])
-    def test_false_skips_every_plot(self, capture, hosp_only, layer):
-        """Full outputs with either calibration or projection styling disabled.
-
-        Record that the tested configurations currently produce an empty output
-        dictionary, even though calibration data is available to draw.
-        """
-        outputs = [QuantilesOutputConfig(type="full", show_calibration=True, show_projection=layer != "projection")]
-        config = make_plots_config(single=True, grid=True, outputs=outputs, **{layer: False})
-        # TODO: CURRENT BEHAVIOR — reading `.color` on False raises, and the plot is silently skipped.
-        assert run_generators([make_calibration(CA)], config, hosp_only) == {}
+    def test_false_fails_validation(self, layer):
+        """Setting either styling section to false points to outputs[].show_<layer>."""
+        with pytest.raises(ValidationError, match=f"outputs\\[\\].show_{layer}: false"):
+            make_plots_config(single=True, grid=True, **{layer: False})
 
 
 class TestGenerationNotice:
