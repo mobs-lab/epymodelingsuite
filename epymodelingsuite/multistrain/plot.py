@@ -11,13 +11,13 @@ from epiweeks import Week
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
-from ..schema.post_aggregation import PostAggregationConfiguration
+from ..schema.plot import PlotConfiguration
 from ..utils.location import convert_location_name_format
 
 logger = logging.getLogger(__name__)
 
 
-def pull_single_strain_trajectories(config: PostAggregationConfiguration) -> pd.DataFrame:
+def pull_single_strain_trajectories(config: PlotConfiguration) -> pd.DataFrame:
     """
     Pull a single-strain trajectory file from Google Cloud Storage.
     Requires cloud authorization and gcloud.
@@ -27,7 +27,7 @@ def pull_single_strain_trajectories(config: PostAggregationConfiguration) -> pd.
     Parameters
     ----------
     config: str
-        Loaded post-aggregation configuration object.
+        Loaded plot configuration object.
 
     Returns
     -------
@@ -82,13 +82,13 @@ def pull_single_strain_trajectories(config: PostAggregationConfiguration) -> pd.
     return trajectories
 
 
-def make_plotting_windows(config: PostAggregationConfiguration) -> dict[str, tuple[date, date]]:
+def make_plotting_windows(config: PlotConfiguration) -> dict[str, tuple[date, date]]:
     """Create a dictionary with plotting windows and identifying names"""
     windows = {}
-    season_start = Week.fromstring(str(config.plot.season_start_week))
-    season_end = Week.fromstring(str(config.plot.season_end_week))
-    focus_start = Week.fromstring(str(config.plot.focus_start_week))
-    focus_end = Week.fromstring(str(config.plot.focus_end_week))
+    season_start = Week.fromstring(str(config.season_start_week))
+    season_end = Week.fromstring(str(config.season_end_week))
+    focus_start = Week.fromstring(str(config.focus_start_week))
+    focus_end = Week.fromstring(str(config.focus_end_week))
     if (season_start == focus_start) and (season_end == focus_end):
         windows["Focus"] = (season_start.startdate(), season_end.enddate())
         return windows
@@ -109,13 +109,13 @@ def make_plotting_windows(config: PostAggregationConfiguration) -> dict[str, tup
 
 
 def make_fit_start_labels(
-    config: PostAggregationConfiguration,
+    config: PlotConfiguration,
 ) -> dict[date, str]:
     """Resolve names and dates for fitting window starts"""
-    fit_start_dates = set([Week.fromstring(str(fit.week)).enddate() for fit in config.plot.strain_fit_starts])
+    fit_start_dates = set([Week.fromstring(str(fit.week)).enddate() for fit in config.strain_fit_starts])
     fit_start_labels = {}
     for fit_start_date in fit_start_dates:
-        for fit in config.plot.strain_fit_starts:
+        for fit in config.strain_fit_starts:
             oldlabel = fit_start_labels.setdefault(fit_start_date, None)
             if oldlabel is None:
                 label = f"{fit.label}"

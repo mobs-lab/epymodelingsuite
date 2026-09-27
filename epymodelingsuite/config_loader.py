@@ -7,15 +7,18 @@ from .schema.aggregation import AggregationConfig, validate_aggregation
 from .schema.basemodel import BasemodelConfig, validate_basemodel
 from .schema.calibration import CalibrationConfig, validate_calibration
 from .schema.output import OutputConfig, validate_output
-from .schema.post_aggregation import validate_post_aggregation
+from .schema.plot import PlotConfig, validate_plot
 from .schema.sampling import SamplingConfig, validate_sampling
+from .schema.submission import SubmissionConfig, validate_submission
 
 __all__ = [
     "load_aggregation_config_from_file",
     "load_basemodel_config_from_file",
     "load_calibration_config_from_file",
     "load_output_config_from_file",
+    "load_plot_config_from_file",
     "load_sampling_config_from_file",
+    "load_submission_config_from_file",
 ]
 
 logger = logging.getLogger(__name__)
@@ -141,9 +144,9 @@ def load_aggregation_config_from_file(path: str) -> AggregationConfig:
     return root
 
 
-def load_post_aggregation_config_from_file(path: str) -> AggregationConfig:
+def load_submission_config_from_file(path: str) -> SubmissionConfig:
     """
-    Load post-aggregation configuration YAML from the given path and validate against the schema.
+    Load submission configuration YAML from the given path and validate against the schema.
 
     Parameters
     ----------
@@ -160,6 +163,30 @@ def load_post_aggregation_config_from_file(path: str) -> AggregationConfig:
     with Path(path).open() as f:
         raw = yaml.safe_load(f)
 
-    root = validate_post_aggregation(raw)
-    logger.info("Post-aggregation configuration loaded successfully.")
+    root = validate_submission(raw)
+    logger.info("Submission configuration loaded successfully.")
+    return root
+
+
+def load_plot_config_from_file(path: str) -> PlotConfig:
+    """
+    Load plot configuration YAML from the given path and validate against the schema.
+
+    Parameters
+    ----------
+        path: The file path to the YAML configuration file.
+
+    Returns
+    -------
+        The validated configuration object.
+    """
+    from pathlib import Path
+
+    import yaml
+
+    with Path(path).open() as f:
+        raw = yaml.safe_load(f)
+
+    root = validate_plot(raw)
+    logger.info("Plot configuration loaded successfully.")
     return root

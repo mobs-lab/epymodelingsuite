@@ -4,40 +4,13 @@ from epiweeks import Week
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from .common import Meta
+from .submission import AggregatedTrajectoriesConfig, SurveillanceConfig
 
 logger = logging.getLogger(__name__)
 
 # ----------------------------------------
 # Schema models
 # ----------------------------------------
-
-
-class SurveillanceConfig(BaseModel):
-    """
-    Specification for surveillance files. Expected to be either on GitHub or local.
-    """
-
-    directory: str = Field(description="")
-    fit_fname: str = Field(description="")
-    recent_fname: str | None = Field(None, description="")
-    target_column: str | None = Field(
-        "hospitalizations", description="Name of column in trajectory file with target values."
-    )
-    date_column: str | None = Field("target_end_date", description="Name of column in trajectory file with date.")
-    location_column: str | None = Field(
-        "location_iso", description="Name of column in trajectory file with location/population."
-    )
-
-
-class AggregatedTrajectoriesConfig(BaseModel):
-    """
-    Specifications for aggregated trajectories.
-    """
-
-    target_column: str = Field(description="Name of column in trajectory file with target values.")
-    date_column: str = Field("date", description="Name of column in trajectory file with target date.")
-    location_column: str = Field("location", description="Name of column in trajectory file with location/population.")
-    week_column: str = Field("epiweek", description="Name of column in trajectory file with target epiweek.")
 
 
 class SingleStrainConfig(BaseModel):
@@ -82,11 +55,18 @@ class FitStartConfig(BaseModel):
         return v
 
 
-class MultistrainPlotConfig(BaseModel):
-    """
-    Configuration for multistrain plots.
-    """
+class PlotConfiguration(BaseModel):
+    """Configuration for multistrain comparison plots."""
 
+    meta: Meta | None = Field(None, description="General metadata.")
+    submission_week: str | int = Field(description="Epiweek of submission in CDC format, i.e. 'YYYYww'")
+    surveillance: SurveillanceConfig = Field(
+        description="Specification for surveillance file. Expected to be either on GitHub or local."
+    )
+    aggregated: AggregatedTrajectoriesConfig = Field(description="Specifications for aggregated trajectories.")
+    single_strain: SingleStrainConfig | None = Field(
+        None, description="Source experiment specification for single-strain comparison."
+    )
     season_start_week: str | int = Field(description="Epiweek in CDC format, i.e. 'YYYYww'")
     season_end_week: str | int = Field(description="Epiweek in CDC format, i.e. 'YYYYww'")
     focus_start_week: str | int = Field(description="Epiweek in CDC format, i.e. 'YYYYww'")
@@ -96,7 +76,7 @@ class MultistrainPlotConfig(BaseModel):
     )
 
     @model_validator(mode="after")
-    def validate_field_combinations(self: "MultistrainPlotConfig") -> "MultistrainPlotConfig":
+    def validate_field_combinations(self: "PlotConfiguration") -> "PlotConfiguration":
         """Ensure fields are specified consistently"""
         try:
             s1 = Week.fromstring(str(self.season_start_week), system="cdc", validate=True)
@@ -119,37 +99,13 @@ class MultistrainPlotConfig(BaseModel):
         )
 
 
-class MultistrainSubmissionConfig(BaseModel):
-    """
-    Configuration for submission file.
-    """
+class PlotConfig(BaseModel):
+    """Root schema for plot configuration YAML files."""
 
-    model_name: str = Field(description="")
+    plot: PlotConfiguration
 
 
-class PostAggregationConfiguration(BaseModel):
-    """Configuration for post-aggregation workflow."""
-
-    meta: Meta | None = Field(None, description="General metadata.")
-    submission_week: str | int = Field(description="Epiweek of submission in CDC format, i.e. 'YYYYww'")
-    surveillance: SurveillanceConfig = Field(
-        description="Specification for surveillance file. Expected to be either on GitHub or local."
-    )
-    aggregated: AggregatedTrajectoriesConfig = Field(description="Specifications for aggregated trajectories.")
-    single_strain: SingleStrainConfig | None = Field(
-        None, description="Source experiment specification for single-strain comparison."
-    )
-    submission: MultistrainSubmissionConfig = Field(description="Configuration for submission file.")
-    plot: MultistrainPlotConfig = Field(description="Configuration for multistrain plots.")
-
-
-class PostAggregationConfig(BaseModel):
-    """Root schema for post-aggregation configuration YAML files."""
-
-    post_aggregation: PostAggregationConfiguration
-
-
-def validate_post_aggregation(config: dict) -> PostAggregationConfig:
+def validate_plot(config: dict) -> PlotConfig:
     """
     Validate the given configuration against the schema.
 
@@ -160,11 +116,11 @@ def validate_post_aggregation(config: dict) -> PostAggregationConfig:
 
     Returns
     -------
-    PostAggregationConfig
+    PlotConfig
         The validated configuration.
     """
     try:
-        root = PostAggregationConfig(**config)
+        root = PlotConfig(**config)
         logger.info("Configuration validated successfully.")
     except Exception as e:
         raise ValueError(f"Configuration validation error: {e}")

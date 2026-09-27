@@ -437,3 +437,31 @@ def create_pmf_submission(pmf_df: pd.DataFrame, reference_date: str) -> pd.DataF
             )
 
     return pd.DataFrame(results)
+
+
+def read_aggregated(path: str, config) -> pd.DataFrame:
+    """Read aggregated trajectories (parquet, or csv as fallback) and keep the columns needed downstream."""
+    try:
+        aggregated = pd.read_parquet(path)
+    except Exception as e1:
+        try:
+            aggregated = pd.read_csv(path)
+        except Exception as e2:
+            raise ValueError(
+                f"Failed to read {path} as either parquet or csv:\nParquet error:\n{e1}\nCSV error:\n{e2}"
+            ) from e2
+    aggregated = aggregated[[config.date_column, config.location_column, config.target_column, "sample_id"]]
+    return cols_to_dt(aggregated, [config.date_column])
+
+
+def read_surveillance(config) -> tuple[pd.DataFrame, pd.DataFrame | None]:
+    """Read in-sample (fit) and optional out-of-sample (recent) surveillance, keyed by state abbreviation."""
+
+    def _read(fname: str) -> pd.DataFrame:
+        surv = cols_to_dt(pd.read_csv(f"{config.directory}/{fname}"), [config.date_column])
+        surv["abbreviation"] = surv["location_iso"].apply(lambda k: k.split("-")[-1])
+        return surv[[config.date_column, "abbreviation", config.target_column]]
+
+    fit = _read(config.fit_fname)
+    recent = _read(config.recent_fname) if config.recent_fname is not None else None
+    return fit, recent
