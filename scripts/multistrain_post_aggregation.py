@@ -286,14 +286,16 @@ def main():
             .sort_values(config.aggregated.date_column)
             .rename(columns={config.aggregated.date_column: "date"})
         )
-        single_quantiles_filter = (
-            single_quantiles[
-                (single_quantiles[config.single_strain.date_column] >= plot_start_date)
-                & (single_quantiles[config.single_strain.date_column] < plot_end_date)
-            ]
-            .sort_values(config.single_strain.date_column)
-            .rename(columns={config.single_strain.date_column: "date"})
-        )
+        single_quantiles_filter = None
+        if single_quantiles is not None:
+            single_quantiles_filter = (
+                single_quantiles[
+                    (single_quantiles[config.single_strain.date_column] >= plot_start_date)
+                    & (single_quantiles[config.single_strain.date_column] < plot_end_date)
+                ]
+                .sort_values(config.single_strain.date_column)
+                .rename(columns={config.single_strain.date_column: "date"})
+            )
         surv_fit_filter = (
             surv_fit[
                 (surv_fit[config.surveillance.date_column] >= plot_start_date)
