@@ -2,7 +2,10 @@ import pandas as pd
 
 from ..schema.output import (
     get_flusight_categorical_horizons,
+    get_flusight_horizons,
     get_flusight_quantiles,
+    get_metrocast_horizons,
+    get_metrocast_quantiles,
 )
 from ..utils.location import convert_location_name_format
 
@@ -36,9 +39,6 @@ RATE_TREND_THRESHOLDS = {
     2: (0.7, 4.0),
     3: (1.0, 5.0),
 }
-
-MIN_COUNT_CHANGE = 10
-RATE_TREND_CATEGORIES = ["large_decrease", "decrease", "stable", "increase", "large_increase"]
 # fmt: on
 
 
@@ -177,235 +177,135 @@ def compute_rate_trend_pmf(categories_df: pd.DataFrame) -> pd.DataFrame:
     return pmf.reset_index()
 
 
-def create_flusight_submission(
-    trajectories_df: pd.DataFrame,
-    pmf_df: pd.DataFrame,
-    reference_date: str,
-    horizons: list = None,
-    value_col: str = "target_total",
-    output_path: str = None,
-) -> pd.DataFrame:
-    """Create complete FluSight submission file combining quantiles and PMF."""
-    quantile_df = create_quantile_submission(
-        df=trajectories_df, reference_date=reference_date, horizons=horizons, value_col=value_col
+def _epydemix_to_fips(population: str) -> str:
+    abbrev = convert_location_name_format(value=population, output_format="abbreviation", location_type="iso")
+    return convert_location_name_format(
+        value=abbrev, output_format="FIPS", input_format="abbreviation", location_type="iso"
     )
 
-    pmf_submission_df = create_pmf_submission(pmf_df=pmf_df, reference_date=reference_date)
 
-    submission = pd.concat([quantile_df, pmf_submission_df], ignore_index=True)
+def _strip_metrocast_prefix(population: str) -> str:
+    return population.removeprefix("metrocast_location_")
 
-    submission = submission.sort_values(["location", "target", "horizon", "output_type", "output_type_id"]).reset_index(
+
+# Everything that differs between hub submission files. `location` maps an epydemix population name to the
+# hub location id. `pmf` adds the FluSight rate-trend target, which needs surveillance for the baseline.
+SUBMISSION_PROFILES = {
+    "flusight_hosp": {
+        "location": _epydemix_to_fips,
+        "target": "wk inc flu hosp",
+        "decimals": 0,
+        "horizons": list(get_flusight_horizons()),
+        "quantiles": get_flusight_quantiles(),
+        "pmf": True,
+    },
+    "flusight_ed": {
+        "location": _epydemix_to_fips,
+        "target": "wk inc flu prop ed visits",
+        "decimals": 3,
+        "horizons": list(get_flusight_horizons()),
+        "quantiles": get_flusight_quantiles(),
+        "pmf": False,
+    },
+    "metrocast": {
+        "location": _strip_metrocast_prefix,
+        "target": "Flu ED visits pct",
+        "decimals": 3,
+        "horizons": list(get_metrocast_horizons()),
+        "quantiles": get_metrocast_quantiles(),
+        "pmf": False,
+    },
+    "bphc_ed": {
+        "location": _strip_metrocast_prefix,
+        "target": "wk inc ed signal",
+        "decimals": 3,
+        "horizons": list(get_flusight_horizons()),
+        "quantiles": get_flusight_quantiles(),
+        "pmf": False,
+    },
+}
+
+
+def create_submission(
+    trajectories_df: pd.DataFrame,
+    reference_date: str,
+    profile: str,
+    value_col: str = "target_total",
+    surveillance_df: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """
+    Create a hubverse submission file from sampled trajectories.
+
+    Parameters
+    ----------
+    trajectories_df : pd.DataFrame
+        Trajectories with `location` (epydemix population), `date`, `sample_id` and `value_col` columns.
+    reference_date : str
+        Reference date of the submission (horizon 0).
+    profile : str
+        Key of `SUBMISSION_PROFILES`.
+    value_col : str
+        Column with the values to summarize.
+    surveillance_df : pd.DataFrame | None
+        Observed `date`, `abbreviation`, `target` (see `read_surveillance`) for the rate-trend baseline.
+        Required when the profile has `pmf`.
+
+    Returns
+    -------
+    pd.DataFrame
+        Submission with the 8 hubverse columns, sorted by location, target, horizon, output type and id.
+    """
+    p = SUBMISSION_PROFILES[profile]
+    df = trajectories_df.copy()
+    df["date"] = pd.to_datetime(df["date"])
+    reference_date_dt = pd.to_datetime(reference_date)
+
+    results = []
+    for pop in df["location"].unique():
+        location = p["location"](pop)
+        pop_data = df[df["location"] == pop]
+
+        for horizon in p["horizons"]:
+            target_end_date = reference_date_dt + pd.Timedelta(weeks=horizon)
+            target_data = pop_data[pop_data["date"] == target_end_date][value_col]
+
+            if len(target_data) == 0:
+                continue
+
+            for q in p["quantiles"]:
+                results.append(
+                    {
+                        "reference_date": reference_date,
+                        "horizon": horizon,
+                        "target_end_date": target_end_date.strftime("%Y-%m-%d"),
+                        "location": location,
+                        "target": p["target"],
+                        "output_type": "quantile",
+                        "output_type_id": str(q),
+                        "value": round(target_data.quantile(q), p["decimals"]),
+                    }
+                )
+    submission = pd.DataFrame(results)
+
+    if p["pmf"]:
+        if surveillance_df is None:
+            raise ValueError(f"Profile '{profile}' needs surveillance data for the rate-trend baseline.")
+        categories_df = compute_rate_trend_categories(
+            df=trajectories_df,
+            reference_date=reference_date,
+            surveillance_df=surveillance_df,
+            value_col=value_col,
+            surveillance_value_col="target",
+        )
+        pmf_df = compute_rate_trend_pmf(categories_df)
+        submission = pd.concat([submission, _pmf_rows(pmf_df, reference_date)], ignore_index=True)
+
+    return submission.sort_values(["location", "target", "horizon", "output_type", "output_type_id"]).reset_index(
         drop=True
     )
 
-    if output_path:
-        if output_path.endswith(".parquet"):
-            submission.to_parquet(output_path, index=False)
-        elif output_path.endswith(".gz"):
-            submission.to_csv(output_path, index=False, compression="gzip")
-        else:
-            submission.to_csv(output_path, index=False)
-        print(f"Saved submission to: {output_path}")
 
-    return submission
-
-
-def create_quantile_submission(
-    df: pd.DataFrame, reference_date: str, horizons: list = None, value_col: str = "target_total"
-) -> pd.DataFrame:
-    """Create quantile forecasts in FluSight submission format."""
-    if horizons is None:
-        horizons = [-1, 0, 1, 2, 3]
-    flusight_quantiles = get_flusight_quantiles()
-
-    df = df.copy()
-    df["date"] = pd.to_datetime(df["date"])
-    reference_date_dt = pd.to_datetime(reference_date)
-
-    results = []
-
-    for pop in df["location"].unique():
-        abbrev = convert_location_name_format(value=pop, output_format="abbreviation", location_type="iso")
-        location = convert_location_name_format(
-            value=abbrev, output_format="FIPS", input_format="abbreviation", location_type="iso"
-        )
-        pop_data = df[df["location"] == pop]
-
-        for horizon in horizons:
-            target_end_date = reference_date_dt + pd.Timedelta(weeks=horizon)
-            target_data = pop_data[pop_data["date"] == target_end_date][value_col]
-
-            if len(target_data) == 0:
-                continue
-
-            for q in flusight_quantiles:
-                value = target_data.quantile(q)
-                results.append(
-                    {
-                        "reference_date": reference_date,
-                        "horizon": horizon,
-                        "target_end_date": target_end_date.strftime("%Y-%m-%d"),
-                        "location": location,
-                        "target": "wk inc flu hosp",
-                        "output_type": "quantile",
-                        "output_type_id": str(q),
-                        "value": round(value, 0),
-                    }
-                )
-
-    return pd.DataFrame(results)
-
-
-def create_ed_submission(
-    trajectories_df: pd.DataFrame,
-    reference_date: str,
-    horizons: list = None,
-    value_col: str = "target_total",
-    output_path: str = None,
-) -> pd.DataFrame:
-    """Create complete FluSight submission file combining quantiles and PMF."""
-    quantile_df = create_ed_quantile_submission(
-        df=trajectories_df, reference_date=reference_date, horizons=horizons, value_col=value_col
-    )
-
-    submission = quantile_df.sort_values(
-        ["location", "target", "horizon", "output_type", "output_type_id"]
-    ).reset_index(drop=True)
-
-    if output_path:
-        if output_path.endswith(".parquet"):
-            submission.to_parquet(output_path, index=False)
-        elif output_path.endswith(".gz"):
-            submission.to_csv(output_path, index=False, compression="gzip")
-        else:
-            submission.to_csv(output_path, index=False)
-        print(f"Saved submission to: {output_path}")
-
-    return submission
-
-
-def create_ed_quantile_submission(
-    df: pd.DataFrame, reference_date: str, horizons: list = None, value_col: str = "target_total"
-) -> pd.DataFrame:
-    """Create quantile forecasts in FluSight submission format."""
-    if horizons is None:
-        horizons = [-1, 0, 1, 2, 3]
-    flusight_quantiles = get_flusight_quantiles()
-
-    df = df.copy()
-    df["date"] = pd.to_datetime(df["date"])
-    reference_date_dt = pd.to_datetime(reference_date)
-
-    results = []
-
-    for pop in df["location"].unique():
-        abbrev = convert_location_name_format(value=pop, output_format="abbreviation", location_type="iso")
-        location = convert_location_name_format(
-            value=abbrev, output_format="FIPS", input_format="abbreviation", location_type="iso"
-        )
-        pop_data = df[df["location"] == pop]
-
-        for horizon in horizons:
-            target_end_date = reference_date_dt + pd.Timedelta(weeks=horizon)
-            target_data = pop_data[pop_data["date"] == target_end_date][value_col]
-
-            if len(target_data) == 0:
-                continue
-
-            for q in flusight_quantiles:
-                value = target_data.quantile(q)
-                results.append(
-                    {
-                        "reference_date": reference_date,
-                        "horizon": horizon,
-                        "target_end_date": target_end_date.strftime("%Y-%m-%d"),
-                        "location": location,
-                        "target": "wk inc flu prop ed visits",
-                        "output_type": "quantile",
-                        "output_type_id": str(q),
-                        "value": round(value, 3),
-                    }
-                )
-
-    return pd.DataFrame(results)
-
-
-def create_metro_submission(
-    trajectories_df: pd.DataFrame,
-    reference_date: str,
-    quantiles: list[float],
-    horizons: list = None,
-    value_col: str = "target_total",
-    output_path: str = None,
-) -> pd.DataFrame:
-    """Create complete FluSight submission file combining quantiles and PMF."""
-    quantile_df = create_metro_quantile_submission(
-        df=trajectories_df, reference_date=reference_date, quantiles=quantiles, horizons=horizons, value_col=value_col
-    )
-
-    submission = quantile_df.sort_values(
-        ["location", "target", "horizon", "output_type", "output_type_id"]
-    ).reset_index(drop=True)
-
-    if output_path:
-        if output_path.endswith(".parquet"):
-            submission.to_parquet(output_path, index=False)
-        elif output_path.endswith(".gz"):
-            submission.to_csv(output_path, index=False, compression="gzip")
-        else:
-            submission.to_csv(output_path, index=False)
-        print(f"Saved submission to: {output_path}")
-
-    return submission
-
-
-def create_metro_quantile_submission(
-    df: pd.DataFrame,
-    reference_date: str,
-    quantiles: list[float],
-    horizons: list = None,
-    value_col: str = "target_total",
-) -> pd.DataFrame:
-    """Create quantile forecasts in Metrocast submission format."""
-    if horizons is None:
-        horizons = [0, 1, 2, 3]
-
-    df = df.copy()
-    df["date"] = pd.to_datetime(df["date"])
-    reference_date_dt = pd.to_datetime(reference_date)
-
-    results = []
-
-    for pop in df["location"].unique():
-        location = pop.replace("metrocast_location_", "")
-        pop_data = df[df["location"] == pop]
-
-        for horizon in horizons:
-            target_end_date = reference_date_dt + pd.Timedelta(weeks=horizon)
-            target_data = pop_data[pop_data["date"] == target_end_date][value_col]
-
-            if len(target_data) == 0:
-                continue
-
-            for q in quantiles:
-                value = target_data.quantile(q)
-                results.append(
-                    {
-                        "reference_date": reference_date,
-                        "horizon": horizon,
-                        "target_end_date": target_end_date.strftime("%Y-%m-%d"),
-                        "location": location,
-                        "target": "Flu ED visits pct",
-                        "output_type": "quantile",
-                        "output_type_id": str(q),
-                        "value": round(value, 3),
-                    }
-                )
-
-    return pd.DataFrame(results)
-
-
-def create_pmf_submission(pmf_df: pd.DataFrame, reference_date: str) -> pd.DataFrame:
+def _pmf_rows(pmf_df: pd.DataFrame, reference_date: str) -> pd.DataFrame:
     """Create PMF forecasts in FluSight submission format."""
     results = []
 
@@ -455,12 +355,13 @@ def read_aggregated(path: str, config) -> pd.DataFrame:
 
 
 def read_surveillance(config) -> tuple[pd.DataFrame, pd.DataFrame | None]:
-    """Read in-sample (fit) and optional out-of-sample (recent) surveillance, keyed by state abbreviation."""
+    """Read in-sample (fit) and optional out-of-sample (recent) surveillance as `date`, `abbreviation`, `target`."""
 
     def _read(fname: str) -> pd.DataFrame:
         surv = cols_to_dt(pd.read_csv(f"{config.directory}/{fname}"), [config.date_column])
         surv["abbreviation"] = surv["location_iso"].apply(lambda k: k.split("-")[-1])
-        return surv[[config.date_column, "abbreviation", config.target_column]]
+        surv = surv.rename(columns={config.date_column: "date", config.target_column: "target"})
+        return surv[["date", "abbreviation", "target"]]
 
     fit = _read(config.fit_fname)
     recent = _read(config.recent_fname) if config.recent_fname is not None else None

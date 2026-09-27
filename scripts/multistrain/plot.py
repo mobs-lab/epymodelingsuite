@@ -143,25 +143,15 @@ def main():
                 .sort_values(config.single_strain.date_column)
                 .rename(columns={config.single_strain.date_column: "date"})
             )
-        surv_fit_filter = (
-            surv_fit[
-                (surv_fit[config.surveillance.date_column] >= plot_start_date)
-                & (surv_fit[config.surveillance.date_column] < plot_end_date)
-            ]
-            .sort_values(config.surveillance.date_column)
-            .rename(columns={config.surveillance.date_column: "date", config.surveillance.target_column: "target"})
-        )
+        surv_fit_filter = surv_fit[
+            (surv_fit["date"] >= plot_start_date) & (surv_fit["date"] < plot_end_date)
+        ].sort_values("date")
         surv_recent_filter = None
         if surv_recent is not None:
             surv_fit_filter = surv_fit_filter[surv_fit_filter["date"] < reference_dt]
-            surv_recent_filter = (
-                surv_recent[
-                    (surv_recent[config.surveillance.date_column] >= reference_dt)
-                    & (surv_recent[config.surveillance.date_column] < plot_end_date)
-                ]
-                .sort_values(config.surveillance.date_column)
-                .rename(columns={config.surveillance.date_column: "date", config.surveillance.target_column: "target"})
-            )
+            surv_recent_filter = surv_recent[
+                (surv_recent["date"] >= reference_dt) & (surv_recent["date"] < plot_end_date)
+            ].sort_values("date")
 
         plot_hosp_multistrain_quantiles(
             populations=populations,

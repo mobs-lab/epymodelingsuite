@@ -18,17 +18,7 @@ from pathlib import Path
 from epiweeks import Week
 
 from epymodelingsuite.config_loader import load_submission_config_from_file
-from epymodelingsuite.multistrain.formatter import (
-    compute_rate_trend_categories,
-    compute_rate_trend_pmf,
-    create_flusight_submission,
-    read_aggregated,
-    read_surveillance,
-)
-from epymodelingsuite.schema.output import (
-    get_flusight_categorical_horizons,
-    get_flusight_horizons,
-)
+from epymodelingsuite.multistrain.formatter import create_submission, read_aggregated, read_surveillance
 
 
 def main():
@@ -56,32 +46,22 @@ def main():
     subs_path = Path(args.output)
     subs_path.mkdir(parents=True, exist_ok=True)
 
-    print("\nLoading surveillance ...")
-    surv_fit, _ = read_surveillance(config.surveillance)
+    surv_fit = None
+    if config.surveillance is not None:
+        print("\nLoading surveillance ...")
+        surv_fit, _ = read_surveillance(config.surveillance)
 
     print(f"\nLoading aggregated trajectories from {args.aggregated} ...")
     aggregated = read_aggregated(args.aggregated, config.aggregated)
     print(aggregated.tail())
 
-    print("\nGenerating submission file ...")
-    # Baseline comes from surveillance data, target from trajectories
-    categories_df = compute_rate_trend_categories(
-        df=aggregated,
-        reference_date=reference_date,
-        surveillance_df=surv_fit,
-        horizons=get_flusight_categorical_horizons(),
-        value_col=config.aggregated.target_column,
-        surveillance_date_col=config.surveillance.date_column,
-        surveillance_value_col=config.surveillance.target_column,
-        surveillance_location_col="abbreviation",
-    )
-    pmf_df = compute_rate_trend_pmf(categories_df)
-    submission = create_flusight_submission(
+    print(f"\nGenerating {config.profile} submission file ...")
+    submission = create_submission(
         trajectories_df=aggregated,
-        pmf_df=pmf_df,
         reference_date=reference_date,
-        horizons=get_flusight_horizons(),
+        profile=config.profile,
         value_col=config.aggregated.target_column,
+        surveillance_df=surv_fit,
     )
     print(submission.groupby(["target", "output_type"]).size())
     sub_file = subs_path / f"{reference_date}-{config.model_name}.csv"

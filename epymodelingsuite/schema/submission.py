@@ -1,10 +1,14 @@
 import logging
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from .common import Meta
 
 logger = logging.getLogger(__name__)
+
+# Keys of epymodelingsuite.multistrain.formatter.SUBMISSION_PROFILES
+SubmissionProfile = Literal["flusight_hosp", "flusight_ed", "metrocast", "bphc_ed"]
 
 # ----------------------------------------
 # Schema models
@@ -44,11 +48,19 @@ class SubmissionConfiguration(BaseModel):
 
     meta: Meta | None = Field(None, description="General metadata.")
     submission_week: str | int = Field(description="Epiweek of submission in CDC format, i.e. 'YYYYww'")
+    profile: SubmissionProfile = Field(description="Hub format of the submission file.")
     model_name: str = Field(description="'<team>-<model>' part of the submission filename.")
-    surveillance: SurveillanceConfig = Field(
-        description="Specification for surveillance file. Expected to be either on GitHub or local."
+    surveillance: SurveillanceConfig | None = Field(
+        None, description="Surveillance file for the rate-trend baseline. Only needed by 'flusight_hosp'."
     )
     aggregated: AggregatedTrajectoriesConfig = Field(description="Specifications for aggregated trajectories.")
+
+    @model_validator(mode="after")
+    def check_surveillance(self) -> "SubmissionConfiguration":
+        """Rate-trend targets need surveillance for the baseline."""
+        if self.profile == "flusight_hosp" and self.surveillance is None:
+            raise ValueError("Profile 'flusight_hosp' requires 'surveillance' (baseline for rate-trend).")
+        return self
 
 
 class SubmissionConfig(BaseModel):
