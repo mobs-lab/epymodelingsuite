@@ -17,6 +17,7 @@ from epymodelingsuite.visualization.generators import (
     _format_plot_notes,
     _select_surveillance,
     _rename_value_column,
+    generate_quantile_grid_plot,
     generate_single_quantile_plots,
 )
 
@@ -665,3 +666,49 @@ class TestClipToHorizon:
         assert len(proj) == original_len
         assert result is not None
         assert len(result) < original_len
+
+
+def _make_mock_calibration(population: str) -> MagicMock:
+    """Mock CalibrationOutput with minimal calibration and projection quantiles."""
+    dates = pd.date_range("2024-01-01", "2024-02-05", freq="W-SUN")
+    quantiles = pd.DataFrame(
+        [
+            {"date": d, "quantile": q, "data": 100.0, "hospitalizations": 100.0}
+            for d in dates
+            for q in (0.025, 0.5, 0.975)
+        ]
+    )
+    calibration = MagicMock(spec=CalibrationOutput)
+    calibration.population = population
+    calibration.calibration_strategy = None
+    calibration.results = MagicMock()
+    calibration.results.get_calibration_quantiles.return_value = quantiles
+    calibration.results.get_projection_quantiles.return_value = quantiles
+    calibration.results.get_posterior_distribution.return_value = pd.DataFrame({"R0": [1.1, 1.2, 1.3]})
+    return calibration
+
+
+class TestGeneratorsDoNotFilterResults:
+    """Generators expect pre-filtered results and must not replace `calibration.results`."""
+
+    def test_single_and_grid_keep_results_identity(self):
+        calibration = _make_mock_calibration("US-CA")
+        original_results = calibration.results
+        plots_config = PlotsConfig(
+            reference_date=date(2024, 1, 15),
+            quantiles=QuantilesPlotConfig(single=True, grid=True),
+        )
+        with (
+            patch("epymodelingsuite.visualization.generators.plot_calibration_projection") as mock_plot,
+            patch("epymodelingsuite.visualization.generators.plot_calibration_projection_grid") as mock_grid,
+            patch("epymodelingsuite.dispatcher.output.filter_failed_projections") as mock_filter,
+        ):
+            mock_plot.return_value = (MagicMock(), MagicMock())
+            mock_grid.return_value = (MagicMock(), MagicMock())
+            generate_single_quantile_plots([calibration], plots_config, {})
+            generate_quantile_grid_plot([calibration], plots_config, {})
+
+        assert mock_plot.called
+        assert mock_grid.called
+        mock_filter.assert_not_called()
+        assert calibration.results is original_results

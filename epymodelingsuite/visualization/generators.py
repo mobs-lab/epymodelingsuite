@@ -851,7 +851,8 @@ def generate_single_quantile_plots(
     Parameters
     ----------
     calibrations : list[CalibrationOutput]
-        List of calibration outputs containing results for each location
+        List of calibration outputs containing results for each location. Failed projections are expected
+        to be filtered already (as done by `generate_calibration_outputs()`).
     plots_config : PlotsConfig
         Configuration object specifying plot settings (quantiles, colors, surveillance data, etc.)
     out_dict : dict[str, list[OutputObject]]
@@ -865,8 +866,6 @@ def generate_single_quantile_plots(
     None
         Modifies out_dict in-place by adding quantile plot outputs.
     """
-    from ..dispatcher.output import filter_failed_projections
-
     if not plots_config.quantiles.single:
         return
 
@@ -886,8 +885,6 @@ def generate_single_quantile_plots(
         location = calibration.population
 
         try:
-            # Filter failed calibration trajectories and projections
-            calibration.results = filter_failed_projections(calibration.results)
             location_plot_data = _collect_location_plot_data(
                 calibration, plots_config, surveillance_data, **_quantile_plot_needs(quantiles_config.outputs)
             )
@@ -1068,7 +1065,8 @@ def generate_quantile_grid_plot(
     Parameters
     ----------
     calibrations : list[CalibrationOutput]
-        List of calibration outputs containing results for each location
+        List of calibration outputs containing results for each location. Failed projections are expected
+        to be filtered already (as done by `generate_calibration_outputs()`).
     plots_config : PlotsConfig
         Configuration object specifying plot settings (quantiles, colors, surveillance data,
         panels per row, etc.)
@@ -1083,8 +1081,6 @@ def generate_quantile_grid_plot(
     None
         Modifies out_dict in-place by adding quantile grid plot output.
     """
-    from ..dispatcher.output import filter_failed_projections
-
     if not plots_config.quantiles.grid:
         return
 
@@ -1096,8 +1092,6 @@ def generate_quantile_grid_plot(
     location_plot_data: dict[str, LocationPlotData] = {}
     for calibration in calibrations:
         try:
-            # Filter failed calibration trajectories and projections
-            calibration.results = filter_failed_projections(calibration.results)
             data = _collect_location_plot_data(
                 calibration, plots_config, surveillance_data, **_quantile_plot_needs(quantiles_config.outputs)
             )
