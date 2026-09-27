@@ -9,7 +9,7 @@ Script
 All other options specified via yaml file.
 
 Usage:
-    python multistrain_post_aggregation.py --config post_aggregation.yml \
+    python post_aggregation.py --config post_aggregation.yml \
     --aggregated trajectories_aggregated.parquet --output ./multistrain
 """
 

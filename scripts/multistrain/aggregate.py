@@ -8,7 +8,7 @@ Takes a file path to a configuration and, optionally, a directory path for outpu
 All other options specified via yaml file.
 
 Usage:
-    python aggregate_multistrain_experiments.py --config aggregation.yml --output ./multistrain
+    python aggregate.py --config aggregation.yml --output ./multistrain
 """
 
 import argparse
