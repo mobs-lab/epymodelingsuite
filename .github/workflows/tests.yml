@@ -67,12 +67,12 @@ jobs:
         run: |
           gh pr comment "$NUMBER" --repo "$GITHUB_REPOSITORY" --body "Available commands:
 
-          | Command | Tests |
-          |---|---|
-          | \`/test default\` | \`-m 'not nightly'\` |
-          | \`/test nightly\` | \`-m nightly\` |
-          | \`/test heavy\` | \`-m 'slow or nightly'\` |
-          | \`/test all\` | all tests |
+          | Command | Tests | What it checks |
+          |---|---|---|
+          | \`/test default\` | \`-m 'not nightly'\` | Unit and integration tests, including end-to-end calibration runs |
+          | \`/test nightly\` | \`-m nightly\` | Statistical checks that ABC recovers known parameters from synthetic data |
+          | \`/test heavy\` | \`-m 'slow or nightly'\` | End-to-end calibration runs and the statistical checks |
+          | \`/test all\` | all tests | Everything |
 
           The default tests run automatically on every push. Use \`/test default\` to rerun them."
 
