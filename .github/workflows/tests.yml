@@ -114,10 +114,14 @@ jobs:
           failed=$(grep -E '^(FAILED|ERROR) ' pytest.log | sed -E 's/^(FAILED|ERROR) ([^ ]+).*/- `\2`/' | head -n 10)
           total=$(uv run coverage report --format=total 2>/dev/null || echo "?")
           {
-            echo "### $icon Tests (\`$MARKERS\`): ${result:-no result}"
+            echo "### Tests"
+            echo
+            echo "$icon \`$MARKERS\`: ${result:-no result}"
             if [ -n "$failed" ]; then printf '\n%s\n' "$failed"; fi
             echo
-            echo "Coverage: **${total}%** · [Run log]($RUN_URL)"
+            echo "### Coverage"
+            echo
+            echo "**${total}%** total · [Run log]($RUN_URL)"
           } > report.md
           {
             cat report.md
