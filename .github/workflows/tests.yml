@@ -42,6 +42,7 @@ jobs:
             read -r command arg _ <<< "$(head -n 1 <<< "$COMMENT" | tr -d '\r')"
             [ "$command" = /test ] || exit 0
             case "$arg" in
+              default) markers="not nightly" ;;
               nightly) markers="nightly" ;;
               heavy) markers="slow or nightly" ;;
               all) markers="slow or not slow" ;;
@@ -65,13 +66,15 @@ jobs:
           NUMBER: ${{ github.event.issue.number }}
         run: |
           gh pr comment "$NUMBER" --repo "$GITHUB_REPOSITORY" --body "Available commands:
+
           | Command | Tests |
           |---|---|
+          | \`/test default\` | \`-m 'not nightly'\` |
           | \`/test nightly\` | \`-m nightly\` |
           | \`/test heavy\` | \`-m 'slow or nightly'\` |
           | \`/test all\` | all tests |
 
-          Regular tests (\`not nightly\`) run automatically on every push."
+          The default tests run automatically on every push. Use \`/test default\` to rerun them."
 
   test:
     needs: select
