@@ -300,7 +300,7 @@ class Intervention(BaseModel):
         contact_matrix = "contact_matrix"
 
     type: InterventionTypeEnum
-    scaling_factor: float | None = Field(None, description="Scaling factor for interventions.")
+    scaling_factor: float | None = Field(None, ge=0, description="Scaling factor for interventions.")
     override_value: float | None = Field(
         None, description="Override value for 'parameter' intervention, alternative to scaling_factor."
     )
@@ -313,14 +313,6 @@ class Intervention(BaseModel):
     )
     start_date: date | None = Field(None, description="Start date of 'parameter' or 'contact_matrix' intervention.")
     end_date: date | None = Field(None, description="End date of 'parameter' or 'contact_matrix' intervention.")
-
-    @field_validator("scaling_factor")
-    @classmethod
-    def check_scaling_factor(cls, v: float | None) -> float | None:
-        """Ensure scaling_factor >= 0."""
-        if v is not None and v < 0:
-            raise ValueError(f"Provided scaling_factor={v} must be >= 0.")
-        return v
 
     @model_validator(mode="after")
     def check_intervention_fields(self: "Intervention") -> "Intervention":
