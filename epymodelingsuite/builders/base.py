@@ -413,6 +413,10 @@ def calculate_compartment_initial_conditions(
     3. Scalar proportions (0 < value < 1): Applied to all age groups
     4. Default: Remaining population distributed per age group
 
+    Age-specific counts and proportions are assigned first. Scalar counts are then
+    limited to the remaining population in each age group, redistributing any excess
+    to groups with available capacity while preserving each compartment's total.
+
     Parameters
     ----------
     compartments : list
@@ -449,6 +453,7 @@ def calculate_compartment_initial_conditions(
     # Initialize tracking variables
     default_compartment_ids = []
     initial_conditions_dict = {}
+    scalar_counts = {}
     remaining_population = np.rint(population_array).astype(np.int64)
 
     # First pass: identify default compartments
@@ -498,10 +503,8 @@ def calculate_compartment_initial_conditions(
 
         # Case 2: Scalar count-based initialization (value >= 1)
         elif initial_value >= 1:
-            # Distribute total count proportionally across age groups
-            initial_conditions = _allocate_integer_counts(initial_value, population_array)
-            initial_conditions_dict[compartment.id] = initial_conditions
-            remaining_population -= initial_conditions
+            # Reserve age-specific values before distributing counts across age groups.
+            scalar_counts[compartment.id] = int(np.rint(initial_value))
 
         # Case 3: Scalar proportion-based initialization (0 < value < 1)
         elif 0 < initial_value < 1:
@@ -517,12 +520,20 @@ def calculate_compartment_initial_conditions(
         else:
             raise ValueError(f"Invalid initial value for compartment {compartment.id}: {initial_value}")
 
+    if np.any(remaining_population < 0) or sum(scalar_counts.values()) > remaining_population.sum():
+        raise ValueError(f"Initial conditions exceed population. Remaining population: {remaining_population}")
+
+    for compartment_id, total in scalar_counts.items():
+        counts = np.minimum(_allocate_integer_counts(total, population_array), remaining_population)
+        overflow = total - counts.sum()
+        if overflow:
+            # Reallocate only the excess, using the unoccupied population as capacity.
+            counts += _allocate_integer_counts(overflow, remaining_population - counts)
+        initial_conditions_dict[compartment_id] = counts
+        remaining_population -= counts
+
     # Third pass: assign remaining population to default compartment(s)
     if default_compartment_ids:
-        if np.any(remaining_population < 0):
-            raise ValueError(
-                f"Initial conditions exceed population in some age groups. Remaining population: {remaining_population}"
-            )
         # If multiple default compartments, split remaining population equally,
         # giving any leftover individuals to the earlier default compartments
         num_defaults = len(default_compartment_ids)

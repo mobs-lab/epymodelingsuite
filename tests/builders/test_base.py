@@ -333,6 +333,41 @@ class TestCalculateCompartmentInitialConditions:
         np.testing.assert_array_equal(result["I"], [0, 1])
         np.testing.assert_array_equal(result["S"], [100, 199])
 
+    @pytest.mark.parametrize("with_default", [False, True])
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_counts_respect_age_capacities(self, with_default, reverse):
+        compartments = [DummyCompartment(id="I", init=1), DummyCompartment(id="R", init=201)]
+        if reverse:
+            compartments.reverse()
+        if with_default:
+            compartments.append(DummyCompartment(id="S", init="default"))
+        population = np.array([101, 101])
+
+        result = calculate_compartment_initial_conditions(compartments, population)
+
+        np.testing.assert_array_equal(sum(result.values()), population)
+        assert result["I"].sum() == 1
+        assert result["R"].sum() == 201
+        assert all((counts >= 0).all() for counts in result.values())
+
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_counts_reserve_age_specific_initial_conditions(self, reverse):
+        compartments = [DummyCompartment(id="I", init=1), DummyCompartment(id="R", init=[101, 100])]
+        if reverse:
+            compartments.reverse()
+
+        result = calculate_compartment_initial_conditions(compartments, np.array([101, 101]))
+
+        np.testing.assert_array_equal(result["I"], [0, 1])
+        np.testing.assert_array_equal(result["R"], [101, 100])
+
+    @pytest.mark.parametrize("initial_value", [203, [102, 100]])
+    def test_over_capacity_rejected_without_default(self, initial_value):
+        with pytest.raises(ValueError, match="exceed population"):
+            calculate_compartment_initial_conditions(
+                [DummyCompartment(id="I", init=initial_value)], np.array([101, 101])
+            )
+
     def test_edge_case_init_just_below_one(self, population_array):
         """Test boundary case where init is just below 1.0 is treated as proportion."""
         compartments = [
