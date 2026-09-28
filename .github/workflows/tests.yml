@@ -1,0 +1,96 @@
+name: Tests
+
+on:
+  pull_request:
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      markers:
+        description: 'pytest -m expression'
+        type: choice
+        options:
+          - 'not nightly'
+          - 'nightly'
+          - 'slow or nightly'
+          - 'slow or not slow'
+        default: 'not nightly'
+
+permissions:
+  contents: read
+
+jobs:
+  select:
+    # issue_comment: only "/test ..." on PRs by repo members
+    if: >-
+      github.event_name != 'issue_comment' || (
+        github.event.issue.pull_request &&
+        startsWith(github.event.comment.body, '/test') &&
+        contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
+      )
+    runs-on: ubuntu-latest
+    outputs:
+      markers: ${{ steps.select.outputs.markers }}
+    steps:
+      - name: Select tests
+        id: select
+        env:
+          COMMENT: ${{ github.event.comment.body }}
+          INPUT: ${{ inputs.markers }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = issue_comment ]; then
+            read -r command arg _ <<< "$(head -n 1 <<< "$COMMENT" | tr -d '\r')"
+            [ "$command" = /test ] || exit 0
+            case "$arg" in
+              nightly) markers="nightly" ;;
+              heavy) markers="slow or nightly" ;;
+              all) markers="slow or not slow" ;;
+              *) markers="help" ;;
+            esac
+          else
+            markers="${INPUT:-not nightly}"
+          fi
+          echo "markers=$markers" >> "$GITHUB_OUTPUT"
+
+  help:
+    needs: select
+    if: needs.select.outputs.markers == 'help'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Reply with available commands
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ github.event.issue.number }}
+        run: |
+          gh pr comment "$NUMBER" --repo "$GITHUB_REPOSITORY" --body "Available commands:
+          | Command | Tests |
+          |---|---|
+          | \`/test nightly\` | \`-m nightly\` |
+          | \`/test heavy\` | \`-m 'slow or nightly'\` |
+          | \`/test all\` | all tests |
+
+          Regular tests (\`not nightly\`) run automatically on every push."
+
+  test:
+    needs: select
+    if: needs.select.outputs.markers != '' && needs.select.outputs.markers != 'help'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'issue_comment' && format('refs/pull/{0}/head', github.event.issue.number) || '' }}
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.12'
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --locked --extra dev
+
+      - name: Run tests
+        run: uv run pytest -n auto --cov=epymodelingsuite --cov-report=term-missing -m "$MARKERS"
+        env:
+          MARKERS: ${{ needs.select.outputs.markers }}
