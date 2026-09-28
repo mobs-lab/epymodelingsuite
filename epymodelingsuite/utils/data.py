@@ -11,6 +11,9 @@ def fetch_hhs_hospitalizations(
     query_start_date: str | None = None,
     save_path: str | None = None,
     data_type: str = "default",
+    *,
+    include_reporting_frac: bool = False,
+    preserve_missing_counts: bool = False,
 ) -> pd.DataFrame:
     """
     Fetch HHS flu hospitalization data from CDC's Socrata API.
@@ -29,6 +32,12 @@ def fetch_hhs_hospitalizations(
         - "default": Non-preliminary data (dataset ID: ua7e-t2fy)
         - "preliminary": Preliminary data (dataset ID: mpgq-jmmr)
         Default is "default".
+    include_reporting_frac : bool, optional
+        Add a ``reporting_frac`` column: fraction of hospitals reporting (0-1),
+        from ``totalconfflunewadmperchosprep`` divided by 100. Default is False.
+    preserve_missing_counts : bool, optional
+        Keep unreported admission counts as NaN instead of filling them with 0.
+        Default is False.
 
     Returns
     -------
@@ -45,6 +54,8 @@ def fetch_hhs_hospitalizations(
             MMWR epidemiological week in CDC format (YYYYWW)
         - hospitalizations : float
             Total confirmed flu new admissions
+        - reporting_frac : float
+            Fraction of hospitals reporting (only if ``include_reporting_frac``)
 
     Examples
     --------
@@ -80,6 +91,8 @@ def fetch_hhs_hospitalizations(
     Data Field
         Uses `totalconfflunewadm`: total number of new hospital admissions of patients
         with confirmed influenza captured during the reporting week (Sunday-Saturday).
+        With ``include_reporting_frac``, also uses `totalconfflunewadmperchosprep`:
+        percentage of hospitals reporting admissions for that week.
 
     Coverage
         Data available from August 2020 onwards. Includes US states, DC, and national
@@ -110,14 +123,20 @@ def fetch_hhs_hospitalizations(
 
     # Convert to pandas DataFrame
     data = pd.DataFrame.from_records(results)
-    data = data[["weekendingdate", "jurisdiction", "totalconfflunewadm"]]
+    source_columns = ["weekendingdate", "jurisdiction", "totalconfflunewadm"]
+    if include_reporting_frac:
+        source_columns.append("totalconfflunewadmperchosprep")
+    data = data[source_columns]
 
     # Process dates and epiweeks
     data["target_end_date"] = pd.to_datetime(data["weekendingdate"])
     data["epiweek"] = data["target_end_date"].apply(lambda key: int(epiweeks.Week.fromdate(key).cdcformat()))
 
-    # Rename totalconfflunewadm and process it
-    data["hospitalizations"] = data["totalconfflunewadm"].fillna(0).astype(float)
+    # Admission counts (missing -> 0 unless preserved) and optional reporting fractions
+    counts = data["totalconfflunewadm"].astype(float)
+    data["hospitalizations"] = counts if preserve_missing_counts else counts.fillna(0)
+    if include_reporting_frac:
+        data["reporting_frac"] = data["totalconfflunewadmperchosprep"].astype(float) / 100
 
     # Load location mapping
     locations = get_flusight_locations()
@@ -146,7 +165,10 @@ def fetch_hhs_hospitalizations(
     data = data[~data["jurisdiction"].isin(territories)]
 
     # Select final columns
-    data = data[["location_iso", "location_code", "target_end_date", "epiweek", "hospitalizations"]]
+    output_columns = ["location_iso", "location_code", "target_end_date", "epiweek", "hospitalizations"]
+    if include_reporting_frac:
+        output_columns.append("reporting_frac")
+    data = data[output_columns]
 
     # Sort by location code and date
     data = data.sort_values(["location_code", "target_end_date"]).reset_index(drop=True)
