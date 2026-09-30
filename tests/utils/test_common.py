@@ -86,6 +86,19 @@ class TestParseTimedelta:
         result = parse_timedelta("W-MON")
         assert result == timedelta(weeks=1)
 
+    @pytest.mark.parametrize("anchor", ["W-SAT", "W-TUE", "W-THU"])
+    def test_parse_week_with_anchor_containing_t(self, anchor: str) -> None:
+        """Anchors containing 'T' are not rewritten as minutes."""
+        assert parse_timedelta(anchor) == timedelta(weeks=1)
+
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [("H", timedelta(hours=1)), ("h", timedelta(hours=1)), ("d", timedelta(days=1)), ("D", timedelta(days=1))],
+    )
+    def test_parse_unit_without_number(self, text: str, expected: timedelta) -> None:
+        """A bare unit means one of that unit."""
+        assert parse_timedelta(text) == expected
+
     def test_invalid_month_raises_error(self):
         """Test that variable-length month duration raises ValueError."""
         with pytest.raises(ValueError, match="(not a fixed-length duration|Unrecognized duration)"):
