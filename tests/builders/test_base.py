@@ -42,7 +42,7 @@ class TestCalculateCompartmentInitialConditions:
         result = calculate_compartment_initial_conditions([], population_array)
         assert result is None
 
-    def test_count_initialization_distributes_proportionally(self, population_array, total_population):
+    def test_count_initialization_distributes_proportionally(self, population_array):
         """Test that counts (init >= 1) are distributed proportionally across age groups."""
         compartments = [
             DummyCompartment(id="L", init=10),
@@ -55,17 +55,14 @@ class TestCalculateCompartmentInitialConditions:
         assert "L" in result
         assert "I" in result
 
-        # Check L compartment distribution
-        expected_L = 10 * population_array / total_population
-        np.testing.assert_array_almost_equal(result["L"], expected_L)
+        # Proportional shares are rounded to integers by largest remainder
+        # (10 -> [0.67, 1.33, 2, 2.67, 3.33], 100 -> [6.67, 13.33, 20, 26.67, 33.33])
+        np.testing.assert_array_equal(result["L"], [1, 1, 2, 3, 3])
+        np.testing.assert_array_equal(result["I"], [7, 13, 20, 27, 33])
 
-        # Check I compartment distribution
-        expected_I = 100 * population_array / total_population
-        np.testing.assert_array_almost_equal(result["I"], expected_I)
-
-        # Verify sum equals original count
-        assert np.isclose(sum(result["L"]), 10)
-        assert np.isclose(sum(result["I"]), 100)
+        # Verify sum equals original count exactly
+        assert result["L"].sum() == 10
+        assert result["I"].sum() == 100
 
     def test_proportion_initialization_applies_to_population(self, population_array):
         """Test that proportions (init < 1) are applied directly to population array."""
@@ -113,13 +110,12 @@ class TestCalculateCompartmentInitialConditions:
         result = calculate_compartment_initial_conditions(compartments, population_array)
 
         # Calculate expected distribution
-        count_distributed = 100 * population_array / total_population
+        count_distributed = np.array([7, 13, 20, 27, 33])
         remaining = population_array - count_distributed
 
-        expected_per_default = remaining / 2  # 2 default compartments
-
-        np.testing.assert_array_almost_equal(result["S"], expected_per_default)
-        np.testing.assert_array_almost_equal(result["S_vax"], expected_per_default)
+        # 2 default compartments; odd leftovers go to the first default compartment
+        np.testing.assert_array_equal(result["S"], (remaining + 1) // 2)
+        np.testing.assert_array_equal(result["S_vax"], remaining // 2)
 
         # Verify population conservation
         total_initial = sum(result["S"]) + sum(result["S_vax"]) + sum(result["I"])
@@ -149,7 +145,7 @@ class TestCalculateCompartmentInitialConditions:
         total_initial = sum(result["S"]) + sum(result["L"]) + sum(result["I"])
         assert np.isclose(total_initial, total_population)
 
-    def test_sampled_compartments_count_override(self, population_array, total_population):
+    def test_sampled_compartments_count_override(self, population_array):
         """Test that sampled compartments with counts override base configuration."""
         compartments = [
             DummyCompartment(id="L", init=10),
@@ -161,14 +157,12 @@ class TestCalculateCompartmentInitialConditions:
         result = calculate_compartment_initial_conditions(compartments, population_array, sampled_compartments)
 
         # L should use sampled value
-        expected_L = 50 * population_array / total_population
-        np.testing.assert_array_almost_equal(result["L"], expected_L)
-        assert np.isclose(sum(result["L"]), 50)
+        np.testing.assert_array_equal(result["L"], [3, 7, 10, 13, 17])
+        assert result["L"].sum() == 50
 
         # I should use original value
-        expected_I = 100 * population_array / total_population
-        np.testing.assert_array_almost_equal(result["I"], expected_I)
-        assert np.isclose(sum(result["I"]), 100)
+        np.testing.assert_array_equal(result["I"], [7, 13, 20, 27, 33])
+        assert result["I"].sum() == 100
 
     def test_sampled_compartments_proportion_override(self, population_array):
         """Test that sampled compartments with proportions override base configuration."""
@@ -213,11 +207,12 @@ class TestCalculateCompartmentInitialConditions:
         result = calculate_compartment_initial_conditions(compartments, population_array, sampled_compartments)
 
         # L should use sampled value
-        sampled_L = 50 * population_array / total_population
+        sampled_L = np.array([3, 7, 10, 13, 17])
+        np.testing.assert_array_equal(result["L"], sampled_L)
 
         # S should get remaining population
         remaining = population_array - sampled_L
-        np.testing.assert_array_almost_equal(result["S"], remaining)
+        np.testing.assert_array_equal(result["S"], remaining)
 
         # Verify population conservation
         total_initial = sum(result["S"]) + sum(result["L"])
@@ -282,7 +277,7 @@ class TestCalculateCompartmentInitialConditions:
             assert isinstance(val, np.ndarray), f"{key} should be array, got {type(val)}"
             assert val.shape == population_array.shape, f"{key} should match population shape"
 
-    def test_numpy_numeric_types_handled(self, population_array, total_population):
+    def test_numpy_numeric_types_handled(self, population_array):
         """Test that numpy numeric types (np.int64, np.float64) are handled correctly."""
         compartments = [
             DummyCompartment(id="L", init=np.int64(10)),
@@ -292,13 +287,13 @@ class TestCalculateCompartmentInitialConditions:
         result = calculate_compartment_initial_conditions(compartments, population_array)
 
         # Should handle numpy types same as Python types
-        expected_L = 10 * population_array / total_population
+        expected_L = [1, 1, 2, 3, 3]
         expected_I = 0.02 * population_array
 
-        np.testing.assert_array_almost_equal(result["L"], expected_L)
+        np.testing.assert_array_equal(result["L"], expected_L)
         np.testing.assert_array_almost_equal(result["I"], expected_I)
 
-    def test_edge_case_init_exactly_one(self, population_array, total_population):
+    def test_edge_case_init_exactly_one(self, population_array):
         """Test boundary case where init == 1.0 is treated as count."""
         compartments = [
             DummyCompartment(id="L", init=1.0),  # Exactly 1.0 should be treated as count
@@ -306,10 +301,72 @@ class TestCalculateCompartmentInitialConditions:
 
         result = calculate_compartment_initial_conditions(compartments, population_array)
 
-        # Should be distributed as a count
-        expected = 1.0 * population_array / total_population
-        np.testing.assert_array_almost_equal(result["L"], expected)
-        assert np.isclose(sum(result["L"]), 1.0)
+        # Should be distributed as a count; the single individual goes to the largest share
+        np.testing.assert_array_equal(result["L"], [0, 0, 0, 0, 1])
+        assert result["L"].sum() == 1
+
+    def test_initial_conditions_are_integer_counts(self, population_array):
+        """Test that every compartment receives integer counts so the engine does not truncate them."""
+        compartments = [
+            DummyCompartment(id="S", init="default"),
+            DummyCompartment(id="I", init=7),
+            DummyCompartment(id="R", init=0.123),
+            DummyCompartment(id="M", init=[0.3333, 2.6, 0, 0, 0]),
+        ]
+
+        result = calculate_compartment_initial_conditions(compartments, population_array)
+
+        for compartment_id, values in result.items():
+            assert np.issubdtype(values.dtype, np.integer), f"{compartment_id} has dtype {values.dtype}"
+        np.testing.assert_array_equal(sum(result.values()), population_array)
+
+    def test_single_infection_in_small_population_is_preserved(self):
+        """Test that one initial infection survives and the total population is conserved."""
+        population_array = np.array([100, 200])
+        compartments = [
+            DummyCompartment(id="S", init="default"),
+            DummyCompartment(id="I", init=1),
+        ]
+
+        result = calculate_compartment_initial_conditions(compartments, population_array)
+
+        np.testing.assert_array_equal(result["I"], [0, 1])
+        np.testing.assert_array_equal(result["S"], [100, 199])
+
+    @pytest.mark.parametrize("with_default", [False, True])
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_counts_respect_age_capacities(self, with_default, reverse):
+        compartments = [DummyCompartment(id="I", init=1), DummyCompartment(id="R", init=201)]
+        if reverse:
+            compartments.reverse()
+        if with_default:
+            compartments.append(DummyCompartment(id="S", init="default"))
+        population = np.array([101, 101])
+
+        result = calculate_compartment_initial_conditions(compartments, population)
+
+        np.testing.assert_array_equal(sum(result.values()), population)
+        assert result["I"].sum() == 1
+        assert result["R"].sum() == 201
+        assert all((counts >= 0).all() for counts in result.values())
+
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_counts_reserve_age_specific_initial_conditions(self, reverse):
+        compartments = [DummyCompartment(id="I", init=1), DummyCompartment(id="R", init=[101, 100])]
+        if reverse:
+            compartments.reverse()
+
+        result = calculate_compartment_initial_conditions(compartments, np.array([101, 101]))
+
+        np.testing.assert_array_equal(result["I"], [0, 1])
+        np.testing.assert_array_equal(result["R"], [101, 100])
+
+    @pytest.mark.parametrize("initial_value", [203, [102, 100]])
+    def test_over_capacity_rejected_without_default(self, initial_value):
+        with pytest.raises(ValueError, match="exceed population"):
+            calculate_compartment_initial_conditions(
+                [DummyCompartment(id="I", init=initial_value)], np.array([101, 101])
+            )
 
     def test_edge_case_init_just_below_one(self, population_array):
         """Test boundary case where init is just below 1.0 is treated as proportion."""
@@ -469,9 +526,9 @@ class TestInitialImmuneCompartment:
         np.testing.assert_array_almost_equal(result["Initial_immune"], expected_initial_immune)
 
         # S (default) should receive remaining population minus I and Initial_immune
-        infected = 10 * population_array / total_population
+        infected = np.array([1, 1, 2, 3, 3])
         expected_S = population_array - infected - expected_initial_immune
-        np.testing.assert_array_almost_equal(result["S"], expected_S)
+        np.testing.assert_array_equal(result["S"], expected_S)
 
         # Verify total equals 20% of population
         assert np.isclose(sum(result["Initial_immune"]), total_population * 0.20)
@@ -525,7 +582,7 @@ class TestInitialImmuneCompartment:
                 f"Got {total_initial}, expected {total_population}"
             )
 
-    def test_initial_immune_reduces_susceptible_pool(self, population_array, total_population):
+    def test_initial_immune_reduces_susceptible_pool(self, population_array):
         """Verify that Initial_immune reduces the susceptible pool appropriately.
 
         Higher Initial_immune values should result in fewer susceptibles.
@@ -549,7 +606,7 @@ class TestInitialImmuneCompartment:
         immune_diff = sum(high_immune["Initial_immune"]) - sum(low_immune["Initial_immune"])
         assert np.isclose(s_diff, immune_diff, rtol=1e-5)
 
-    def test_initial_immune_without_calibrated_value_skipped(self, population_array, total_population):
+    def test_initial_immune_without_calibrated_value_skipped(self, population_array):
         """Verify that calibrated Initial_immune without params_dict value is skipped.
 
         If Initial_immune is marked as 'calibrated' but no value is provided,
@@ -570,9 +627,9 @@ class TestInitialImmuneCompartment:
         assert "Initial_immune" not in result, "Initial_immune without value should be skipped"
 
         # S should get all remaining population
-        infected = 10 * population_array / total_population
+        infected = np.array([1, 1, 2, 3, 3])
         expected_S = population_array - infected
-        np.testing.assert_array_almost_equal(result["S"], expected_S)
+        np.testing.assert_array_equal(result["S"], expected_S)
 
 
 class TestParseAgeGroup:

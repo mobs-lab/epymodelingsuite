@@ -709,7 +709,7 @@ epiweeks==2.4.0 ; python_full_version >= '3.10' \
     --hash=sha256:0096132a50cfc4b52b2bfc8cf841d278740414d01cac303df05146db8b526539 \
     --hash=sha256:a40cdde09b47530e7703d3d75248bb4ae2eb340f23af7c4c50e708b2e733e101
     # via epymodelingsuite
-epydemix @ git+https://github.com/mobs-lab/epydemix.git@480a7974b0efae6841fcf09bf5e86e670eba37be
+epydemix @ git+https://github.com/mobs-lab/epydemix.git@7fc22d10e622bc8f200b0121151540338dded235
     # via epymodelingsuite
 evalidate==2.1.3 \
     --hash=sha256:5c0b806fa12c5c029a26e5f69f02d4dedc00bbbe9dbfaafdb99d4f538a841438 \
@@ -721,6 +721,10 @@ exceptiongroup==1.3.1 ; python_full_version < '3.11' \
     # via
     #   ipython
     #   pytest
+execnet==2.1.2 \
+    --hash=sha256:63d83bfdd9a23e35b9c6a3261412324f964c2ec8dcd8d3c6916ee9373e0befcd \
+    --hash=sha256:67fba928dd5a544b783f6056f449e5e3931a5c378b128bc18501f7ea79e296ec
+    # via pytest-xdist
 executing==2.2.1 \
     --hash=sha256:3632cc370565f6648cc328b32435bd120a1e4ebb20c77e3fdde9a13cd1e533c4 \
     --hash=sha256:760643d3452b4d777d295bb167ccc74c64a81df23fb5e08eff250c425a4b2017
@@ -2114,15 +2118,27 @@ pytest==8.4.2 ; python_full_version < '3.10' \
     # via
     #   epymodelingsuite
     #   pytest-cov
+    #   pytest-sugar
+    #   pytest-xdist
 pytest==9.0.2 ; python_full_version >= '3.10' \
     --hash=sha256:711ffd45bf766d5264d487b917733b453d917afd2b0ad65223959f59089f875b \
     --hash=sha256:75186651a92bd89611d1d9fc20f0b4345fd827c41ccd5c299a868a05d70edf11
     # via
     #   epymodelingsuite
     #   pytest-cov
+    #   pytest-sugar
+    #   pytest-xdist
 pytest-cov==7.0.0 \
     --hash=sha256:33c97eda2e049a0c5298e91f519302a1334c26ac65c1a483d6206fd458361af1 \
     --hash=sha256:3b8e9558b16cc1479da72058bdecf8073661c7f57f7d3c5f22a1c23507f2d861
+    # via epymodelingsuite
+pytest-sugar==1.1.1 \
+    --hash=sha256:2f8319b907548d5b9d03a171515c1d43d2e38e32bd8182a1781eb20b43344cc8 \
+    --hash=sha256:73b8b65163ebf10f9f671efab9eed3d56f20d2ca68bda83fa64740a92c08f65d
+    # via epymodelingsuite
+pytest-xdist==3.8.0 \
+    --hash=sha256:202ca578cfeb7370784a8c33d6d05bc6e13b4f25b5053c30a152269fd10f0b88 \
+    --hash=sha256:7e578125ec9bc6050861aa93f2d59f1d8d085595d6551c2c90b6f4fad8d3a9f1
     # via epymodelingsuite
 python-dateutil==2.9.0.post0 \
     --hash=sha256:37dd54208da7e1cd875388217d5e00ebd4179249f90fb72437e91a35459a0ad3 \
@@ -2566,6 +2582,14 @@ stack-data==0.6.3 \
     --hash=sha256:836a778de4fec4dcd1dcd89ed8abff8a221f58308462e1c4aa2a3cf30148f0b9 \
     --hash=sha256:d5558e0c25a4cb0853cddad3d77da9891a08cb85dd9f9f91b9f8cd66e511e695
     # via ipython
+termcolor==3.1.0 ; python_full_version < '3.10' \
+    --hash=sha256:591dd26b5c2ce03b9e43f391264626557873ce1d379019786f99b0c2bee140aa \
+    --hash=sha256:6a6dd7fbee581909eeec6a756cff1d7f7c376063b14e4a298dc4980309e55970
+    # via pytest-sugar
+termcolor==3.3.0 ; python_full_version >= '3.10' \
+    --hash=sha256:348871ca648ec6a9a983a13ab626c0acce02f515b9e1983332b17af7979521c5 \
+    --hash=sha256:cf642efadaf0a8ebbbf4bc7a31cec2f9b5f21a9f726f4ccbb08192c9c26f43a5
+    # via pytest-sugar
 tomli==2.4.0 ; python_full_version <= '3.11' \
     --hash=sha256:0408e3de5ec77cc7f81960c362543cbbd91ef883e3138e81b729fc3eea5b9729 \
     --hash=sha256:0dc56fef0e2c1c470aeac5b6ca8cc7b640bb93e92d9803ddaf9ea03e198f5b0b \
