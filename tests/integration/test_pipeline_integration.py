@@ -129,9 +129,8 @@ class TestSimulationPipelineE2E:
         This test validates that the epydemix simulation engine correctly implements
         the underlying epidemic dynamics.
         """
-        from scipy.integrate import solve_ivp
-
         from epydemix.model import EpiModel
+        from scipy.integrate import solve_ivp
 
         # Parameters for a simple SIR model
         N = 100_000  # Large population to reduce stochastic noise

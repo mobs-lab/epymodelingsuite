@@ -159,7 +159,7 @@ def _parse_age_group_bounds(group_str: str, max_age: int = 84) -> tuple[int, int
         start, end = group_str.split("-")
         return int(start), int(end)
     if "+" in group_str:
-        return int(group_str.split("+")[0]), max_age
+        return int(group_str.split("+", maxsplit=1)[0]), max_age
     msg = f"Invalid age group format: {group_str}. Expected 'start-end' or 'start+'."
     raise ValueError(msg)
 

@@ -17,6 +17,8 @@ from ..schema.output import (
     OutputConfig,
     OutputObject,
     TabularOutputTypeEnum,
+    get_flusight_categorical_horizons,
+    get_flusight_horizons,
     get_metrocast_horizons,
     get_metrocast_quantiles,
 )
@@ -256,7 +258,7 @@ def format_quantiles_flusightforecast(
     formatted = copy.deepcopy(quantiles_df)
 
     # Horizons required for quantile outputs (metrocast excludes horizon -1)
-    horizons = get_metrocast_horizons() if metrocast else range(-1, 4)
+    horizons = get_metrocast_horizons() if metrocast else get_flusight_horizons()
 
     # Create horizon column and filter for appropriate horizons
     formatted.insert(
@@ -320,9 +322,7 @@ def compare_thresholds_flusightforecast(
     raise ValueError(msg)
 
 
-def categorize_rate_change_flusightforecast(
-    rate_change: float, count_change: float, horizon: int, rate_population_scale: int
-) -> str:
+def categorize_rate_change_flusightforecast(rate_change: float, count_change: float, horizon: int) -> str:
     """
     Categorize the simulated rate-change using the appropriate thresholds for the horizon.
 
@@ -406,6 +406,7 @@ def make_rate_trends_flusightforecast(
     proj_values: np.ndarray,
     observed: pd.DataFrame,
     population: float,
+    rate_population_scale: int = 100000,
 ) -> pd.DataFrame:
     """
     Create FluSight rate-trend forecasts from projection trajectories.
@@ -421,7 +422,9 @@ def make_rate_trends_flusightforecast(
     observed : pd.DataFrame
         Observed surveillance data with columns: date, value
     population : float
-        Population size for calculating rates per 100k
+        Population size for calculating rates
+    rate_population_scale: int
+        Denominator for normalizing rates (default 100k)
 
     Returns
     -------
@@ -430,9 +433,8 @@ def make_rate_trends_flusightforecast(
     """
     from collections import Counter
 
-    # Horizons required for rate-trend outputs, denominator for rates (i.e. /100k pop)
-    flusight_horizons = range(4)  # horizons 0-3
-    rate_population_scale = 100000
+    # Horizons required for rate-trend outputs
+    horizons = get_flusight_categorical_horizons()
 
     # Date of observation for comparison (equivalent to horizon -1)
     obs_date = reference_date - timedelta(weeks=1)
@@ -457,7 +459,7 @@ def make_rate_trends_flusightforecast(
 
     # Build list of rows
     rows = []
-    for horizon in flusight_horizons:
+    for horizon in horizons:
         # Target date for forecast
         target_date = reference_date + timedelta(weeks=horizon)
         print(f"target_date: {target_date}")
@@ -478,7 +480,7 @@ def make_rate_trends_flusightforecast(
         # Counter containing the categorization for each projection trajectory
         trajectory_categories = Counter(
             [
-                categorize_rate_change_flusightforecast(rate_change, count_change, horizon, rate_population_scale)
+                categorize_rate_change_flusightforecast(rate_change, count_change, horizon)
                 for rate_change, count_change in zip(rate_changes, count_changes, strict=True)
             ]
         )

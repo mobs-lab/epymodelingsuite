@@ -522,7 +522,7 @@ class TestFormatPlotNotes:
 class TestClipToSurveillanceStart:
     """Tests for _clip_to_surveillance_start helper."""
 
-    @pytest.fixture()
+    @pytest.fixture
     def df(self):
         """Quantile-like DataFrame spanning Jan 1–10."""
         return pd.DataFrame(
@@ -568,7 +568,7 @@ class TestClipToSurveillanceStart:
 class TestClipSurveillance:
     """Tests for _clip_surveillance helper."""
 
-    @pytest.fixture()
+    @pytest.fixture
     def surv(self):
         """Weekly surveillance DataFrame spanning 8 weeks."""
         return pd.DataFrame(
@@ -646,7 +646,7 @@ class TestClipSurveillance:
 class TestClipToHorizon:
     """Tests for _clip_to_horizon helper."""
 
-    @pytest.fixture()
+    @pytest.fixture
     def proj(self):
         """Weekly projection DataFrame spanning 10 weeks from reference_date."""
         return pd.DataFrame(
@@ -657,7 +657,7 @@ class TestClipToHorizon:
             }
         )
 
-    @pytest.fixture()
+    @pytest.fixture
     def reference_date(self):
         return date(2024, 1, 7)
 

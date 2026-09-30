@@ -22,12 +22,8 @@ from epymodelingsuite.builders.orchestrators import (
     setup_vaccination_schedules,
 )
 from epymodelingsuite.schema.basemodel import (
-    BaseEpiModel,
-    Compartment,
     Parameter,
-    Population,
     Seasonality,
-    Simulation,
     Timespan,
     Transition,
     Vaccination,

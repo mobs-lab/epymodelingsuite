@@ -604,8 +604,8 @@ class TestEnsureFittingWindowWithinTimespan:
         fitting_window = SimpleNamespace(
             start_date=start_date,
             end_date=end_date,
-            epiweek_start_date=epiweek_start_date if epiweek_start_date else start_date,
-            epiweek_end_date=epiweek_end_date if epiweek_end_date else end_date,
+            epiweek_start_date=epiweek_start_date or start_date,
+            epiweek_end_date=epiweek_end_date or end_date,
         )
         return SimpleNamespace(fitting_window=fitting_window)
 

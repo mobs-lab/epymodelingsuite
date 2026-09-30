@@ -69,7 +69,7 @@ def load_iso_population(
         epydemix Population object
     """
     # Determine which location to use for contact matrix
-    cm_location = contact_matrix_override if contact_matrix_override else location_name
+    cm_location = contact_matrix_override or location_name
 
     # Convert to "epydemix_population" name
     population_name = convert_location_name_format(cm_location, "epydemix_population")
@@ -501,4 +501,4 @@ def calculate_compartment_initial_conditions(
         for compartment_id in default_compartment_ids:
             initial_conditions_dict[compartment_id] = per_default
 
-    return initial_conditions_dict if initial_conditions_dict else None
+    return initial_conditions_dict or None
