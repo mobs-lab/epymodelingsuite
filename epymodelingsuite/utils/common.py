@@ -1,5 +1,6 @@
 """Common utility functions."""
 
+import re
 from datetime import timedelta
 
 import pandas as pd
@@ -77,6 +78,9 @@ def parse_timedelta(text: str) -> timedelta:
     - Business days: 'B', 'C'
     """
     s = text.strip()
+
+    # pandas 4 drops the 'H', 'S' and 'd' units; keep accepting them as documented above
+    s = re.sub(r"(?<=[\d.])[HSd](?![a-zA-Z])", lambda m: {"H": "h", "S": "s", "d": "D"}[m.group()], s)
 
     # 1) First try Timedelta-style strings (e.g., '30m', '1h30m', '2D', '45s')
     try:

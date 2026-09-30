@@ -63,7 +63,7 @@ class TestParseTimedelta:
 
     def test_parse_compound_days_hours(self):
         """Test parsing compound duration like '2D3H'."""
-        result = parse_timedelta("2D3H")
+        result = parse_timedelta("2D3h")
         assert result == timedelta(days=2, hours=3)
 
     def test_parse_with_whitespace(self):
@@ -73,7 +73,7 @@ class TestParseTimedelta:
 
     def test_parse_fractional_hours(self):
         """Test parsing fractional hours."""
-        result = parse_timedelta("1.5H")
+        result = parse_timedelta("1.5h")
         assert result == timedelta(hours=1, minutes=30)
 
     def test_parse_week_with_anchor_sunday(self):
@@ -113,7 +113,7 @@ class TestParseTimedelta:
 
     def test_large_duration(self):
         """Test parsing large duration."""
-        result = parse_timedelta("1000H")
+        result = parse_timedelta("1000h")
         assert result == timedelta(hours=1000)
 
     def test_microseconds(self):
