@@ -763,7 +763,7 @@ class TestSimulationPipelineSubdailyTimesteps:
         If dt were not applied to the rate, dt=0.5 would decay as exp(-2 * mu * t).
         """
         mu, days = 0.1, 14
-        results = self._run_minimal(delta_t, "2025-01-31", beta=0.0, infections=1_000_000)
+        results = self._run_minimal(delta_t, "2025-01-31", beta=0.0, infections=1_000_000)  # zero beta: I only recovers
         i_total = results.get_stacked_compartments()["I_total"].mean(axis=0)
         dates = pd.DatetimeIndex(results.dates)
         k = dates.get_loc(dates[0] + pd.Timedelta(days=days))
