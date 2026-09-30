@@ -808,7 +808,8 @@ def make_simulate_wrapper(
                 def transform(trajectory, context=None): ...  # With optional context
                 def transform(trajectory, **kwargs): ...  # Flexible signature
     rng : np.random.Generator | None, optional
-            Random number generator for reproducible simulations.
+            Random number generator for reproducible simulations, used when the caller does not
+            pass its own generator as ``params["rng"]`` (a seeded ABCSampler does).
             If None, a default generator will be created.
 
     Returns
@@ -914,9 +915,15 @@ def make_simulate_wrapper(
             )
 
         # 8. Handle random state
-        if "random_state" in params.keys():
-            rng.bit_generator.state = params["random_state"]
-        random_state = rng.bit_generator.state
+        # A seeded ABCSampler injects its own generator as params["rng"] (one stream per
+        # calibration run, one child stream per projection trajectory); prefer it over the
+        # builder-level generator so the whole calibration/projection is reproducible.
+        sim_rng = params.get("rng", rng)
+        if "random_state" in params:
+            # Restore a recorded state on a copy so the injected generator is not rewound
+            sim_rng = copy.deepcopy(sim_rng)
+            sim_rng.bit_generator.state = params["random_state"]
+        random_state = sim_rng.bit_generator.state
 
         # 9. Collect settings for simulation
         sim_params = {
@@ -926,7 +933,7 @@ def make_simulate_wrapper(
             "end_date": params["end_date"],
             "dt": basemodel.timespan.delta_t,
             "resample_frequency": basemodel.simulation.resample_frequency,
-            "rng": rng,
+            "rng": sim_rng,
         }
 
         # 10. Extract observed dates for calibration (before simulation to avoid duplication)
