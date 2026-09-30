@@ -68,15 +68,19 @@ def load_iso_population(
     -------
         epydemix Population object
     """
-    # Determine which location to use for contact matrix
-    cm_location = contact_matrix_override if contact_matrix_override else location_name
-
-    # Convert to "epydemix_population" name
-    population_name = convert_location_name_format(cm_location, "epydemix_population")
-
-    # Create age group mapping
     age_group_mapping = {group: _parse_age_group(group) for group in age_groups}
-    population = load_epydemix_population(population_name=population_name, age_group_mapping=age_group_mapping)
+    population = load_epydemix_population(
+        population_name=convert_location_name_format(location_name, "epydemix_population"),
+        age_group_mapping=age_group_mapping,
+    )
+
+    # Keep location_name's population counts; replace only the contact matrices
+    if contact_matrix_override and contact_matrix_override != location_name:
+        cm_population = load_epydemix_population(
+            population_name=convert_location_name_format(contact_matrix_override, "epydemix_population"),
+            age_group_mapping=age_group_mapping,
+        )
+        population.contact_matrices = cm_population.contact_matrices
 
     return population
 

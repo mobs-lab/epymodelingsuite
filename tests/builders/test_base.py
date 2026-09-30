@@ -779,6 +779,18 @@ class TestLoadMetrocastPopulation:
         # Contact matrices should be loaded from Texas
         assert len(population.contact_matrices) > 0
 
+    def test_iso_contact_matrix_override_keeps_population(self):
+        """ISO override replaces only contact matrices; name and Nk stay from location_name."""
+        age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
+        ca_pop = load_iso_population("US-CA", age_groups)
+        ma_pop = load_iso_population("US-MA", age_groups)
+        population = load_iso_population("US-CA", age_groups, contact_matrix_override="US-MA")
+
+        assert population.name == ca_pop.name
+        np.testing.assert_array_equal(population.Nk, ca_pop.Nk)
+        for layer, matrix in ma_pop.contact_matrices.items():
+            np.testing.assert_array_equal(population.contact_matrices[layer], matrix)
+
     def test_total_population_matches_input_data(self):
         """Test that total population Nk matches the input metrocast data."""
         age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
