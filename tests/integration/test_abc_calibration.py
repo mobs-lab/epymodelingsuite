@@ -23,6 +23,7 @@ from epymodelingsuite.utils import load_epydemix_population
 from epymodelingsuite.dispatcher.runner import dispatch_runner
 from epymodelingsuite.schema.basemodel import (
     BaseEpiModel,
+    BasemodelConfig,
     Compartment,
     Parameter,
     Population,
@@ -76,8 +77,8 @@ def _make_basemodel_config(
     calibrated_params: list[str],
     fixed_params: dict[str, float],
     initial_infected: int = 100,
-) -> BaseEpiModel:
-    """Build a BaseEpiModel config for calibration testing.
+) -> BasemodelConfig:
+    """Build a BasemodelConfig for calibration testing.
 
     Parameters
     ----------
@@ -94,7 +95,7 @@ def _make_basemodel_config(
     for name, value in fixed_params.items():
         parameters[name] = Parameter(type="scalar", value=value)
 
-    return BaseEpiModel(
+    model = BaseEpiModel(
         name="sir_calibration_test",
         meta=Meta(description="SIR calibration test", version="1.0.0", date="2025-01-01"),
         timespan=Timespan(start_date=date(2025, 1, 1), end_date=date(2025, 3, 1), delta_t=1.0),
@@ -112,6 +113,7 @@ def _make_basemodel_config(
         ],
         parameters=parameters,
     )
+    return BasemodelConfig(model=model)
 
 
 def _make_calibration_config(

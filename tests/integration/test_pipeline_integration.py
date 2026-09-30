@@ -17,8 +17,10 @@ from epymodelingsuite.config_loader import (
     load_calibration_config_from_file,
 )
 from epymodelingsuite.dispatcher.builder import dispatch_builder
+from epymodelingsuite.dispatcher.output import generate_simulation_outputs
 from epymodelingsuite.dispatcher.runner import dispatch_runner
 from epymodelingsuite.schema.dispatcher import CalibrationOutput, SimulationOutput
+from epymodelingsuite.schema.output import OutputConfig, OutputConfiguration, TrajectoriesOutput
 
 # Path to test fixtures
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
@@ -119,6 +121,30 @@ class TestSimulationPipelineE2E:
         assert 0 < i_max_idx < len(i_total) - 1, "Infectious should peak in middle of simulation"
 
     @pytest.mark.dynamics
+    def test_simulation_output_generation(self):
+        """Full pipeline including output: trajectories carry dates and model metadata includes initial conditions."""
+        basemodel_config = load_basemodel_config_from_file(str(FIXTURES_DIR / "minimal_basemodel.yaml"))
+        builder_output = dispatch_builder(basemodel_config=basemodel_config)
+        result = dispatch_runner(builder_output)
+
+        output_config = OutputConfig(
+            output=OutputConfiguration(
+                tabular_output_types=["DataFrame"],
+                trajectories=TrajectoriesOutput(compartments=True, transitions=True),
+            )
+        )
+        outputs = generate_simulation_outputs(simulations=[result], output_config=output_config)
+
+        expected_dates = list(result.results.dates)
+        for name in ["trajectories_compartments", "trajectories_transitions"]:
+            df = outputs[name][0].data
+            assert list(df.columns[:5]) == ["primary_id", "sim_id", "date", "seed", "population"]
+            assert list(df.loc[df["sim_id"] == 0, "date"]) == expected_dates
+
+        model_meta = outputs["model_metadata"][0].data
+        compartments = result.results.get_stacked_compartments()
+        assert model_meta.loc[0, "init_S_total"] == str([int(v[0]) for v in compartments["S_total"]])
+
     def test_sir_mean_approximates_ode(self):
         """Verify stochastic SIR mean approximates deterministic ODE solution.
 
@@ -391,6 +417,62 @@ class TestCalibrationPipelineE2E:
         i_values = posterior_df["I"].values
         assert np.all(i_values >= 50), "I below prior minimum"
         assert np.all(i_values < 200), "I above prior maximum"
+
+    @staticmethod
+    def _run_seeded_calibration_with_projection(observed_data_path, tmp_path, seed, global_seed):
+        """Run SMC calibration + projection from YAML with a configured seed.
+
+        ``global_seed`` reseeds NumPy's global random state before building, so any
+        randomness that bypasses the configured seed shows up as a difference.
+        """
+        import yaml
+
+        with open(FIXTURES_DIR / "minimal_basemodel_calibration.yaml") as f:
+            basemodel_raw = yaml.safe_load(f)
+        basemodel_raw["model"]["random_seed"] = seed
+        basemodel_path = tmp_path / f"basemodel_{seed}_{global_seed}.yaml"
+        with open(basemodel_path, "w") as f:
+            yaml.dump(basemodel_raw, f)
+
+        with open(FIXTURES_DIR / "minimal_modelset_calibration.yaml") as f:
+            calibration_raw = yaml.safe_load(f)
+        calibration_raw["modelset"]["calibration"]["strategy"] = {
+            "name": "smc",
+            "options": {"num_particles": 10, "num_generations": 2},
+        }
+        calibration_raw["modelset"]["calibration"]["observed_data_path"] = observed_data_path
+        calibration_raw["modelset"]["calibration"]["projection"] = {"n_trajectories": 4}
+        calibration_path = tmp_path / f"calibration_{seed}_{global_seed}.yaml"
+        with open(calibration_path, "w") as f:
+            yaml.dump(calibration_raw, f)
+
+        np.random.seed(global_seed)  # noqa: NPY002 - deliberately perturb the legacy global state
+        builder_outputs = dispatch_builder(
+            basemodel_config=load_basemodel_config_from_file(str(basemodel_path)),
+            calibration_config=load_calibration_config_from_file(str(calibration_path)),
+        )
+        return dispatch_runner(builder_outputs[0]).results
+
+    def test_seed_makes_calibration_and_projection_reproducible(self, synthetic_observed_data, tmp_path):
+        """Same random_seed reproduces posteriors and projections regardless of global NumPy state."""
+        results1 = self._run_seeded_calibration_with_projection(synthetic_observed_data, tmp_path, 42, 0)
+        results2 = self._run_seeded_calibration_with_projection(synthetic_observed_data, tmp_path, 42, 999)
+
+        for generation in range(len(results1.posterior_distributions)):
+            pd.testing.assert_frame_equal(
+                results1.get_posterior_distribution(generation), results2.get_posterior_distribution(generation)
+            )
+        pd.testing.assert_frame_equal(
+            results1.projection_parameters["baseline"], results2.projection_parameters["baseline"]
+        )
+        projections1 = results1.get_projection_trajectories()
+        projections2 = results2.get_projection_trajectories()
+        for key in projections1:
+            np.testing.assert_array_equal(projections1[key], projections2[key], err_msg=f"Projection differs: {key}")
+
+        # A different seed must change the result, otherwise the checks above are vacuous
+        results3 = self._run_seeded_calibration_with_projection(synthetic_observed_data, tmp_path, 7, 0)
+        assert not results1.get_posterior_distribution().equals(results3.get_posterior_distribution())
 
     @pytest.mark.parametrize(
         "strategy_name,strategy_options",
