@@ -109,7 +109,7 @@ def add_parameter_interventions_from_config(
     param_invs = [i for i in interventions if i.type == "parameter"]
 
     # Apply scaling interventions
-    for intervention in [inv for inv in param_invs if inv.scaling_factor]:
+    for intervention in [inv for inv in param_invs if inv.scaling_factor is not None]:
         # Target parameter must already exist
         try:
             previous_value = model.get_parameter(intervention.target_parameter)
@@ -154,7 +154,7 @@ def add_parameter_interventions_from_config(
 
     # Apply override interventions.
     # This must occur at the end to ensure override values are final parameter values.
-    for intervention in [inv for inv in param_invs if inv.override_value]:
+    for intervention in [inv for inv in param_invs if inv.override_value is not None]:
         try:
             model.override_parameter(
                 start_date=intervention.start_date,
