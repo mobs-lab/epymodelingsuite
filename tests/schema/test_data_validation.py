@@ -11,6 +11,9 @@ from epymodelingsuite.schema.data_validation import (
     validate_calibration_data_for_config_set,
 )
 
+# Expected value for keywords that expand to every ISO code in the codebook
+ALL_ISO = object()
+
 
 class TestValidateCalibrationData:
     """Tests for validate_calibration_data function."""
@@ -366,8 +369,8 @@ class TestValidateCalibrationDataForConfigSet:
     @pytest.mark.parametrize(
         ("population_names", "expected"),
         [
-            (["all"], None),
-            (["all-states"], None),
+            (["all"], ALL_ISO),
+            (["all-states"], ALL_ISO),
             (["US-CA", "US-TX"], ["US-CA", "US-TX"]),
             ([{"name": "US-CA", "type": "iso"}], ["US-CA"]),
             ([{"name": "denver", "type": "metrocast_location"}], ["denver"]),
@@ -388,7 +391,7 @@ class TestValidateCalibrationDataForConfigSet:
         """Keywords and dict forms are expanded with the shared resolver (R14)."""
         from epymodelingsuite.utils.location import get_location_codebook
 
-        if expected is None:
+        if expected is ALL_ISO:
             expected = get_location_codebook()["ISO"].tolist()
         mock_load_calib.return_value.modelset.population_names = population_names
         observed_path = tmp_path / "data.csv"
