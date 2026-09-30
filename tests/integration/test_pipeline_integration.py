@@ -775,10 +775,10 @@ class TestSimulationPipelineSubdailyTimesteps:
         """Weekly S_to_I equals the weekly drop in S, for any dt.
 
         Checks that compartments ("last") and transitions ("sum") are aggregated over
-        the same weekly bins. beta gives R0 ~ 2 so S changes every week; the fixture's
-        R0 ~ 43 depletes S within weeks and makes most weeks trivially equal.
+        the same weekly bins. The fixture's R0 ~ 2 keeps S changing every week, so
+        the check is not trivially 0 = 0.
         """
-        results = self._run_minimal(delta_t, "2025-05-31", beta=0.014, resample_frequency="W-SAT")
+        results = self._run_minimal(delta_t, "2025-05-31", resample_frequency="W-SAT")
         s_total = results.get_stacked_compartments()["S_total"]
         s_to_i = results.get_stacked_transitions()["S_to_I_total"]
 
