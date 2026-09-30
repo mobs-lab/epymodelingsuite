@@ -66,24 +66,32 @@ class TestEnsureCompartmentsValid:
 
 
 class TestEnsurePopulationsValid:
-    def test_no_base_population(self):
-        modelset_populations = {"US", "all"}
-        _ensure_populations_valid(None, modelset_populations)  # Should not raise
-
     def test_no_modelset_populations(self):
-        base_population_name = "US"
-        _ensure_populations_valid(base_population_name, set())  # Should not raise
+        _ensure_populations_valid(None)  # Should not raise
+        _ensure_populations_valid([])  # Should not raise
 
-    def test_valid_populations(self):
-        base_population_name = "US"
-        modelset_populations = {"US", "all"}
-        _ensure_populations_valid(base_population_name, modelset_populations)  # Should not raise
+    @pytest.mark.parametrize(
+        "modelset_populations",
+        [
+            ["US-CA", "US-TX"],
+            ["US-TX"],
+            ["all-states"],
+            ["all-metrocast"],
+            ["denver"],
+            [{"name": "US-CA", "type": "iso"}],
+            [{"name": "denver", "type": "metrocast_location"}],
+        ],
+    )
+    def test_valid_populations(self, modelset_populations):
+        _ensure_populations_valid(modelset_populations)  # Should not raise
 
-    def test_invalid_populations(self):
-        base_population_name = "US"
-        modelset_populations = {"US", "CA"}
-        with pytest.raises(ValueError, match="Populations in modelset not matching base model: \\['CA'\\]"):
-            _ensure_populations_valid(base_population_name, modelset_populations)
+    @pytest.mark.parametrize(
+        "modelset_populations",
+        [["US-CA", "notaplace"], [{"name": "notaplace", "type": "metrocast_location"}], [{"name": "US-XX"}]],
+    )
+    def test_invalid_populations(self, modelset_populations):
+        with pytest.raises(ValueError, match="Invalid"):
+            _ensure_populations_valid(modelset_populations)
 
 
 class TestEnsureTransitionsValid:
@@ -226,9 +234,19 @@ class TestValidateModelsetConsistency:
 
     def test_invalid_populations(self):
         base_config = self._create_base_config()
-        sampling_config = self._create_sampling_config(population_names=["CA"])
-        with pytest.raises(ValueError, match="Populations in modelset not matching base model"):
+        sampling_config = self._create_sampling_config(population_names=["notaplace"])
+        with pytest.raises(ValueError, match="Invalid metrocast location: notaplace"):
             validate_cross_config_consistency(base_config, sampling_config)
+
+    @pytest.mark.parametrize(
+        "population_names",
+        [["US-CA", "US-TX"], ["all-states"], [{"name": "US-CA", "type": "iso"}]],
+    )
+    def test_multi_location_modelset_overrides_base(self, population_names):
+        """Modelset locations may differ from the base model location (R14)."""
+        base_config = self._create_base_config(population_name="US-CA")
+        calibration_config = self._create_calibration_config(population_names=population_names)
+        validate_cross_config_consistency(base_config, calibration_config)
 
     def test_invalid_transitions_in_calibration_warns(self, caplog):
         base_config = self._create_base_config()

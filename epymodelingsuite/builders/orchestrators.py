@@ -3,7 +3,6 @@
 import copy
 import datetime as dt
 import logging
-import warnings
 from collections.abc import Callable
 from typing import Any, TypedDict
 
@@ -17,8 +16,8 @@ from ..builders.utils import get_data_in_location, get_data_in_window
 from ..schema.basemodel import BaseEpiModel, BasemodelConfig, LocationTypeEnum, Parameter, Population, Timespan
 from ..schema.calibration import CalibrationConfig, ComparisonSpec
 from ..school_closures import make_school_closure_dict
-from ..utils import get_location_codebook, make_dummy_population, validate_iso3166
-from ..utils.location import get_metrocast_locations, get_parent_region
+from ..utils import make_dummy_population
+from ..utils.location import get_metrocast_locations, get_parent_region, resolve_population_names
 from ..vaccinations import reaggregate_vaccines, scenario_to_epydemix
 from .base import (
     add_model_compartments_from_config,
@@ -100,42 +99,7 @@ def create_model_collection(
     # Create models with populations set
     if population_names:
         # Resolve keywords and normalize to (name, type) tuples
-        resolved_locations = []
-        for pop in population_names:
-            if isinstance(pop, str):
-                if pop == "all":
-                    # Legacy (deprecated): all states + US
-                    warnings.warn(
-                        "The 'all' keyword is deprecated. Use 'all-states' instead.",
-                        DeprecationWarning,
-                        stacklevel=2,
-                    )
-                    for iso_name in get_location_codebook()["ISO"].tolist():
-                        resolved_locations.append((iso_name, LocationTypeEnum.iso))
-                elif pop == "all-states":
-                    # All states + US
-                    for iso_name in get_location_codebook()["ISO"].tolist():
-                        resolved_locations.append((iso_name, LocationTypeEnum.iso))
-                elif pop == "all-metrocast":
-                    # All metrocast locations (including state-level, excluding NYC)
-                    metrocast_locs = get_metrocast_locations()
-                    excluded_locations = {"nyc"}
-                    for loc_name in metrocast_locs["metrocast_location_id"].tolist():
-                        if loc_name not in excluded_locations:
-                            resolved_locations.append((loc_name, LocationTypeEnum.metrocast_location))
-                else:
-                    # Auto-detect type
-                    try:
-                        validate_iso3166(pop)
-                        resolved_locations.append((pop, LocationTypeEnum.iso))
-                    except ValueError:
-                        # Assume metrocast
-                        resolved_locations.append((pop, LocationTypeEnum.metrocast_location))
-            elif isinstance(pop, dict):
-                # Explicit type from dict
-                name = pop["name"]
-                loc_type = LocationTypeEnum(pop.get("type", "iso"))
-                resolved_locations.append((name, loc_type))
+        resolved_locations = resolve_population_names(population_names)
 
         # Create models for each location
         resolved_names = []
@@ -143,7 +107,7 @@ def create_model_collection(
             m = copy.deepcopy(init_model)
             pop_config = Population(
                 name=name,
-                location_type=location_type,
+                location_type=LocationTypeEnum(location_type),
                 age_groups=basemodel.population.age_groups,
                 contact_matrix=basemodel.population.contact_matrix,
             )

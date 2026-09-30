@@ -121,29 +121,6 @@ def parse_timedelta(text: str) -> timedelta:
     raise ValueError(msg)
 
 
-def to_set(values: object | None) -> set:
-    """
-    Normalize an optional iterable into a set.
-
-    Parameters
-    ----------
-    values : Iterable or None
-        Input iterable (or ``None``) to convert.
-
-    Returns
-    -------
-    set
-        Set containing the iterable values, or an empty set when ``None``.
-    """
-    from collections.abc import Iterable
-
-    if values is None:
-        return set()
-    if isinstance(values, Iterable) and not isinstance(values, (str, bytes)):
-        return set(values)
-    return set()
-
-
 def strip_agegroup_suffix(name: str, age_group: str = "total") -> str:
     """
     Strip age group suffix from compartment/transition names.

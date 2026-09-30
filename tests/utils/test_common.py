@@ -5,7 +5,7 @@ from datetime import timedelta
 import pytest
 
 from epymodelingsuite.utils import parse_timedelta
-from epymodelingsuite.utils.common import parse_transition_name, strip_agegroup_suffix, to_set
+from epymodelingsuite.utils.common import parse_transition_name, strip_agegroup_suffix
 
 
 class TestParseTimedelta:
@@ -144,26 +144,6 @@ class TestParseTimedelta:
         result = parse_timedelta("1000ns")
         # Note: timedelta precision is microseconds, so 1000ns = 1us
         assert result == timedelta(microseconds=1)
-
-
-class TestToSet:
-    """Tests for to_set function."""
-
-    def test_none_input(self):
-        """Test converting None to empty set."""
-        assert to_set(None) == set()
-
-    def test_list_input(self):
-        """Test converting list to set."""
-        assert to_set([1, 2, 3]) == {1, 2, 3}
-
-    def test_set_input(self):
-        """Test converting set to set."""
-        assert to_set({1, 2}) == {1, 2}
-
-    def test_empty_list(self):
-        """Test converting empty list to empty set."""
-        assert to_set([]) == set()
 
 
 class TestStripAgegroupSuffix:
