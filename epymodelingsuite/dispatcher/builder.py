@@ -553,6 +553,7 @@ def build_calibration(
             parameters=fixed_parameters,
             observed_data=observed_data[calibration.comparison[0].observed_value_column].values,
             distance_function=dist_func_date_alignment_wrapper(dist_func),
+            rng=basemodel.random_seed,
         )
 
         calibrators.append(abc_sampler)
