@@ -63,7 +63,7 @@ class TestParseTimedelta:
 
     def test_parse_compound_days_hours(self):
         """Test parsing compound duration like '2D3H'."""
-        result = parse_timedelta("2D3H")
+        result = parse_timedelta("2D3h")
         assert result == timedelta(days=2, hours=3)
 
     def test_parse_with_whitespace(self):
@@ -73,7 +73,7 @@ class TestParseTimedelta:
 
     def test_parse_fractional_hours(self):
         """Test parsing fractional hours."""
-        result = parse_timedelta("1.5H")
+        result = parse_timedelta("1.5h")
         assert result == timedelta(hours=1, minutes=30)
 
     def test_parse_week_with_anchor_sunday(self):
@@ -85,6 +85,19 @@ class TestParseTimedelta:
         """Test parsing week with Monday anchor."""
         result = parse_timedelta("W-MON")
         assert result == timedelta(weeks=1)
+
+    @pytest.mark.parametrize("anchor", ["W-SAT", "W-TUE", "W-THU"])
+    def test_parse_week_with_anchor_containing_t(self, anchor: str) -> None:
+        """Anchors containing 'T' are not rewritten as minutes."""
+        assert parse_timedelta(anchor) == timedelta(weeks=1)
+
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [("H", timedelta(hours=1)), ("h", timedelta(hours=1)), ("d", timedelta(days=1)), ("D", timedelta(days=1))],
+    )
+    def test_parse_unit_without_number(self, text: str, expected: timedelta) -> None:
+        """A bare unit means one of that unit."""
+        assert parse_timedelta(text) == expected
 
     def test_invalid_month_raises_error(self):
         """Test that variable-length month duration raises ValueError."""
@@ -113,7 +126,7 @@ class TestParseTimedelta:
 
     def test_large_duration(self):
         """Test parsing large duration."""
-        result = parse_timedelta("1000H")
+        result = parse_timedelta("1000h")
         assert result == timedelta(hours=1000)
 
     def test_microseconds(self):
