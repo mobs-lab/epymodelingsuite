@@ -1037,8 +1037,9 @@ def generate_simulation_outputs(
                             )
                     trajc_df.insert(0, "primary_id", simulation.primary_id)
                     trajc_df.insert(1, "sim_id", i)
-                    trajc_df.insert(2, "seed", simulation.seed)
-                    trajc_df.insert(3, "population", simulation.population)
+                    trajc_df.insert(2, "date", traj.dates)
+                    trajc_df.insert(3, "seed", simulation.seed)
+                    trajc_df.insert(4, "population", simulation.population)
                     trajectories_compartments_list.append(trajc_df)
 
                 # Transitions
@@ -1053,8 +1054,9 @@ def generate_simulation_outputs(
                             )
                     trajt_df.insert(0, "primary_id", simulation.primary_id)
                     trajt_df.insert(1, "sim_id", i)
-                    trajt_df.insert(2, "seed", simulation.seed)
-                    trajt_df.insert(3, "population", simulation.population)
+                    trajt_df.insert(2, "date", traj.dates)
+                    trajt_df.insert(3, "seed", simulation.seed)
+                    trajt_df.insert(4, "population", simulation.population)
                     trajectories_transitions_list.append(trajt_df)
 
     trajectories_compartments = (
@@ -1097,10 +1099,8 @@ def generate_simulation_outputs(
                 meta_dict[p].append(str(v))
 
             # Initial conditions
-            inits = {k: [int(v[0]) for v in vs] for k, vs in simulation.results.get_stacked_compartments().items()}
-            for c, i in inits:
-                colname = f"init_{c}"
-                meta_dict[colname].append(str(i))
+            for name, values in simulation.results.get_stacked_compartments().items():
+                meta_dict[f"init_{name}"].append(str([int(v[0]) for v in values]))
 
         model_meta = pd.DataFrame(meta_dict)
 

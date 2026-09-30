@@ -17,8 +17,10 @@ from epymodelingsuite.config_loader import (
     load_calibration_config_from_file,
 )
 from epymodelingsuite.dispatcher.builder import dispatch_builder
+from epymodelingsuite.dispatcher.output import generate_simulation_outputs
 from epymodelingsuite.dispatcher.runner import dispatch_runner
 from epymodelingsuite.schema.dispatcher import CalibrationOutput, SimulationOutput
+from epymodelingsuite.schema.output import OutputConfig, OutputConfiguration, TrajectoriesOutput
 
 # Path to test fixtures
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
@@ -119,6 +121,30 @@ class TestSimulationPipelineE2E:
         assert 0 < i_max_idx < len(i_total) - 1, "Infectious should peak in middle of simulation"
 
     @pytest.mark.dynamics
+    def test_simulation_output_generation(self):
+        """Full pipeline including output: trajectories carry dates and model metadata includes initial conditions."""
+        basemodel_config = load_basemodel_config_from_file(str(FIXTURES_DIR / "minimal_basemodel.yaml"))
+        builder_output = dispatch_builder(basemodel_config=basemodel_config)
+        result = dispatch_runner(builder_output)
+
+        output_config = OutputConfig(
+            output=OutputConfiguration(
+                tabular_output_types=["DataFrame"],
+                trajectories=TrajectoriesOutput(compartments=True, transitions=True),
+            )
+        )
+        outputs = generate_simulation_outputs(simulations=[result], output_config=output_config)
+
+        expected_dates = list(result.results.dates)
+        for name in ["trajectories_compartments", "trajectories_transitions"]:
+            df = outputs[name][0].data
+            assert list(df.columns[:5]) == ["primary_id", "sim_id", "date", "seed", "population"]
+            assert list(df.loc[df["sim_id"] == 0, "date"]) == expected_dates
+
+        model_meta = outputs["model_metadata"][0].data
+        compartments = result.results.get_stacked_compartments()
+        assert model_meta.loc[0, "init_S_total"] == str([int(v[0]) for v in compartments["S_total"]])
+
     def test_sir_mean_approximates_ode(self):
         """Verify stochastic SIR mean approximates deterministic ODE solution.
 
