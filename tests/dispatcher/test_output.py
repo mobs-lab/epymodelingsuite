@@ -17,6 +17,7 @@ from epymodelingsuite.schema.output import (
     OutputConfig,
     OutputConfiguration,
     PlotsConfig,
+    PosteriorsOutput,
     TabularOutputTypeEnum,
 )
 from epymodelingsuite.visualization.generators import generate_categorical_plots
@@ -368,6 +369,31 @@ class TestFilterFailedProjectionsAlignsProjectionParameters:
         assert results.projection_parameters["baseline"]["Reff"].tolist() == [0.1, 0.3]
         assert len(results.projections["intervention"]) == 2
         assert results.projection_parameters["intervention"]["Reff"].tolist() == [1.1, 1.2]
+
+
+class TestPosteriorExport:
+    """Exporting posteriors must not mutate the DataFrames stored in CalibrationResults."""
+
+    @pytest.mark.parametrize("posteriors", [True, PosteriorsOutput(generations=[0, 1])])
+    def test_export_leaves_results_unchanged(self, posteriors):
+        stored = {0: pd.DataFrame({"Reff": [1.1, 1.2]}), 1: pd.DataFrame({"Reff": [1.3, 1.4]})}
+        calibration = MagicMock()
+        calibration.primary_id = 1
+        calibration.seed = 42
+        calibration.population = "United_States_California"
+        calibration.results.projections = {}
+        calibration.results.get_posterior_distribution.side_effect = lambda generation=1: stored[generation]
+        output_config = OutputConfig(
+            output=OutputConfiguration(tabular_output_types=[TabularOutputTypeEnum.DataFrame], posteriors=posteriors)
+        )
+
+        # Export twice: the second call failed with "cannot insert primary_id, already exists"
+        for _ in range(2):
+            outputs = generate_calibration_outputs(calibrations=[calibration], output_config=output_config)
+            assert "primary_id" in outputs["posteriors"][0].data.columns
+
+        for df in stored.values():
+            assert list(df.columns) == ["Reff"]
 
 
 class TestProjectionParametersLongFile:
