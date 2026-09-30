@@ -1412,7 +1412,7 @@ def generate_calibration_outputs(
             # Output last generation (default)
             if output.posteriors == True:
                 try:
-                    post_df = calibration.results.get_posterior_distribution()
+                    post_df = calibration.results.get_posterior_distribution().copy()
                 except Exception as e:
                     warnings.add(
                         f"OUTPUT GENERATOR: Failed to obtain posterior distribution for CalibrationOutput with "
@@ -1424,7 +1424,7 @@ def generate_calibration_outputs(
                 post_df_list = []
                 for g in output.posteriors.generations:
                     try:
-                        post = calibration.results.get_posterior_distribution(generation=g)
+                        post = calibration.results.get_posterior_distribution(generation=g).copy()
                         post.insert(0, "generation", g)
                         post_df_list.append(post)
                     except Exception:
