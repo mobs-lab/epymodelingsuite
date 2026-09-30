@@ -211,7 +211,7 @@ def fetch_nssp_edvisits(
         - epiweek : int
             MMWR epidemiological week in CDC format (YYYYWW)
         - prop_ed_visits : float
-            Proportion of ED visits attributed to flu
+            Proportion of ED visits attributed to flu, on a 0-1 scale
 
     Examples
     --------
@@ -228,10 +228,10 @@ def fetch_nssp_edvisits(
     Example Output
     --------------
     >>> df.head(3)
-        location_iso location_code	target_end_date	epiweek	prop_ed_visits
-    0	       US-AL            01	     2022-11-19	 202246	          6.15
-    1	       US-AL	        01	     2022-12-10	 202249        	  3.03
-    2	       US-AL        	01	     2023-02-04	 202305	          0.43
+      location_iso location_code target_end_date  epiweek  prop_ed_visits
+    0        US-AL            01      2022-11-19   202246          0.0615
+    1        US-AL            01      2022-12-10   202249          0.0303
+    2        US-AL            01      2023-02-04   202305          0.0043
 
     Notes
     -----
@@ -244,7 +244,7 @@ def fetch_nssp_edvisits(
         https://data.cdc.gov/Public-Health-Surveillance/NSSP-Emergency-Department-Visit-Trajectories-by-St/rdmq-nq56/about_data
 
     Data Field
-        Uses `percent_visits_influenza`
+        Uses `percent_visits_influenza`, divided by 100 to match FluSight's 0-1 ED target units
 
     Coverage
         Data available from October 2022 onwards. Includes US states, DC, and national
@@ -274,8 +274,8 @@ def fetch_nssp_edvisits(
     data["target_end_date"] = pd.to_datetime(data["week_end"])
     data["epiweek"] = data["target_end_date"].apply(lambda key: int(epiweeks.Week.fromdate(key).cdcformat()))
 
-    # Rename percent_visits_influenza and process it
-    data["prop_ed_visits"] = data["percent_visits_influenza"].fillna(0).astype(float)
+    # Convert CDC percentages to proportions
+    data["prop_ed_visits"] = data["percent_visits_influenza"].fillna(0).astype(float) / 100
 
     # Load location mapping
     locations = get_flusight_locations()

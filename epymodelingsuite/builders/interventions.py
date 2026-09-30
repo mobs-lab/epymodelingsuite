@@ -109,22 +109,22 @@ def add_parameter_interventions_from_config(
     param_invs = [i for i in interventions if i.type == "parameter"]
 
     # Apply scaling interventions
-    for i in [inv for inv in param_invs if inv.scaling_factor]:
+    for intervention in [inv for inv in param_invs if inv.scaling_factor is not None]:
         # Target parameter must already exist
         try:
-            previous_value = model.get_parameter(i.target_parameter)
+            previous_value = model.get_parameter(intervention.target_parameter)
         except KeyError:
             raise ValueError(
-                f"Attempted to apply scaling factor parameter intervention to undefined parameter {i.target_parameter}"
+                f"Attempted to apply scaling factor parameter intervention to undefined parameter {intervention.target_parameter}"
             )
 
         # Calculate rescaling vector
         dates, st = get_scaled_parameter(
             date_start=timespan.start_date,
             date_stop=timespan.end_date,
-            scaling_start=i.start_date,
-            scaling_stop=i.end_date,
-            scaling_factor=i.scaling_factor,
+            scaling_start=intervention.start_date,
+            scaling_stop=intervention.end_date,
+            scaling_factor=intervention.scaling_factor,
             delta_t=timespan.delta_t,
         )
 
@@ -138,30 +138,31 @@ def add_parameter_interventions_from_config(
         # If existing parameter is age-varying (array of size (1, N)), transform to array of size (T, N) with time-varying and age-varying values
         # If existing parameter is time-varying and age-varying (array of size (T, N)), do piecewise for each age group
         elif previous_value.shape == (T, N) or previous_value.shape == (1, N):
-            new_value = np.zeros((T, N))
-            for i in range(N):
-                new_value[:, i] = np.array(st) * np.array(previous_value[:, i])
+            new_value = np.array(st)[:, None] * np.array(previous_value)
         # Uncertain how this will work for priors
         else:
             raise ValueError(
-                f"Cannot apply scaling intervention to existing parameter {i.target_parameter} = {previous_value}"
+                f"Cannot apply scaling intervention to existing parameter {intervention.target_parameter} = {previous_value}"
             )
 
         # Overwrite parameter with new scaled values
         try:
-            model.add_parameter(i.target_parameter, new_value)
-            logger.info(f"Added scaling intervention to parameter {i.target_parameter}")
+            model.add_parameter(intervention.target_parameter, new_value)
+            logger.info(f"Added scaling intervention to parameter {intervention.target_parameter}")
         except Exception as e:
             raise ValueError(f"Error adding parameter scaling intervention to model: {e}")
 
     # Apply override interventions.
     # This must occur at the end to ensure override values are final parameter values.
-    for i in [inv for inv in param_invs if inv.override_value]:
+    for intervention in [inv for inv in param_invs if inv.override_value is not None]:
         try:
             model.override_parameter(
-                start_date=i.start_date, end_date=i.end_date, parameter_name=i.target_parameter, value=i.override_value
+                start_date=intervention.start_date,
+                end_date=intervention.end_date,
+                parameter_name=intervention.target_parameter,
+                value=intervention.override_value,
             )
-            logger.info(f"Added override intervention to parameter {i.target_parameter}")
+            logger.info(f"Added override intervention to parameter {intervention.target_parameter}")
         except Exception as e:
             raise ValueError(f"Error adding parameter override intervention to model: {e}")
 

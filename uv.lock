@@ -963,8 +963,8 @@ wheels = [
 
 [[package]]
 name = "epydemix"
-version = "1.2.0"
-source = { git = "https://github.com/mobs-lab/epydemix.git#a27ad029d8b16db2cf58b145142c4b074bd8ccdb" }
+version = "1.3.2"
+source = { git = "https://github.com/mobs-lab/epydemix.git?rev=v1.3.2#7fc22d10e622bc8f200b0121151540338dded235" }
 dependencies = [
     { name = "evalidate" },
     { name = "matplotlib", version = "3.9.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
@@ -1032,7 +1032,7 @@ dev = [
 requires-dist = [
     { name = "autodoc-pydantic", marker = "extra == 'dev'" },
     { name = "epiweeks" },
-    { name = "epydemix", git = "https://github.com/mobs-lab/epydemix.git" },
+    { name = "epydemix", git = "https://github.com/mobs-lab/epydemix.git?rev=v1.3.2" },
     { name = "holidays" },
     { name = "ipykernel", marker = "extra == 'dev'" },
     { name = "matplotlib" },

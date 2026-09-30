@@ -1,9 +1,13 @@
 """Tests for calibration schema validation."""
 
 from datetime import timedelta
+from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
+from epydemix.calibration import ABCSampler
 
+from epymodelingsuite.config_loader import load_calibration_config_from_file
 from epymodelingsuite.schema.calibration import (
     CalibrationConfig,
     CalibrationStrategy,
@@ -205,7 +209,7 @@ class TestCalibrationStrategyEnum:
             name="SMC",
             options={"num_particles": 500, "num_generations": 10, "max_time": "4h"},
         )
-        assert strategy.name == "SMC"
+        assert strategy.name == "smc"
         assert strategy.options["max_time"] == timedelta(hours=4)
 
     def test_rejection_strategy_with_max_time(self):
@@ -225,6 +229,43 @@ class TestCalibrationStrategyEnum:
         )
         assert strategy.name == "top_fraction"
         assert "max_time" not in strategy.options
+
+
+class TestCalibrationStrategyName:
+    """Strategy names are normalized to the names epydemix accepts."""
+
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [
+            ("SMC", "smc"),
+            ("smc", "smc"),
+            ("Smc", "smc"),
+            ("REJECTION", "rejection"),
+            ("rejection", "rejection"),
+            ("Top_Fraction", "top_fraction"),
+            ("top_fraction", "top_fraction"),
+        ],
+    )
+    def test_name_is_case_insensitive(self, raw: str, expected: str) -> None:
+        strategy = CalibrationStrategy(name=raw)
+        assert strategy.name == expected
+        assert type(strategy.name) is str
+
+    def test_unknown_name_rejected(self) -> None:
+        with pytest.raises(ValueError, match="Input should be"):
+            CalibrationStrategy(name="mcmc")
+
+    @pytest.mark.parametrize("name", [e.value for e in CalibrationStrategy.CalibrationStrategyEnum])
+    def test_every_exposed_name_accepted_by_epydemix(self, name: str) -> None:
+        """Each enum value dispatches to the matching ABCSampler.run_<name> method."""
+        sampler = MagicMock()
+        ABCSampler.calibrate(sampler, strategy=CalibrationStrategy(name=name.upper()).name)
+        getattr(sampler, f"run_{name}").assert_called_once()
+
+    def test_tutorial_modelset_calibration_yaml_loads(self) -> None:
+        path = Path(__file__).parents[2] / "tutorials" / "data" / "basic_modelset_calibration.yml"
+        config = load_calibration_config_from_file(str(path))
+        assert config.modelset.calibration.strategy.name == "smc"
 
 
 class TestComparisonSpecLocationFormat:

@@ -300,7 +300,7 @@ class Intervention(BaseModel):
         contact_matrix = "contact_matrix"
 
     type: InterventionTypeEnum
-    scaling_factor: float | None = Field(None, description="Scaling factor for interventions.")
+    scaling_factor: float | None = Field(None, ge=0, description="Scaling factor for interventions.")
     override_value: float | None = Field(
         None, description="Override value for 'parameter' intervention, alternative to scaling_factor."
     )
@@ -314,13 +314,6 @@ class Intervention(BaseModel):
     start_date: date | None = Field(None, description="Start date of 'parameter' or 'contact_matrix' intervention.")
     end_date: date | None = Field(None, description="End date of 'parameter' or 'contact_matrix' intervention.")
 
-    @field_validator("scaling_factor")
-    @classmethod
-    def check_scaling_factor(cls, v: float) -> float:
-        """Ensure scaling_factor >= 0."""
-        assert v >= 0, f"Provided scaling_factor={v} must be >= 0."
-        return v
-
     @model_validator(mode="after")
     def check_intervention_fields(self: "Intervention") -> "Intervention":
         """Ensure intervention configuration is consistent."""
@@ -328,11 +321,16 @@ class Intervention(BaseModel):
         if self.type == "parameter":
             assert self.target_parameter, "Parameter intervention is missing 'target_parameter'."
             assert self.start_date and self.end_date, "Parameter intervention must have 'start_date' and 'end_date'."
-            assert bool(self.scaling_factor) ^ bool(self.override_value), (
-                "Parameter intervention must have exactly one of 'scaling_factor' or 'override_value'."
-            )
+            if (self.scaling_factor is None) == (self.override_value is None):
+                msg = "Parameter intervention must have exactly one of 'scaling_factor' or 'override_value'."
+                raise ValueError(msg)
         else:
-            assert not self.override_value, f"{self.type} intervention cannot use 'override_value'"
+            if self.override_value is not None:
+                msg = f"'{self.type}' intervention cannot use 'override_value'."
+                raise ValueError(msg)
+            if self.scaling_factor is None:
+                msg = f"'{self.type}' intervention must specify 'scaling_factor'."
+                raise ValueError(msg)
         # Apply only to contact matrix interventions, or apply to all except contact matrix interventions
         if self.type == "contact_matrix":
             assert self.contact_matrix_layer, (
