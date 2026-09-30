@@ -903,3 +903,58 @@ class TestLoadMetrocastPopulation:
 
             # Name should use metrocast convention
             assert metrocast_pop.name == f"metrocast_location_{state_loc}"
+
+
+class TestCalculateParametersFromConfig:
+    """Tests for calculate_parameters_from_config function."""
+
+    def test_calculated_rate_from_months(self):
+        """Daily rate parameters can be derived from month-valued calibrated params."""
+        from unittest.mock import Mock
+
+        from epymodelingsuite.builders.base import calculate_parameters_from_config
+        from epymodelingsuite.schema.basemodel import Parameter
+
+        model = Mock()
+        model.compartments = {}
+        model.get_parameter = Mock(
+            side_effect=lambda name: {"days_per_month": 30, "omega_months": 5}[name]
+        )
+
+        parameters = {
+            "days_per_month": Parameter(type="scalar", value=30),
+            "omega_months": Parameter(type="calibrated"),
+            "omega": Parameter(type="calculated", value="1/(omega_months*days_per_month)"),
+        }
+
+        calculate_parameters_from_config(model, parameters, compartment_init=None)
+
+        added = model.add_parameter.call_args.kwargs["parameters_dict"]
+        assert added["omega"] == pytest.approx(1 / (5 * 30))
+
+    def test_calculated_rate_from_param_values_fallback(self):
+        """Calibrated sample values can be resolved before they are on the model."""
+        from unittest.mock import Mock
+
+        from epymodelingsuite.builders.base import calculate_parameters_from_config
+        from epymodelingsuite.schema.basemodel import Parameter
+
+        model = Mock()
+        model.compartments = {}
+        model.get_parameter = Mock(side_effect=KeyError("omega_months"))
+
+        parameters = {
+            "days_per_month": Parameter(type="scalar", value=30),
+            "omega_months": Parameter(type="calibrated"),
+            "omega": Parameter(type="calculated", value="1/(omega_months*days_per_month)"),
+        }
+
+        calculate_parameters_from_config(
+            model,
+            parameters,
+            compartment_init=None,
+            param_values={"omega_months": 5, "days_per_month": 30},
+        )
+
+        added = model.add_parameter.call_args.kwargs["parameters_dict"]
+        assert added["omega"] == pytest.approx(1 / (5 * 30))

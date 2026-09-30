@@ -258,22 +258,58 @@ class Seasonality(BaseModel):
         """Methods for defining a seasonally varying function."""
 
         balcan = "balcan"
+        data_driven = "data_driven"
+        humidity_only = "humidity_only"
+        temperature_only = "temperature_only"
 
     target_parameter: str = Field(description="Name of parameter to apply seasonality to")
     method: SeasonalityMethodEnum = Field(description="Method for defining a seasonally varying function")
-    seasonality_max_date: date = Field(description="Date of seasonality peak (max transmissibility)")
+    # Balcan-specific fields
+    seasonality_max_date: date | None = Field(
+        None, description="Date of seasonality peak (max transmissibility); required for balcan"
+    )
     seasonality_min_date: date | None = Field(None, description="Date of seasonality trough (min transmissibility)")
-    max_value: float = Field(
-        description="Together with min_value, determines the trough as min_value/max_value. Typically set to 1.0. The output always peaks at 1.0 regardless of this value."
+    max_value: float | None = Field(
+        None,
+        description="Together with min_value, determines the trough as min_value/max_value. Required for balcan.",
     )
-    min_value: float = Field(
-        description="Together with max_value, determines the trough as min_value/max_value. When max_value=1.0, this directly equals the trough factor (e.g., 0.2 = 20% of peak)."
+    min_value: float | None = Field(
+        None,
+        description="Together with max_value, determines the trough as min_value/max_value. Required for balcan.",
     )
+    # Data-driven fields (temperature, humidity, and/or mobility)
+    seasonality_data_path: str | None = Field(
+        None, description="Path to daily seasonality data CSV (temp, RH, mobility); required for data_driven method"
+    )
+    date_column: str = Field("date", description="Date column in seasonality data CSV")
+    temp_column: str = Field("temp", description="Temperature column in seasonality data CSV (degrees C)")
+    rh_column: str = Field("humid_mean", description="Relative humidity column in seasonality data CSV (percent)")
+    mobility_column: str | None = Field(
+        None, description="Mobility index column in seasonality data CSV; omit to exclude mobility"
+    )
+    rh_optimum: float = Field(40.0, description="RH (%) at minimum of parabolic humidity term")
+    location_column: str = Field(
+        "Location",
+        description="Location identifier column in seasonality data CSV (values matched to model population)",
+    )
+    location_format: str = Field(
+        "ISO",
+        description=(
+            "Format of location values in the seasonality data CSV (e.g. ISO for US-CA). "
+            "Population location is resolved automatically from model.population.name."
+        ),
+    )
+    b1_param: str = Field("b1", description="Model parameter name for humidity curvature coefficient")
+    b3_param: str = Field("b3", description="Model parameter name for temperature coefficient")
+    b4_param: str = Field("b4", description="Model parameter name for mobility coefficient")
+    s_min_param: str = Field("s_min", description="Model parameter name for minimum seasonality multiplier")
 
     @field_validator("seasonality_min_date")
     @classmethod
-    def check_seasonality_dates(cls, v: date, info: Any) -> date:
+    def check_seasonality_dates(cls, v: date | None, info: Any) -> date | None:
         """Ensure date of seasonality trough is after date of seasonality peak."""
+        if v is None:
+            return v
         max_date = info.data.get("seasonality_max_date")
         if max_date and v < max_date:
             raise ValueError("seasonality_min_date must be after seasonality_max_date")
@@ -281,12 +317,36 @@ class Seasonality(BaseModel):
 
     @field_validator("min_value")
     @classmethod
-    def check_scaling_minimum(cls, v: float, info: Any) -> float:
+    def check_scaling_minimum(cls, v: float | None, info: Any) -> float | None:
         """Ensure minimum scaling factor is less than maximum scaling factor."""
+        if v is None:
+            return v
         max_val = info.data.get("max_value")
-        if max_val and v > max_val:
+        if max_val is not None and v > max_val:
             raise ValueError("Seasonality min_value must be less than max_value")
         return v
+
+    @model_validator(mode="after")
+    def check_method_fields(self) -> "Seasonality":
+        """Ensure required fields are present for the selected seasonality method."""
+        if self.method == Seasonality.SeasonalityMethodEnum.balcan:
+            missing = []
+            if self.seasonality_max_date is None:
+                missing.append("seasonality_max_date")
+            if self.max_value is None:
+                missing.append("max_value")
+            if self.min_value is None:
+                missing.append("min_value")
+            if missing:
+                raise ValueError(f"Balcan seasonality requires: {', '.join(missing)}")
+        elif self.method in (
+            Seasonality.SeasonalityMethodEnum.data_driven,
+            Seasonality.SeasonalityMethodEnum.humidity_only,
+            Seasonality.SeasonalityMethodEnum.temperature_only,
+        ):
+            if not self.seasonality_data_path:
+                raise ValueError("Data-driven seasonality requires seasonality_data_path")
+        return self
 
 
 class Intervention(BaseModel):

@@ -462,6 +462,20 @@ def validate_cross_config_consistency(
     # - Ensure all transitions used in calibration comparison exist in basemodel
     base_transitions = {f"{t.source}_to_{t.target}_total" for t in basemodel.transitions or []}
     _ensure_transitions_valid(base_transitions, calibration)
+    
+    # Anchoring validation (if anchoring is specified)
+    if calibration and calibration.anchoring:
+        projection_end_date = basemodel.timespan.end_date
+        anchor_start = calibration.anchoring.anchor_start_date
+        anchor_end = calibration.anchoring.anchor_end_date
+        
+        # Validate anchor dates are within simulation date range
+        # Note: We can't validate against exact projection dates since they depend on sampled start_date,
+        # but we can validate against the maximum possible projection end date
+        if anchor_end > projection_end_date:
+            raise ValueError(
+                f"Anchoring anchor_end_date ({anchor_end}) must be <= projection end_date ({projection_end_date})"
+            )
 
     # Fitting window consistency checks
     # - Ensure fitting window is within simulation timespan
