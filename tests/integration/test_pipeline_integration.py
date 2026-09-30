@@ -7,6 +7,7 @@ These tests use minimal configs to verify the pipeline works correctly without m
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -21,6 +22,9 @@ from epymodelingsuite.dispatcher.output import generate_simulation_outputs
 from epymodelingsuite.dispatcher.runner import dispatch_runner
 from epymodelingsuite.schema.dispatcher import CalibrationOutput, SimulationOutput
 from epymodelingsuite.schema.output import OutputConfig, OutputConfiguration, TrajectoriesOutput
+
+if TYPE_CHECKING:
+    from epydemix.model.simulation_results import SimulationResults
 
 # Path to test fixtures
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
@@ -727,47 +731,55 @@ class TestSimulationPipelineSubdailyTimesteps:
             assert (d2 - d1).days == 7, f"Dates not 7 days apart: {d1} -> {d2}"
             assert d1.weekday() == 5, f"Date {d1} is not a Saturday"
 
-    @pytest.mark.nightly
-    def test_resampled_output_similar_across_dt(self):
-        """Compare dt=1.0 vs dt=0.5 resampled to W-SAT: mean final S within 10%."""
+    @staticmethod
+    def _run_minimal(
+        delta_t: float,
+        end_date: str,
+        beta: float | None = None,
+        infections: int | None = None,
+        resample_frequency: str | None = None,
+    ) -> SimulationResults:
+        """Run the minimal SIR fixture with overrides and return its SimulationResults."""
         import yaml
 
         from epymodelingsuite.schema.basemodel import validate_basemodel
 
-        # Build dt=1.0 config with same date range as half-day (Jan 1 - Feb 1)
         with open(FIXTURES_DIR / "minimal_basemodel.yaml") as f:
-            raw_dt10 = yaml.safe_load(f)
-        raw_dt10["model"]["timespan"]["end_date"] = "2025-02-01"
-        raw_dt10["model"]["simulation"]["n_sims"] = 50
-        raw_dt10["model"]["random_seed"] = 99
-        basemodel_config_dt10 = validate_basemodel(raw_dt10)
+            raw = yaml.safe_load(f)
+        raw["model"]["timespan"].update(delta_t=delta_t, end_date=end_date)
+        raw["model"]["simulation"].update(resample_frequency=resample_frequency, n_sims=5)
+        if beta is not None:
+            raw["model"]["parameters"]["beta"]["value"] = beta
+        if infections is not None:
+            next(c for c in raw["model"]["compartments"] if c["id"] == "I")["init"] = infections
+        return dispatch_runner(dispatch_builder(basemodel_config=validate_basemodel(raw))).results
 
-        # Build dt=0.5 config with same sims and seed
-        with open(FIXTURES_DIR / "minimal_basemodel_half_day.yaml") as f:
-            raw_dt05 = yaml.safe_load(f)
-        raw_dt05["model"]["simulation"]["n_sims"] = 50
-        raw_dt05["model"]["random_seed"] = 99
-        basemodel_config_dt05 = validate_basemodel(raw_dt05)
+    @pytest.mark.parametrize("delta_t", [1.0, 0.5, 0.25])
+    def test_recovery_decay_independent_of_dt(self, delta_t: float) -> None:
+        """With no infection, mean I decays as exp(-mu * t) for any dt.
 
-        # Build and run dt=1.0
-        builder_dt10 = dispatch_builder(basemodel_config=basemodel_config_dt10)
-        result_dt10 = dispatch_runner(builder_dt10)
+        The per-step probability 1 - exp(-mu * dt) is exact for a constant rate, so
+        there is no discretization error to tolerate, only binomial noise (~0.1% here).
+        If dt were not applied to the rate, dt=0.5 would decay as exp(-2 * mu * t).
+        """
+        mu, days = 0.1, 14
+        results = self._run_minimal(delta_t, "2025-01-31", beta=0.0, infections=1_000_000)  # zero beta: I only recovers
+        i_total = results.get_stacked_compartments()["I_total"].mean(axis=0)
+        dates = pd.DatetimeIndex(results.dates)
+        k = dates.get_loc(dates[0] + pd.Timedelta(days=days))
 
-        # Build and run dt=0.5
-        builder_dt05 = dispatch_builder(basemodel_config=basemodel_config_dt05)
-        result_dt05 = dispatch_runner(builder_dt05)
+        np.testing.assert_allclose(i_total[k] / i_total[0], np.exp(-mu * days), rtol=0.01)
 
-        # Compare mean final S (resampled to weekly)
-        s_dt10 = result_dt10.results.get_stacked_compartments()["S_total"]
-        s_dt05 = result_dt05.results.get_stacked_compartments()["S_total"]
+    @pytest.mark.parametrize("delta_t", [1.0, 0.5, 0.25])
+    def test_weekly_resampling_conserves_susceptibles(self, delta_t: float) -> None:
+        """Weekly S_to_I equals the weekly drop in S, for any dt.
 
-        mean_final_s_dt10 = np.mean(s_dt10[:, -1])
-        mean_final_s_dt05 = np.mean(s_dt05[:, -1])
+        Checks that compartments ("last") and transitions ("sum") are aggregated over
+        the same weekly bins. The fixture's R0 ~ 2 keeps S changing every week, so
+        the check is not trivially 0 = 0.
+        """
+        results = self._run_minimal(delta_t, "2025-05-31", resample_frequency="W-SAT")
+        s_total = results.get_stacked_compartments()["S_total"]
+        s_to_i = results.get_stacked_transitions()["S_to_I_total"]
 
-        # Should be within 10% tolerance
-        np.testing.assert_allclose(
-            mean_final_s_dt05,
-            mean_final_s_dt10,
-            rtol=0.10,
-            err_msg=f"Mean final S differs: dt=1.0 ({mean_final_s_dt10:.0f}) vs dt=0.5 ({mean_final_s_dt05:.0f})",
-        )
+        np.testing.assert_array_equal(s_total[:, :-1] - s_total[:, 1:], s_to_i[:, 1:])
