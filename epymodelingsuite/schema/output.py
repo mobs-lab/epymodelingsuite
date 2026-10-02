@@ -298,7 +298,23 @@ class FlusightTrajectorySamples(BaseModel):
     @field_validator("method")
     @classmethod
     def validate_method(cls, v: str) -> str:
-        """Ensure the selection method exists."""
+        """Validate the trajectory selection method.
+
+        Parameters
+        ----------
+        v : str
+            Requested key in ``SAMPLE_SELECTORS``.
+
+        Returns
+        -------
+        str
+            The unchanged method name if it is registered.
+
+        Raises
+        ------
+        ValueError
+            If the method is not registered.
+        """
         if v not in SAMPLE_SELECTORS:
             msg = f"Unknown sample selection method '{v}'. Available: {sorted(SAMPLE_SELECTORS)}"
             raise ValueError(msg)
@@ -336,7 +352,18 @@ class FlusightForecastOutput(BaseModel):
 
     @model_validator(mode="after")
     def check_samples(self) -> "FlusightForecastOutput":
-        """Metrocast has no sample targets."""
+        """Reject trajectory samples for Metrocast output.
+
+        Returns
+        -------
+        FlusightForecastOutput
+            The validated configuration instance.
+
+        Raises
+        ------
+        ValueError
+            If samples are configured while Metrocast output is enabled.
+        """
         if self.samples is not None and self.metrocast:
             msg = "Trajectory samples are not supported for metrocast outputs."
             raise ValueError(msg)

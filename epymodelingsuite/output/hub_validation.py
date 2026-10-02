@@ -22,18 +22,58 @@ SUM1_TOLERANCE = 1.5e-8
 
 
 def load_tasks(path: str | Path) -> dict:
-    """Read a hub's `tasks.json`."""
+    """Read a hub's task configuration from JSON.
+
+    Parameters
+    ----------
+    path : str or pathlib.Path
+        Path to the hub's ``tasks.json`` file.
+
+    Returns
+    -------
+    dict
+        Parsed task configuration, without schema validation.
+    """
     return json.loads(Path(path).read_text())
 
 
 def _get_allowed_values(task_id: dict) -> set | None:
-    """Return allowed values of a task id as strings, or None when the task id must be NA."""
+    """Collect the allowed values for a task ID.
+
+    Parameters
+    ----------
+    task_id : dict
+        Task ID specification with ``required`` and/or ``optional`` value lists.
+        Missing or null lists are treated as empty.
+
+    Returns
+    -------
+    set[str] or None
+        Required and optional values converted to strings. None means that no
+        non-missing value is allowed for this task ID.
+    """
     values = (task_id.get("required") or []) + (task_id.get("optional") or [])
     return {str(v) for v in values} if values else None
 
 
 def _normalize(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
-    """Cast to comparable types (task ids and output_type_id as strings, horizon nullable int)."""
+    """Normalize hub columns for comparison and collect conversion errors.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input table containing all ``HUB_COLUMNS``. The input is not modified.
+
+    Returns
+    -------
+    normalized : pd.DataFrame
+        Copy with dates as ``YYYY-MM-DD`` strings, horizons as integer strings,
+        identifier columns as strings, and values as numbers. Missing values
+        remain missing.
+    errors : list[str]
+        Problems found while converting dates, horizons or values. The returned
+        table should only be validated further when this list is empty.
+    """
     errors = []
     out = df.copy()
     for col in DATE_COLUMNS:
@@ -56,6 +96,19 @@ def _normalize(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
 
 
 def _parse_quantile_levels(ids: pd.Series) -> pd.Series:
+    """Parse quantile IDs as numeric probability levels.
+
+    Parameters
+    ----------
+    ids : pd.Series
+        Quantile output type IDs, which may contain numeric strings.
+
+    Returns
+    -------
+    pd.Series
+        Numeric levels with the original index. Unparseable IDs become missing
+        values, allowing the caller to report invalid quantile levels.
+    """
     return pd.to_numeric(ids, errors="coerce")
 
 
@@ -154,6 +207,25 @@ def validate_model_output(df: pd.DataFrame, tasks: dict) -> list[str]:  # noqa: 
 
 
 def _check_values(out: pd.DataFrame, spec: dict, target: list, output_type: str) -> list[str]:
+    """Check numeric forecast values against their configured type and bounds.
+
+    Parameters
+    ----------
+    out : pd.DataFrame
+        Normalized rows for one model task and output type, with numeric values.
+    spec : dict
+        Output type specification whose ``value`` section defines the type and
+        any minimum or maximum bounds.
+    target : list[str]
+        Target names used to label error messages.
+    output_type : str
+        Output type name used to label error messages.
+
+    Returns
+    -------
+    list[str]
+        Integer-type and bounds violations, or an empty list when values pass.
+    """
     errors = []
     value_spec = spec.get("value", {})
     if value_spec.get("type") == "integer" and (out["value"] % 1 != 0).any():
@@ -166,7 +238,27 @@ def _check_values(out: pd.DataFrame, spec: dict, target: list, output_type: str)
 
 
 def _check_output_type_ids(out: pd.DataFrame, spec: dict, target: list, output_type: str) -> list[str]:
-    """Quantile / pmf: ids from the allowed set, required ids complete, ordering and sums."""
+    """Check quantile or PMF IDs and the associated distribution values.
+
+    Parameters
+    ----------
+    out : pd.DataFrame
+        Normalized rows for one model task and output type.
+    spec : dict
+        Output type specification with required and optional ``output_type_id``
+        values.
+    target : list[str]
+        Target names used to label error messages.
+    output_type : str
+        ``"quantile"`` to check increasing quantile values, or ``"pmf"`` to
+        check probabilities sum to one within ``SUM1_TOLERANCE``.
+
+    Returns
+    -------
+    list[str]
+        Invalid or missing ID, quantile ordering, and PMF sum errors for each
+        task ID combination. Empty when all checks pass.
+    """
     errors = []
     ids = spec["output_type_id"]
     required = {str(v) for v in ids.get("required") or []}
@@ -207,7 +299,26 @@ def _check_output_type_ids(out: pd.DataFrame, spec: dict, target: list, output_t
 
 
 def _check_samples(out: pd.DataFrame, params: dict, target: list) -> list[str]:
-    """Check sample id length, compound task id sets, sample counts and horizons covered by each sample."""
+    """Check sample identifiers, counts and trajectory structure.
+
+    Parameters
+    ----------
+    out : pd.DataFrame
+        Normalized sample rows for one model task.
+    params : dict
+        ``output_type_id_params`` configuration defining compound task ID
+        columns, maximum identifier length, and sample count bounds. Task ID
+        columns outside the compound set must have matching combinations across
+        samples within each compound group.
+    target : list[str]
+        Target names used to label error messages.
+
+    Returns
+    -------
+    list[str]
+        Identifier, sample count and trajectory coverage violations, or an
+        empty list when the samples pass these checks.
+    """
     errors = []
     compound = params.get("compound_taskid_set", TASK_ID_COLUMNS)
     non_compound = [c for c in TASK_ID_COLUMNS if c not in compound]

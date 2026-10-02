@@ -15,7 +15,23 @@ if TYPE_CHECKING:
 
 
 def select_random(values: np.ndarray, n: int, rng: np.random.Generator) -> np.ndarray:
-    """Pick `n` rows of `values` (trajectories x horizons) uniformly without replacement, or all if fewer."""
+    """Select trajectory indices uniformly without replacement.
+
+    Parameters
+    ----------
+    values : np.ndarray
+        Complete trajectories with shape ``(trajectories, horizons)``.
+    n : int
+        Maximum number of trajectories to select.
+    rng : np.random.Generator
+        Random number generator used for selection.
+
+    Returns
+    -------
+    np.ndarray
+        Sorted integer row indices into ``values``. All indices are returned
+        when there are at most ``n`` trajectories.
+    """
     if len(values) <= n:
         return np.arange(len(values))
     return np.sort(rng.choice(len(values), size=n, replace=False))
@@ -41,15 +57,21 @@ def select_samples(values: np.ndarray, n: int, method: str = "random", seed: int
         Values with shape (trajectories, horizons).
     n : int
         Number of samples wanted.
-    method : str
-        Key of `SAMPLE_SELECTORS`.
-    seed : int | None
-        Seed for the selector's random generator.
+    method : str, optional
+        Key of ``SAMPLE_SELECTORS``. Defaults to ``"random"``.
+    seed : int or None, optional
+        Seed for the selector's random generator. Defaults to unseeded selection.
 
     Returns
     -------
     np.ndarray
-        Row indices into `values`.
+        Integer row indices into the original ``values`` array, after excluding
+        trajectories with a NaN at any horizon.
+
+    Raises
+    ------
+    KeyError
+        If ``method`` is not registered in ``SAMPLE_SELECTORS``.
     """
     complete = np.flatnonzero(~np.isnan(values).any(axis=1))
     chosen = SAMPLE_SELECTORS[method](values[complete], n, np.random.default_rng(seed))
@@ -84,10 +106,11 @@ def make_sample_rows(  # noqa: PLR0913
         Hub target name.
     id_prefix : str
         Prefix of `output_type_id`; samples are numbered `<prefix>00`, `<prefix>01`, ...
-    integer : bool
-        Round values to integers (counts).
-    upper : float | None
-        Clip values to at most this (e.g. 1 for proportions). Values are always clipped to be non-negative.
+    integer : bool, optional
+        Round values to integers (counts). Defaults to False.
+    upper : float or None, optional
+        Upper clipping bound, such as 1 for proportions. Defaults to no upper
+        bound. Values are always clipped to be non-negative.
 
     Returns
     -------
@@ -116,7 +139,30 @@ def make_sample_rows(  # noqa: PLR0913
 def _build_horizon_matrix(
     dates_list: list[np.ndarray], values_list: list[np.ndarray], reference_date: date, horizons: list[int]
 ) -> np.ndarray:
-    """Return the values of each trajectory at the horizons' target dates, shape (trajectories, horizons); NaN where missing."""
+    """Align trajectory values to the requested weekly forecast horizons.
+
+    Parameters
+    ----------
+    dates_list : list[np.ndarray]
+        Date arrays, one per trajectory.
+    values_list : list[np.ndarray]
+        Value arrays aligned one-to-one with ``dates_list`` and their dates.
+    reference_date : date
+        Date corresponding to horizon zero.
+    horizons : list[int]
+        Week offsets from ``reference_date``, in the desired column order.
+
+    Returns
+    -------
+    np.ndarray
+        Float matrix of shape ``(trajectories, horizons)``. Entries are NaN
+        where a trajectory has no value at the exact target date.
+
+    Raises
+    ------
+    ValueError
+        If trajectory counts or corresponding date/value array lengths differ.
+    """
     target_dates = [pd.Timestamp(reference_date) + pd.Timedelta(weeks=h) for h in horizons]
     out = np.full((len(values_list), len(horizons)), np.nan)
     for i, (dates, values) in enumerate(zip(dates_list, values_list, strict=True)):
@@ -148,8 +194,12 @@ def make_flusight_samples(
 
     Returns
     -------
-    tuple[list[pd.DataFrame], list[str]]
-        Sample rows per location and target, and warnings.
+    rows : list[pd.DataFrame]
+        Sample tables per location and enabled target over horizons -1 through 3.
+        Window-based ED outputs use the selected hospitalization trajectories.
+    warnings : list[str]
+        Diagnostics for skipped models or targets, duplicate locations, and
+        locations with fewer complete trajectories than requested.
     """
     cfg = flusight_format.samples
     prop_ed = flusight_format.prop_ed
