@@ -182,15 +182,17 @@ def make_flusight_samples(
         id_prefix = convert_location_name_format(calibration.population, "abbreviation")
         ref = flusight_format.reference_date
 
-        # (target, values with shape (trajectories, horizons), rounding options)
+        # (target, selected values with shape (samples, horizons), rounding options)
         per_target = []
         try:
             if flusight_format.hospitalizations or (prop_ed and prop_ed.strategy != "transition"):
                 hosp = _build_horizon_matrix(traj["date"], traj["hospitalizations"], ref, horizons)
+                hosp = hosp[select_samples(hosp, cfg.n_samples, cfg.method, seed)]
             if flusight_format.hospitalizations:
                 per_target.append((flusight_format.hospitalizations.target, hosp, {"integer": True}))
             if prop_ed and prop_ed.strategy == "transition":
                 ed = _build_horizon_matrix(traj["date"], traj[prop_ed.transition_name], ref, horizons)
+                ed = ed[select_samples(ed, cfg.n_samples, cfg.method, seed)]
                 per_target.append((prop_ed.target, ed, {"upper": 1}))
             elif prop_ed and location in factors:
                 per_target.append((prop_ed.target, hosp * factors[location], {"upper": 1}))
@@ -201,11 +203,12 @@ def make_flusight_samples(
             continue
 
         for target, values, options in per_target:
-            idx = select_samples(values, cfg.n_samples, cfg.method, seed)
-            if len(idx) < cfg.n_samples:
+            # Rescaling can introduce NaNs even in complete selected trajectories.
+            values = values[~np.isnan(values).any(axis=1)]
+            if len(values) < cfg.n_samples:
                 warns.append(
-                    f"OUTPUT GENERATOR: only {len(idx)} complete trajectories for '{target}' samples in {location} "
+                    f"OUTPUT GENERATOR: only {len(values)} complete trajectories for '{target}' samples in {location} "
                     f"(requested {cfg.n_samples})."
                 )
-            rows.append(make_sample_rows(values[idx], horizons, ref, location, target, id_prefix, **options))
+            rows.append(make_sample_rows(values, horizons, ref, location, target, id_prefix, **options))
     return rows, warns

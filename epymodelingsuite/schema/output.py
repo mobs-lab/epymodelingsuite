@@ -5,7 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from ..output.samples import SAMPLE_SELECTORS
+from ..output.trajectory_samples import SAMPLE_SELECTORS
 from .common import Meta
 
 logger = logging.getLogger(__name__)
@@ -284,7 +284,7 @@ class FlusightHospitalizations(BaseModel):
     )
 
 
-class FlusightSamples(BaseModel):
+class FlusightTrajectorySamples(BaseModel):
     """Specifications for trajectory sample outputs ('sample' output type)."""
 
     n_samples: int = Field(
@@ -328,7 +328,7 @@ class FlusightForecastOutput(BaseModel):
         description="Desired quantiles for hospitalizations and prop_ed expressed as floats.",
         validate_default=True,
     )
-    samples: FlusightSamples | None = Field(
+    samples: FlusightTrajectorySamples | None = Field(
         None,
         description="Add trajectory samples for the enabled hospitalization and prop_ed targets. Omit to disable.",
     )

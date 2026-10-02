@@ -10,7 +10,7 @@ import pyarrow.parquet as pq
 import pytest
 
 from epymodelingsuite.output import hub_files
-from epymodelingsuite.output.samples import make_sample_rows
+from epymodelingsuite.output.trajectory_samples import make_sample_rows
 
 HORIZONS = [-1, 0, 1, 2, 3]
 
