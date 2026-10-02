@@ -35,9 +35,30 @@ def cast_hub_dtypes(df: pd.DataFrame) -> pd.DataFrame:
     """
     Cast a hub table to the column types of the FluSight example submission parquet.
 
-    Dates become 'YYYY-MM-DD' strings, `horizon` nullable int32, `output_type_id` and the other id columns
-    strings, `value` float64. Columns are put in hub order. Arrow-backed dtypes preserve the exact schema
-    when the returned copy is saved with DataFrame.to_parquet().
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Forecast table containing all ``HUB_COLUMNS``. Dates must be parseable,
+        horizons must be nullable integers, and values must be numeric.
+
+    Returns
+    -------
+    pd.DataFrame
+        New table in hub column order with Arrow-backed dtypes: dates and IDs
+        as strings, horizon as nullable int32, and value as float64. Dates use
+        ``YYYY-MM-DD`` format. Extra columns are omitted; the input is unchanged.
+
+    Raises
+    ------
+    KeyError
+        If a required hub column is missing.
+    TypeError or ValueError
+        If dates or numeric columns cannot be converted to the required types.
+
+    Notes
+    -----
+    The returned dtypes preserve ``HUB_SCHEMA`` when written with
+    ``DataFrame.to_parquet`` using PyArrow.
     """
     out = df[HUB_COLUMNS].copy()
     for col in ["reference_date", "target_end_date"]:
@@ -53,8 +74,24 @@ def combine_submissions(tables: list[pd.DataFrame]) -> pd.DataFrame:
     """
     Concatenate hub tables (e.g. a hosp and an ED output) into one submission.
 
-    Raises if two tables contribute the same (location, target, output_type), since a submission can hold
-    only one forecast for each.
+    Parameters
+    ----------
+    tables : list[pd.DataFrame]
+        Non-empty collection of hub tables, each containing ``HUB_COLUMNS``.
+        Different tables must contribute distinct location/target/output-type
+        combinations. The input tables are not modified.
+
+    Returns
+    -------
+    pd.DataFrame
+        Combined table with hub dtypes, sorted by location, target, output type,
+        output type ID and horizon, with a fresh integer index.
+
+    Raises
+    ------
+    ValueError
+        If the list is empty or multiple tables supply the same
+        location/target/output-type combination.
     """
     combined = pd.concat([cast_hub_dtypes(t) for t in tables], ignore_index=True)
     keys = ["location", "target", "output_type"]
@@ -70,7 +107,20 @@ def combine_submissions(tables: list[pd.DataFrame]) -> pd.DataFrame:
 
 
 def read_hub_table(path: str | Path) -> pd.DataFrame:
-    """Read a hub table from parquet or (gzipped) csv, keeping ids such as FIPS '01' as strings."""
+    """Read a hub table from Parquet or CSV.
+
+    Parameters
+    ----------
+    path : str or pathlib.Path
+        Input file. A ``.parquet`` suffix selects the Parquet reader; other
+        suffixes use the CSV reader, including compressed files such as ``.csv.gz``.
+
+    Returns
+    -------
+    pd.DataFrame
+        Loaded table. CSV location and output type IDs are read as strings to
+        preserve leading zeros; Parquet retains its stored column types.
+    """
     path = Path(path)
     if path.suffix == ".parquet":
         return pd.read_parquet(path)

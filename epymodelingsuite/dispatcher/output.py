@@ -1,7 +1,6 @@
 """Output generation functions for formatting and saving results."""
 
 import copy
-import io
 import logging
 from collections import defaultdict
 from datetime import date, timedelta
@@ -10,19 +9,22 @@ import numpy as np
 import pandas as pd
 from epydemix.calibration import CalibrationResults
 
+from ..output.tabular import (
+    dataframe_to_gzipped_csv as dataframe_to_gzipped_csv,
+    format_hub_objects,
+    format_tabular_object,
+)
+from ..output.trajectory_samples import make_flusight_samples
 from ..schema.dispatcher import CalibrationOutput, SimulationOutput
 from ..schema.output import (
     FlusightPropED,
     ObservedValuesConfig,
     OutputConfig,
     OutputObject,
-    TabularOutputTypeEnum,
     get_metrocast_horizons,
     get_metrocast_quantiles,
 )
 from ..telemetry import ExecutionTelemetry
-from ..output.hub_files import cast_hub_dtypes
-from ..output.trajectory_samples import make_flusight_samples
 from ..utils.location import (
     convert_location_name_format,
     get_flusight_population,
@@ -855,74 +857,6 @@ def format_quantiles_covid19forecast(quantiles_df: pd.DataFrame) -> pd.DataFrame
     formatted = copy.deepcopy(quantiles_df)
     # TODO
     return pd.DataFrame()
-
-
-def format_tabular_object(df: pd.DataFrame, name: str, output_type: TabularOutputTypeEnum) -> OutputObject:
-    """
-    Create an OutputObject containing tabular data as the requested type.
-
-    Parameters
-    ----------
-    df: pd.DataFrame
-        DataFrame containing tabular data.
-    name: str
-        Name for identifying tabular data.
-    output_type: TabularOutputTypeEnum
-        Requested output type, e.g. CSVBytes or DataFrame.
-
-    Returns
-    -------
-    OutputObject
-        Object containing tabular data as requested type.
-    """
-    match output_type:
-        case TabularOutputTypeEnum.CSVBytes:
-            return OutputObject(
-                output_type=output_type,
-                name=f"{name}.csv.gz",
-                data=dataframe_to_gzipped_csv(df, header=True, index=False),
-            )
-        case TabularOutputTypeEnum.DataFrame:
-            return OutputObject(output_type=output_type, name=name, data=df)
-        case TabularOutputTypeEnum.Parquet:
-            return OutputObject(output_type=output_type, name=f"{name}.parquet", data=df.to_parquet(index=False))
-        case _:
-            msg = f"Requested undefined tabular object format {output_format}."
-            logger.warning(msg)
-
-
-def format_hub_objects(
-    df: pd.DataFrame, name: str, output_types: list[TabularOutputTypeEnum]
-) -> list[OutputObject]:
-    """Prepare hub tables per format and pass them to the common tabular writer."""
-    objects = []
-    for output_type in output_types:
-        hub_table = df
-        if output_type == TabularOutputTypeEnum.Parquet:
-            hub_table = cast_hub_dtypes(hub_table)
-        objects.append(format_tabular_object(hub_table, name, output_type))
-    return objects
-
-
-def dataframe_to_gzipped_csv(df: pd.DataFrame, **csv_kwargs) -> bytes:
-    """
-    Convert a DataFrame to gzip-compressed CSV bytes.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        The DataFrame to convert
-    **csv_kwargs
-        Additional keyword arguments to pass to DataFrame.to_csv()
-
-    Returns
-    -------
-    bytes
-        Gzip-compressed CSV data as bytes
-    """
-    buffer = io.BytesIO()
-    df.to_csv(buffer, date_format="%Y-%m-%d", compression="gzip", **csv_kwargs)
-    return buffer.getvalue()
 
 
 # ===== Output Generator Registry and Functions =====

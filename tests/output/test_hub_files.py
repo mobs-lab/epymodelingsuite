@@ -9,8 +9,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
-from epymodelingsuite.dispatcher.output import format_tabular_object
 from epymodelingsuite.output import hub_files
+from epymodelingsuite.output.tabular import format_tabular_object
 from epymodelingsuite.output.trajectory_samples import make_sample_rows
 from epymodelingsuite.schema.output import TabularOutputTypeEnum
 
