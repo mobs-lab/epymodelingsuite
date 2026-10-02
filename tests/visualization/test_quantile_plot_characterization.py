@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
-from quantile_plot_harness import (
+from quantile_plot_helpers import (
     PlotCapture,
     make_calibration,
     make_plots_config,
