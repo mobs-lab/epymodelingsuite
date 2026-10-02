@@ -38,7 +38,7 @@ TX = "United_States_Texas"
 
 FITTING_WINDOW = ("2023-11-04", "2024-01-13")
 
-# Shared frame summaries; each panel sets its location explicitly with set_location().
+# Shared frame summaries; frame_with_location() returns a copy with an explicit location label.
 # (first date, last date, number of unique dates, location label)
 CALIB_FULL = ("2023-11-04", "2024-01-13", 11, None)
 CALIB_FROM_PROJECTION_START = ("2023-12-02", "2024-01-13", 7, None)
@@ -47,7 +47,7 @@ SURV_ALL = ("2023-10-07", "2024-01-27", 17, None)
 SURV_FROM_PROJECTION_START = ("2023-12-02", "2024-01-27", 9, None)
 
 
-def set_location(summary: tuple, label: str) -> tuple:
+def frame_with_location(summary: tuple, label: str) -> tuple:
     return (*summary[:3], label)
 
 
@@ -114,17 +114,17 @@ class TestSingleDefaultOutputs:
         assert capture.summarize_output(f"quantiles_{CA}_filtered") == [
             make_panel_summary(
                 "California",
-                set_location(CALIB_FROM_PROJECTION_START, "CA"),
-                set_location(PROJ_BASE_HORIZON, "CA"),
-                set_location(SURV_FROM_PROJECTION_START, "CA"),
+                frame_with_location(CALIB_FROM_PROJECTION_START, "CA"),
+                frame_with_location(PROJ_BASE_HORIZON, "CA"),
+                frame_with_location(SURV_FROM_PROJECTION_START, "CA"),
             )
         ]
         assert capture.summarize_output(f"quantiles_{NY}_filtered") == [
             make_panel_summary(
                 "New York",
-                set_location(CALIB_FROM_PROJECTION_START, "NY"),
-                set_location(PROJ_BASE_HORIZON, "NY"),
-                set_location(SURV_FROM_PROJECTION_START, "NY"),
+                frame_with_location(CALIB_FROM_PROJECTION_START, "NY"),
+                frame_with_location(PROJ_BASE_HORIZON, "NY"),
+                frame_with_location(SURV_FROM_PROJECTION_START, "NY"),
             )
         ]
 
@@ -133,9 +133,9 @@ class TestSingleDefaultOutputs:
         assert capture.summarize_output(f"quantiles_{CA}_full") == [
             make_panel_summary(
                 "California",
-                set_location(CALIB_FULL, "CA"),
-                set_location(PROJ_BASE_HORIZON, "CA"),
-                set_location(SURV_ALL, "CA"),
+                frame_with_location(CALIB_FULL, "CA"),
+                frame_with_location(PROJ_BASE_HORIZON, "CA"),
+                frame_with_location(SURV_ALL, "CA"),
             )
         ]
 
@@ -144,15 +144,15 @@ class TestSingleDefaultOutputs:
         assert capture.summarize_output(f"quantiles_{CA}_side_by_side") == [
             make_panel_summary(
                 "California",
-                set_location(CALIB_FULL, "CA"),
-                set_location(PROJ_BASE_HORIZON, "CA"),
-                set_location(SURV_ALL, "CA"),
+                frame_with_location(CALIB_FULL, "CA"),
+                frame_with_location(PROJ_BASE_HORIZON, "CA"),
+                frame_with_location(SURV_ALL, "CA"),
             ),
             make_panel_summary(
                 "California",
-                set_location(CALIB_FROM_PROJECTION_START, "CA"),
-                set_location(PROJ_BASE_HORIZON, "CA"),
-                set_location(SURV_FROM_PROJECTION_START, "CA"),
+                frame_with_location(CALIB_FROM_PROJECTION_START, "CA"),
+                frame_with_location(PROJ_BASE_HORIZON, "CA"),
+                frame_with_location(SURV_FROM_PROJECTION_START, "CA"),
             ),
         ]
 
@@ -199,17 +199,17 @@ class TestGridDefaultOutputs:
         assert capture.summarize_output("quantiles_grid_filtered") == [
             make_panel_summary(
                 "California",
-                set_location(CALIB_FROM_PROJECTION_START, "CA"),
-                set_location(PROJ_BASE_HORIZON, "CA"),
-                set_location(SURV_FROM_PROJECTION_START, "CA"),
+                frame_with_location(CALIB_FROM_PROJECTION_START, "CA"),
+                frame_with_location(PROJ_BASE_HORIZON, "CA"),
+                frame_with_location(SURV_FROM_PROJECTION_START, "CA"),
             ),
             make_panel_summary(
                 "New York",
-                set_location(CALIB_FROM_PROJECTION_START, "NY"),
-                set_location(PROJ_BASE_HORIZON, "NY"),
-                set_location(SURV_FROM_PROJECTION_START, "NY"),
+                frame_with_location(CALIB_FROM_PROJECTION_START, "NY"),
+                frame_with_location(PROJ_BASE_HORIZON, "NY"),
+                frame_with_location(SURV_FROM_PROJECTION_START, "NY"),
             ),
-            make_panel_summary("Texas", set_location(CALIB_FULL, "TX"), None, None),
+            make_panel_summary("Texas", frame_with_location(CALIB_FULL, "TX"), None, None),
         ]
 
     def test_full(self, out_dict, capture):
@@ -217,17 +217,17 @@ class TestGridDefaultOutputs:
         assert capture.summarize_output("quantiles_grid_full") == [
             make_panel_summary(
                 "California",
-                set_location(CALIB_FULL, "CA"),
-                set_location(PROJ_BASE_HORIZON, "CA"),
-                set_location(SURV_ALL, "CA"),
+                frame_with_location(CALIB_FULL, "CA"),
+                frame_with_location(PROJ_BASE_HORIZON, "CA"),
+                frame_with_location(SURV_ALL, "CA"),
             ),
             make_panel_summary(
                 "New York",
-                set_location(CALIB_FULL, "NY"),
-                set_location(PROJ_BASE_HORIZON, "NY"),
-                set_location(SURV_ALL, "NY"),
+                frame_with_location(CALIB_FULL, "NY"),
+                frame_with_location(PROJ_BASE_HORIZON, "NY"),
+                frame_with_location(SURV_ALL, "NY"),
             ),
-            make_panel_summary("Texas", set_location(CALIB_FULL, "TX"), None, None),
+            make_panel_summary("Texas", frame_with_location(CALIB_FULL, "TX"), None, None),
         ]
 
     def test_side_by_side(self, out_dict, capture):
@@ -235,30 +235,30 @@ class TestGridDefaultOutputs:
         assert capture.summarize_output("quantiles_grid_sidebyside") == [
             make_panel_summary(
                 "California",
-                set_location(CALIB_FULL, "CA"),
-                set_location(PROJ_BASE_HORIZON, "CA"),
-                set_location(SURV_ALL, "CA"),
+                frame_with_location(CALIB_FULL, "CA"),
+                frame_with_location(PROJ_BASE_HORIZON, "CA"),
+                frame_with_location(SURV_ALL, "CA"),
             ),
             make_panel_summary(
                 "California",
-                set_location(CALIB_FROM_PROJECTION_START, "CA"),
-                set_location(PROJ_BASE_HORIZON, "CA"),
-                set_location(SURV_FROM_PROJECTION_START, "CA"),
+                frame_with_location(CALIB_FROM_PROJECTION_START, "CA"),
+                frame_with_location(PROJ_BASE_HORIZON, "CA"),
+                frame_with_location(SURV_FROM_PROJECTION_START, "CA"),
             ),
             make_panel_summary(
                 "New York",
-                set_location(CALIB_FULL, "NY"),
-                set_location(PROJ_BASE_HORIZON, "NY"),
-                set_location(SURV_ALL, "NY"),
+                frame_with_location(CALIB_FULL, "NY"),
+                frame_with_location(PROJ_BASE_HORIZON, "NY"),
+                frame_with_location(SURV_ALL, "NY"),
             ),
             make_panel_summary(
                 "New York",
-                set_location(CALIB_FROM_PROJECTION_START, "NY"),
-                set_location(PROJ_BASE_HORIZON, "NY"),
-                set_location(SURV_FROM_PROJECTION_START, "NY"),
+                frame_with_location(CALIB_FROM_PROJECTION_START, "NY"),
+                frame_with_location(PROJ_BASE_HORIZON, "NY"),
+                frame_with_location(SURV_FROM_PROJECTION_START, "NY"),
             ),
-            make_panel_summary("Texas", set_location(CALIB_FULL, "TX"), None, None),
-            make_panel_summary("Texas", set_location(CALIB_FULL, "TX"), None, None),
+            make_panel_summary("Texas", frame_with_location(CALIB_FULL, "TX"), None, None),
+            make_panel_summary("Texas", frame_with_location(CALIB_FULL, "TX"), None, None),
         ]
 
     def test_quantile_levels_and_styling(self, out_dict, capture):
@@ -317,8 +317,8 @@ OVERRIDE_FILTERED = make_panel_summary(
 # TODO: CURRENT BEHAVIOR — horizon_max=6 is capped at the base horizon_max=3.
 OVERRIDE_FULL = make_panel_summary(
     "California",
-    set_location(CALIB_FULL, "CA"),
-    set_location(PROJ_BASE_HORIZON, "CA"),
+    frame_with_location(CALIB_FULL, "CA"),
+    frame_with_location(PROJ_BASE_HORIZON, "CA"),
     ("2023-12-23", "2024-01-27", 6, "CA"),
 )
 
@@ -340,15 +340,15 @@ class TestSingleOverrides:
         assert capture.summarize_output(f"quantiles_{CA}_side_by_side") == [
             make_panel_summary(
                 "California",
-                set_location(CALIB_FULL, "CA"),
-                set_location(PROJ_BASE_HORIZON, "CA"),
-                set_location(SURV_ALL, "CA"),
+                frame_with_location(CALIB_FULL, "CA"),
+                frame_with_location(PROJ_BASE_HORIZON, "CA"),
+                frame_with_location(SURV_ALL, "CA"),
             ),
             make_panel_summary(
                 "California",
-                set_location(CALIB_FROM_PROJECTION_START, "CA"),
-                set_location(PROJ_BASE_HORIZON, "CA"),
-                set_location(SURV_FROM_PROJECTION_START, "CA"),
+                frame_with_location(CALIB_FROM_PROJECTION_START, "CA"),
+                frame_with_location(PROJ_BASE_HORIZON, "CA"),
+                frame_with_location(SURV_FROM_PROJECTION_START, "CA"),
             ),
         ]
 
@@ -383,8 +383,8 @@ class TestGridOverrides:
         assert capture.summarize_output("quantiles_grid_sidebyside")[:2] == [
             make_panel_summary(
                 "California",
-                set_location(CALIB_FULL, "CA"),
-                set_location(PROJ_BASE_HORIZON, "CA"),
+                frame_with_location(CALIB_FULL, "CA"),
+                frame_with_location(PROJ_BASE_HORIZON, "CA"),
                 ("2023-11-04", "2024-01-27", 13, "CA"),
             ),
             make_panel_summary(
@@ -456,8 +456,8 @@ class TestHiddenSurveillance:
         assert capture.summarize_output(f"quantiles_{CA}_filtered") == [
             make_panel_summary(
                 "California",
-                set_location(CALIB_FROM_PROJECTION_START, "CA"),
-                set_location(PROJ_BASE_HORIZON, "CA"),
+                frame_with_location(CALIB_FROM_PROJECTION_START, "CA"),
+                frame_with_location(PROJ_BASE_HORIZON, "CA"),
                 None,
             )
         ]
@@ -467,15 +467,15 @@ class TestHiddenSurveillance:
         run_generators([make_calibration(CA)], config, hosp_only)
         assert capture.summarize_output("quantiles_grid_filtered") == [
             make_panel_summary(
-                "California", set_location(CALIB_FULL, "CA"), set_location(PROJ_BASE_HORIZON, "CA"), None
+                "California", frame_with_location(CALIB_FULL, "CA"), frame_with_location(PROJ_BASE_HORIZON, "CA"), None
             )
         ]
         assert capture.summarize_output("quantiles_grid_full") == [
             make_panel_summary(
                 "California",
-                set_location(CALIB_FULL, "CA"),
-                set_location(PROJ_BASE_HORIZON, "CA"),
-                set_location(SURV_ALL, "CA"),
+                frame_with_location(CALIB_FULL, "CA"),
+                frame_with_location(PROJ_BASE_HORIZON, "CA"),
+                frame_with_location(SURV_ALL, "CA"),
             )
         ]
 
@@ -494,7 +494,7 @@ class TestSideBySideAllCalibrationClipped:
         # TODO: CURRENT BEHAVIOR — the fully clipped calibration comes back as the full calibration.
         assert capture.summarize_output("quantiles_grid_sidebyside")[1] == make_panel_summary(
             "California",
-            set_location(CALIB_FULL, "CA"),
+            frame_with_location(CALIB_FULL, "CA"),
             ("2024-01-20", "2024-02-03", 3, "CA"),
             ("2024-01-20", "2024-01-27", 2, "CA"),
         )
@@ -551,7 +551,10 @@ class TestDispatcherFiltersFailedProjections:
         for name in (f"quantiles_{CA}_full", "quantiles_grid_full"):
             assert capture.summarize_output(name) == [
                 make_panel_summary(
-                    "California", None, set_location(PROJ_BASE_HORIZON, "CA"), set_location(SURV_ALL, "CA")
+                    "California",
+                    None,
+                    frame_with_location(PROJ_BASE_HORIZON, "CA"),
+                    frame_with_location(SURV_ALL, "CA"),
                 )
             ]
         assert len(calibration.results.projections["baseline"]) == 5
