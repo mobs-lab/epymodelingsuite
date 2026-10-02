@@ -51,6 +51,14 @@ def get_age_groups_from_data(data: pd.DataFrame) -> dict[str, str]:
     return age_group_map_data
 
 
+def _require_single_location(schedule: pd.DataFrame) -> None:
+    """Raise if a vaccination schedule contains more than one location."""
+    locations = schedule["location"].unique()
+    if len(locations) > 1:
+        msg = f"Vaccination schedule must contain a single location, got {list(locations)}. Filter by location first."
+        raise ValueError(msg)
+
+
 def resample_vaccination_schedule(df: pd.DataFrame, delta_t: float) -> pd.DataFrame:
     """
     Resample daily vaccination schedule to match simulation timesteps.
@@ -82,6 +90,8 @@ def resample_vaccination_schedule(df: pd.DataFrame, delta_t: float) -> pd.DataFr
     """
     import numpy as np
     from epydemix.utils import compute_simulation_dates
+
+    _require_single_location(df)
 
     # Use epydemix's date calculation for exact alignment
     # Use min/max to handle unsorted DataFrames
@@ -630,7 +640,7 @@ def reaggregate_vaccines(schedule: pd.DataFrame, actual_start_date: dt.date | pd
     ------
     ValueError
         If `actual_start_date` is earlier than the first date or later
-        than the last date in `schedule['dates']`.
+        than the last date in `schedule['dates']`, or if `schedule` contains more than one location.
 
     Example
     -------
@@ -641,6 +651,8 @@ def reaggregate_vaccines(schedule: pd.DataFrame, actual_start_date: dt.date | pd
     - Days remaining (Wed-Sat): 4
     - Redistributed: 700 / 4 = 175 doses/day for Sept 4-7
     """
+    _require_single_location(schedule)
+
     # Normalize type
     actual_start_date = pd.Timestamp(actual_start_date)
 

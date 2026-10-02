@@ -1222,6 +1222,54 @@ class TestReaggregateVaccines:
         assert doses == [13, 13, 12, 12], f"Expected [13, 13, 12, 12], got {doses}"
 
 
+def _two_location_schedule(start="2024-01-01", end="2024-03-31") -> pd.DataFrame:
+    """Daily schedule with 10 doses/day per age group in CA and 100 in TX."""
+    dates = pd.date_range(start, end, freq="D")
+    age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
+    return pd.concat(
+        [
+            pd.DataFrame({"dates": dates, "location": loc, **dict.fromkeys(age_groups, doses)})
+            for loc, doses in [("US-CA", 10), ("US-TX", 100)]
+        ],
+        ignore_index=True,
+    )
+
+
+class TestVaccinationLocationIsolation:
+    """Regression tests: schedules with several locations must not mix doses across locations."""
+
+    def test_reaggregate_rejects_multiple_locations(self):
+        with pytest.raises(ValueError, match="single location"):
+            reaggregate_vaccines(_two_location_schedule(), pd.Timestamp("2024-01-03"))
+
+    def test_resample_rejects_multiple_locations(self):
+        with pytest.raises(ValueError, match="single location"):
+            resample_vaccination_schedule(_two_location_schedule(), 1.0)
+
+    def test_preprocessed_multi_location_csv_isolates_doses(self, tmp_path):
+        """A multi-location preprocessed CSV (string dates) gives each model only its own doses."""
+        from epymodelingsuite.builders.orchestrators import create_model_collection
+        from epymodelingsuite.builders.vaccination import add_vaccination_schedules_from_config
+        from epymodelingsuite.schema.basemodel import Transition, Vaccination
+        from tests.conftest import make_sir_config
+
+        csv_path = tmp_path / "preprocessed.csv"
+        _two_location_schedule().to_csv(csv_path, index=False)
+
+        basemodel = make_sir_config(end_date=date(2024, 3, 31))
+        vaccination = Vaccination(
+            preprocessed_vaccination_data_path=str(csv_path), origin_compartment="S", eligible_compartments=["S"]
+        )
+        transitions = [Transition(source="S", target="R", type="vaccination", rate=None)]
+        models, _ = create_model_collection(basemodel, ["US-CA", "US-TX"])
+
+        for model, expected_daily in zip(models, [10, 100], strict=True):
+            add_vaccination_schedules_from_config(model, transitions, vaccination, basemodel.timespan)
+            (schedule,) = next(t.params for t in model.transitions_list if t.kind == "vaccination")
+            assert schedule.shape == (91, 5)
+            assert (schedule == expected_daily).all()
+
+
 class TestGetAgeGroupsFromData:
     """Unit tests for get_age_groups_from_data function."""
 
