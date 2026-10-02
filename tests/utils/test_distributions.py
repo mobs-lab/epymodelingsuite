@@ -76,7 +76,7 @@ class TestDistributionToScipy:
         """A zero-scale uniform prior is rejected before calibration starts."""
         with pytest.raises(
             ValueError,
-            match=r"scale must be a finite scalar greater than 0.*upper bound = loc \+ scale",
+            match=r"scale must be a finite scalar greater than 0.*upper bound = loc \+ scale.*set the value in the basemodel",
         ):
             Distribution(type="scipy", name="uniform", args=[1.0, 0.0])
 

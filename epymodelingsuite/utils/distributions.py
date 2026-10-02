@@ -37,6 +37,19 @@ def _is_finite_scalar(value: object) -> bool:
         return False
 
 
+def _scale_help(name: str, scale: object) -> str:
+    """Return hints appended to an invalid-scale error."""
+    help_text = ""
+    if name == "uniform":
+        help_text = " For scipy.stats.uniform, arguments are [loc, scale], where upper bound = loc + scale."
+    if scale == 0:
+        help_text += (
+            " A zero-width distribution does not fix the value: its pdf is NaN."
+            " To use a constant, set the value in the basemodel instead of sampling or calibrating it."
+        )
+    return help_text
+
+
 def validate_distribution(  # noqa: C901 - validation is intentionally linear
     distribution: Distribution,
     *,
@@ -118,12 +131,9 @@ def validate_distribution(  # noqa: C901 - validation is intentionally linear
             default=1,
         )
         if not _is_finite_scalar(scale) or scale <= 0:
-            help_text = ""
-            if distribution.name == "uniform":
-                help_text = " For scipy.stats.uniform, arguments are [loc, scale], where upper bound = loc + scale."
             msg = (
                 f"{prefix}Invalid scipy.stats.{distribution.name} scale: scale must be a finite scalar "
-                f"greater than 0; got {scale!r} ({details}).{help_text}"
+                f"greater than 0; got {scale!r} ({details}).{_scale_help(distribution.name, scale)}"
             )
             raise ValueError(msg)
 
