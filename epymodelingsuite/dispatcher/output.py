@@ -21,7 +21,7 @@ from ..schema.output import (
     get_metrocast_quantiles,
 )
 from ..telemetry import ExecutionTelemetry
-from ..output.hub_files import serialize_hub_parquet
+from ..output.hub_files import cast_hub_dtypes
 from ..output.trajectory_samples import make_flusight_samples
 from ..utils.location import (
     convert_location_name_format,
@@ -878,9 +878,7 @@ def format_tabular_object(df: pd.DataFrame, name: str, output_type: TabularOutpu
         case TabularOutputTypeEnum.DataFrame:
             return OutputObject(output_type=output_type, name=name, data=df)
         case TabularOutputTypeEnum.Parquet:
-            buffer = io.BytesIO()
-            df.to_parquet(buffer, index=False)
-            return OutputObject(output_type=output_type, name=f"{name}.parquet", data=buffer.getvalue())
+            return OutputObject(output_type=output_type, name=f"{name}.parquet", data=df.to_parquet(index=False))
         case _:
             msg = f"Requested undefined tabular object format {output_format}."
             logger.warning(msg)
@@ -1117,12 +1115,12 @@ def generate_simulation_outputs(
     if not hub_format_output.empty:
         # will want to build filename to be something better, like to fit hub standards
         hf_name = "output_hub_formatted"
-        hf_objects = [
-            OutputObject(output_type=_type, name=f"{hf_name}.parquet", data=serialize_hub_parquet(hub_format_output))
-            if _type == TabularOutputTypeEnum.Parquet
-            else format_tabular_object(hub_format_output, hf_name, _type)
-            for _type in output.tabular_output_types
-        ]
+        hf_objects = []
+        for _type in output.tabular_output_types:
+            hub_table = hub_format_output
+            if _type == TabularOutputTypeEnum.Parquet:
+                hub_table = cast_hub_dtypes(hub_table)
+            hf_objects.append(format_tabular_object(hub_table, hf_name, _type))
         out_dict[hf_name] = hf_objects
     if not model_meta.empty:
         mm_name = "model_metadata"
@@ -1774,12 +1772,12 @@ def generate_calibration_outputs(
     if not hub_format_output.empty:
         # will want to build filename to be something better, like to fit hub standards
         hf_name = "output_hub_formatted"
-        hf_objects = [
-            OutputObject(output_type=_type, name=f"{hf_name}.parquet", data=serialize_hub_parquet(hub_format_output))
-            if _type == TabularOutputTypeEnum.Parquet
-            else format_tabular_object(hub_format_output, hf_name, _type)
-            for _type in output.tabular_output_types
-        ]
+        hf_objects = []
+        for _type in output.tabular_output_types:
+            hub_table = hub_format_output
+            if _type == TabularOutputTypeEnum.Parquet:
+                hub_table = cast_hub_dtypes(hub_table)
+            hf_objects.append(format_tabular_object(hub_table, hf_name, _type))
         out_dict[hf_name] = hf_objects
     if not model_meta.empty:
         mm_name = "model_metadata"

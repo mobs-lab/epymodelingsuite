@@ -1,11 +1,9 @@
-"""File layout of hubverse (FluSight) submissions: column types, parquet bytes, combining and reading."""
+"""File layout of hubverse (FluSight) submissions: column types, combining and reading."""
 
-import io
 from pathlib import Path
 
 import pandas as pd
 import pyarrow as pa
-import pyarrow.parquet as pq
 
 HUB_COLUMNS = [
     "reference_date",
@@ -38,7 +36,8 @@ def cast_hub_dtypes(df: pd.DataFrame) -> pd.DataFrame:
     Cast a hub table to the column types of the FluSight example submission parquet.
 
     Dates become 'YYYY-MM-DD' strings, `horizon` nullable int32, `output_type_id` and the other id columns
-    strings, `value` float64. Columns are put in hub order.
+    strings, `value` float64. Columns are put in hub order. Arrow-backed dtypes preserve the exact schema
+    when the returned copy is saved with DataFrame.to_parquet().
     """
     out = df[HUB_COLUMNS].copy()
     for col in ["reference_date", "target_end_date"]:
@@ -47,15 +46,7 @@ def cast_hub_dtypes(df: pd.DataFrame) -> pd.DataFrame:
     for col in ["location", "target", "output_type", "output_type_id"]:
         out[col] = out[col].astype("string")
     out["value"] = out["value"].astype("float64")
-    return out
-
-
-def serialize_hub_parquet(df: pd.DataFrame) -> bytes:
-    """Serialize a hub table to parquet bytes with exactly `HUB_SCHEMA`, ready to submit."""
-    table = pa.Table.from_pandas(cast_hub_dtypes(df), schema=HUB_SCHEMA, preserve_index=False)
-    buffer = io.BytesIO()
-    pq.write_table(table, buffer)
-    return buffer.getvalue()
+    return out.astype({field.name: pd.ArrowDtype(field.type) for field in HUB_SCHEMA})
 
 
 def combine_submissions(tables: list[pd.DataFrame]) -> pd.DataFrame:

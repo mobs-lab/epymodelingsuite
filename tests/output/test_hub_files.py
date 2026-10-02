@@ -9,8 +9,10 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
+from epymodelingsuite.dispatcher.output import format_tabular_object
 from epymodelingsuite.output import hub_files
 from epymodelingsuite.output.trajectory_samples import make_sample_rows
+from epymodelingsuite.schema.output import TabularOutputTypeEnum
 
 HORIZONS = [-1, 0, 1, 2, 3]
 
@@ -47,9 +49,13 @@ def test_hub_parquet_matches_flusight_example_schema():
     samples = make_sample_rows(
         np.ones((2, 5)), HORIZONS, date(2026, 10, 10), "25", "wk inc flu hosp", "MA", integer=True
     )
-    data = hub_files.serialize_hub_parquet(pd.concat([_quantile_rows(), samples], ignore_index=True))
+    original = pd.concat([_quantile_rows(), samples], ignore_index=True)
+    expected = original.copy(deep=True)
+    formatted = hub_files.cast_hub_dtypes(original)
+    output = format_tabular_object(formatted, "hub", TabularOutputTypeEnum.Parquet)
 
-    table = pq.read_table(io.BytesIO(data))
+    pd.testing.assert_frame_equal(original, expected)
+    table = pq.read_table(io.BytesIO(output.data))
     assert {f.name: f.type for f in table.schema} == FLUSIGHT_EXAMPLE_SCHEMA
     df = table.to_pandas()
     assert df.output_type_id.tolist()[:2] == ["0.025", "0.5"]
