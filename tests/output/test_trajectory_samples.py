@@ -1,11 +1,11 @@
-"""Tests for sample selection and rows in epymodelingsuite.output.samples."""
+"""Tests for sample selection and rows in epymodelingsuite.output.trajectory_samples."""
 
 from datetime import date
 
 import numpy as np
 import pandas as pd
 
-from epymodelingsuite.output import samples as ts
+from epymodelingsuite.output import trajectory_samples as ts
 
 HORIZONS = [-1, 0, 1, 2, 3]
 

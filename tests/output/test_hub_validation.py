@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 
 from epymodelingsuite.output.hub_validation import load_tasks, validate_model_output
-from epymodelingsuite.output.samples import make_sample_rows
+from epymodelingsuite.output.trajectory_samples import make_sample_rows
 
 FIXTURES = Path(__file__).parent.parent / "fixtures" / "flusight"
 
@@ -74,10 +74,14 @@ def test_bad_types(example, tasks):
     assert "non-numeric" in _errors(example.assign(value="x"), tasks)
 
 
-def test_multiple_reference_dates(example, tasks):
+@pytest.mark.parametrize("reference_date", ["2026-10-17", "2099-01-01"])
+@pytest.mark.parametrize("missing_date", [False, True])
+def test_multiple_reference_dates(example, tasks, missing_date, reference_date):
     """Test that more than one reference_date is reported."""
     df = example.copy()
-    df.loc[0, "reference_date"] = "2026-10-17"
+    df.loc[0, "reference_date"] = reference_date
+    if missing_date:
+        df.loc[1, "reference_date"] = None
     assert "single value" in _errors(df, tasks)
 
 
@@ -149,6 +153,13 @@ def test_sample_count(example, tasks):
     s = _is(example, "wk inc flu hosp", "sample")
     keep = ~(s & example.output_type_id.str.endswith("99"))
     assert "sample count outside [100, 100]" in _errors(example[keep], tasks)
+
+
+def test_missing_sample_id(example, tasks):
+    """Reject an extra unidentified trajectory even when 100 valid sample ids remain."""
+    sample = example[_is(example, "wk inc flu hosp", "sample") & (example.output_type_id == "US00")]
+    df = pd.concat([example, sample.assign(output_type_id=None)], ignore_index=True)
+    assert "missing output_type_id" in _errors(df, tasks)
 
 
 def test_sample_id_spanning_locations(example, tasks):

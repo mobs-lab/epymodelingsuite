@@ -22,7 +22,7 @@ from ..schema.output import (
 )
 from ..telemetry import ExecutionTelemetry
 from ..output.hub_files import serialize_hub_parquet
-from ..output.samples import make_flusight_samples
+from ..output.trajectory_samples import make_flusight_samples
 from ..utils.location import (
     convert_location_name_format,
     get_flusight_population,

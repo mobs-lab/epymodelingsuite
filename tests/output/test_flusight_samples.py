@@ -1,4 +1,4 @@
-"""Tests for FluSight trajectory samples from calibrations (epymodelingsuite.output.samples)."""
+"""Tests for FluSight trajectory samples from calibrations (epymodelingsuite.output.trajectory_samples)."""
 
 import io
 from datetime import date
@@ -10,7 +10,7 @@ import pyarrow.parquet as pq
 import pytest
 
 from epymodelingsuite.dispatcher.output import generate_calibration_outputs
-from epymodelingsuite.output.samples import make_flusight_samples
+from epymodelingsuite.output.trajectory_samples import make_flusight_samples
 from epymodelingsuite.schema.output import (
     FlusightForecastOutput,
     ModelMetaOutput,
@@ -34,7 +34,7 @@ def _trajectories(n: int, seed: int = 0) -> dict:
     }
 
 
-def _calibration(population: str, trajectories: dict, seed: int = 42) -> MagicMock:
+def _calibration(population: str, trajectories: dict, seed: int | None = 42) -> MagicMock:
     calibration = MagicMock()
     calibration.primary_id = 1
     calibration.seed = seed
@@ -135,8 +135,9 @@ class TestPropEDSamples:
         sample = df.query("output_type_id == 'US00'").sort_values("horizon").value.to_numpy()
         assert np.isclose(np.stack(traj["ed_prop"])[:, 3:8], sample).all(axis=1).any()
 
+    @pytest.mark.parametrize("seed", [42, None])
     @pytest.mark.parametrize("strategy", ["surveillance_window", "calibration_window"])
-    def test_window_strategies_scale_the_hosp_samples(self, strategy):
+    def test_window_strategies_scale_the_hosp_samples(self, strategy, seed, monkeypatch):
         """Test that window strategies scale the hosp samples by the rescaling factor, sharing ids."""
         extra = (
             {"ed_source": "ed", "hosp_source": "hosp", "fit_start": "2026-09-01", "fit_end": "2026-10-01"}
@@ -145,8 +146,13 @@ class TestPropEDSamples:
         )
         flusight = _flusight(prop_ed={"strategy": strategy, **extra})
         traj = _trajectories(300)
+        if seed is None:
+            # Fixed entropy makes independent unseeded selections reproducibly different.
+            rng_factory = np.random.default_rng
+            entropy = iter([1, 2])
+            monkeypatch.setattr(np.random, "default_rng", lambda _seed: rng_factory(next(entropy)))
         factors = pd.DataFrame({"population": ["United_States"], "rescaling_factor": [2e-4]})
-        rows, warns = make_flusight_samples([_calibration("United_States", traj)], flusight, factors)
+        rows, warns = make_flusight_samples([_calibration("United_States", traj, seed=seed)], flusight, factors)
         df = _concat(rows)
         hosp = df[df.target == "wk inc flu hosp"].set_index(["output_type_id", "horizon"]).value
         ed = df[df.target == "wk inc flu prop ed visits"].set_index(["output_type_id", "horizon"]).value

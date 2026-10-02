@@ -87,7 +87,7 @@ def validate_model_output(df: pd.DataFrame, tasks: dict) -> list[str]:  # noqa: 
         return errors
 
     if tbl["reference_date"].nunique() != 1:  # noqa: PD101
-        errors.append(f"`reference_date` must have a single value, got {sorted(tbl['reference_date'].unique())}.")
+        errors.append(f"`reference_date` must have a single value, got {sorted(tbl['reference_date'].unique(), key=str)}.")
 
     # Assign each row to the model task (target + output type) it belongs to
     model_tasks = [mt for rnd in tasks["rounds"] for mt in rnd["model_tasks"]]
@@ -119,7 +119,7 @@ def validate_model_output(df: pd.DataFrame, tasks: dict) -> list[str]:  # noqa: 
             if bad.any():
                 expected = "NA" if allowed is None else "an allowed value"
                 errors.append(
-                    f"{target}: `{col}` must be {expected}; invalid {sorted(rows.loc[bad, col].astype(str).unique())[:5]}."
+                    f"{target}: `{col}` must be {expected}; invalid {sorted(rows.loc[bad, col].astype(str).unique(), key=str)[:5]}."
                 )
 
         for output_type, spec in mt["output_type"].items():
@@ -211,6 +211,9 @@ def _check_samples(out: pd.DataFrame, params: dict, target: list) -> list[str]:
     errors = []
     compound = params.get("compound_taskid_set", TASK_ID_COLUMNS)
     non_compound = [c for c in TASK_ID_COLUMNS if c not in compound]
+
+    if out["output_type_id"].isna().any():
+        errors.append(f"{target} sample: missing output_type_id.")
 
     if (out["output_type_id"].str.len() > params.get("max_length", np.inf)).any():
         errors.append(f"{target} sample: output_type_id longer than {params['max_length']} characters.")
