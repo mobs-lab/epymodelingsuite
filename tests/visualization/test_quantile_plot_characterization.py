@@ -4,7 +4,7 @@ These pin down what each drawn axis receives today, so the override refactor can
 Assertions marked ``TODO: CURRENT BEHAVIOR`` capture inconsistencies that the refactor fixes on purpose;
 everything else should stay the same.
 
-Frames are summarized with ``span()`` as (first date, last date, number of dates, location label, e.g. "CA hosp_aug").
+Frames are summarized with ``summarize_frame()`` as (first date, last date, number of unique dates, location label, e.g. "CA hosp_aug").
 Quantile levels are captured separately for calibration and projection frames.
 """
 
@@ -17,7 +17,7 @@ from quantile_plot_test_utils import (
     PlotCapture,
     make_calibration,
     make_plots_config,
-    span,
+    summarize_frame,
     write_surveillance_sources,
 )
 
@@ -38,7 +38,8 @@ TX = "United_States_Texas"
 
 FITTING_WINDOW = ("2023-11-04", "2024-01-13")
 
-# Shared frame summaries; each panel sets its location explicitly with with_location().
+# Shared frame summaries; each panel sets its location explicitly with set_location().
+# (first date, last date, number of unique dates, location label)
 CALIB_FULL = ("2023-11-04", "2024-01-13", 11, None)
 CALIB_FROM_PROJECTION_START = ("2023-12-02", "2024-01-13", 7, None)
 PROJ_BASE_HORIZON = ("2023-12-02", "2024-02-03", 10, None)  # reference_date + 3 weeks
@@ -46,11 +47,11 @@ SURV_ALL = ("2023-10-07", "2024-01-27", 17, None)
 SURV_FROM_PROJECTION_START = ("2023-12-02", "2024-01-27", 9, None)
 
 
-def with_location(summary: tuple, label: str) -> tuple:
+def set_location(summary: tuple, label: str) -> tuple:
     return (*summary[:3], label)
 
 
-def panel(title, calibration, projection, surveillance):
+def make_panel_summary(title, calibration, projection, surveillance):
     return {"title": title, "calibration": calibration, "projection": projection, "surveillance": surveillance}
 
 
@@ -61,7 +62,7 @@ def run_generators(calibrations, plots_config, surveillance_sources):
     return out_dict
 
 
-def visible_axes(fig) -> int:
+def count_visible_axes(fig) -> int:
     return sum(ax.axison for ax in fig.axes)
 
 
@@ -81,7 +82,7 @@ def hosp_only(sources):
     return {"hosp": sources["hosp"]}
 
 
-def all_outputs_with_calibration():
+def make_outputs_with_calibration():
     return [
         QuantilesOutputConfig(type="filtered", surveillance_points=8, show_calibration=True),
         QuantilesOutputConfig(type="full", show_calibration=True),
@@ -92,7 +93,7 @@ def all_outputs_with_calibration():
 class TestSingleDefaultOutputs:
     @pytest.fixture
     def out_dict(self, capture, hosp_only):
-        config = make_plots_config(single=True, grid=False, outputs=all_outputs_with_calibration(), ylabel="Hosp")
+        config = make_plots_config(single=True, grid=False, outputs=make_outputs_with_calibration(), ylabel="Hosp")
         return run_generators([make_calibration(CA), make_calibration(NY)], config, hosp_only)
 
     def test_output_keys_and_panel_counts(self, out_dict, capture):
@@ -101,57 +102,57 @@ class TestSingleDefaultOutputs:
             f"quantiles_{location}_{kind}" for location in (CA, NY) for kind in ("filtered", "full", "side_by_side")
         )
         for location in (CA, NY):
-            assert len(capture.panels_for(f"quantiles_{location}_filtered")) == 1
-            assert len(capture.panels_for(f"quantiles_{location}_full")) == 1
-            assert len(capture.panels_for(f"quantiles_{location}_side_by_side")) == 2
+            assert len(capture.get_panels(f"quantiles_{location}_filtered")) == 1
+            assert len(capture.get_panels(f"quantiles_{location}_full")) == 1
+            assert len(capture.get_panels(f"quantiles_{location}_side_by_side")) == 2
         assert all(panel.output is not None for panel in capture.panels)
 
     def test_filtered(self, out_dict, capture):
         # TODO: CURRENT BEHAVIOR — surveillance_points=8 is counted after the projection start,
         # so only 7 points on or before reference_date are shown.
         """The filtered plot shows the last 8 surveillance points and clips the ribbons to the first one."""
-        assert capture.summary(f"quantiles_{CA}_filtered") == [
-            panel(
+        assert capture.summarize_output(f"quantiles_{CA}_filtered") == [
+            make_panel_summary(
                 "California",
-                with_location(CALIB_FROM_PROJECTION_START, "CA"),
-                with_location(PROJ_BASE_HORIZON, "CA"),
-                with_location(SURV_FROM_PROJECTION_START, "CA"),
+                set_location(CALIB_FROM_PROJECTION_START, "CA"),
+                set_location(PROJ_BASE_HORIZON, "CA"),
+                set_location(SURV_FROM_PROJECTION_START, "CA"),
             )
         ]
-        assert capture.summary(f"quantiles_{NY}_filtered") == [
-            panel(
+        assert capture.summarize_output(f"quantiles_{NY}_filtered") == [
+            make_panel_summary(
                 "New York",
-                with_location(CALIB_FROM_PROJECTION_START, "NY"),
-                with_location(PROJ_BASE_HORIZON, "NY"),
-                with_location(SURV_FROM_PROJECTION_START, "NY"),
+                set_location(CALIB_FROM_PROJECTION_START, "NY"),
+                set_location(PROJ_BASE_HORIZON, "NY"),
+                set_location(SURV_FROM_PROJECTION_START, "NY"),
             )
         ]
 
     def test_full(self, out_dict, capture):
         """The full plot shows all calibration and surveillance, and the projection up to the base horizon."""
-        assert capture.summary(f"quantiles_{CA}_full") == [
-            panel(
+        assert capture.summarize_output(f"quantiles_{CA}_full") == [
+            make_panel_summary(
                 "California",
-                with_location(CALIB_FULL, "CA"),
-                with_location(PROJ_BASE_HORIZON, "CA"),
-                with_location(SURV_ALL, "CA"),
+                set_location(CALIB_FULL, "CA"),
+                set_location(PROJ_BASE_HORIZON, "CA"),
+                set_location(SURV_ALL, "CA"),
             )
         ]
 
     def test_side_by_side(self, out_dict, capture):
         """side_by_side draws the full view, then a filtered view starting at the projection start."""
-        assert capture.summary(f"quantiles_{CA}_side_by_side") == [
-            panel(
+        assert capture.summarize_output(f"quantiles_{CA}_side_by_side") == [
+            make_panel_summary(
                 "California",
-                with_location(CALIB_FULL, "CA"),
-                with_location(PROJ_BASE_HORIZON, "CA"),
-                with_location(SURV_ALL, "CA"),
+                set_location(CALIB_FULL, "CA"),
+                set_location(PROJ_BASE_HORIZON, "CA"),
+                set_location(SURV_ALL, "CA"),
             ),
-            panel(
+            make_panel_summary(
                 "California",
-                with_location(CALIB_FROM_PROJECTION_START, "CA"),
-                with_location(PROJ_BASE_HORIZON, "CA"),
-                with_location(SURV_FROM_PROJECTION_START, "CA"),
+                set_location(CALIB_FROM_PROJECTION_START, "CA"),
+                set_location(PROJ_BASE_HORIZON, "CA"),
+                set_location(SURV_FROM_PROJECTION_START, "CA"),
             ),
         ]
 
@@ -164,8 +165,8 @@ class TestSingleDefaultOutputs:
             assert (drawn.calibration_color, drawn.projection_color) == ("C0", "C1")
             assert drawn.xlabel_interval is None
         # side_by_side only labels the left panel
-        assert [drawn.ylabel for drawn in capture.panels_for(f"quantiles_{CA}_side_by_side")] == ["Hosp", None]
-        assert capture.panels_for(f"quantiles_{CA}_filtered")[0].ylabel == "Hosp"
+        assert [drawn.ylabel for drawn in capture.get_panels(f"quantiles_{CA}_side_by_side")] == ["Hosp", None]
+        assert capture.get_panels(f"quantiles_{CA}_filtered")[0].ylabel == "Hosp"
 
 
 class TestGridDefaultOutputs:
@@ -174,7 +175,7 @@ class TestGridDefaultOutputs:
     @pytest.fixture
     def out_dict(self, capture, hosp_only):
         config = make_plots_config(
-            single=False, grid={"panels_per_row": 4}, outputs=all_outputs_with_calibration(), ylabel="Hosp"
+            single=False, grid={"panels_per_row": 4}, outputs=make_outputs_with_calibration(), ylabel="Hosp"
         )
         calibrations = [make_calibration(CA), make_calibration(NY), make_calibration(TX, with_projection=False)]
         return run_generators(calibrations, config, hosp_only)
@@ -188,76 +189,76 @@ class TestGridDefaultOutputs:
             ("quantiles_grid_sidebyside", 6, 8),
         ):
             fig = capture.packaged[name]
-            assert len(capture.panels_for(name)) == n_panels
+            assert len(capture.get_panels(name)) == n_panels
             assert len(fig.axes) == n_axes
-            assert visible_axes(fig) == n_panels
+            assert count_visible_axes(fig) == n_panels
 
     def test_filtered(self, out_dict, capture):
         # TODO: CURRENT BEHAVIOR — Texas has no projection, so it gets no surveillance.
         """Grid filtered panels with surveillance_points=8, including calibration-only Texas."""
-        assert capture.summary("quantiles_grid_filtered") == [
-            panel(
+        assert capture.summarize_output("quantiles_grid_filtered") == [
+            make_panel_summary(
                 "California",
-                with_location(CALIB_FROM_PROJECTION_START, "CA"),
-                with_location(PROJ_BASE_HORIZON, "CA"),
-                with_location(SURV_FROM_PROJECTION_START, "CA"),
+                set_location(CALIB_FROM_PROJECTION_START, "CA"),
+                set_location(PROJ_BASE_HORIZON, "CA"),
+                set_location(SURV_FROM_PROJECTION_START, "CA"),
             ),
-            panel(
+            make_panel_summary(
                 "New York",
-                with_location(CALIB_FROM_PROJECTION_START, "NY"),
-                with_location(PROJ_BASE_HORIZON, "NY"),
-                with_location(SURV_FROM_PROJECTION_START, "NY"),
+                set_location(CALIB_FROM_PROJECTION_START, "NY"),
+                set_location(PROJ_BASE_HORIZON, "NY"),
+                set_location(SURV_FROM_PROJECTION_START, "NY"),
             ),
-            panel("Texas", with_location(CALIB_FULL, "TX"), None, None),
+            make_panel_summary("Texas", set_location(CALIB_FULL, "TX"), None, None),
         ]
 
     def test_full(self, out_dict, capture):
         """Grid full panels for every location, including calibration-only Texas."""
-        assert capture.summary("quantiles_grid_full") == [
-            panel(
+        assert capture.summarize_output("quantiles_grid_full") == [
+            make_panel_summary(
                 "California",
-                with_location(CALIB_FULL, "CA"),
-                with_location(PROJ_BASE_HORIZON, "CA"),
-                with_location(SURV_ALL, "CA"),
+                set_location(CALIB_FULL, "CA"),
+                set_location(PROJ_BASE_HORIZON, "CA"),
+                set_location(SURV_ALL, "CA"),
             ),
-            panel(
+            make_panel_summary(
                 "New York",
-                with_location(CALIB_FULL, "NY"),
-                with_location(PROJ_BASE_HORIZON, "NY"),
-                with_location(SURV_ALL, "NY"),
+                set_location(CALIB_FULL, "NY"),
+                set_location(PROJ_BASE_HORIZON, "NY"),
+                set_location(SURV_ALL, "NY"),
             ),
-            panel("Texas", with_location(CALIB_FULL, "TX"), None, None),
+            make_panel_summary("Texas", set_location(CALIB_FULL, "TX"), None, None),
         ]
 
     def test_side_by_side(self, out_dict, capture):
         """Grid side_by_side draws a (full, filtered) pair per location, including calibration-only Texas."""
-        assert capture.summary("quantiles_grid_sidebyside") == [
-            panel(
+        assert capture.summarize_output("quantiles_grid_sidebyside") == [
+            make_panel_summary(
                 "California",
-                with_location(CALIB_FULL, "CA"),
-                with_location(PROJ_BASE_HORIZON, "CA"),
-                with_location(SURV_ALL, "CA"),
+                set_location(CALIB_FULL, "CA"),
+                set_location(PROJ_BASE_HORIZON, "CA"),
+                set_location(SURV_ALL, "CA"),
             ),
-            panel(
+            make_panel_summary(
                 "California",
-                with_location(CALIB_FROM_PROJECTION_START, "CA"),
-                with_location(PROJ_BASE_HORIZON, "CA"),
-                with_location(SURV_FROM_PROJECTION_START, "CA"),
+                set_location(CALIB_FROM_PROJECTION_START, "CA"),
+                set_location(PROJ_BASE_HORIZON, "CA"),
+                set_location(SURV_FROM_PROJECTION_START, "CA"),
             ),
-            panel(
+            make_panel_summary(
                 "New York",
-                with_location(CALIB_FULL, "NY"),
-                with_location(PROJ_BASE_HORIZON, "NY"),
-                with_location(SURV_ALL, "NY"),
+                set_location(CALIB_FULL, "NY"),
+                set_location(PROJ_BASE_HORIZON, "NY"),
+                set_location(SURV_ALL, "NY"),
             ),
-            panel(
+            make_panel_summary(
                 "New York",
-                with_location(CALIB_FROM_PROJECTION_START, "NY"),
-                with_location(PROJ_BASE_HORIZON, "NY"),
-                with_location(SURV_FROM_PROJECTION_START, "NY"),
+                set_location(CALIB_FROM_PROJECTION_START, "NY"),
+                set_location(PROJ_BASE_HORIZON, "NY"),
+                set_location(SURV_FROM_PROJECTION_START, "NY"),
             ),
-            panel("Texas", with_location(CALIB_FULL, "TX"), None, None),
-            panel("Texas", with_location(CALIB_FULL, "TX"), None, None),
+            make_panel_summary("Texas", set_location(CALIB_FULL, "TX"), None, None),
+            make_panel_summary("Texas", set_location(CALIB_FULL, "TX"), None, None),
         ]
 
     def test_quantile_levels_and_styling(self, out_dict, capture):
@@ -269,9 +270,9 @@ class TestGridDefaultOutputs:
             assert drawn.fitting_window == FITTING_WINDOW
             assert (drawn.calibration_color, drawn.projection_color) == ("C0", "C1")
         # ylabel only on the leftmost column
-        assert [drawn.ylabel for drawn in capture.panels_for("quantiles_grid_filtered")] == ["Hosp", None, None]
+        assert [drawn.ylabel for drawn in capture.get_panels("quantiles_grid_filtered")] == ["Hosp", None, None]
         # two location pairs per row: Texas starts the second row
-        assert [drawn.ylabel for drawn in capture.panels_for("quantiles_grid_sidebyside")] == [
+        assert [drawn.ylabel for drawn in capture.get_panels("quantiles_grid_sidebyside")] == [
             "Hosp",
             None,
             None,
@@ -281,7 +282,7 @@ class TestGridDefaultOutputs:
         ]
 
 
-def override_config(**kwargs):
+def make_override_config(**kwargs):
     outputs = [
         QuantilesOutputConfig(
             type="filtered",
@@ -306,7 +307,7 @@ def override_config(**kwargs):
 
 
 # filtered output: surveillance_start_date=2023-12-16, horizon_max=1
-OVERRIDE_FILTERED = panel(
+OVERRIDE_FILTERED = make_panel_summary(
     "California",
     ("2023-12-16", "2024-01-13", 5, "CA"),
     ("2023-12-16", "2024-01-20", 6, "CA"),
@@ -314,10 +315,10 @@ OVERRIDE_FILTERED = panel(
 )
 # full output: surveillance_points=4 (4 on or before reference_date + 2 after)
 # TODO: CURRENT BEHAVIOR — horizon_max=6 is capped at the base horizon_max=3.
-OVERRIDE_FULL = panel(
+OVERRIDE_FULL = make_panel_summary(
     "California",
-    with_location(CALIB_FULL, "CA"),
-    with_location(PROJ_BASE_HORIZON, "CA"),
+    set_location(CALIB_FULL, "CA"),
+    set_location(PROJ_BASE_HORIZON, "CA"),
     ("2023-12-23", "2024-01-27", 6, "CA"),
 )
 
@@ -325,29 +326,29 @@ OVERRIDE_FULL = panel(
 class TestSingleOverrides:
     @pytest.fixture
     def out_dict(self, capture, hosp_only):
-        return run_generators([make_calibration(CA)], override_config(single=True, grid=False), hosp_only)
+        return run_generators([make_calibration(CA)], make_override_config(single=True, grid=False), hosp_only)
 
     def test_filtered_and_full(self, out_dict, capture):
         """Output surveillance limits and horizon_max on single filtered and full plots."""
-        assert capture.summary(f"quantiles_{CA}_filtered") == [OVERRIDE_FILTERED]
-        assert capture.summary(f"quantiles_{CA}_full") == [OVERRIDE_FULL]
+        assert capture.summarize_output(f"quantiles_{CA}_filtered") == [OVERRIDE_FILTERED]
+        assert capture.summarize_output(f"quantiles_{CA}_full") == [OVERRIDE_FULL]
 
     def test_side_by_side(self, out_dict, capture):
         # TODO: CURRENT BEHAVIOR — single side_by_side ignores output and panel surveillance limits
         # and the output horizon_max; it only uses the panel xlabel_interval.
         """Output and panel overrides on a single side_by_side plot."""
-        assert capture.summary(f"quantiles_{CA}_side_by_side") == [
-            panel(
+        assert capture.summarize_output(f"quantiles_{CA}_side_by_side") == [
+            make_panel_summary(
                 "California",
-                with_location(CALIB_FULL, "CA"),
-                with_location(PROJ_BASE_HORIZON, "CA"),
-                with_location(SURV_ALL, "CA"),
+                set_location(CALIB_FULL, "CA"),
+                set_location(PROJ_BASE_HORIZON, "CA"),
+                set_location(SURV_ALL, "CA"),
             ),
-            panel(
+            make_panel_summary(
                 "California",
-                with_location(CALIB_FROM_PROJECTION_START, "CA"),
-                with_location(PROJ_BASE_HORIZON, "CA"),
-                with_location(SURV_FROM_PROJECTION_START, "CA"),
+                set_location(CALIB_FROM_PROJECTION_START, "CA"),
+                set_location(PROJ_BASE_HORIZON, "CA"),
+                set_location(SURV_FROM_PROJECTION_START, "CA"),
             ),
         ]
 
@@ -362,26 +363,31 @@ class TestGridOverrides:
     @pytest.fixture
     def out_dict(self, capture, hosp_only):
         calibrations = [make_calibration(CA), make_calibration(NY)]
-        return run_generators(calibrations, override_config(single=False, grid={"panels_per_row": 4}), hosp_only)
+        return run_generators(calibrations, make_override_config(single=False, grid={"panels_per_row": 4}), hosp_only)
 
     def test_filtered_and_full(self, out_dict, capture):
         """Output surveillance limits and horizon_max apply to every grid panel."""
-        assert capture.summary("quantiles_grid_filtered")[0] == OVERRIDE_FILTERED
-        assert capture.summary("quantiles_grid_full")[0] == OVERRIDE_FULL
-        assert capture.summary("quantiles_grid_full")[1]["surveillance"] == ("2023-12-23", "2024-01-27", 6, "NY")
+        assert capture.summarize_output("quantiles_grid_filtered")[0] == OVERRIDE_FILTERED
+        assert capture.summarize_output("quantiles_grid_full")[0] == OVERRIDE_FULL
+        assert capture.summarize_output("quantiles_grid_full")[1]["surveillance"] == (
+            "2023-12-23",
+            "2024-01-27",
+            6,
+            "NY",
+        )
 
     def test_side_by_side(self, out_dict, capture):
         # TODO: CURRENT BEHAVIOR — grid side_by_side uses panel limits only; the output surveillance_points=3
         # and output horizon_max=1 are ignored.
         """Output and panel overrides on a grid side_by_side plot."""
-        assert capture.summary("quantiles_grid_sidebyside")[:2] == [
-            panel(
+        assert capture.summarize_output("quantiles_grid_sidebyside")[:2] == [
+            make_panel_summary(
                 "California",
-                with_location(CALIB_FULL, "CA"),
-                with_location(PROJ_BASE_HORIZON, "CA"),
+                set_location(CALIB_FULL, "CA"),
+                set_location(PROJ_BASE_HORIZON, "CA"),
                 ("2023-11-04", "2024-01-27", 13, "CA"),
             ),
-            panel(
+            make_panel_summary(
                 "California",
                 ("2024-01-06", "2024-01-13", 2, "CA"),
                 ("2024-01-06", "2024-02-03", 5, "CA"),
@@ -391,9 +397,9 @@ class TestGridOverrides:
 
     def test_styling(self, out_dict, capture):
         """Output and panel xlabel_interval and the configured colors reach every grid panel."""
-        assert [drawn.xlabel_interval for drawn in capture.panels_for("quantiles_grid_filtered")] == ["2W-SAT"] * 2
-        assert [drawn.xlabel_interval for drawn in capture.panels_for("quantiles_grid_full")] == [None] * 2
-        assert [drawn.xlabel_interval for drawn in capture.panels_for("quantiles_grid_sidebyside")] == [
+        assert [drawn.xlabel_interval for drawn in capture.get_panels("quantiles_grid_filtered")] == ["2W-SAT"] * 2
+        assert [drawn.xlabel_interval for drawn in capture.get_panels("quantiles_grid_full")] == [None] * 2
+        assert [drawn.xlabel_interval for drawn in capture.get_panels("quantiles_grid_sidebyside")] == [
             "MS",
             "W-SAT",
         ] * 2
@@ -429,7 +435,7 @@ class TestSurveillanceSourceSelection:
             ("quantiles_grid_full", ["CA"]),
             ("quantiles_grid_sidebyside", ["CA hosp_aug", "CA hosp_aug"]),
         ):
-            assert [drawn.surveillance[3] for drawn in capture.panels_for(name)] == expected
+            assert [drawn.surveillance[3] for drawn in capture.get_panels(name)] == expected
 
 
 class TestHiddenSurveillance:
@@ -447,11 +453,11 @@ class TestHiddenSurveillance:
         """Whether hidden surveillance clips the ribbons of a single filtered plot."""
         run_generators([make_calibration(CA)], config, hosp_only)
         # TODO: CURRENT BEHAVIOR — the ribbons are clipped to surveillance that is not shown.
-        assert capture.summary(f"quantiles_{CA}_filtered") == [
-            panel(
+        assert capture.summarize_output(f"quantiles_{CA}_filtered") == [
+            make_panel_summary(
                 "California",
-                with_location(CALIB_FROM_PROJECTION_START, "CA"),
-                with_location(PROJ_BASE_HORIZON, "CA"),
+                set_location(CALIB_FROM_PROJECTION_START, "CA"),
+                set_location(PROJ_BASE_HORIZON, "CA"),
                 None,
             )
         ]
@@ -459,15 +465,17 @@ class TestHiddenSurveillance:
     def test_grid_filtered_not_clipped(self, capture, hosp_only, config):
         """Hidden surveillance does not clip the grid filtered ribbons; the full grid still shows it."""
         run_generators([make_calibration(CA)], config, hosp_only)
-        assert capture.summary("quantiles_grid_filtered") == [
-            panel("California", with_location(CALIB_FULL, "CA"), with_location(PROJ_BASE_HORIZON, "CA"), None)
+        assert capture.summarize_output("quantiles_grid_filtered") == [
+            make_panel_summary(
+                "California", set_location(CALIB_FULL, "CA"), set_location(PROJ_BASE_HORIZON, "CA"), None
+            )
         ]
-        assert capture.summary("quantiles_grid_full") == [
-            panel(
+        assert capture.summarize_output("quantiles_grid_full") == [
+            make_panel_summary(
                 "California",
-                with_location(CALIB_FULL, "CA"),
-                with_location(PROJ_BASE_HORIZON, "CA"),
-                with_location(SURV_ALL, "CA"),
+                set_location(CALIB_FULL, "CA"),
+                set_location(PROJ_BASE_HORIZON, "CA"),
+                set_location(SURV_ALL, "CA"),
             )
         ]
 
@@ -484,9 +492,9 @@ class TestSideBySideAllCalibrationClipped:
         ]
         run_generators([make_calibration(CA)], make_plots_config(single=False, grid=True, outputs=outputs), hosp_only)
         # TODO: CURRENT BEHAVIOR — the fully clipped calibration comes back as the full calibration.
-        assert capture.summary("quantiles_grid_sidebyside")[1] == panel(
+        assert capture.summarize_output("quantiles_grid_sidebyside")[1] == make_panel_summary(
             "California",
-            with_location(CALIB_FULL, "CA"),
+            set_location(CALIB_FULL, "CA"),
             ("2024-01-20", "2024-02-03", 3, "CA"),
             ("2024-01-20", "2024-01-27", 2, "CA"),
         )
@@ -509,11 +517,11 @@ class TestGenerationNotice:
         run_generators([make_calibration(CA, incomplete=True), make_calibration(NY)], config, hosp_only)
         footnote = "* Completed 1 of 3 requested generations"
         for name in (f"quantiles_{CA}_full", "quantiles_grid_full"):
-            titles = [drawn.axis.get_title() for drawn in capture.panels_for(name)]
+            titles = [drawn.axis.get_title() for drawn in capture.get_panels(name)]
             assert titles[0] == "California*"
             assert footnote in [text.get_text() for text in capture.packaged[name].texts]
-        assert capture.panels_for("quantiles_grid_full")[1].axis.get_title() == "New York"
-        assert capture.panels_for(f"quantiles_{NY}_full")[0].axis.get_title() == "New York"
+        assert capture.get_panels("quantiles_grid_full")[1].axis.get_title() == "New York"
+        assert capture.get_panels(f"quantiles_{NY}_full")[0].axis.get_title() == "New York"
 
 
 class TestDispatcherFiltersFailedProjections:
@@ -541,8 +549,10 @@ class TestDispatcherFiltersFailedProjections:
 
         assert {f"quantiles_{CA}_full", "quantiles_grid_full"} <= set(outputs)
         for name in (f"quantiles_{CA}_full", "quantiles_grid_full"):
-            assert capture.summary(name) == [
-                panel("California", None, with_location(PROJ_BASE_HORIZON, "CA"), with_location(SURV_ALL, "CA"))
+            assert capture.summarize_output(name) == [
+                make_panel_summary(
+                    "California", None, set_location(PROJ_BASE_HORIZON, "CA"), set_location(SURV_ALL, "CA")
+                )
             ]
         assert len(calibration.results.projections["baseline"]) == 5
         assert calibration.results.projection_parameters["baseline"]["R0"].tolist() == [0.0, 2.0, 3.0, 4.0, 5.0]
@@ -551,9 +561,9 @@ class TestDispatcherFiltersFailedProjections:
         assert calibration.results._filtered_count == 0
 
 
-def test_span_helper():
-    """span() summarizes dates and the location label, and keeps empty and None apart."""
+def test_summarize_frame():
+    """summarize_frame() summarizes dates and the location label, and keeps empty and None apart."""
     df = pd.DataFrame({"date": ["2024-01-06", "2024-01-13", "2024-01-13"], "value": [1500.0, 1600.0, 1700.0]})
-    assert span(df) == ("2024-01-06", "2024-01-13", 2, "CA")
-    assert span(df.iloc[0:0]) == ()
-    assert span(None) is None
+    assert summarize_frame(df) == ("2024-01-06", "2024-01-13", 2, "CA")
+    assert summarize_frame(df.iloc[0:0]) == ()
+    assert summarize_frame(None) is None

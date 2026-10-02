@@ -37,7 +37,7 @@ ISO_CODES = {
     "United_States_Texas": "US-TX",
 }
 HOSP_AUG_SOURCE_OFFSET = 5
-# Label that span() reports for each value range
+# Label that summarize_frame() reports for each value range
 VALUE_RANGE_LABELS = {1: "CA", 2: "NY", 3: "TX", 6: "CA hosp_aug", 7: "NY hosp_aug", 8: "TX hosp_aug"}
 
 SURVEILLANCE_DATES = pd.date_range("2023-10-07", "2024-01-27", freq="W-SAT")  # 17 weeks
@@ -112,8 +112,8 @@ def make_plots_config(**quantiles_kwargs) -> PlotsConfig:
     )
 
 
-def span(df: pd.DataFrame | None) -> tuple | None:
-    """Summarize a captured frame as (first date, last date, number of dates, location label such as "CA")."""
+def summarize_frame(df: pd.DataFrame | None) -> tuple | None:
+    """Summarize a captured frame as (first date, last date, number of unique dates, location label such as "CA")."""
     if df is None:
         return None
     if df.empty:
@@ -161,9 +161,9 @@ class PlotCapture:
                 Panel(
                     output=None,
                     title=kwargs.get("title"),
-                    calibration=span(kwargs.get("calibration_quantiles")),
-                    projection=span(kwargs.get("projection_quantiles")),
-                    surveillance=span(kwargs.get("df_surveillance")),
+                    calibration=summarize_frame(kwargs.get("calibration_quantiles")),
+                    projection=summarize_frame(kwargs.get("projection_quantiles")),
+                    surveillance=summarize_frame(kwargs.get("df_surveillance")),
                     quantile_levels={
                         name: sorted(df["quantile"].unique())
                         for name, df in kwargs.items()
@@ -190,10 +190,10 @@ class PlotCapture:
         monkeypatch.setattr(generators, "plot_calibration_projection", capture_plot)
         monkeypatch.setattr(generators, "_package_figure_outputs", capture_package)
 
-    def panels_for(self, output: str) -> list[Panel]:
+    def get_panels(self, output: str) -> list[Panel]:
         return [panel for panel in self.panels if panel.output == output]
 
-    def summary(self, output: str) -> list[dict]:
+    def summarize_output(self, output: str) -> list[dict]:
         """Per-panel data summary for one output, in drawing order."""
         return [
             {
@@ -202,5 +202,5 @@ class PlotCapture:
                 "projection": panel.projection,
                 "surveillance": panel.surveillance,
             }
-            for panel in self.panels_for(output)
+            for panel in self.get_panels(output)
         ]
