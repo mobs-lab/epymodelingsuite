@@ -11,6 +11,7 @@ import pandas as pd
 from epydemix.calibration import CalibrationResults
 
 from ..output.quantiles import get_simulation_quantiles, select_projection_quantile_variables
+from ..output.shared_quantiles import prepare_shared_quantiles
 from ..schema.dispatcher import CalibrationOutput, SimulationOutput
 from ..schema.output import (
     FlusightPropED,
@@ -27,13 +28,15 @@ from ..utils.location import (
     get_flusight_population,
     parse_population_name,
 )
-from ..utils.quantiles import compute_quantiles, get_calibration_quantiles, get_projection_quantiles
+from ..utils.surveillance import read_surveillance_csv, share_surveillance
 from ..visualization.generators import (
+    _load_surveillance_sources,
     generate_categorical_plots,
     generate_posterior_grid_plot,
     generate_quantile_grid_plot,
     generate_single_location_posterior_plots,
     generate_single_quantile_plots,
+    prepare_quantile_plot_data,
 )
 
 logger = logging.getLogger(__name__)
@@ -537,7 +540,7 @@ def read_surveillance_from_config(config: ObservedValuesConfig) -> pd.DataFrame:
     pd.DataFrame
         Surveillance data read from config
     """
-    return pd.read_csv(
+    return read_surveillance_csv(
         config.data_path, dtype={config.location_column: str}, parse_dates=[config.date_column], date_format="%Y-%m-%d"
     )
 
@@ -1158,6 +1161,7 @@ def generate_simulation_outputs(
 
 
 @register_output_generator({"calibrations", "output_config"})
+@share_surveillance
 def generate_calibration_outputs(
     *, calibrations: list[CalibrationOutput], output_config: OutputConfig, **_
 ) -> dict[str, list[OutputObject]]:
@@ -1182,6 +1186,7 @@ def generate_calibration_outputs(
     Notes
     -----
     Failed projections are filtered in place.
+    Compatible quantile requests and surveillance reads are shared within this invocation.
     """
     logger.info("OUTPUT GENERATOR: dispatched for calibration")
     output = output_config.output
@@ -1202,6 +1207,8 @@ def generate_calibration_outputs(
     for calibration in calibrations:
         calibration.results = filter_failed_projections(calibration.results)
 
+    prepared = prepare_shared_quantiles(calibrations, output)
+
     ### Quantiles
     if output.quantiles:
         logger.info("Generating quantile outputs")
@@ -1213,7 +1220,7 @@ def generate_calibration_outputs(
                         try:
                             cal_trajs = calibration.results.get_selected_trajectories(generation)
                             cal_dates = cal_trajs[0].get("date") if cal_trajs else None
-                            quancal_df = get_calibration_quantiles(
+                            quancal_df = prepared.calibration(
                                 calibration.results,
                                 quantiles=output.quantiles.selections,
                                 generation=generation,
@@ -1234,7 +1241,7 @@ def generate_calibration_outputs(
                     try:
                         cal_trajs = calibration.results.get_selected_trajectories()
                         cal_dates = cal_trajs[0].get("date") if cal_trajs else None
-                        quancal_df = get_calibration_quantiles(
+                        quancal_df = prepared.calibration(
                             calibration.results,
                             quantiles=output.quantiles.selections,
                             dates=cal_dates,
@@ -1256,7 +1263,7 @@ def generate_calibration_outputs(
             try:
                 proj_sims = calibration.results.projections.get("baseline", [])
                 proj_dates = proj_sims[0].get("date") if proj_sims else None
-                quan_df = get_projection_quantiles(
+                quan_df = prepared.projection(
                     calibration.results,
                     quantiles=output.quantiles.selections,
                     dates=proj_dates,
@@ -1489,7 +1496,7 @@ def generate_calibration_outputs(
                     # FRAGILE: the name 'hospitalizations' is user-supplied in the modelset as the column to look for in the surveillance data.
                     proj_sims = calibration.results.projections.get("baseline", [])
                     proj_dates = proj_sims[0].get("date") if proj_sims else None
-                    quanf_df = get_projection_quantiles(
+                    quanf_df = prepared.projection(
                         calibration.results,
                         quantiles=flusight_quantiles,
                         dates=proj_dates,
@@ -1526,7 +1533,7 @@ def generate_calibration_outputs(
                     try:
                         cal_trajs = calibration.results.get_selected_trajectories()
                         cal_dates = cal_trajs[0].get("date") if cal_trajs else None
-                        quancalflu_df = get_calibration_quantiles(
+                        quancalflu_df = prepared.calibration(
                             calibration.results,
                             quantiles=flusight_quantiles,
                             dates=cal_dates,
@@ -1550,7 +1557,7 @@ def generate_calibration_outputs(
                     try:
                         proj_sims = calibration.results.projections.get("baseline", [])
                         proj_dates = proj_sims[0].get("date") if proj_sims else None
-                        quanproj_df = get_projection_quantiles(
+                        quanproj_df = prepared.projection(
                             calibration.results,
                             quantiles=flusight_quantiles,
                             dates=proj_dates,
@@ -1837,8 +1844,19 @@ def generate_calibration_outputs(
         if output.options and output.options.surveillance:
             surveillance_sources = output.options.surveillance
 
-        generate_single_quantile_plots(calibrations, plots_config, out_dict, surveillance_sources)
-        generate_quantile_grid_plot(calibrations, plots_config, out_dict, surveillance_sources)
+        surveillance_data = _load_surveillance_sources(surveillance_sources, plots_config.quantiles.outputs)
+        plot_data = prepare_quantile_plot_data(
+            calibrations, plots_config, surveillance_data,
+            quantiles=prepared,
+        )
+        generate_single_quantile_plots(
+            calibrations, plots_config, out_dict, surveillance_sources,
+            prepared_data=plot_data, surveillance_data=surveillance_data,
+        )
+        generate_quantile_grid_plot(
+            calibrations, plots_config, out_dict, surveillance_sources,
+            prepared_data=plot_data, surveillance_data=surveillance_data,
+        )
         logger.info("  - Generating posterior plots")
         generate_single_location_posterior_plots(calibrations, plots_config, out_dict, start_date_reference)
         generate_posterior_grid_plot(calibrations, plots_config, out_dict, start_date_reference)

@@ -26,6 +26,7 @@ from ..schema.output import (
 )
 from ..utils import convert_location_name_format
 from ..utils.quantiles import get_calibration_quantiles, get_projection_quantiles
+from ..utils.surveillance import read_surveillance_csv
 from .core import (
     figure_to_output_object,
     format_location_name,
@@ -118,6 +119,7 @@ def _fetch_quantiles_for_location(
     plots_config: PlotsConfig,
     needs_calibration: bool,
     needs_projection: bool,
+    quantiles=None,
 ) -> tuple[pd.DataFrame | None, pd.DataFrame | None]:
     """Fetch calibration and projection quantiles for a single location.
 
@@ -132,6 +134,9 @@ def _fetch_quantiles_for_location(
     needs_projection : bool
         Whether projection quantiles are requested.
 
+    quantiles : SharedQuantiles or None, optional
+        Shared quantile provider. None computes directly through the public trajectory API.
+
     Returns
     -------
     tuple
@@ -142,7 +147,7 @@ def _fetch_quantiles_for_location(
         try:
             cal_trajs = calibration.results.get_selected_trajectories()
             cal_dates = cal_trajs[0].get("date") if cal_trajs else None
-            cal_quant = get_calibration_quantiles(
+            cal_quant = (quantiles.calibration if quantiles else get_calibration_quantiles)(
                 calibration.results,
                 quantiles=plots_config.quantiles.quantiles,
                 dates=cal_dates,
@@ -157,7 +162,7 @@ def _fetch_quantiles_for_location(
         try:
             proj_sims = calibration.results.projections.get("baseline", [])
             proj_dates = proj_sims[0].get("date") if proj_sims else None
-            proj_quant = get_projection_quantiles(
+            proj_quant = (quantiles.projection if quantiles else get_projection_quantiles)(
                 calibration.results,
                 quantiles=plots_config.quantiles.quantiles,
                 dates=proj_dates,
@@ -585,7 +590,7 @@ def _load_surveillance_sources(
     result: dict[str, dict[str, Any]] = {}
     for name, config in surveillance_sources.items():
         try:
-            result[name] = {"data": pd.read_csv(config.data_path), "config": config}
+            result[name] = {"data": read_surveillance_csv(config.data_path), "config": config}
         except Exception as e:
             logger.warning("Failed to load surveillance data from %s: %s", config.data_path, e)
     return result
@@ -669,9 +674,9 @@ def _collect_location_plot_data(
     needs_calibration: bool,
     needs_projection: bool,
     needs_fitting_window: bool,
+    quantiles=None,
 ) -> LocationPlotData:
-    """
-    Collect quantiles, surveillance, fitting window and notes for one location.
+    """Collect quantiles, surveillance, fitting window and notes for one location.
 
     Parameters
     ----------
@@ -683,6 +688,9 @@ def _collect_location_plot_data(
         Loaded surveillance sources from ``_load_surveillance_sources``.
     needs_calibration, needs_projection, needs_fitting_window : bool
         Whether any output needs calibration quantiles, projection quantiles or the fitting window.
+
+    quantiles : SharedQuantiles or None, optional
+        Shared quantile provider. None computes directly through the public trajectory API.
 
     Returns
     -------
@@ -696,7 +704,7 @@ def _collect_location_plot_data(
     title_suffix, footnote = _format_plot_notes(notes)
 
     calibration_quantiles, projection_quantiles = _fetch_quantiles_for_location(
-        calibration, plots_config, needs_calibration, needs_projection
+        calibration, plots_config, needs_calibration, needs_projection, quantiles
     )
 
     fitting_window_start, fitting_window_end = None, None
@@ -846,14 +854,61 @@ def _to_epydemix_population_name(location: str) -> str:
         return location
 
 
+def prepare_quantile_plot_data(
+    calibrations: list[CalibrationOutput],
+    plots_config: PlotsConfig,
+    surveillance_data: dict[str, dict[str, Any]],
+    *,
+    quantiles=None,
+) -> dict[int, LocationPlotData]:
+    """Prepare one shared quantile-plot record per enabled location.
+
+    Parameters
+    ----------
+    calibrations : list[CalibrationOutput]
+        Results with failed projections already filtered.
+    plots_config : PlotsConfig
+        Quantile plots, single-location selections and grid settings.
+    surveillance_data : dict[str, dict[str, Any]]
+        Loaded sources from _load_surveillance_sources.
+    quantiles : SharedQuantiles or None, optional
+        Shared quantile provider; None computes directly.
+
+    Returns
+    -------
+    dict[int, LocationPlotData]
+        Prepared records, shared by single and grid plots.
+
+    Notes
+    -----
+    Locations disabled for both single and grid plots are omitted. Preparation failures are logged and skipped.
+    """
+    plot_data = {}
+    grid = plots_config.quantiles.grid
+    single_locations = get_locations_to_plot(calibrations, plots_config.quantiles.single)
+    for calibration in calibrations:
+        if not ((grid is not False and grid.enabled) or calibration.population in single_locations):
+            continue
+        try:
+            plot_data[id(calibration)] = _collect_location_plot_data(
+                calibration, plots_config, surveillance_data,
+                **_quantile_plot_needs(plots_config.quantiles.outputs), quantiles=quantiles,
+            )
+        except Exception as e:
+            logger.warning("Failed to prepare plots for %s: %s", calibration.population, e)
+    return plot_data
+
+
 def generate_single_quantile_plots(
     calibrations: list[CalibrationOutput],
     plots_config: PlotsConfig,
     out_dict: dict[str, list[OutputObject]],
     surveillance_sources: dict[str, ObservedValuesConfig] | None = None,
+    *,
+    prepared_data: dict[int, LocationPlotData] | None = None,
+    surveillance_data: dict | None = None,
 ) -> None:
-    """
-    Generate individual quantile plots for each location.
+    """Generate individual quantile plots for each location.
 
     Creates separate calibration/projection quantile plots for each location specified in the plots
     configuration. Each plot can optionally include calibration quantiles, projection quantiles,
@@ -872,6 +927,11 @@ def generate_single_quantile_plots(
     surveillance_sources : dict[str, ObservedValuesConfig] or None, optional
         Surveillance sources that outputs can select with ``surveillance_source``.
 
+    prepared_data : dict[int, LocationPlotData] or None, optional
+        Precomputed data keyed by id(calibration). If supplied, missing entries are skipped; None prepares data locally.
+    surveillance_data : dict or None, optional
+        Loaded surveillance sources. None loads them from surveillance_sources; an empty dict suppresses loading.
+
     Returns
     -------
     None
@@ -884,7 +944,8 @@ def generate_single_quantile_plots(
     logger.info("Generating single-location quantile plots for %d locations", len(locations))
 
     quantiles_config = plots_config.quantiles
-    surveillance_data = _load_surveillance_sources(surveillance_sources, quantiles_config.outputs)
+    if surveillance_data is None:
+        surveillance_data = _load_surveillance_sources(surveillance_sources, quantiles_config.outputs)
     output_settings = [
         (output_config, resolve_panel_settings(quantiles_config, output_config, list(surveillance_data)))
         for output_config in quantiles_config.outputs
@@ -896,9 +957,14 @@ def generate_single_quantile_plots(
         location = calibration.population
 
         try:
-            location_plot_data = _collect_location_plot_data(
-                calibration, plots_config, surveillance_data, **_quantile_plot_needs(quantiles_config.outputs)
-            )
+            if prepared_data is not None:
+                location_plot_data = prepared_data.get(id(calibration))
+                if location_plot_data is None:
+                    continue
+            else:
+                location_plot_data = _collect_location_plot_data(
+                    calibration, plots_config, surveillance_data, **_quantile_plot_needs(quantiles_config.outputs)
+                )
         except Exception as e:
             logger.warning("Failed to process location %s for quantile plots: %s", location, e, exc_info=True)
             continue
@@ -1065,9 +1131,11 @@ def generate_quantile_grid_plot(
     plots_config: PlotsConfig,
     out_dict: dict[str, list[OutputObject]],
     surveillance_sources: dict[str, ObservedValuesConfig] | None = None,
+    *,
+    prepared_data: dict[int, LocationPlotData] | None = None,
+    surveillance_data: dict | None = None,
 ) -> None:
-    """
-    Generate multi-location quantile grid plot.
+    """Generate multi-location quantile grid plot.
 
     Creates one figure per configured output with a panel (or a full/filtered pair of panels for side_by_side)
     per location. Each panel can optionally include calibration quantiles, projection quantiles,
@@ -1087,6 +1155,11 @@ def generate_quantile_grid_plot(
     surveillance_sources : dict[str, ObservedValuesConfig] or None, optional
         Surveillance sources that outputs can select with ``surveillance_source``.
 
+    prepared_data : dict[int, LocationPlotData] or None, optional
+        Precomputed data keyed by id(calibration). If supplied, missing entries are skipped; None prepares data locally.
+    surveillance_data : dict or None, optional
+        Loaded surveillance sources. None loads them from surveillance_sources; an empty dict suppresses loading.
+
     Returns
     -------
     None
@@ -1099,14 +1172,20 @@ def generate_quantile_grid_plot(
     logger.info("Generating grid quantile plots for %d locations", len(calibrations))
 
     quantiles_config = plots_config.quantiles
-    surveillance_data = _load_surveillance_sources(surveillance_sources, quantiles_config.outputs)
+    if surveillance_data is None:
+        surveillance_data = _load_surveillance_sources(surveillance_sources, quantiles_config.outputs)
 
     location_plot_data: dict[str, LocationPlotData] = {}
     for calibration in calibrations:
         try:
-            data = _collect_location_plot_data(
-                calibration, plots_config, surveillance_data, **_quantile_plot_needs(quantiles_config.outputs)
-            )
+            if prepared_data is not None:
+                data = prepared_data.get(id(calibration))
+                if data is None:
+                    continue
+            else:
+                data = _collect_location_plot_data(
+                    calibration, plots_config, surveillance_data, **_quantile_plot_needs(quantiles_config.outputs)
+                )
         except Exception as e:
             logger.warning(
                 "Failed to process location %s for grid quantile plots: %s", calibration.population, e, exc_info=True

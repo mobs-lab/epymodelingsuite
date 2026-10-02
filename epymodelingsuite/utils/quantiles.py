@@ -149,3 +149,166 @@ def get_projection_quantiles(  # noqa: PLR0913 -- match the epydemix public API
     """
     trajectories = results.get_projection_trajectories(scenario_id, variables=variables)
     return compute_quantiles(trajectories, dates, quantiles, ignore_nan=ignore_nan)
+
+
+class SharedQuantiles:
+    """Collect requests before computing; keep only small summaries, never stacks.
+
+    Owned by one output invocation. Identity, generation/scenario, date labels
+    and NaN policy isolate requests. Consumers receive independent frames in
+    their requested level and variable order.
+    """
+
+    def __init__(self):
+        """Initialize empty request groups and computed summary frames.
+
+        Returns
+        -------
+        None
+            No value is returned.
+
+        Notes
+        -----
+        The instance belongs to one output invocation; it never retains stacked raw trajectories.
+        """
+        self.requests = {}
+        self.frames = {}
+
+    @staticmethod
+    def _key(results, kind, dates=None, ignore_nan=False, generation=None, scenario_id="baseline", **_):
+        """Identify a compatible quantile computation group.
+
+        Parameters
+        ----------
+        results : CalibrationResults
+            Source results; their identity distinguishes shared computation groups.
+        kind : {'calibration', 'projection'}
+            Source trajectory type.
+        dates : sequence or ndarray or None, optional
+            Labels for the time axis. None uses integer timestep labels.
+        ignore_nan : bool, optional
+            If True, exclude NaNs and warn when a time point has more than 50% NaNs.
+        generation : int or None, optional
+            Calibration generation to select. None uses epydemix's default selection.
+        scenario_id : str, optional
+            Projection scenario key, defaulting to baseline.
+        **_ : dict
+            Other computation arguments, ignored when constructing the group key.
+
+        Returns
+        -------
+        tuple
+            Result identity, trajectory type, generation/scenario, typed date labels and NaN policy.
+        """
+        labels = None if dates is None else tuple((type(d), d) for d in dates)
+        return id(results), kind, generation if kind == "calibration" else scenario_id, labels, ignore_nan
+
+    def add(self, results, kind, **kwargs):
+        """Register levels and variables before any group is computed.
+
+        Parameters
+        ----------
+        results : CalibrationResults
+            Source results; their identity distinguishes shared computation groups.
+        kind : {'calibration', 'projection'}
+            Source trajectory type.
+        **kwargs : dict
+            Quantile arguments: quantiles, dates, variables, ignore_nan and generation (calibration) or scenario_id
+            (projection).
+
+        Returns
+        -------
+        None
+            No value is returned.
+
+        Notes
+        -----
+        Requests in a group are unioned in encounter order. All requests must be
+        registered before consumption; adding requests does not invalidate cached frames.
+        """
+        key = self._key(results, kind, **kwargs)
+        request = self.requests.setdefault(key, {**kwargs, "quantiles": [], "variables": []})
+        request["quantiles"] = list(dict.fromkeys([*request["quantiles"], *kwargs["quantiles"]]))
+        variables = kwargs.get("variables")
+        if not variables or request["variables"] is None:
+            request["variables"] = None
+        else:
+            request["variables"] = list(dict.fromkeys([*request["variables"], *variables]))
+
+    def _get(self, results, kind, **kwargs):
+        """Compute a registered group lazily and select one consumer's frame.
+
+        Parameters
+        ----------
+        results : CalibrationResults
+            Source results; their identity distinguishes shared computation groups.
+        kind : {'calibration', 'projection'}
+            Source trajectory type.
+        **kwargs : dict
+            Quantile arguments: quantiles, dates, variables, ignore_nan and generation (calibration) or scenario_id
+            (projection).
+
+        Returns
+        -------
+        pd.DataFrame
+            An independent frame in the requested variable/level order, including repeated levels.
+
+        Notes
+        -----
+        Unregistered groups compute directly. Registered groups retain only summary
+        frames, separated by result identity, generation/scenario, dates and NaN policy.
+        """
+        key = self._key(results, kind, **kwargs)
+        compute = get_calibration_quantiles if kind == "calibration" else get_projection_quantiles
+        if key not in self.requests:
+            return compute(results, **kwargs)
+        if key not in self.frames:
+            self.frames[key] = compute(results, **self.requests[key])
+        frame = self.frames[key]
+        # Concatenate blocks rather than isin: preserve unsorted/duplicate levels.
+        levels = kwargs["quantiles"]
+        selected = (
+            pd.concat([frame[frame["quantile"] == q] for q in levels], ignore_index=True) if levels else frame.iloc[:0]
+        )
+        columns = ["date", "quantile"]
+        columns.extend(c for c in (kwargs.get("variables") or frame.columns) if c not in columns and c in frame)
+        selected = selected[columns].copy()
+        # The original level scalar types determine pandas' label dtype.
+        selected["quantile"] = pd.Series([q for q in levels for _ in range(len(frame[frame["quantile"] == q]))])
+        return selected
+
+    def calibration(self, results, **kwargs):
+        """Get calibration quantiles, sharing registered computations.
+
+        Parameters
+        ----------
+        results : CalibrationResults
+            Source results; their identity distinguishes shared computation groups.
+        **kwargs : dict
+            Quantile arguments: quantiles, dates, variables, ignore_nan and generation (calibration) or scenario_id
+            (projection).
+
+        Returns
+        -------
+        pd.DataFrame
+            An independent calibration summary in the consumer's requested order.
+        """
+        return self._get(results, "calibration", **kwargs)
+
+    def projection(self, results, **kwargs):
+        """Get projection quantiles, sharing registered computations.
+
+        Parameters
+        ----------
+        results : CalibrationResults
+            Source results; their identity distinguishes shared computation groups.
+        **kwargs : dict
+            Quantile arguments: quantiles, dates, variables, ignore_nan and generation (calibration) or scenario_id
+            (projection).
+
+        Returns
+        -------
+        pd.DataFrame
+            An independent projection summary in the consumer's requested order.
+        """
+        return self._get(results, "projection", **kwargs)
