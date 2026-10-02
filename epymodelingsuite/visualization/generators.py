@@ -25,6 +25,7 @@ from ..schema.output import (
     QuantilesPlotConfig,
 )
 from ..utils import convert_location_name_format
+from ..utils.quantiles import get_calibration_quantiles, get_projection_quantiles
 from .core import (
     figure_to_output_object,
     format_location_name,
@@ -142,7 +143,8 @@ def _fetch_quantiles_for_location(
         try:
             cal_trajs = calibration.results.get_selected_trajectories()
             cal_dates = cal_trajs[0].get("date") if cal_trajs else None
-            cal_quant = calibration.results.get_calibration_quantiles(
+            cal_quant = get_calibration_quantiles(
+                calibration.results,
                 quantiles=plots_config.quantiles.quantiles,
                 dates=cal_dates,
                 variables=["data"],
@@ -156,9 +158,11 @@ def _fetch_quantiles_for_location(
         try:
             proj_sims = calibration.results.projections.get("baseline", [])
             proj_dates = proj_sims[0].get("date") if proj_sims else None
-            proj_quant = calibration.results.get_projection_quantiles(
+            proj_quant = get_projection_quantiles(
+                calibration.results,
                 quantiles=plots_config.quantiles.quantiles,
                 dates=proj_dates,
+                variables=[plots_config.quantiles.value_column],
                 ignore_nan=True,
             )
         except (ValueError, AttributeError, TypeError, IndexError) as e:
@@ -593,43 +597,40 @@ def _compute_fitting_window(
     cal_quant: pd.DataFrame | None,
 ) -> tuple[date | None, date | None]:
     """
-    Compute the fitting window date range from calibration quantiles.
+    Compute the fitting window date range from quantile dates or the first trajectory.
 
-    Uses the provided ``cal_quant`` if available; otherwise falls back to fetching a minimal set of calibration quantiles (median only) from the calibration results.
+    Uses the provided ``cal_quant`` if available; otherwise reads trajectory dates
+    without stacking samples or computing their median.
 
     Parameters
     ----------
     calibration : CalibrationOutput
-        Calibration output for one location, used as fallback source for quantile data.
+        Calibration output for one location, used as fallback source for dates.
     cal_quant : pd.DataFrame or None
-        Pre-fetched calibration quantiles. If None, the function attempts to fetch them.
+        Pre-fetched calibration quantiles. If None, trajectory dates are used.
 
     Returns
     -------
     tuple[date or None, date or None]
-        (start, end) of the fitting window, or (None, None) if quantiles are unavailable.
+        (start, end) of the fitting window, or (None, None) if dates are unavailable.
     """
-    cal_quant_for_fitting = cal_quant
-    if cal_quant_for_fitting is None:
+    if cal_quant is not None and "date" in cal_quant.columns:
+        dates = pd.to_datetime(cal_quant["date"]).dt.date
+        return dates.min(), dates.max()
+    if cal_quant is None:
         try:
             cal_trajs = calibration.results.get_selected_trajectories()
             cal_dates = cal_trajs[0].get("date") if cal_trajs else None
-            cal_quant_for_fitting = calibration.results.get_calibration_quantiles(
-                quantiles=[0.5],
-                dates=cal_dates,
-                variables=["data"],
-                ignore_nan=True,
-            )
+            if cal_dates is not None and len(cal_dates) > 0:
+                dates = pd.to_datetime(cal_dates).date
+                return dates.min(), dates.max()
         except (ValueError, AttributeError, TypeError, IndexError) as e:
             logger.warning(
-                "Failed to get calibration quantiles for fitting window for %s: %s",
+                "Failed to read fitting window dates for %s: %s",
                 calibration.population,
                 e,
             )
 
-    if cal_quant_for_fitting is not None and "date" in cal_quant_for_fitting.columns:
-        dates = pd.to_datetime(cal_quant_for_fitting["date"]).dt.date
-        return dates.min(), dates.max()
     return None, None
 
 
