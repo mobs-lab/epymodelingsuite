@@ -473,7 +473,7 @@ class TestDispatcherFiltersFailedProjections:
         assert len(calibration.results.projections["baseline"]) == 5
         assert calibration.results.projection_parameters["baseline"]["R0"].tolist() == [0.0, 2.0, 3.0, 4.0, 5.0]
         assert len(outputs["projection_parameters_long"][0].data) == 5
-        # CHANGED (A02): the plot generators used to filter again, which reset the count to 0.
+        # CHANGED: the plot generators used to filter again, which reset the count to 0.
         assert calibration.results._filtered_count == 2
 
 

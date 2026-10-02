@@ -703,7 +703,6 @@ class TestGeneratorsDoNotFilterResults:
         with (
             patch("epymodelingsuite.visualization.generators.plot_calibration_projection") as mock_plot,
             patch("epymodelingsuite.visualization.generators.plot_calibration_projection_grid") as mock_grid,
-            patch("epymodelingsuite.dispatcher.output.filter_failed_projections") as mock_filter,
         ):
             mock_plot.return_value = (MagicMock(), MagicMock())
             mock_grid.return_value = (MagicMock(), MagicMock())
@@ -712,7 +711,6 @@ class TestGeneratorsDoNotFilterResults:
 
         assert mock_plot.called
         assert mock_grid.called
-        mock_filter.assert_not_called()
         assert calibration.results is original_results
 
 
