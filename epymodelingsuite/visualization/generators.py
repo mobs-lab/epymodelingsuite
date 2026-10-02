@@ -488,11 +488,12 @@ def prepare_panel_plot_data(
     1. Surveillance from the resolved source, only if the panel shows it.
     2. Surveillance range: ``surveillance_start_date`` if set, else the last ``surveillance_points`` rows on or
        before ``reference_date`` (all later rows are kept). With neither, the full view keeps everything and the
-       filtered view starts at the first projection date (falling back to the first calibration date).
+       filtered view starts at the first projection date if this panel shows the projection, else at the first
+       calibration date if it shows the calibration.
     3. Projection is clipped to ``reference_date + horizon_max`` weeks.
     4. Filtered view: calibration and projection are clipped to the first visible surveillance date. If no
        surveillance is left visible, they are clipped to where it would have started instead
-       (``surveillance_start_date``, or the first projection/calibration date without limits).
+       (``surveillance_start_date``, or the start above without limits).
     5. Hidden layers are returned as ``None``. Frames that become empty stay empty.
 
     Parameters
@@ -528,9 +529,14 @@ def prepare_panel_plot_data(
             )
             filtered_start = settings.surveillance_start_date
         elif settings.view == "filtered":
-            timespan = projection if projection is not None else calibration
-            if timespan is not None:
-                filtered_start = pd.to_datetime(timespan["date"]).min().date()
+            # Only this panel's shown layers count, so other outputs loading the projection do not move the start
+            shown = [
+                frame
+                for frame, show in ((projection, settings.show_projection), (calibration, settings.show_calibration))
+                if show and frame is not None
+            ]
+            if shown:
+                filtered_start = pd.to_datetime(shown[0]["date"]).min().date()
                 surveillance = _clip_to_start(surveillance, filtered_start)
         if not surveillance.empty:
             filtered_start = pd.to_datetime(surveillance["date"]).min().date()

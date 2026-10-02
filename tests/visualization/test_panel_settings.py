@@ -233,6 +233,11 @@ class TestPreparePanelPlotData:
         without_projection = replace(location_data, projection_quantiles=None)
         assert prepared(without_projection, "filtered")["surveillance"] == ("2023-11-04", "2024-01-27", 13)
 
+    def test_filtered_hidden_projection_starts_at_calibration(self, location_data):
+        # The loaded projection does not count when this panel hides it
+        result = prepared(location_data, "filtered", show_projection=False)
+        assert result == {"calibration": CAL_ALL, "projection": None, "surveillance": ("2023-11-04", "2024-01-27", 13)}
+
     def test_filtered_points_count_all_observations(self, location_data):
         # 8 points on or before reference_date, even though the projection starts later; plus 2 after it
         """surveillance_points counts every observation up to reference_date."""
