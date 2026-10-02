@@ -21,7 +21,7 @@ from ..schema.output import (
     get_metrocast_quantiles,
 )
 from ..telemetry import ExecutionTelemetry
-from ..output.hub_files import hub_parquet_bytes
+from ..output.hub_files import serialize_hub_parquet
 from ..output.samples import make_flusight_samples
 from ..utils.location import (
     convert_location_name_format,
@@ -1118,7 +1118,7 @@ def generate_simulation_outputs(
         # will want to build filename to be something better, like to fit hub standards
         hf_name = "output_hub_formatted"
         hf_objects = [
-            OutputObject(output_type=_type, name=f"{hf_name}.parquet", data=hub_parquet_bytes(hub_format_output))
+            OutputObject(output_type=_type, name=f"{hf_name}.parquet", data=serialize_hub_parquet(hub_format_output))
             if _type == TabularOutputTypeEnum.Parquet
             else format_tabular_object(hub_format_output, hf_name, _type)
             for _type in output.tabular_output_types
@@ -1775,7 +1775,7 @@ def generate_calibration_outputs(
         # will want to build filename to be something better, like to fit hub standards
         hf_name = "output_hub_formatted"
         hf_objects = [
-            OutputObject(output_type=_type, name=f"{hf_name}.parquet", data=hub_parquet_bytes(hub_format_output))
+            OutputObject(output_type=_type, name=f"{hf_name}.parquet", data=serialize_hub_parquet(hub_format_output))
             if _type == TabularOutputTypeEnum.Parquet
             else format_tabular_object(hub_format_output, hf_name, _type)
             for _type in output.tabular_output_types

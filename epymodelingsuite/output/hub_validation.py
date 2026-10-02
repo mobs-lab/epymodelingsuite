@@ -26,7 +26,7 @@ def load_tasks(path: str | Path) -> dict:
     return json.loads(Path(path).read_text())
 
 
-def _allowed(task_id: dict) -> set | None:
+def _get_allowed_values(task_id: dict) -> set | None:
     """Return allowed values of a task id as strings, or None when the task id must be NA."""
     values = (task_id.get("required") or []) + (task_id.get("optional") or [])
     return {str(v) for v in values} if values else None
@@ -55,7 +55,7 @@ def _normalize(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
     return out, errors
 
 
-def _quantile_key(ids: pd.Series) -> pd.Series:
+def _parse_quantile_levels(ids: pd.Series) -> pd.Series:
     return pd.to_numeric(ids, errors="coerce")
 
 
@@ -93,7 +93,7 @@ def validate_model_output(df: pd.DataFrame, tasks: dict) -> list[str]:  # noqa: 
     model_tasks = [mt for rnd in tasks["rounds"] for mt in rnd["model_tasks"]]
     tbl["_task"] = -1
     for i, mt in enumerate(model_tasks):
-        targets = _allowed(mt["task_ids"]["target"]) or set()
+        targets = _get_allowed_values(mt["task_ids"]["target"]) or set()
         in_task = tbl["target"].isin(targets) & tbl["output_type"].isin(mt["output_type"].keys())
         tbl.loc[in_task & (tbl["_task"] == -1), "_task"] = i
     unmatched = tbl["_task"] == -1
@@ -114,7 +114,7 @@ def validate_model_output(df: pd.DataFrame, tasks: dict) -> list[str]:  # noqa: 
         target = sorted(rows["target"].unique())
         # Task id values
         for col in TASK_ID_COLUMNS:
-            allowed = _allowed(mt["task_ids"].get(col, {}))
+            allowed = _get_allowed_values(mt["task_ids"].get(col, {}))
             bad = rows[col].notna() if allowed is None else ~rows[col].isin(allowed)
             if bad.any():
                 expected = "NA" if allowed is None else "an allowed value"
@@ -174,7 +174,7 @@ def _check_output_type_ids(out: pd.DataFrame, spec: dict, target: list, output_t
     if output_type == "quantile":
         # Compare quantile levels numerically ("0.1" == "0.10")
         canon = {str(float(v)) for v in allowed}
-        out = out.assign(output_type_id=_quantile_key(out["output_type_id"]).map(lambda v: str(float(v))))
+        out = out.assign(output_type_id=_parse_quantile_levels(out["output_type_id"]).map(lambda v: str(float(v))))
         required = {str(float(v)) for v in required}
         allowed = canon
     bad = ~out["output_type_id"].isin(allowed)
@@ -190,7 +190,9 @@ def _check_output_type_ids(out: pd.DataFrame, spec: dict, target: list, output_t
 
     if output_type == "quantile":
         descending = groups.apply(
-            lambda g: (np.diff(g.sort_values("output_type_id", key=_quantile_key)["value"].to_numpy()) < 0).any(),
+            lambda g: (
+                np.diff(g.sort_values("output_type_id", key=_parse_quantile_levels)["value"].to_numpy()) < 0
+            ).any(),
             include_groups=False,
         )
         if descending.any():

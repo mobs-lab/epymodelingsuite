@@ -33,7 +33,7 @@ HUB_SCHEMA = pa.schema(
 )
 
 
-def to_hub_dtypes(df: pd.DataFrame) -> pd.DataFrame:
+def cast_hub_dtypes(df: pd.DataFrame) -> pd.DataFrame:
     """
     Cast a hub table to the column types of the FluSight example submission parquet.
 
@@ -50,9 +50,9 @@ def to_hub_dtypes(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def hub_parquet_bytes(df: pd.DataFrame) -> bytes:
-    """Hub table as parquet bytes with exactly `HUB_SCHEMA`, ready to submit."""
-    table = pa.Table.from_pandas(to_hub_dtypes(df), schema=HUB_SCHEMA, preserve_index=False)
+def serialize_hub_parquet(df: pd.DataFrame) -> bytes:
+    """Serialize a hub table to parquet bytes with exactly `HUB_SCHEMA`, ready to submit."""
+    table = pa.Table.from_pandas(cast_hub_dtypes(df), schema=HUB_SCHEMA, preserve_index=False)
     buffer = io.BytesIO()
     pq.write_table(table, buffer)
     return buffer.getvalue()
@@ -65,9 +65,9 @@ def combine_submissions(tables: list[pd.DataFrame]) -> pd.DataFrame:
     Raises if two tables contribute the same (location, target, output_type), since a submission can hold
     only one forecast for each.
     """
-    combined = pd.concat([to_hub_dtypes(t) for t in tables], ignore_index=True)
+    combined = pd.concat([cast_hub_dtypes(t) for t in tables], ignore_index=True)
     keys = ["location", "target", "output_type"]
-    per_table = [to_hub_dtypes(t)[keys].drop_duplicates() for t in tables]
+    per_table = [cast_hub_dtypes(t)[keys].drop_duplicates() for t in tables]
     duplicated = pd.concat(per_table).duplicated(keep=False)
     if duplicated.any():
         clashes = pd.concat(per_table)[duplicated].drop_duplicates().to_records(index=False).tolist()
