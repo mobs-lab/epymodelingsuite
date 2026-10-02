@@ -20,9 +20,11 @@ from epymodelingsuite.schema.output import FlusightPropED, OutputConfig
 @pytest.mark.parametrize("workflow", ["simulation", "calibration"])
 @pytest.mark.parametrize("generations", [True, [0, 1]])
 def test_wide_output_metadata(workflow: str, *, generations: bool | list[int]) -> None:
+    """Export fragmented results without warnings, preserving column order, values, and source frames."""
     dates = pd.date_range("2025-11-29", periods=2, freq="7D")
     quantiles = pd.DataFrame({"date": dates, "quantile": [0.5, 0.5]}, index=[4, 9])
-    # Reproduce the fragmented frames returned by upstream quantile builders.
+    # Insert enough numeric columns to exceed pandas' 100-block warning threshold.
+    # Warnings are expected during setup; output generation below must not emit them.
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", pd.errors.PerformanceWarning)
         for i in range(110):
@@ -37,6 +39,7 @@ def test_wide_output_metadata(workflow: str, *, generations: bool | list[int]) -
     result.Nsim = 1
     result.parameters = {}
     result.get_stacked_compartments.return_value = {key: [value] for key, value in compartments.items()}
+    # Return the same source frame so accidental mutation can affect later exports and be detected.
     result.get_quantiles_compartments.return_value = quantiles
     result.get_quantiles_transitions.return_value = quantiles
     result.get_calibration_quantiles.return_value = quantiles
@@ -79,12 +82,14 @@ def test_wide_output_metadata(workflow: str, *, generations: bool | list[int]) -
                 "posteriors",
             }
 
+    # Some generator paths catch exceptions and skip outputs, so also check that every export exists.
     assert expected_keys <= outputs.keys()
     for name in expected_keys:
         frame = outputs[name][0].data
         prefix = ["primary_id", "seed", "population"]
         expected_data = original
         if "trajectories" in name:
+            # Simulation and calibration exports historically place the date column differently.
             prefix = (
                 ["primary_id", "sim_id", "date", "seed", "population"]
                 if workflow == "simulation"
@@ -100,6 +105,7 @@ def test_wide_output_metadata(workflow: str, *, generations: bool | list[int]) -
                 expected_data = original[["date", "quantile", *transitions]]
             elif generations is not True:
                 prefix.append("generation")
+                # The mock returns the same two rows for each requested generation.
                 expected_data = pd.concat([original, original], ignore_index=True)
                 assert frame["generation"].tolist() == [0, 0, 1, 1]
         assert list(frame.columns) == prefix + list(expected_data.columns)
@@ -115,11 +121,15 @@ def test_wide_output_metadata(workflow: str, *, generations: bool | list[int]) -
 
 @pytest.mark.parametrize("index", [[], [4, 9], [4, 4]])
 def test_add_metadata_preserves_frame(index: list[int]) -> None:
+    """Match insertion values, dtypes, and index alignment without mutation or warnings, and reject column collisions."""
+    # Cover empty frames, nonconsecutive labels, and duplicate labels without resetting the index.
     frame = pd.DataFrame({"value": pd.array(range(len(index)), dtype="Int64")}, index=index)
     original = frame.copy()
     metadata = {"seed": None, "date": pd.date_range("2025-11-29", periods=len(index))}
+    # Reversing a Series distinguishes label alignment from positional array assignment.
     metadata["aligned"] = pd.Series(range(len(index)), index=index, dtype="int64").iloc[::-1]
     metadata.update({f"field_{i}": i for i in range(110)})
+    # Use the old insertion behavior as the value/dtype reference, allowing only its expected warnings.
     expected = frame.copy()
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", pd.errors.PerformanceWarning)
@@ -138,6 +148,7 @@ def test_add_metadata_preserves_frame(index: list[int]) -> None:
 @pytest.mark.parametrize("forecast", ["hospitalizations", "prop_ed"])
 @pytest.mark.parametrize("reverse_columns", [False, True])
 def test_forecast_metadata_order_and_values(forecast: str, *, metrocast: bool, reverse_columns: bool) -> None:
+    """Preserve forecast values and source frames while enforcing column order independently of input order."""
     dates = pd.date_range("2025-11-15", periods=4, freq="7D")
     reference_date = dates[2].date()
     frame = pd.DataFrame(
@@ -146,6 +157,7 @@ def test_forecast_metadata_order_and_values(forecast: str, *, metrocast: bool, r
     if forecast == "prop_ed":
         frame["population"] = "United_States_California"
     if reverse_columns:
+        # The forecast schema must use column names, not positions in the incoming frame.
         frame = frame[list(reversed(frame.columns))]
     original = frame.copy()
     with warnings.catch_warnings():
@@ -162,7 +174,9 @@ def test_forecast_metadata_order_and_values(forecast: str, *, metrocast: bool, r
                 metrocast=metrocast,
             )
             assert factors.empty
+    # Input horizons are -2, -1, 0, 1; FluSight keeps -1 onward, while Metrocast starts at 0.
     start = 2 if metrocast else 1
+    # Hospitalization counts are rounded to nullable integers; prop-ED values retain their fractions.
     expected = pd.DataFrame(
         {
             "horizon": list(range(-2, 2))[start:],
