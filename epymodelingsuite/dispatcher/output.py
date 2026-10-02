@@ -891,6 +891,19 @@ def format_tabular_object(df: pd.DataFrame, name: str, output_type: TabularOutpu
             logger.warning(msg)
 
 
+def format_hub_objects(
+    df: pd.DataFrame, name: str, output_types: list[TabularOutputTypeEnum]
+) -> list[OutputObject]:
+    """Prepare hub tables per format and pass them to the common tabular writer."""
+    objects = []
+    for output_type in output_types:
+        hub_table = df
+        if output_type == TabularOutputTypeEnum.Parquet:
+            hub_table = cast_hub_dtypes(hub_table)
+        objects.append(format_tabular_object(hub_table, name, output_type))
+    return objects
+
+
 def dataframe_to_gzipped_csv(df: pd.DataFrame, **csv_kwargs) -> bytes:
     """
     Convert a DataFrame to gzip-compressed CSV bytes.
@@ -1134,13 +1147,7 @@ def generate_simulation_outputs(
     if not hub_format_output.empty:
         # will want to build filename to be something better, like to fit hub standards
         hf_name = "output_hub_formatted"
-        hf_objects = []
-        for _type in output.tabular_output_types:
-            hub_table = hub_format_output
-            if _type == TabularOutputTypeEnum.Parquet:
-                hub_table = cast_hub_dtypes(hub_table)
-            hf_objects.append(format_tabular_object(hub_table, hf_name, _type))
-        out_dict[hf_name] = hf_objects
+        out_dict[hf_name] = format_hub_objects(hub_format_output, hf_name, output.tabular_output_types)
     if not model_meta.empty:
         mm_name = "model_metadata"
         mm_objects = [format_tabular_object(model_meta, mm_name, _type) for _type in output.tabular_output_types]
@@ -1826,13 +1833,7 @@ def generate_calibration_outputs(
     if not hub_format_output.empty:
         # will want to build filename to be something better, like to fit hub standards
         hf_name = "output_hub_formatted"
-        hf_objects = []
-        for _type in output.tabular_output_types:
-            hub_table = hub_format_output
-            if _type == TabularOutputTypeEnum.Parquet:
-                hub_table = cast_hub_dtypes(hub_table)
-            hf_objects.append(format_tabular_object(hub_table, hf_name, _type))
-        out_dict[hf_name] = hf_objects
+        out_dict[hf_name] = format_hub_objects(hub_format_output, hf_name, output.tabular_output_types)
     if not model_meta.empty:
         mm_name = "model_metadata"
         mm_objects = [format_tabular_object(model_meta, mm_name, _type) for _type in output.tabular_output_types]
