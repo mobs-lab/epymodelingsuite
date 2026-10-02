@@ -271,14 +271,14 @@ class TestGridDefaultOutputs:
             assert (drawn.calibration_color, drawn.projection_color) == ("C0", "C1")
         # ylabel only on the leftmost column
         assert [drawn.ylabel for drawn in capture.get_panels("quantiles_grid_filtered")] == ["Hosp", None, None]
-        # two location pairs per row: Texas starts the second row
+        # Four columns per row; each location occupies a (full, filtered) pair.
         assert [drawn.ylabel for drawn in capture.get_panels("quantiles_grid_sidebyside")] == [
-            "Hosp",
-            None,
-            None,
-            None,
-            "Hosp",
-            None,
+            "Hosp",  # Row 1, column 1: California full (leftmost column)
+            None,  # Row 1, column 2: California filtered
+            None,  # Row 1, column 3: New York full
+            None,  # Row 1, column 4: New York filtered
+            "Hosp",  # Row 2, column 1: Texas full (leftmost column)
+            None,  # Row 2, column 2: Texas filtered
         ]
 
 
