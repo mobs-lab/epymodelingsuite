@@ -10,13 +10,13 @@ import numpy as np
 import pandas as pd
 from epydemix.calibration import CalibrationResults
 
+from ..output.quantiles import get_simulation_quantiles, projection_quantile_variables
 from ..schema.dispatcher import CalibrationOutput, SimulationOutput
 from ..schema.output import (
     FlusightPropED,
     ObservedValuesConfig,
     OutputConfig,
     OutputObject,
-    QuantilesOutput,
     TabularOutputTypeEnum,
     get_metrocast_horizons,
     get_metrocast_quantiles,
@@ -984,14 +984,8 @@ def generate_simulation_outputs(
         for simulation in simulations:
             # Compartments
             if output.quantiles.compartments:
-                available = simulation.results.trajectories[0].compartments if simulation.results.trajectories else {}
-                requested = output.quantiles.compartments
-                variables = requested if isinstance(requested, list) and all(v in available for v in requested) else None
-                quanc_df = compute_quantiles(
-                    simulation.results.get_stacked_compartments(variables=variables),
-                    simulation.results.dates,
-                    output.quantiles.selections,
-                    ignore_nan=True,
+                quanc_df = get_simulation_quantiles(
+                    simulation.results, "compartments", output.quantiles.selections, output.quantiles.compartments,
                 )
                 if hasattr(output.quantiles.compartments, "__len__"):
                     try:
@@ -1009,14 +1003,8 @@ def generate_simulation_outputs(
 
             # Transitions
             if output.quantiles.transitions:
-                available = simulation.results.trajectories[0].transitions if simulation.results.trajectories else {}
-                requested = output.quantiles.transitions
-                variables = requested if isinstance(requested, list) and all(v in available for v in requested) else None
-                quant_df = compute_quantiles(
-                    simulation.results.get_stacked_transitions(variables=variables),
-                    simulation.results.dates,
-                    output.quantiles.selections,
-                    ignore_nan=True,
+                quant_df = get_simulation_quantiles(
+                    simulation.results, "transitions", output.quantiles.selections, output.quantiles.transitions,
                 )
                 if hasattr(output.quantiles.transitions, "__len__"):
                     try:
@@ -1169,41 +1157,6 @@ def generate_simulation_outputs(
     return out_dict
 
 
-def _projection_quantile_variables(projections: list[dict], config: QuantilesOutput) -> list[str] | None:
-    """Select projection variables before stacking, preserving fallback behavior.
-
-    Parameters
-    ----------
-    projections : list of dict
-        Raw projection draws; the first draw defines available numeric names.
-    config : QuantilesOutput
-        Compartment and transition selections.
-
-    Returns
-    -------
-    list of str or None
-        Selected numeric variables, ["date"] for an empty selection, or None for all variables.
-
-    Notes
-    -----
-    Missing requested names retain the existing all-column fallback. An empty
-    list means all variables in epydemix, so ["date"] represents no numeric variables.
-    """
-    if not projections:
-        return None
-    numeric_names = [name for name, values in projections[0].items() if np.issubdtype(np.asarray(values).dtype, np.number)]
-    selections = (config.compartments, config.transitions)
-    if any(isinstance(selected, list) and any(name not in numeric_names for name in selected) for selected in selections):
-        return None
-    return [
-        name
-        for name in numeric_names
-        if (config.compartments is True and "_to_" not in name)
-        or (config.transitions is True and "_to_" in name)
-        or any(isinstance(selected, list) and name in selected for selected in selections)
-    ] or ["date"]  # An empty variables list means "all variables" in epydemix.
-
-
 @register_output_generator({"calibrations", "output_config"})
 def generate_calibration_outputs(
     *, calibrations: list[CalibrationOutput], output_config: OutputConfig, **_
@@ -1307,7 +1260,7 @@ def generate_calibration_outputs(
                     calibration.results,
                     quantiles=output.quantiles.selections,
                     dates=proj_dates,
-                    variables=_projection_quantile_variables(proj_sims, output.quantiles),
+                    variables=projection_quantile_variables(proj_sims, output.quantiles),
                     ignore_nan=True,
                 )
             except ValueError:

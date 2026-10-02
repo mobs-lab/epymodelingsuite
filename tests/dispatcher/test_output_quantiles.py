@@ -17,6 +17,7 @@ from epymodelingsuite.visualization.generators import _compute_fitting_window, _
 
 
 def calibration():
+    """Build a deterministic California result with compartments, transitions and calibration data."""
     dates = pd.date_range("2024-01-06", periods=6, freq="W-SAT").to_list()
     draws = [
         {
@@ -45,6 +46,7 @@ def calibration():
     ],
 )
 def test_calibration_selection_matches_upstream_and_preserves_fallback(compartments, transitions, expected_variables):
+    """Check selective stacking and exact output layout; missing requested names retain all-column fallback."""
     item = calibration()
     config = OutputConfig.model_validate(
         {
@@ -86,6 +88,7 @@ def test_calibration_selection_matches_upstream_and_preserves_fallback(compartme
 
 
 def test_calibration_only_and_metadata_do_not_stack_projections():
+    """Ensure calibration-only output and metadata never stack projections, while retaining correct date windows."""
     item = calibration()
     config = OutputConfig.model_validate({"output": {"quantiles": {"calibration": True}}})
     with (
@@ -107,6 +110,7 @@ def test_calibration_only_and_metadata_do_not_stack_projections():
 
 
 def test_plot_fetch_selects_target_and_fitting_window_needs_no_quantiles():
+    """Stack only the plotted projection target and read fitting dates without stacking calibration samples."""
     item = calibration()
     config = PlotsConfig(reference_date=date(2024, 1, 13))
     expected = item.results.get_projection_quantiles(
@@ -126,6 +130,7 @@ def test_plot_fetch_selects_target_and_fitting_window_needs_no_quantiles():
 
 
 def test_hub_uses_batched_projection_quantiles():
+    """Compute Hub projection levels once while preserving California FIPS and all five forecast horizons."""
     item = calibration()
     config = OutputConfig.model_validate(
         {
@@ -148,6 +153,7 @@ def test_hub_uses_batched_projection_quantiles():
 
 @pytest.mark.parametrize("selected", [["I", "S"], ["missing"], True])
 def test_simulation_selection_and_fallback(selected):
+    """Check simulation variable selection before stacking and exact tables for selected/all/missing names."""
     dates = pd.date_range("2024-01-06", periods=3, freq="W-SAT")
     trajectories = [
         Trajectory(

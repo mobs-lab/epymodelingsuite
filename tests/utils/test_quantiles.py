@@ -14,6 +14,7 @@ from epymodelingsuite.utils.quantiles import compute_quantiles, get_calibration_
 
 
 def make_results(values):
+    """Build real calibration/projection results with independent draws and weekly dates."""
     dates = pd.date_range("2024-01-06", periods=values.shape[1], freq="W-SAT")
     draws = [{"date": dates, "data": row.copy(), "other": row.copy() * 2, "random_state": {}} for row in values]
     return CalibrationResults(selected_trajectories={0: draws}, projections={"baseline": draws}), dates
@@ -24,6 +25,9 @@ def make_results(values):
 @pytest.mark.parametrize("ignore_nan", [False, True])
 @pytest.mark.parametrize("draws", [1, 4])
 def test_calibration_and_projection_match_epydemix(dtype, levels, ignore_nan, draws):
+    """Check exact upstream values, dtypes and row order across levels, draw counts and NaN policies.
+    Also verify that quantile calculation does not mutate raw trajectories.
+    """
     values = np.arange(draws * 3).reshape(draws, 3).astype(dtype)
     results, dates = make_results(values)
     for kind, batched in [("calibration", get_calibration_quantiles), ("projection", get_projection_quantiles)]:
@@ -36,6 +40,7 @@ def test_calibration_and_projection_match_epydemix(dtype, levels, ignore_nan, dr
 
 @pytest.mark.parametrize("ignore_nan", [False, True])
 def test_nan_values_and_warning_match(ignore_nan):
+    """Check that partial/all-NaN columns produce the same values and warnings as epydemix."""
     values = np.array([[np.nan, np.nan, 1.0], [np.nan, 2.0, 3.0], [np.nan, 4.0, 5.0]])
     results, dates = make_results(values)
     with warnings.catch_warnings(record=True) as expected_warnings:
@@ -50,6 +55,7 @@ def test_nan_values_and_warning_match(ignore_nan):
 
 @pytest.mark.parametrize("nan_count, warns", [(2, False), (3, True)])
 def test_high_nan_warning_boundary(nan_count, warns):
+    """Warn above 50% NaNs at a time point, but not at exactly 50%."""
     values = np.ones((4, 1))
     values[:nan_count] = np.nan
     with warnings.catch_warnings(record=True) as caught:
@@ -59,6 +65,7 @@ def test_high_nan_warning_boundary(nan_count, warns):
 
 
 def test_known_quantiles_and_single_call_per_variable():
+    """Check independently known interpolated values and one NumPy call for all levels of a variable."""
     values = np.array([[0, 10], [10, 30], [20, 50]])
     with patch("epymodelingsuite.utils.quantiles.np.quantile", wraps=np.quantile) as quantile:
         actual = compute_quantiles({"value": values}, ["first", "second"], [0.25, 0.5, 0.75])
@@ -71,6 +78,7 @@ def test_known_quantiles_and_single_call_per_variable():
 
 
 def test_variable_generation_and_scenario_selection():
+    """Check generation/scenario selection, requested variable order and selection before stacking."""
     results, dates = make_results(np.arange(12).reshape(4, 3))
     later, _ = make_results(np.arange(12).reshape(4, 3) + 100)
     results.selected_trajectories[2] = later.selected_trajectories[0]
@@ -91,6 +99,7 @@ def test_variable_generation_and_scenario_selection():
 @pytest.mark.parametrize("ignore_nan", [False, True])
 @pytest.mark.parametrize("dtype", [np.float16, np.float32, np.float64])
 def test_random_interpolation_preserves_scalar_rounding(ignore_nan, dtype):
+    """Require exact scalar-call rounding for float16/float32 as well as float64 with both NaN policies."""
     values = np.random.default_rng(3).normal(size=(5, 4)).astype(dtype)
     values[0, 0] = np.nan
     results, dates = make_results(values)
@@ -102,6 +111,7 @@ def test_random_interpolation_preserves_scalar_rounding(ignore_nan, dtype):
 
 @pytest.mark.parametrize("variables", [None, [], ["missing"], ["data", "missing"]])
 def test_default_dates_and_missing_variables_match(variables):
+    """Preserve upstream integer dates, empty selections and missing-variable fallback/error behavior."""
     results, _ = make_results(np.arange(12).reshape(4, 3))
     kwargs = dict(quantiles=[0.5], variables=variables)
     if variables == ["missing"]:
@@ -116,6 +126,7 @@ def test_default_dates_and_missing_variables_match(variables):
 
 
 def test_empty_and_invalid_inputs():
+    """Check empty projections, missing scenarios, invalid array shapes and mismatched date lengths."""
     results = CalibrationResults(projections={"baseline": []})
     with pytest.raises(IndexError):
         get_projection_quantiles(results, quantiles=[0.5])
@@ -134,6 +145,7 @@ def test_empty_and_invalid_inputs():
 
 @pytest.mark.parametrize("ignore_nan", [False, True])
 def test_simulation_matches_epydemix(ignore_nan):
+    """Compare batched simulation compartment/transition tables exactly with upstream under both NaN policies."""
     dates = pd.date_range("2024-01-06", periods=3, freq="W-SAT")
     trajectories = [
         Trajectory(
