@@ -1,8 +1,7 @@
 """Characterization tests for quantile plots: {single, grid} x {filtered, full, side_by_side}.
 
-These pin down what each drawn axis receives today, so the override refactor can be checked against them.
-Assertions marked ``CURRENT BEHAVIOR`` capture inconsistencies that the refactor fixes on purpose;
-everything else should stay the same.
+These pin down what each drawn axis receives. Assertions marked ``CHANGED`` were updated on purpose by the
+override refactor; ``CURRENT BEHAVIOR`` marks inconsistencies still to be fixed.
 
 Frames are summarized with ``span()`` as (first date, last date, number of dates, location label, e.g. "CA alt").
 """
@@ -11,6 +10,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
+from pydantic import ValidationError
 from quantile_plot_test_utils import (
     PlotCapture,
     make_calibration,
@@ -42,6 +42,10 @@ CAL_FROM_PROJECTION_START = ("2023-12-02", "2024-01-13", 7, "CA")
 PROJ_BASE_HORIZON = ("2023-12-02", "2024-02-03", 10, "CA")  # reference_date + 3 weeks
 SURV_ALL = ("2023-10-07", "2024-01-27", 17, "CA")
 SURV_FROM_PROJECTION_START = ("2023-12-02", "2024-01-27", 9, "CA")
+SURV_FROM_CALIBRATION_START = ("2023-11-04", "2024-01-27", 13, "CA")
+# surveillance_points=8: the last 8 points on or before reference_date, plus the 2 after it
+SURV_LAST_8 = ("2023-11-25", "2024-01-27", 10, "CA")
+CAL_FROM_LAST_8 = ("2023-11-25", "2024-01-13", 8, "CA")
 
 
 def with_location(summary: tuple, label: str) -> tuple:
@@ -105,18 +109,18 @@ class TestSingleDefaultOutputs:
         assert all(panel.output is not None for panel in capture.panels)
 
     def test_filtered(self, out_dict, capture):
-        # CURRENT BEHAVIOR: surveillance_points=8 is counted after the projection start,
-        # so only 7 points on or before reference_date are shown.
+        # CHANGED: surveillance_points=8 counts all observations, not only those after the
+        # projection start (which gave 7 points).
         """The filtered plot shows the last 8 surveillance points and clips the ribbons to the first one."""
         assert capture.summary(f"quantiles_{CA}_filtered") == [
-            panel("California", CAL_FROM_PROJECTION_START, PROJ_BASE_HORIZON, SURV_FROM_PROJECTION_START)
+            panel("California", CAL_FROM_LAST_8, PROJ_BASE_HORIZON, SURV_LAST_8)
         ]
         assert capture.summary(f"quantiles_{NY}_filtered") == [
             panel(
                 "New York",
-                with_location(CAL_FROM_PROJECTION_START, "NY"),
+                with_location(CAL_FROM_LAST_8, "NY"),
                 with_location(PROJ_BASE_HORIZON, "NY"),
-                with_location(SURV_FROM_PROJECTION_START, "NY"),
+                with_location(SURV_LAST_8, "NY"),
             )
         ]
 
@@ -167,17 +171,18 @@ class TestGridDefaultOutputs:
             assert visible_axes(fig) == n_panels
 
     def test_filtered(self, out_dict, capture):
-        # CURRENT BEHAVIOR: Texas has no projection, so it gets no surveillance.
+        # CHANGED: 8 points counted from all observations.
+        # CHANGED: Texas has no projection but still gets surveillance.
         """Grid filtered panels with surveillance_points=8, including calibration-only Texas."""
         assert capture.summary("quantiles_grid_filtered") == [
-            panel("California", CAL_FROM_PROJECTION_START, PROJ_BASE_HORIZON, SURV_FROM_PROJECTION_START),
+            panel("California", CAL_FROM_LAST_8, PROJ_BASE_HORIZON, SURV_LAST_8),
             panel(
                 "New York",
-                with_location(CAL_FROM_PROJECTION_START, "NY"),
+                with_location(CAL_FROM_LAST_8, "NY"),
                 with_location(PROJ_BASE_HORIZON, "NY"),
-                with_location(SURV_FROM_PROJECTION_START, "NY"),
+                with_location(SURV_LAST_8, "NY"),
             ),
-            panel("Texas", with_location(CAL_FULL, "TX"), None, None),
+            panel("Texas", with_location(CAL_FROM_LAST_8, "TX"), None, with_location(SURV_LAST_8, "TX")),
         ]
 
     def test_full(self, out_dict, capture):
@@ -190,7 +195,8 @@ class TestGridDefaultOutputs:
                 with_location(PROJ_BASE_HORIZON, "NY"),
                 with_location(SURV_ALL, "NY"),
             ),
-            panel("Texas", with_location(CAL_FULL, "TX"), None, None),
+            # CHANGED: Texas has no projection but still gets surveillance.
+            panel("Texas", with_location(CAL_FULL, "TX"), None, with_location(SURV_ALL, "TX")),
         ]
 
     def test_side_by_side(self, out_dict, capture):
@@ -210,8 +216,9 @@ class TestGridDefaultOutputs:
                 with_location(PROJ_BASE_HORIZON, "NY"),
                 with_location(SURV_FROM_PROJECTION_START, "NY"),
             ),
-            panel("Texas", with_location(CAL_FULL, "TX"), None, None),
-            panel("Texas", with_location(CAL_FULL, "TX"), None, None),
+            # CHANGED: Texas gets surveillance; without a projection the filtered view starts at the calibration start
+            panel("Texas", with_location(CAL_FULL, "TX"), None, with_location(SURV_ALL, "TX")),
+            panel("Texas", with_location(CAL_FULL, "TX"), None, with_location(SURV_FROM_CALIBRATION_START, "TX")),
         ]
 
     def test_styling(self, out_dict, capture):
@@ -264,8 +271,21 @@ OVERRIDE_FILTERED = panel(
     ("2023-12-16", "2024-01-27", 7, "CA"),
 )
 # full output: surveillance_points=4 (4 on or before reference_date + 2 after)
-# CURRENT BEHAVIOR: horizon_max=6 is capped at the base horizon_max=3.
-OVERRIDE_FULL = panel("California", CAL_FULL, PROJ_BASE_HORIZON, ("2023-12-23", "2024-01-27", 6, "CA"))
+# CHANGED: horizon_max=6 extends past the base horizon_max=3.
+OVERRIDE_FULL = panel(
+    "California", CAL_FULL, ("2023-12-02", "2024-02-24", 13, "CA"), ("2023-12-23", "2024-01-27", 6, "CA")
+)
+# side_by_side output: horizon_max=1; full_panel starts 2023-11-01, filtered_panel keeps 2 points.
+# CHANGED: side_by_side used to ignore the output horizon_max (single and grid) and the panel limits (single).
+OVERRIDE_SIDE_BY_SIDE = [
+    panel("California", CAL_FULL, ("2023-12-02", "2024-01-20", 8, "CA"), SURV_FROM_CALIBRATION_START),
+    panel(
+        "California",
+        ("2024-01-06", "2024-01-13", 2, "CA"),
+        ("2024-01-06", "2024-01-20", 3, "CA"),
+        ("2024-01-06", "2024-01-27", 4, "CA"),
+    ),
+]
 
 
 class TestSingleOverrides:
@@ -279,13 +299,8 @@ class TestSingleOverrides:
         assert capture.summary(f"quantiles_{CA}_full") == [OVERRIDE_FULL]
 
     def test_side_by_side(self, out_dict, capture):
-        # CURRENT BEHAVIOR: single side_by_side ignores output and panel surveillance limits
-        # and the output horizon_max; it only uses the panel xlabel_interval.
         """Output and panel overrides on a single side_by_side plot."""
-        assert capture.summary(f"quantiles_{CA}_side_by_side") == [
-            panel("California", CAL_FULL, PROJ_BASE_HORIZON, SURV_ALL),
-            panel("California", CAL_FROM_PROJECTION_START, PROJ_BASE_HORIZON, SURV_FROM_PROJECTION_START),
-        ]
+        assert capture.summary(f"quantiles_{CA}_side_by_side") == OVERRIDE_SIDE_BY_SIDE
 
     def test_styling(self, out_dict, capture):
         """Output and panel xlabel_interval and the configured colors reach every single-plot panel."""
@@ -307,18 +322,8 @@ class TestGridOverrides:
         assert capture.summary("quantiles_grid_full")[1]["surveillance"] == ("2023-12-23", "2024-01-27", 6, "NY")
 
     def test_side_by_side(self, out_dict, capture):
-        # CURRENT BEHAVIOR: grid side_by_side uses panel limits only; the output surveillance_points=3
-        # and output horizon_max=1 are ignored.
         """Output and panel overrides on a grid side_by_side plot."""
-        assert capture.summary("quantiles_grid_sidebyside")[:2] == [
-            panel("California", CAL_FULL, PROJ_BASE_HORIZON, ("2023-11-04", "2024-01-27", 13, "CA")),
-            panel(
-                "California",
-                ("2024-01-06", "2024-01-13", 2, "CA"),
-                ("2024-01-06", "2024-02-03", 5, "CA"),
-                ("2024-01-06", "2024-01-27", 4, "CA"),
-            ),
-        ]
+        assert capture.summary("quantiles_grid_sidebyside")[:2] == OVERRIDE_SIDE_BY_SIDE
 
     def test_styling(self, out_dict, capture):
         """Output and panel xlabel_interval and the configured colors reach every grid panel."""
@@ -342,13 +347,13 @@ class TestSurveillanceSourceSelection:
         ]
         return make_plots_config(single=True, grid=True, outputs=outputs)
 
-    def test_single_uses_first_loaded_source(self, capture, sources, config):
-        """Which source single plots draw when every output selects "alt"."""
+    def test_single_uses_selected_source(self, capture, sources, config):
+        """Single plots draw the selected "alt" source."""
         run_generators([make_calibration(CA)], config, sources)
         single_panels = [drawn for drawn in capture.panels if not drawn.output.startswith("quantiles_grid")]
         assert len(single_panels) == 4
-        # CURRENT BEHAVIOR: single plots ignore surveillance_source and use "hosp" (reported as "CA").
-        assert {drawn.surveillance[3] for drawn in single_panels} == {"CA"}
+        # CHANGED: single plots used the first loaded source ("hosp", reported as "CA").
+        assert {drawn.surveillance[3] for drawn in single_panels} == {"CA alt"}
 
     def test_grid_uses_selected_source(self, capture, sources, config):
         """Grid plots draw the selected "alt" source."""
@@ -369,13 +374,11 @@ class TestHiddenSurveillance:
         ]
         return make_plots_config(single=True, grid=True, outputs=outputs)
 
-    def test_single_filtered_clipped_by_hidden_surveillance(self, capture, hosp_only, config):
-        """Whether hidden surveillance clips the ribbons of a single filtered plot."""
+    def test_single_filtered_not_clipped(self, capture, hosp_only, config):
+        """Hidden surveillance does not clip the ribbons of a single filtered plot."""
         run_generators([make_calibration(CA)], config, hosp_only)
-        # CURRENT BEHAVIOR: the ribbons are clipped to surveillance that is not shown.
-        assert capture.summary(f"quantiles_{CA}_filtered") == [
-            panel("California", CAL_FROM_PROJECTION_START, PROJ_BASE_HORIZON, None)
-        ]
+        # CHANGED: the ribbons were clipped to surveillance that is not shown.
+        assert capture.summary(f"quantiles_{CA}_filtered") == [panel("California", CAL_FULL, PROJ_BASE_HORIZON, None)]
 
     def test_grid_filtered_not_clipped(self, capture, hosp_only, config):
         """Hidden surveillance does not clip the grid filtered ribbons; the full grid still shows it."""
@@ -387,28 +390,44 @@ class TestHiddenSurveillance:
 class TestSideBySideAllCalibrationClipped:
     """filtered_panel starts after the calibration ends, so the filtered panel should have no calibration."""
 
-    def test_grid_redraws_clipped_calibration(self, capture, hosp_only):
-        """What the filtered panel draws when its start date clips away all calibration."""
+    def test_clipped_calibration_stays_empty(self, capture, hosp_only):
+        """A filtered panel whose start date clips away all calibration draws no calibration."""
         outputs = [
             QuantilesOutputConfig(
                 type="side_by_side", show_calibration=True, filtered_panel={"surveillance_start_date": "2024-01-20"}
             )
         ]
-        run_generators([make_calibration(CA)], make_plots_config(single=False, grid=True, outputs=outputs), hosp_only)
-        # CURRENT BEHAVIOR: the fully clipped calibration comes back as the full calibration.
-        assert capture.summary("quantiles_grid_sidebyside")[1] == panel(
-            "California", CAL_FULL, ("2024-01-20", "2024-02-03", 3, "CA"), ("2024-01-20", "2024-01-27", 2, "CA")
-        )
+        run_generators([make_calibration(CA)], make_plots_config(single=True, grid=True, outputs=outputs), hosp_only)
+        # CHANGED: the fully clipped calibration used to come back as the full calibration.
+        expected = panel("California", (), ("2024-01-20", "2024-02-03", 3, "CA"), ("2024-01-20", "2024-01-27", 2, "CA"))
+        assert capture.summary(f"quantiles_{CA}_side_by_side")[1] == expected
+        assert capture.summary("quantiles_grid_sidebyside")[1] == expected
+        # nothing calibration-colored is drawn on the filtered axis
+        filtered_axis = capture.panels_for("quantiles_grid_sidebyside")[1].axis
+        assert len(filtered_axis.collections) == 3  # projection CrI + IQR ribbons, surveillance scatter
+
+
+class TestSideBySideOutputLimits:
+    """Output-level surveillance limits apply to side_by_side panels that set none of their own."""
+
+    def test_output_limit_inherited_by_both_panels(self, capture, hosp_only):
+        """Output surveillance_points reaches both side_by_side panels, in single and grid plots."""
+        outputs = [QuantilesOutputConfig(type="side_by_side", surveillance_points=3)]
+        run_generators([make_calibration(CA)], make_plots_config(single=True, grid=True, outputs=outputs), hosp_only)
+        last_3 = ("2023-12-30", "2024-01-27", 5, "CA")
+        for name in (f"quantiles_{CA}_side_by_side", "quantiles_grid_sidebyside"):
+            assert capture.summary(name) == [
+                panel("California", None, PROJ_BASE_HORIZON, last_3),
+                panel("California", None, ("2023-12-30", "2024-02-03", 6, "CA"), last_3),
+            ]
 
 
 class TestColorBool:
     @pytest.mark.parametrize("layer", ["calibration", "projection"])
-    def test_false_skips_every_plot(self, capture, hosp_only, layer):
-        """What calibration: false / projection: false in the styling section do."""
-        outputs = [QuantilesOutputConfig(type="full", show_calibration=True, show_projection=layer != "projection")]
-        config = make_plots_config(single=True, grid=True, outputs=outputs, **{layer: False})
-        # CURRENT BEHAVIOR: reading `.color` on False raises, and the plot is silently skipped.
-        assert run_generators([make_calibration(CA)], config, hosp_only) == {}
+    def test_false_fails_validation(self, layer):
+        """calibration: false / projection: false fail validation with a migration hint."""
+        with pytest.raises(ValidationError, match=f"outputs\\[\\].show_{layer}: false"):
+            make_plots_config(single=True, grid=True, **{layer: False})
 
 
 class TestGenerationNotice:
