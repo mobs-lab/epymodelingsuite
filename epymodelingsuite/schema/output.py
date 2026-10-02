@@ -5,6 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from ..utils.trajectory_samples import SAMPLE_SELECTORS
 from .common import Meta
 
 logger = logging.getLogger(__name__)
@@ -283,6 +284,27 @@ class FlusightHospitalizations(BaseModel):
     )
 
 
+class FlusightSamples(BaseModel):
+    """Specifications for trajectory sample outputs ('sample' output type)."""
+
+    n_samples: int = Field(
+        100,
+        gt=0,
+        description="Samples per location and target. If fewer complete trajectories exist, all are submitted.",
+    )
+    method: str = Field("random", description="Sample selection method, a key of SAMPLE_SELECTORS.")
+    seed: int | None = Field(None, description="Seed for sample selection. Defaults to each model's seed.")
+
+    @field_validator("method")
+    @classmethod
+    def validate_method(cls, v: str) -> str:
+        """Ensure the selection method exists."""
+        if v not in SAMPLE_SELECTORS:
+            msg = f"Unknown sample selection method '{v}'. Available: {sorted(SAMPLE_SELECTORS)}"
+            raise ValueError(msg)
+        return v
+
+
 class FlusightForecastOutput(BaseModel):
     """Specifications for outputs in flusight forecast hub format."""
 
@@ -306,7 +328,19 @@ class FlusightForecastOutput(BaseModel):
         description="Desired quantiles for hospitalizations and prop_ed expressed as floats.",
         validate_default=True,
     )
+    samples: FlusightSamples | None = Field(
+        None,
+        description="Add trajectory samples for the enabled hospitalization and prop_ed targets. Omit to disable.",
+    )
     metrocast: bool | None = Field(False, description="Treat outputs as metrocast.")
+
+    @model_validator(mode="after")
+    def check_samples(self) -> "FlusightForecastOutput":
+        """Metrocast has no sample targets."""
+        if self.samples is not None and self.metrocast:
+            msg = "Trajectory samples are not supported for metrocast outputs."
+            raise ValueError(msg)
+        return self
 
 
 class QuantilesOutput(BaseModel):
