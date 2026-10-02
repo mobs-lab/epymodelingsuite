@@ -16,6 +16,7 @@ from ..schema.output import (
     ObservedValuesConfig,
     OutputConfig,
     OutputObject,
+    QuantilesOutput,
     TabularOutputTypeEnum,
     get_metrocast_horizons,
     get_metrocast_quantiles,
@@ -26,6 +27,7 @@ from ..utils.location import (
     get_flusight_population,
     parse_population_name,
 )
+from ..utils.quantiles import compute_quantiles, get_calibration_quantiles, get_projection_quantiles
 from ..visualization.generators import (
     generate_categorical_plots,
     generate_posterior_grid_plot,
@@ -977,8 +979,14 @@ def generate_simulation_outputs(
         for simulation in simulations:
             # Compartments
             if output.quantiles.compartments:
-                quanc_df = simulation.results.get_quantiles_compartments(
-                    quantiles=output.quantiles.selections, ignore_nan=True
+                available = simulation.results.trajectories[0].compartments if simulation.results.trajectories else {}
+                requested = output.quantiles.compartments
+                variables = requested if isinstance(requested, list) and all(v in available for v in requested) else None
+                quanc_df = compute_quantiles(
+                    simulation.results.get_stacked_compartments(variables=variables),
+                    simulation.results.dates,
+                    output.quantiles.selections,
+                    ignore_nan=True,
                 )
                 if hasattr(output.quantiles.compartments, "__len__"):
                     try:
@@ -996,8 +1004,14 @@ def generate_simulation_outputs(
 
             # Transitions
             if output.quantiles.transitions:
-                quant_df = simulation.results.get_quantiles_transitions(
-                    quantiles=output.quantiles.selections, ignore_nan=True
+                available = simulation.results.trajectories[0].transitions if simulation.results.trajectories else {}
+                requested = output.quantiles.transitions
+                variables = requested if isinstance(requested, list) and all(v in available for v in requested) else None
+                quant_df = compute_quantiles(
+                    simulation.results.get_stacked_transitions(variables=variables),
+                    simulation.results.dates,
+                    output.quantiles.selections,
+                    ignore_nan=True,
                 )
                 if hasattr(output.quantiles.transitions, "__len__"):
                     try:
@@ -1150,6 +1164,23 @@ def generate_simulation_outputs(
     return out_dict
 
 
+def _projection_quantile_variables(projections: list[dict], config: QuantilesOutput) -> list[str] | None:
+    """Select before stacking; keep the existing all-column fallback for missing names."""
+    if not projections:
+        return None
+    numeric_names = [name for name, values in projections[0].items() if np.issubdtype(np.asarray(values).dtype, np.number)]
+    selections = (config.compartments, config.transitions)
+    if any(isinstance(selected, list) and any(name not in numeric_names for name in selected) for selected in selections):
+        return None
+    return [
+        name
+        for name in numeric_names
+        if (config.compartments is True and "_to_" not in name)
+        or (config.transitions is True and "_to_" in name)
+        or any(isinstance(selected, list) and name in selected for selected in selections)
+    ] or ["date"]  # An empty variables list means "all variables" in epydemix.
+
+
 @register_output_generator({"calibrations", "output_config"})
 def generate_calibration_outputs(
     *, calibrations: list[CalibrationOutput], output_config: OutputConfig, **_
@@ -1196,7 +1227,8 @@ def generate_calibration_outputs(
                         try:
                             cal_trajs = calibration.results.get_selected_trajectories(generation)
                             cal_dates = cal_trajs[0].get("date") if cal_trajs else None
-                            quancal_df = calibration.results.get_calibration_quantiles(
+                            quancal_df = get_calibration_quantiles(
+                                calibration.results,
                                 quantiles=output.quantiles.selections,
                                 generation=generation,
                                 dates=cal_dates,
@@ -1216,7 +1248,8 @@ def generate_calibration_outputs(
                     try:
                         cal_trajs = calibration.results.get_selected_trajectories()
                         cal_dates = cal_trajs[0].get("date") if cal_trajs else None
-                        quancal_df = calibration.results.get_calibration_quantiles(
+                        quancal_df = get_calibration_quantiles(
+                            calibration.results,
                             quantiles=output.quantiles.selections,
                             dates=cal_dates,
                             variables=["data"],
@@ -1232,12 +1265,16 @@ def generate_calibration_outputs(
                         )
 
             # Projection quantiles
+            if not output.quantiles.compartments and not output.quantiles.transitions:
+                continue
             try:
                 proj_sims = calibration.results.projections.get("baseline", [])
                 proj_dates = proj_sims[0].get("date") if proj_sims else None
-                quan_df = calibration.results.get_projection_quantiles(
+                quan_df = get_projection_quantiles(
+                    calibration.results,
                     quantiles=output.quantiles.selections,
                     dates=proj_dates,
+                    variables=_projection_quantile_variables(proj_sims, output.quantiles),
                     ignore_nan=True,
                 )
             except ValueError:
@@ -1466,7 +1503,8 @@ def generate_calibration_outputs(
                     # FRAGILE: the name 'hospitalizations' is user-supplied in the modelset as the column to look for in the surveillance data.
                     proj_sims = calibration.results.projections.get("baseline", [])
                     proj_dates = proj_sims[0].get("date") if proj_sims else None
-                    quanf_df = calibration.results.get_projection_quantiles(
+                    quanf_df = get_projection_quantiles(
+                        calibration.results,
                         quantiles=flusight_quantiles,
                         dates=proj_dates,
                         variables=["hospitalizations"],
@@ -1502,7 +1540,8 @@ def generate_calibration_outputs(
                     try:
                         cal_trajs = calibration.results.get_selected_trajectories()
                         cal_dates = cal_trajs[0].get("date") if cal_trajs else None
-                        quancalflu_df = calibration.results.get_calibration_quantiles(
+                        quancalflu_df = get_calibration_quantiles(
+                            calibration.results,
                             quantiles=flusight_quantiles,
                             dates=cal_dates,
                             variables=["data"],
@@ -1525,7 +1564,8 @@ def generate_calibration_outputs(
                     try:
                         proj_sims = calibration.results.projections.get("baseline", [])
                         proj_dates = proj_sims[0].get("date") if proj_sims else None
-                        quanproj_df = calibration.results.get_projection_quantiles(
+                        quanproj_df = get_projection_quantiles(
+                            calibration.results,
                             quantiles=flusight_quantiles,
                             dates=proj_dates,
                             variables=[transition_name],
@@ -1662,10 +1702,11 @@ def generate_calibration_outputs(
 
             # Fitting window
             try:
-                trajc = calibration.results.get_calibration_trajectories()
-                if trajc and "date" in trajc and len(trajc["date"]) > 0:
-                    meta_dict["fitting_start"].append(str(sorted(trajc["date"][0])[0].date()))
-                    meta_dict["fitting_end"].append(str(sorted(trajc["date"][0])[-1].date()))
+                selected = calibration.results.get_selected_trajectories()
+                dates = np.asarray(selected[0].get("date", [])) if selected else None
+                if dates is not None and len(dates) > 0:
+                    meta_dict["fitting_start"].append(str(sorted(dates)[0].date()))
+                    meta_dict["fitting_end"].append(str(sorted(dates)[-1].date()))
                 else:
                     meta_dict["fitting_start"].append(None)
                     meta_dict["fitting_end"].append(None)
@@ -1676,10 +1717,11 @@ def generate_calibration_outputs(
 
             # Projection window
             try:
-                trajp = calibration.results.get_projection_trajectories()
-                if trajp and "date" in trajp and len(trajp["date"]) > 0:
-                    meta_dict["start_date"].append(str(sorted(trajp["date"][0])[0].date()))
-                    meta_dict["end_date"].append(str(sorted(trajp["date"][0])[-1].date()))
+                projections = calibration.results.projections.get("baseline", [])
+                dates = np.asarray(projections[0].get("date", [])) if projections else None
+                if dates is not None and len(dates) > 0:
+                    meta_dict["start_date"].append(str(sorted(dates)[0].date()))
+                    meta_dict["end_date"].append(str(sorted(dates)[-1].date()))
                 else:
                     meta_dict["start_date"].append(None)
                     meta_dict["end_date"].append(None)

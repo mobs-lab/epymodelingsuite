@@ -3,8 +3,10 @@
 from datetime import date
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pandas as pd
 import pytest
+from epydemix.calibration import CalibrationResults
 
 from epymodelingsuite.schema.calibration import CalibrationStrategy
 from epymodelingsuite.schema.dispatcher import CalibrationOutput
@@ -15,13 +17,26 @@ from epymodelingsuite.visualization.generators import (
     _clip_to_horizon,
     _clip_to_start,
     _format_plot_notes,
-    _select_surveillance,
     _rename_value_column,
+    _select_surveillance,
     generate_quantile_grid_plot,
     generate_single_location_posterior_plots,
     generate_single_quantile_plots,
     get_locations_to_plot,
 )
+
+
+def _results_for_dates(calibration_frame=None, projection_frame=None):
+    """Real trajectories with the dates needed by the surveillance/layout tests."""
+    selected = {}
+    projections = {}
+    if calibration_frame is not None:
+        dates = calibration_frame["date"].unique()
+        selected[0] = [{"date": dates, "data": np.full(len(dates), 100.0)}]
+    if projection_frame is not None:
+        dates = projection_frame["date"].unique()
+        projections["baseline"] = [{"date": dates, "hospitalizations": np.full(len(dates), 100.0)}]
+    return CalibrationResults(selected_trajectories=selected, projections=projections)
 
 
 class TestSurveillanceDataFiltering:
@@ -71,12 +86,7 @@ class TestSurveillanceDataFiltering:
         calibration = MagicMock(spec=CalibrationOutput)
         calibration.population = "US-CA"
 
-        # Mock the results object with get_calibration_quantiles method
-        calibration.results = MagicMock()
-        calibration.results.get_calibration_quantiles.return_value = calibration_quantiles
-
-        # Mock projection quantiles (this has the full timespan)
-        calibration.results.get_projection_quantiles.return_value = projection_quantiles
+        calibration.results = _results_for_dates(calibration_quantiles, projection_quantiles)
 
         return calibration
 
@@ -162,9 +172,7 @@ class TestSurveillanceDataFiltering:
         # Create calibration output with no calibration quantiles
         calibration = MagicMock(spec=CalibrationOutput)
         calibration.population = "US-CA"
-        calibration.results = MagicMock()
-        calibration.results.get_calibration_quantiles.return_value = None
-        calibration.results.get_projection_quantiles.return_value = None
+        calibration.results = _results_for_dates()
 
         out_dict = {}
 
@@ -210,9 +218,7 @@ class TestSurveillanceDataFiltering:
         # Create calibration output with only calibration quantiles (no projection)
         calibration = MagicMock(spec=CalibrationOutput)
         calibration.population = "US-CA"
-        calibration.results = MagicMock()
-        calibration.results.get_calibration_quantiles.return_value = calibration_quantiles
-        calibration.results.get_projection_quantiles.return_value = None
+        calibration.results = _results_for_dates(calibration_quantiles)
 
         out_dict = {}
 
@@ -683,10 +689,8 @@ def _make_mock_calibration(population: str) -> MagicMock:
     calibration = MagicMock(spec=CalibrationOutput)
     calibration.population = population
     calibration.calibration_strategy = None
-    calibration.results = MagicMock()
-    calibration.results.get_calibration_quantiles.return_value = quantiles
-    calibration.results.get_projection_quantiles.return_value = quantiles
-    calibration.results.get_posterior_distribution.return_value = pd.DataFrame({"R0": [1.1, 1.2, 1.3]})
+    calibration.results = _results_for_dates(quantiles, quantiles)
+    calibration.results.posterior_distributions = {0: pd.DataFrame({"R0": [1.1, 1.2, 1.3]})}
     return calibration
 
 
