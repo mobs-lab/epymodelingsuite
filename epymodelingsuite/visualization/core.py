@@ -441,6 +441,10 @@ def plot_calibration_projection(  # noqa: PLR0913
     ValueError
         If both calibration_quantiles and projection_quantiles are None.
 
+    Notes
+    -----
+    Empty DataFrames (e.g. every row clipped away) are accepted and draw nothing.
+
     Examples
     --------
     >>> # Get quantile data from CalibrationResults
@@ -493,7 +497,7 @@ def plot_calibration_projection(  # noqa: PLR0913
     projection_legend_info = []
     calibration_legend_info = []
 
-    if projection_quantiles is not None:
+    if projection_quantiles is not None and not projection_quantiles.empty:
         plot_quantiles(
             df_quantiles=projection_quantiles,
             value_col=value_col,
@@ -514,7 +518,7 @@ def plot_calibration_projection(  # noqa: PLR0913
             legend.remove()
 
     # Plot calibration
-    if calibration_quantiles is not None:
+    if calibration_quantiles is not None and not calibration_quantiles.empty:
         plot_quantiles(
             df_quantiles=calibration_quantiles,
             value_col=value_col,
@@ -534,7 +538,7 @@ def plot_calibration_projection(  # noqa: PLR0913
             legend.remove()
 
     # Add surveillance overlay (on top with high zorder)
-    if df_surveillance is not None:
+    if df_surveillance is not None and not df_surveillance.empty:
         plot_surveillance_scatter(
             df_surveillance=df_surveillance,
             date_col=surveillance_date_col,
@@ -621,6 +625,7 @@ def plot_calibration_projection_sidebyside(  # noqa: PLR0913
         Pre-computed quantiles for calibration period (shown in full/left panel).
     calibration_quantiles_filtered : pd.DataFrame | None, optional
         Calibration quantiles for filtered/right panel. If None, uses calibration_quantiles.
+        An empty DataFrame draws no calibration in the filtered panel.
     projection_quantiles_full : pd.DataFrame | None, optional
         Projection quantiles for left panel (full range, horizon_max only).
     projection_quantiles_filtered : pd.DataFrame | None, optional

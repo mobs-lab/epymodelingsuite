@@ -3,6 +3,7 @@
 from datetime import date
 
 import pytest
+from pydantic import ValidationError
 
 from epymodelingsuite.schema.output import (
     CategoricalPlotConfig,
@@ -12,6 +13,7 @@ from epymodelingsuite.schema.output import (
     OutputConfiguration,
     OutputOptions,
     PropEDStrategyEnum,
+    QuantilesPlotConfig,
 )
 
 
@@ -242,3 +244,25 @@ class TestObservedValuesConfigLocationFormat:
                 location_column="location",
                 location_format="invalid_format",
             )
+
+
+class TestQuantilesStylingRejectsBool:
+    """plots.quantiles.calibration / .projection only hold colors."""
+
+    @pytest.mark.parametrize("field", ["calibration", "projection"])
+    @pytest.mark.parametrize("value", [True, False])
+    def test_bool_rejected_with_migration_hint(self, field, value):
+        """true/false fail validation, and the message explains how to migrate."""
+        with pytest.raises(ValidationError) as exc_info:
+            QuantilesPlotConfig(**{field: value})
+        message = str(exc_info.value)
+        assert f"plots.quantiles.{field} no longer accepts true/false" in message
+        assert "remove the key or use {}" in message
+        assert f"outputs[].show_{field}: false" in message
+
+    def test_color_dict_and_default(self):
+        """A color dict or {} is accepted; missing colors use the defaults."""
+        config = QuantilesPlotConfig(calibration={"color": "red"}, projection={})
+        assert config.calibration.color == "red"
+        assert config.projection.color == "C1"
+        assert QuantilesPlotConfig().calibration.color == "C0"
