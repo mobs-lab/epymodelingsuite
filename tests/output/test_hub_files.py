@@ -11,7 +11,7 @@ import pytest
 
 from epymodelingsuite.output import hub_files
 from epymodelingsuite.output.tabular import format_tabular_object
-from epymodelingsuite.output.trajectory_samples import make_sample_rows
+from epymodelingsuite.output.trajectory_samples import trajectories_to_sample_rows
 from epymodelingsuite.schema.output import TabularOutputTypeEnum
 
 HORIZONS = [-1, 0, 1, 2, 3]
@@ -46,7 +46,7 @@ def _quantile_rows() -> pd.DataFrame:
 
 def test_hub_parquet_matches_flusight_example_schema():
     """Test that hub parquet bytes use the column types of the FluSight example submission."""
-    samples = make_sample_rows(
+    samples = trajectories_to_sample_rows(
         np.ones((2, 5)), HORIZONS, date(2026, 10, 10), "25", "wk inc flu hosp", "MA", integer=True
     )
     original = pd.concat([_quantile_rows(), samples], ignore_index=True)
@@ -68,14 +68,16 @@ class TestCombineSubmissions:
 
     def test_concatenates_hosp_and_ed(self):
         """Test that hosp and ED tables are concatenated into one submission."""
-        hosp = make_sample_rows(np.ones((2, 5)), HORIZONS, date(2026, 10, 10), "25", "wk inc flu hosp", "MA")
-        ed = make_sample_rows(np.ones((2, 5)), HORIZONS, date(2026, 10, 10), "25", "wk inc flu prop ed visits", "MA")
+        hosp = trajectories_to_sample_rows(np.ones((2, 5)), HORIZONS, date(2026, 10, 10), "25", "wk inc flu hosp", "MA")
+        ed = trajectories_to_sample_rows(
+            np.ones((2, 5)), HORIZONS, date(2026, 10, 10), "25", "wk inc flu prop ed visits", "MA"
+        )
         combined = hub_files.combine_submissions([hosp, ed])
         assert len(combined) == 20
         assert set(combined.target) == {"wk inc flu hosp", "wk inc flu prop ed visits"}
 
     def test_same_forecast_from_two_tables_raises(self):
         """Test that the same location/target/output_type from two tables raises."""
-        hosp = make_sample_rows(np.ones((2, 5)), HORIZONS, date(2026, 10, 10), "25", "wk inc flu hosp", "MA")
+        hosp = trajectories_to_sample_rows(np.ones((2, 5)), HORIZONS, date(2026, 10, 10), "25", "wk inc flu hosp", "MA")
         with pytest.raises(ValueError, match="more than one table"):
             hub_files.combine_submissions([hosp, hosp.copy()])

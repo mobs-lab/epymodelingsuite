@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from ..schema.output import FlusightForecastOutput
 
 
-def select_random(values: np.ndarray, n: int, rng: np.random.Generator) -> np.ndarray:
+def select_random_indices(values: np.ndarray, n: int, rng: np.random.Generator) -> np.ndarray:
     """Select trajectory indices uniformly without replacement.
 
     Parameters
@@ -40,16 +40,18 @@ def select_random(values: np.ndarray, n: int, rng: np.random.Generator) -> np.nd
 # Name -> selector. A selector gets one location's complete trajectories (rows x horizons), the number of
 # samples wanted and a seeded generator, and returns the selected row indices. Register new methods here.
 SAMPLE_SELECTORS: dict[str, Callable[[np.ndarray, int, np.random.Generator], np.ndarray]] = {
-    "random": select_random,
+    "random": select_random_indices,
 }
 
 
-def select_samples(values: np.ndarray, n: int, method: str = "random", seed: int | None = None) -> np.ndarray:
+def select_trajectory_indices(
+    values: np.ndarray, n: int, method: str = "random", seed: int | None = None
+) -> np.ndarray:
     """
-    Select up to `n` trajectories to submit as samples.
+    Select row indices of up to `n` complete trajectories.
 
     Trajectories with a NaN in any horizon can't be submitted and are never selected. If fewer than `n`
-    complete trajectories remain, all of them are returned (no resampling).
+    complete trajectories remain, return all their indices without resampling.
 
     Parameters
     ----------
@@ -78,7 +80,7 @@ def select_samples(values: np.ndarray, n: int, method: str = "random", seed: int
     return complete[chosen]
 
 
-def make_sample_rows(  # noqa: PLR0913
+def trajectories_to_sample_rows(  # noqa: PLR0913
     values: np.ndarray,
     horizons: list[int],
     reference_date: date,
@@ -90,7 +92,10 @@ def make_sample_rows(  # noqa: PLR0913
     upper: float | None = None,
 ) -> pd.DataFrame:
     """
-    Build hub rows for selected sample trajectories.
+    Convert selected trajectories into a hub-format sample table.
+
+    Each trajectory becomes one row per horizon, sharing a sample id across
+    those rows. Values are clipped and optionally rounded for the target.
 
     Parameters
     ----------
@@ -171,13 +176,17 @@ def _build_horizon_matrix(
     return out
 
 
-def make_flusight_samples(
+def build_flusight_trajectory_samples(
     calibrations: list["CalibrationOutput"],
     flusight_format: "FlusightForecastOutput",
     rescaling_factors: pd.DataFrame,
 ) -> tuple[list[pd.DataFrame], list[str]]:
     """
-    Create FluSight trajectory sample rows for the enabled hospitalization and prop ED targets.
+    Build FluSight trajectory sample tables from calibration results.
+
+    For each location and enabled target, align projections to weekly horizons,
+    select trajectories with ``select_trajectory_indices``, and convert them to
+    rows with ``trajectories_to_sample_rows``.
 
     Hospitalization samples come from the 'hospitalizations' projections. Prop ED samples come from the
     `transition_name` projections ('transition' strategy), or are the hospitalization trajectories times the
@@ -237,12 +246,12 @@ def make_flusight_samples(
         try:
             if flusight_format.hospitalizations or (prop_ed and prop_ed.strategy != "transition"):
                 hosp = _build_horizon_matrix(traj["date"], traj["hospitalizations"], ref, horizons)
-                hosp = hosp[select_samples(hosp, cfg.n_samples, cfg.method, seed)]
+                hosp = hosp[select_trajectory_indices(hosp, cfg.n_samples, cfg.method, seed)]
             if flusight_format.hospitalizations:
                 per_target.append((flusight_format.hospitalizations.target, hosp, {"integer": True}))
             if prop_ed and prop_ed.strategy == "transition":
                 ed = _build_horizon_matrix(traj["date"], traj[prop_ed.transition_name], ref, horizons)
-                ed = ed[select_samples(ed, cfg.n_samples, cfg.method, seed)]
+                ed = ed[select_trajectory_indices(ed, cfg.n_samples, cfg.method, seed)]
                 per_target.append((prop_ed.target, ed, {"upper": 1}))
             elif prop_ed and location in factors:
                 per_target.append((prop_ed.target, hosp * factors[location], {"upper": 1}))
@@ -260,5 +269,5 @@ def make_flusight_samples(
                     f"OUTPUT GENERATOR: only {len(values)} complete trajectories for '{target}' samples in {location} "
                     f"(requested {cfg.n_samples})."
                 )
-            rows.append(make_sample_rows(values, horizons, ref, location, target, id_prefix, **options))
+            rows.append(trajectories_to_sample_rows(values, horizons, ref, location, target, id_prefix, **options))
     return rows, warns
