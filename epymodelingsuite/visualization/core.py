@@ -1140,13 +1140,13 @@ def plot_posterior_histogram_grid(
     figsize: tuple[float, float] | None = None,
     start_date_reference: str | None = None,
 ) -> tuple[plt.Figure, np.ndarray]:
-    """
-    Create grid of posterior histograms (rows=locations, cols=parameters).
+    """Create grid of posterior histograms (rows=locations, cols=parameters).
 
     Parameters
     ----------
-    location_posteriors : dict[str, pd.DataFrame]
-        Mapping of location names to their posterior DataFrames.
+    location_posteriors : mapping[str, pd.DataFrame]
+        Mapping of locations to posterior frames; file-backed mappings may load on access.
+        Each frame is released before loading the next location.
     parameters : list of str
         Parameter names to plot (one per column).
     bins : int
@@ -1175,7 +1175,6 @@ def plot_posterior_histogram_grid(
     ...     bins=30,
     ... )
     >>> fig.savefig("posteriors_grid.png")
-
     """
     locations = list(location_posteriors.keys())
     n_rows = len(locations)
@@ -1212,6 +1211,8 @@ def plot_posterior_histogram_grid(
                 ax.set_title(param)
             else:
                 ax.set_title("")
+
+        del df_post  # Permit file-backed mappings to release this location before loading the next.
 
     plt.tight_layout()
 

@@ -961,13 +961,17 @@ def generate_simulation_outputs(
     output_config : OutputConfig
         Enabled output types, formatting and plot settings.
     **_ : dict
-        Additional dispatcher arguments, ignored.
+        Internal streaming options: _sink output sink. Other dispatcher arguments are ignored.
 
     Returns
     -------
     dict[str, list[OutputObject]]
         Logical output names mapped to configured DataFrame, bytes or figure objects; an internal sink may stage them
         instead.
+
+    Notes
+    -----
+    Outputs are accumulated in memory unless an internal staging sink is supplied.
     """
     logger.info("OUTPUT GENERATOR: dispatched for simulation")
     output = output_config.output
@@ -1119,7 +1123,7 @@ def generate_simulation_outputs(
         logger.warning(warning)
 
     logger.info("Formatting tabular outputs")
-    out_dict = {}
+    out_dict = _.get("_sink", {})
     if not quantiles_compartments.empty:
         qc_name = "quantiles_compartments"
         qc_objects = [
@@ -1174,7 +1178,8 @@ def generate_calibration_outputs(
     output_config : OutputConfig
         Enabled output types, formatting and plot settings.
     **_ : dict
-        Additional dispatcher arguments, ignored.
+        Internal streaming options: _sink output sink, _filtered flag, _prepared shared quantiles and _plot_data keyed
+        by input identity. Other dispatcher arguments are ignored.
 
     Returns
     -------
@@ -1182,11 +1187,11 @@ def generate_calibration_outputs(
         Logical output names mapped to configured DataFrame, bytes or figure objects; an internal sink may stage them
         instead.
 
-
     Notes
     -----
-    Failed projections are filtered in place.
-    Compatible quantile requests and surveillance reads are shared within this invocation.
+    Outputs are accumulated in memory unless an internal staging sink is supplied.
+    Failed projections are filtered in place unless _filtered is True. Compatible
+    quantile requests and surveillance reads are shared within this invocation.
     """
     logger.info("OUTPUT GENERATOR: dispatched for calibration")
     output = output_config.output
@@ -1204,10 +1209,11 @@ def generate_calibration_outputs(
     projection_parameters_long_list: list[pd.DataFrame] = []
 
     # Filter out failed projections
-    for calibration in calibrations:
-        calibration.results = filter_failed_projections(calibration.results)
+    if not _.get("_filtered", False):
+        for calibration in calibrations:
+            calibration.results = filter_failed_projections(calibration.results)
 
-    prepared = prepare_shared_quantiles(calibrations, output)
+    prepared = _.get("_prepared") or prepare_shared_quantiles(calibrations, output)
 
     ### Quantiles
     if output.quantiles:
@@ -1771,7 +1777,7 @@ def generate_calibration_outputs(
         logger.warning(warning)
 
     logger.info("Formatting tabular outputs")
-    out_dict = {}
+    out_dict = _.get("_sink", {})
     if not quantiles_projection_compartments.empty:
         qc_name = "quantiles_projection_compartments"
         qc_objects = [
@@ -1847,7 +1853,7 @@ def generate_calibration_outputs(
         surveillance_data = _load_surveillance_sources(surveillance_sources, plots_config.quantiles.outputs)
         plot_data = prepare_quantile_plot_data(
             calibrations, plots_config, surveillance_data,
-            quantiles=prepared,
+            quantiles=prepared, prepared_data=_.get("_plot_data"),
         )
         generate_single_quantile_plots(
             calibrations, plots_config, out_dict, surveillance_sources,

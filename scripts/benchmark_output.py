@@ -55,18 +55,17 @@ def run_once(args):
     Parameters
     ----------
     args : argparse.Namespace
-        Parsed workload, source-tree and format options.
+        Parsed workload, source-tree, format and mode options.
 
     Returns
     -------
     dict
         JSON-compatible dependency versions, preparation/output timings, parent call counts, output keys and table hash.
 
-
     Notes
     -----
-    Synthetic input preparation is measured separately from output processing.
-    Instrumentation covers the child process running this workload.
+    Stream-mode input generation is timed inside output processing; return
+    mode prepares inputs beforehand. Instrumentation covers only the parent process.
     """
     sys.path.insert(0, str(args.source_tree.resolve()))
     import matplotlib

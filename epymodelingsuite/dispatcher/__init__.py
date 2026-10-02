@@ -1,5 +1,6 @@
 """Dispatcher module for building, running, and generating outputs from epidemic models."""
 
+from ..output.streaming import OutputWriteError, write_outputs
 from .builder import (
     build_basemodel,
     build_calibration,
@@ -23,6 +24,8 @@ from .runner import (
 )
 
 __all__ = [
+    "OutputWriteError",
+    "write_outputs",
     # Builder functions and utilities
     "build_basemodel",
     "build_calibration",
