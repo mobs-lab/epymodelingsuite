@@ -5,7 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from ..utils.trajectory_samples import SAMPLE_SELECTORS
+from ..output.samples import SAMPLE_SELECTORS
 from .common import Meta
 
 logger = logging.getLogger(__name__)

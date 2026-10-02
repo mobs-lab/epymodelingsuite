@@ -13,7 +13,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .trajectory_samples import HUB_COLUMNS
+from .hub_files import HUB_COLUMNS
 
 TASK_ID_COLUMNS = ["reference_date", "target", "horizon", "location", "target_end_date"]
 DATE_COLUMNS = ["reference_date", "target_end_date"]
