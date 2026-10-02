@@ -1270,6 +1270,78 @@ class TestVaccinationLocationIsolation:
             assert (schedule == expected_daily).all()
 
 
+class TestPreprocessedScenarioSelection:
+    """Selecting one scenario from preprocessed data with a 'scenario' column."""
+
+    @pytest.fixture
+    def scenario_csv(self, tmp_path):
+        base = _two_location_schedule()
+        high = base.assign(**{c: base[c] * 2 for c in ["0-4", "5-17", "18-49", "50-64", "65+"]})
+        df = pd.concat([base.assign(scenario="A"), high.assign(scenario="B")], ignore_index=True)
+        path = tmp_path / "scenarios.csv"
+        df.to_csv(path, index=False)
+        return str(path)
+
+    @staticmethod
+    def _vaccination(path, scenario=None):
+        from epymodelingsuite.schema.basemodel import Vaccination
+
+        return Vaccination(
+            preprocessed_vaccination_data_path=path,
+            scenario=scenario,
+            origin_compartment="S",
+            eligible_compartments=["S"],
+        )
+
+    def test_selected_scenario_reaches_model(self, scenario_csv):
+        from epymodelingsuite.builders.orchestrators import create_model_collection
+        from epymodelingsuite.builders.vaccination import add_vaccination_schedules_from_config
+        from epymodelingsuite.schema.basemodel import Transition
+        from tests.conftest import make_sir_config
+
+        basemodel = make_sir_config(end_date=date(2024, 3, 31))
+        transitions = [Transition(source="S", target="R", type="vaccination", rate=None)]
+        models, _ = create_model_collection(basemodel, ["US-CA", "US-TX"])
+
+        for model, expected_daily in zip(models, [20, 200], strict=True):
+            add_vaccination_schedules_from_config(
+                model, transitions, self._vaccination(scenario_csv, "B"), basemodel.timespan
+            )
+            (schedule,) = next(t.params for t in model.transitions_list if t.kind == "vaccination")
+            assert (schedule == expected_daily).all()
+
+    def test_multiple_scenarios_require_selection(self, scenario_csv):
+        from epymodelingsuite.builders.vaccination import load_preprocessed_vaccination_schedule
+
+        with pytest.raises(ValueError, match="several scenarios"):
+            load_preprocessed_vaccination_schedule(self._vaccination(scenario_csv))
+
+    def test_unknown_scenario_rejected(self, scenario_csv):
+        from epymodelingsuite.builders.vaccination import load_preprocessed_vaccination_schedule
+
+        with pytest.raises(ValueError, match="not found"):
+            load_preprocessed_vaccination_schedule(self._vaccination(scenario_csv, "C"))
+
+    def test_single_scenario_used_without_selection(self, tmp_path):
+        from epymodelingsuite.builders.vaccination import load_preprocessed_vaccination_schedule
+
+        path = tmp_path / "one.csv"
+        _two_location_schedule().assign(scenario="A").to_csv(path, index=False)
+        schedule = load_preprocessed_vaccination_schedule(self._vaccination(str(path)))
+        assert "scenario" not in schedule.columns
+        assert len(schedule) == 2 * 91
+
+
+def test_multi_scenario_file_error_points_to_preprocessing(tmp_path):
+    """A multi-scenario SMH file passed as scenario data explains how to preprocess it."""
+    path = tmp_path / "multi.csv"
+    pd.DataFrame(
+        columns=["Geography", "Age", "Population", "Week_Ending_Sat", "flu.coverage.sc_A", "flu.coverage.sc_B"]
+    ).to_csv(path, index=False)
+    with pytest.raises(ValueError, match="smh_data_to_epydemix"):
+        scenario_to_epydemix(input_filepath=str(path), start_date="2024-09-01", end_date="2024-12-31")
+
+
 class TestGetAgeGroupsFromData:
     """Unit tests for get_age_groups_from_data function."""
 

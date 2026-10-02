@@ -322,9 +322,13 @@ def scenario_to_epydemix(
     required_columns = ["Week_Ending_Sat", "Geography", "Age", "Population", "Coverage"]
     missing_columns = [col for col in required_columns if col not in vaccines.columns]
     if missing_columns:
-        raise ValueError(
-            f"Input data must contain the following columns: {required_columns}. Missing columns: {missing_columns}"
-        )
+        msg = f"Input data must contain the following columns: {required_columns}. Missing columns: {missing_columns}"
+        if "Coverage" in missing_columns and any("sc_" in col for col in vaccines.columns):
+            msg += (
+                ". The file has several scenario columns; scenario_data_path takes a single-scenario file. "
+                "Preprocess it with smh_data_to_epydemix() and use preprocessed_vaccination_data_path with 'scenario'."
+            )
+        raise ValueError(msg)
 
     # Validate Coverage values are within [0, 100]
     invalid_coverage = vaccines.query("Coverage < 0 or Coverage > 100")
