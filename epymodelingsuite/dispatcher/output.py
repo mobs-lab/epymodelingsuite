@@ -14,7 +14,7 @@ from ..output.tabular import (
     format_hub_objects,
     format_tabular_object,
 )
-from ..output.trajectory_samples import make_flusight_samples
+from ..output.trajectory_samples import build_flusight_trajectory_samples
 from ..schema.dispatcher import CalibrationOutput, SimulationOutput
 from ..schema.output import (
     FlusightPropED,
@@ -1607,7 +1607,7 @@ def generate_calibration_outputs(
         # Trajectory samples
         if output.flusight_format.samples:
             logger.info("  - Generating FluSight trajectory samples")
-            sample_rows, sample_warnings = make_flusight_samples(
+            sample_rows, sample_warnings = build_flusight_trajectory_samples(
                 calibrations,
                 output.flusight_format,
                 rescaling_factors if output.flusight_format.prop_ed else pd.DataFrame(),

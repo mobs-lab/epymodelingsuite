@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 
 from epymodelingsuite.output.hub_validation import load_tasks, validate_model_output
-from epymodelingsuite.output.trajectory_samples import make_sample_rows
+from epymodelingsuite.output.trajectory_samples import trajectories_to_sample_rows
 
 FIXTURES = Path(__file__).parent.parent / "fixtures" / "flusight"
 
@@ -45,12 +45,12 @@ def test_csv_round_trip_passes(example, tasks, tmp_path):
 
 
 def test_generated_samples_pass(example, tasks):
-    """Test that samples built by make_sample_rows pass."""
-    # Replace the example's hosp samples with ones built by make_sample_rows
+    """Test that samples built by trajectories_to_sample_rows pass."""
+    # Replace the example's hosp samples with ones built by trajectories_to_sample_rows
     hosp = _is(example, "wk inc flu hosp", "sample")
     locations = example.loc[hosp, "location"].unique()
     generated = [
-        make_sample_rows(
+        trajectories_to_sample_rows(
             np.full((100, 5), 50.0), [-1, 0, 1, 2, 3], "2026-10-10", loc, "wk inc flu hosp", f"{loc}x", integer=True
         )
         for loc in locations
