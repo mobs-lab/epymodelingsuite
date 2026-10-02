@@ -47,7 +47,7 @@ def test_hub_parquet_matches_flusight_example_schema():
     samples = make_sample_rows(
         np.ones((2, 5)), HORIZONS, date(2026, 10, 10), "25", "wk inc flu hosp", "MA", integer=True
     )
-    data = hub_files.hub_parquet_bytes(pd.concat([_quantile_rows(), samples], ignore_index=True))
+    data = hub_files.serialize_hub_parquet(pd.concat([_quantile_rows(), samples], ignore_index=True))
 
     table = pq.read_table(io.BytesIO(data))
     assert {f.name: f.type for f in table.schema} == FLUSIGHT_EXAMPLE_SCHEMA

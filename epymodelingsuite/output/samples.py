@@ -68,7 +68,7 @@ def make_sample_rows(  # noqa: PLR0913
     upper: float | None = None,
 ) -> pd.DataFrame:
     """
-    Hub rows for selected sample trajectories.
+    Build hub rows for selected sample trajectories.
 
     Parameters
     ----------
@@ -113,10 +113,10 @@ def make_sample_rows(  # noqa: PLR0913
     )
 
 
-def _horizon_matrix(
+def _build_horizon_matrix(
     dates_list: list[np.ndarray], values_list: list[np.ndarray], reference_date: date, horizons: list[int]
 ) -> np.ndarray:
-    """Values of each trajectory at the horizons' target dates, shape (trajectories, horizons); NaN where missing."""
+    """Return the values of each trajectory at the horizons' target dates, shape (trajectories, horizons); NaN where missing."""
     target_dates = [pd.Timestamp(reference_date) + pd.Timedelta(weeks=h) for h in horizons]
     out = np.full((len(values_list), len(horizons)), np.nan)
     for i, (dates, values) in enumerate(zip(dates_list, values_list, strict=True)):
@@ -186,11 +186,11 @@ def make_flusight_samples(
         per_target = []
         try:
             if flusight_format.hospitalizations or (prop_ed and prop_ed.strategy != "transition"):
-                hosp = _horizon_matrix(traj["date"], traj["hospitalizations"], ref, horizons)
+                hosp = _build_horizon_matrix(traj["date"], traj["hospitalizations"], ref, horizons)
             if flusight_format.hospitalizations:
                 per_target.append((flusight_format.hospitalizations.target, hosp, {"integer": True}))
             if prop_ed and prop_ed.strategy == "transition":
-                ed = _horizon_matrix(traj["date"], traj[prop_ed.transition_name], ref, horizons)
+                ed = _build_horizon_matrix(traj["date"], traj[prop_ed.transition_name], ref, horizons)
                 per_target.append((prop_ed.target, ed, {"upper": 1}))
             elif prop_ed and location in factors:
                 per_target.append((prop_ed.target, hosp * factors[location], {"upper": 1}))
