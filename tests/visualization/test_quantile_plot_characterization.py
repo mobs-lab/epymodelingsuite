@@ -1,7 +1,7 @@
 """Characterization tests for quantile plots: {single, grid} x {filtered, full, side_by_side}.
 
 These pin down what each drawn axis receives today, so the override refactor can be checked against them.
-Assertions marked ``CURRENT BEHAVIOR`` capture inconsistencies that the refactor fixes on purpose;
+Assertions marked ``TODO: CURRENT BEHAVIOR`` capture inconsistencies that the refactor fixes on purpose;
 everything else should stay the same.
 
 Frames are summarized with ``span()`` as (first date, last date, number of dates, location label, e.g. "CA hosp_aug").
@@ -107,7 +107,7 @@ class TestSingleDefaultOutputs:
         assert all(panel.output is not None for panel in capture.panels)
 
     def test_filtered(self, out_dict, capture):
-        # CURRENT BEHAVIOR: surveillance_points=8 is counted after the projection start,
+        # TODO: CURRENT BEHAVIOR — surveillance_points=8 is counted after the projection start,
         # so only 7 points on or before reference_date are shown.
         """The filtered plot shows the last 8 surveillance points and clips the ribbons to the first one."""
         assert capture.summary(f"quantiles_{CA}_filtered") == [
@@ -171,7 +171,7 @@ class TestGridDefaultOutputs:
             assert visible_axes(fig) == n_panels
 
     def test_filtered(self, out_dict, capture):
-        # CURRENT BEHAVIOR: Texas has no projection, so it gets no surveillance.
+        # TODO: CURRENT BEHAVIOR — Texas has no projection, so it gets no surveillance.
         """Grid filtered panels with surveillance_points=8, including calibration-only Texas."""
         assert capture.summary("quantiles_grid_filtered") == [
             panel("California", CAL_FROM_PROJECTION_START, PROJ_BASE_HORIZON, SURV_FROM_PROJECTION_START),
@@ -271,7 +271,7 @@ OVERRIDE_FILTERED = panel(
     ("2023-12-16", "2024-01-27", 7, "CA"),
 )
 # full output: surveillance_points=4 (4 on or before reference_date + 2 after)
-# CURRENT BEHAVIOR: horizon_max=6 is capped at the base horizon_max=3.
+# TODO: CURRENT BEHAVIOR — horizon_max=6 is capped at the base horizon_max=3.
 OVERRIDE_FULL = panel("California", CAL_FULL, PROJ_BASE_HORIZON, ("2023-12-23", "2024-01-27", 6, "CA"))
 
 
@@ -286,7 +286,7 @@ class TestSingleOverrides:
         assert capture.summary(f"quantiles_{CA}_full") == [OVERRIDE_FULL]
 
     def test_side_by_side(self, out_dict, capture):
-        # CURRENT BEHAVIOR: single side_by_side ignores output and panel surveillance limits
+        # TODO: CURRENT BEHAVIOR — single side_by_side ignores output and panel surveillance limits
         # and the output horizon_max; it only uses the panel xlabel_interval.
         """Output and panel overrides on a single side_by_side plot."""
         assert capture.summary(f"quantiles_{CA}_side_by_side") == [
@@ -314,7 +314,7 @@ class TestGridOverrides:
         assert capture.summary("quantiles_grid_full")[1]["surveillance"] == ("2023-12-23", "2024-01-27", 6, "NY")
 
     def test_side_by_side(self, out_dict, capture):
-        # CURRENT BEHAVIOR: grid side_by_side uses panel limits only; the output surveillance_points=3
+        # TODO: CURRENT BEHAVIOR — grid side_by_side uses panel limits only; the output surveillance_points=3
         # and output horizon_max=1 are ignored.
         """Output and panel overrides on a grid side_by_side plot."""
         assert capture.summary("quantiles_grid_sidebyside")[:2] == [
@@ -356,7 +356,7 @@ class TestSurveillanceSourceSelection:
         run_generators([make_calibration(CA)], config, sources)
         single_panels = [drawn for drawn in capture.panels if not drawn.output.startswith("quantiles_grid")]
         assert len(single_panels) == 4
-        # CURRENT BEHAVIOR: single plots ignore surveillance_source and use "hosp" (reported as "CA").
+        # TODO: CURRENT BEHAVIOR — single plots ignore surveillance_source and use "hosp" (reported as "CA").
         assert {drawn.surveillance[3] for drawn in single_panels} == {"CA"}
 
     def test_grid_uses_selected_source(self, capture, sources, config):
@@ -384,7 +384,7 @@ class TestHiddenSurveillance:
     def test_single_filtered_clipped_by_hidden_surveillance(self, capture, hosp_only, config):
         """Whether hidden surveillance clips the ribbons of a single filtered plot."""
         run_generators([make_calibration(CA)], config, hosp_only)
-        # CURRENT BEHAVIOR: the ribbons are clipped to surveillance that is not shown.
+        # TODO: CURRENT BEHAVIOR — the ribbons are clipped to surveillance that is not shown.
         assert capture.summary(f"quantiles_{CA}_filtered") == [
             panel("California", CAL_FROM_PROJECTION_START, PROJ_BASE_HORIZON, None)
         ]
@@ -407,7 +407,7 @@ class TestSideBySideAllCalibrationClipped:
             )
         ]
         run_generators([make_calibration(CA)], make_plots_config(single=False, grid=True, outputs=outputs), hosp_only)
-        # CURRENT BEHAVIOR: the fully clipped calibration comes back as the full calibration.
+        # TODO: CURRENT BEHAVIOR — the fully clipped calibration comes back as the full calibration.
         assert capture.summary("quantiles_grid_sidebyside")[1] == panel(
             "California", CAL_FULL, ("2024-01-20", "2024-02-03", 3, "CA"), ("2024-01-20", "2024-01-27", 2, "CA")
         )
@@ -419,7 +419,7 @@ class TestColorBool:
         """What calibration: false / projection: false in the styling section do."""
         outputs = [QuantilesOutputConfig(type="full", show_calibration=True, show_projection=layer != "projection")]
         config = make_plots_config(single=True, grid=True, outputs=outputs, **{layer: False})
-        # CURRENT BEHAVIOR: reading `.color` on False raises, and the plot is silently skipped.
+        # TODO: CURRENT BEHAVIOR — reading `.color` on False raises, and the plot is silently skipped.
         assert run_generators([make_calibration(CA)], config, hosp_only) == {}
 
 
@@ -466,7 +466,7 @@ class TestDispatcherFiltersFailedProjections:
         assert len(calibration.results.projections["baseline"]) == 5
         assert calibration.results.projection_parameters["baseline"]["R0"].tolist() == [0.0, 2.0, 3.0, 4.0, 5.0]
         assert len(outputs["projection_parameters_long"][0].data) == 5
-        # CURRENT BEHAVIOR: the plot generators filter again, which resets the count to 0.
+        # TODO: CURRENT BEHAVIOR — the plot generators filter again, which resets the count to 0.
         assert calibration.results._filtered_count == 0
 
 
