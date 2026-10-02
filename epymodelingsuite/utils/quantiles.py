@@ -78,3 +78,57 @@ def get_projection_quantiles(  # noqa: PLR0913 -- match the epydemix public API
     """Use the public trajectory API, retaining scenario and variable selection."""
     trajectories = results.get_projection_trajectories(scenario_id, variables=variables)
     return compute_quantiles(trajectories, dates, quantiles, ignore_nan=ignore_nan)
+
+
+class PreparedQuantiles:
+    """Collect requests before computing; keep only small summaries, never stacks.
+
+    Owned by one output invocation. Identity, generation/scenario, date labels
+    and NaN policy isolate requests. Consumers receive independent frames in
+    their requested level and variable order.
+    """
+
+    def __init__(self):
+        self.requests = {}
+        self.frames = {}
+
+    @staticmethod
+    def _key(results, kind, dates=None, ignore_nan=False, generation=None, scenario_id="baseline", **_):
+        labels = None if dates is None else tuple((type(d), d) for d in dates)
+        return id(results), kind, generation if kind == "calibration" else scenario_id, labels, ignore_nan
+
+    def add(self, results, kind, **kwargs):
+        key = self._key(results, kind, **kwargs)
+        request = self.requests.setdefault(key, {**kwargs, "quantiles": [], "variables": []})
+        request["quantiles"] = list(dict.fromkeys([*request["quantiles"], *kwargs["quantiles"]]))
+        variables = kwargs.get("variables")
+        if not variables or request["variables"] is None:
+            request["variables"] = None
+        else:
+            request["variables"] = list(dict.fromkeys([*request["variables"], *variables]))
+
+    def _get(self, results, kind, **kwargs):
+        key = self._key(results, kind, **kwargs)
+        compute = get_calibration_quantiles if kind == "calibration" else get_projection_quantiles
+        if key not in self.requests:
+            return compute(results, **kwargs)
+        if key not in self.frames:
+            self.frames[key] = compute(results, **self.requests[key])
+        frame = self.frames[key]
+        # Concatenate blocks rather than isin: preserve unsorted/duplicate levels.
+        levels = kwargs["quantiles"]
+        selected = (
+            pd.concat([frame[frame["quantile"] == q] for q in levels], ignore_index=True) if levels else frame.iloc[:0]
+        )
+        columns = ["date", "quantile"]
+        columns.extend(c for c in (kwargs.get("variables") or frame.columns) if c not in columns and c in frame)
+        selected = selected[columns].copy()
+        # The original level scalar types determine pandas' label dtype.
+        selected["quantile"] = pd.Series([q for q in levels for _ in range(len(frame[frame["quantile"] == q]))])
+        return selected
+
+    def calibration(self, results, **kwargs):
+        return self._get(results, "calibration", **kwargs)
+
+    def projection(self, results, **kwargs):
+        return self._get(results, "projection", **kwargs)
