@@ -281,6 +281,11 @@ class TestPreparePanelPlotData:
             "surveillance": ("2024-01-20", "2024-01-27", 2),
         }
 
+    def test_start_date_after_all_surveillance_still_clips_ribbons(self, location_data):
+        # No surveillance is left to show, so the ribbons are clipped to surveillance_start_date instead
+        result = prepared(location_data, "filtered", surveillance_start_date=date(2024, 2, 10), horizon_max=None)
+        assert result == {"calibration": (), "projection": ("2024-02-10", "2024-03-02", 4), "surveillance": ()}
+
     def test_hidden_layers_are_none(self, location_data):
         """Hidden calibration and projection are returned as None."""
         result = prepared(location_data, "full", show_calibration=False, show_projection=False)
