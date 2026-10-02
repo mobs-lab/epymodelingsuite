@@ -48,10 +48,26 @@ SURV_FROM_PROJECTION_START = ("2023-12-02", "2024-01-27", 9, None)
 
 
 def frame_with_location(summary: tuple, label: str) -> tuple:
+    """Return a new frame summary with its location field replaced by ``label``.
+
+    ``summary`` is ``(first_date, last_date, unique_date_count, location)``.
+    For example, ``frame_with_location(CALIB_FULL, "CA")`` returns
+    ``("2023-11-04", "2024-01-13", 11, "CA")`` while keeping the shared template unchanged.
+    """
     return (*summary[:3], label)
 
 
-def make_panel_summary(title, calibration, projection, surveillance):
+def make_expected_panel_summary(title, calibration, projection, surveillance):
+    """Build the expected dictionary for one drawn axis in a plot assertion.
+
+    ``title`` is the expected panel title. Each data argument is a frame-summary
+    tuple ``(first_date, last_date, unique_date_count, location)``, or ``None``
+    when that layer is absent.
+
+    The dictionary groups these already-summarized values under the keys
+    ``title``, ``calibration``, ``projection`` and ``surveillance`` for comparison
+    with one item from ``PlotCapture.summarize_output()``.
+    """
     return {"title": title, "calibration": calibration, "projection": projection, "surveillance": surveillance}
 
 
@@ -112,7 +128,7 @@ class TestSingleDefaultOutputs:
         # so only 7 points on or before reference_date are shown.
         """The filtered plot shows the last 8 surveillance points and clips the ribbons to the first one."""
         assert capture.summarize_output(f"quantiles_{CA}_filtered") == [
-            make_panel_summary(
+            make_expected_panel_summary(
                 "California",
                 frame_with_location(CALIB_FROM_PROJECTION_START, "CA"),
                 frame_with_location(PROJ_BASE_HORIZON, "CA"),
@@ -120,7 +136,7 @@ class TestSingleDefaultOutputs:
             )
         ]
         assert capture.summarize_output(f"quantiles_{NY}_filtered") == [
-            make_panel_summary(
+            make_expected_panel_summary(
                 "New York",
                 frame_with_location(CALIB_FROM_PROJECTION_START, "NY"),
                 frame_with_location(PROJ_BASE_HORIZON, "NY"),
@@ -131,7 +147,7 @@ class TestSingleDefaultOutputs:
     def test_full(self, out_dict, capture):
         """The full plot shows all calibration and surveillance, and the projection up to the base horizon."""
         assert capture.summarize_output(f"quantiles_{CA}_full") == [
-            make_panel_summary(
+            make_expected_panel_summary(
                 "California",
                 frame_with_location(CALIB_FULL, "CA"),
                 frame_with_location(PROJ_BASE_HORIZON, "CA"),
@@ -142,13 +158,13 @@ class TestSingleDefaultOutputs:
     def test_side_by_side(self, out_dict, capture):
         """side_by_side draws the full view, then a filtered view starting at the projection start."""
         assert capture.summarize_output(f"quantiles_{CA}_side_by_side") == [
-            make_panel_summary(
+            make_expected_panel_summary(
                 "California",
                 frame_with_location(CALIB_FULL, "CA"),
                 frame_with_location(PROJ_BASE_HORIZON, "CA"),
                 frame_with_location(SURV_ALL, "CA"),
             ),
-            make_panel_summary(
+            make_expected_panel_summary(
                 "California",
                 frame_with_location(CALIB_FROM_PROJECTION_START, "CA"),
                 frame_with_location(PROJ_BASE_HORIZON, "CA"),
@@ -197,68 +213,68 @@ class TestGridDefaultOutputs:
         # TODO: CURRENT BEHAVIOR — Texas has no projection, so it gets no surveillance.
         """Grid filtered panels with surveillance_points=8, including calibration-only Texas."""
         assert capture.summarize_output("quantiles_grid_filtered") == [
-            make_panel_summary(
+            make_expected_panel_summary(
                 "California",
                 frame_with_location(CALIB_FROM_PROJECTION_START, "CA"),
                 frame_with_location(PROJ_BASE_HORIZON, "CA"),
                 frame_with_location(SURV_FROM_PROJECTION_START, "CA"),
             ),
-            make_panel_summary(
+            make_expected_panel_summary(
                 "New York",
                 frame_with_location(CALIB_FROM_PROJECTION_START, "NY"),
                 frame_with_location(PROJ_BASE_HORIZON, "NY"),
                 frame_with_location(SURV_FROM_PROJECTION_START, "NY"),
             ),
-            make_panel_summary("Texas", frame_with_location(CALIB_FULL, "TX"), None, None),
+            make_expected_panel_summary("Texas", frame_with_location(CALIB_FULL, "TX"), None, None),
         ]
 
     def test_full(self, out_dict, capture):
         """Grid full panels for every location, including calibration-only Texas."""
         assert capture.summarize_output("quantiles_grid_full") == [
-            make_panel_summary(
+            make_expected_panel_summary(
                 "California",
                 frame_with_location(CALIB_FULL, "CA"),
                 frame_with_location(PROJ_BASE_HORIZON, "CA"),
                 frame_with_location(SURV_ALL, "CA"),
             ),
-            make_panel_summary(
+            make_expected_panel_summary(
                 "New York",
                 frame_with_location(CALIB_FULL, "NY"),
                 frame_with_location(PROJ_BASE_HORIZON, "NY"),
                 frame_with_location(SURV_ALL, "NY"),
             ),
-            make_panel_summary("Texas", frame_with_location(CALIB_FULL, "TX"), None, None),
+            make_expected_panel_summary("Texas", frame_with_location(CALIB_FULL, "TX"), None, None),
         ]
 
     def test_side_by_side(self, out_dict, capture):
         """Grid side_by_side draws a (full, filtered) pair per location, including calibration-only Texas."""
         assert capture.summarize_output("quantiles_grid_sidebyside") == [
-            make_panel_summary(
+            make_expected_panel_summary(
                 "California",
                 frame_with_location(CALIB_FULL, "CA"),
                 frame_with_location(PROJ_BASE_HORIZON, "CA"),
                 frame_with_location(SURV_ALL, "CA"),
             ),
-            make_panel_summary(
+            make_expected_panel_summary(
                 "California",
                 frame_with_location(CALIB_FROM_PROJECTION_START, "CA"),
                 frame_with_location(PROJ_BASE_HORIZON, "CA"),
                 frame_with_location(SURV_FROM_PROJECTION_START, "CA"),
             ),
-            make_panel_summary(
+            make_expected_panel_summary(
                 "New York",
                 frame_with_location(CALIB_FULL, "NY"),
                 frame_with_location(PROJ_BASE_HORIZON, "NY"),
                 frame_with_location(SURV_ALL, "NY"),
             ),
-            make_panel_summary(
+            make_expected_panel_summary(
                 "New York",
                 frame_with_location(CALIB_FROM_PROJECTION_START, "NY"),
                 frame_with_location(PROJ_BASE_HORIZON, "NY"),
                 frame_with_location(SURV_FROM_PROJECTION_START, "NY"),
             ),
-            make_panel_summary("Texas", frame_with_location(CALIB_FULL, "TX"), None, None),
-            make_panel_summary("Texas", frame_with_location(CALIB_FULL, "TX"), None, None),
+            make_expected_panel_summary("Texas", frame_with_location(CALIB_FULL, "TX"), None, None),
+            make_expected_panel_summary("Texas", frame_with_location(CALIB_FULL, "TX"), None, None),
         ]
 
     def test_quantile_levels_and_styling(self, out_dict, capture):
@@ -307,7 +323,7 @@ def make_override_config(**kwargs):
 
 
 # filtered output: surveillance_start_date=2023-12-16, horizon_max=1
-OVERRIDE_FILTERED = make_panel_summary(
+OVERRIDE_FILTERED = make_expected_panel_summary(
     "California",
     ("2023-12-16", "2024-01-13", 5, "CA"),
     ("2023-12-16", "2024-01-20", 6, "CA"),
@@ -315,7 +331,7 @@ OVERRIDE_FILTERED = make_panel_summary(
 )
 # full output: surveillance_points=4 (4 on or before reference_date + 2 after)
 # TODO: CURRENT BEHAVIOR — horizon_max=6 is capped at the base horizon_max=3.
-OVERRIDE_FULL = make_panel_summary(
+OVERRIDE_FULL = make_expected_panel_summary(
     "California",
     frame_with_location(CALIB_FULL, "CA"),
     frame_with_location(PROJ_BASE_HORIZON, "CA"),
@@ -338,13 +354,13 @@ class TestSingleOverrides:
         # and the output horizon_max; it only uses the panel xlabel_interval.
         """Output and panel overrides on a single side_by_side plot."""
         assert capture.summarize_output(f"quantiles_{CA}_side_by_side") == [
-            make_panel_summary(
+            make_expected_panel_summary(
                 "California",
                 frame_with_location(CALIB_FULL, "CA"),
                 frame_with_location(PROJ_BASE_HORIZON, "CA"),
                 frame_with_location(SURV_ALL, "CA"),
             ),
-            make_panel_summary(
+            make_expected_panel_summary(
                 "California",
                 frame_with_location(CALIB_FROM_PROJECTION_START, "CA"),
                 frame_with_location(PROJ_BASE_HORIZON, "CA"),
@@ -381,13 +397,13 @@ class TestGridOverrides:
         # and output horizon_max=1 are ignored.
         """Output and panel overrides on a grid side_by_side plot."""
         assert capture.summarize_output("quantiles_grid_sidebyside")[:2] == [
-            make_panel_summary(
+            make_expected_panel_summary(
                 "California",
                 frame_with_location(CALIB_FULL, "CA"),
                 frame_with_location(PROJ_BASE_HORIZON, "CA"),
                 ("2023-11-04", "2024-01-27", 13, "CA"),
             ),
-            make_panel_summary(
+            make_expected_panel_summary(
                 "California",
                 ("2024-01-06", "2024-01-13", 2, "CA"),
                 ("2024-01-06", "2024-02-03", 5, "CA"),
@@ -454,7 +470,7 @@ class TestHiddenSurveillance:
         run_generators([make_calibration(CA)], config, hosp_only)
         # TODO: CURRENT BEHAVIOR — the ribbons are clipped to surveillance that is not shown.
         assert capture.summarize_output(f"quantiles_{CA}_filtered") == [
-            make_panel_summary(
+            make_expected_panel_summary(
                 "California",
                 frame_with_location(CALIB_FROM_PROJECTION_START, "CA"),
                 frame_with_location(PROJ_BASE_HORIZON, "CA"),
@@ -466,12 +482,12 @@ class TestHiddenSurveillance:
         """Hidden surveillance does not clip the grid filtered ribbons; the full grid still shows it."""
         run_generators([make_calibration(CA)], config, hosp_only)
         assert capture.summarize_output("quantiles_grid_filtered") == [
-            make_panel_summary(
+            make_expected_panel_summary(
                 "California", frame_with_location(CALIB_FULL, "CA"), frame_with_location(PROJ_BASE_HORIZON, "CA"), None
             )
         ]
         assert capture.summarize_output("quantiles_grid_full") == [
-            make_panel_summary(
+            make_expected_panel_summary(
                 "California",
                 frame_with_location(CALIB_FULL, "CA"),
                 frame_with_location(PROJ_BASE_HORIZON, "CA"),
@@ -492,7 +508,7 @@ class TestSideBySideAllCalibrationClipped:
         ]
         run_generators([make_calibration(CA)], make_plots_config(single=False, grid=True, outputs=outputs), hosp_only)
         # TODO: CURRENT BEHAVIOR — the fully clipped calibration comes back as the full calibration.
-        assert capture.summarize_output("quantiles_grid_sidebyside")[1] == make_panel_summary(
+        assert capture.summarize_output("quantiles_grid_sidebyside")[1] == make_expected_panel_summary(
             "California",
             frame_with_location(CALIB_FULL, "CA"),
             ("2024-01-20", "2024-02-03", 3, "CA"),
@@ -550,7 +566,7 @@ class TestDispatcherFiltersFailedProjections:
         assert {f"quantiles_{CA}_full", "quantiles_grid_full"} <= set(outputs)
         for name in (f"quantiles_{CA}_full", "quantiles_grid_full"):
             assert capture.summarize_output(name) == [
-                make_panel_summary(
+                make_expected_panel_summary(
                     "California",
                     None,
                     frame_with_location(PROJ_BASE_HORIZON, "CA"),
