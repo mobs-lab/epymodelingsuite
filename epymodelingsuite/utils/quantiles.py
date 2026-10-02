@@ -267,11 +267,11 @@ class SharedQuantiles:
         frame = self.frames[key]
         # Concatenate blocks rather than isin: preserve unsorted/duplicate levels.
         levels = kwargs["quantiles"]
-        selected = (
-            pd.concat([frame[frame["quantile"] == q] for q in levels], ignore_index=True) if levels else frame.iloc[:0]
-        )
         columns = ["date", "quantile"]
         columns.extend(c for c in (kwargs.get("variables") or frame.columns) if c not in columns and c in frame)
+        if len(levels) == 0:
+            return pd.DataFrame({column: [] for column in columns})
+        selected = pd.concat([frame[frame["quantile"] == q] for q in levels], ignore_index=True)
         selected = selected[columns].copy()
         # The original level scalar types determine pandas' label dtype.
         selected["quantile"] = pd.Series([q for q in levels for _ in range(len(frame[frame["quantile"] == q]))])

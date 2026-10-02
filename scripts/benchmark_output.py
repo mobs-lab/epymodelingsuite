@@ -12,6 +12,7 @@ import hashlib
 import importlib.metadata
 import json
 import os
+import pickle
 import statistics
 import subprocess
 import sys
@@ -55,7 +56,7 @@ def run_once(args):
     Parameters
     ----------
     args : argparse.Namespace
-        Parsed workload, source-tree, format and mode options.
+        Parsed workload, source-tree, format, mode and worker options.
 
     Returns
     -------
@@ -64,7 +65,7 @@ def run_once(args):
 
     Notes
     -----
-    Stream-mode input generation is timed inside output processing; return
+    Stream-mode input generation is timed inside output processing; return/files
     mode prepares inputs beforehand. Instrumentation covers only the parent process.
     """
     sys.path.insert(0, str(args.source_tree.resolve()))
@@ -85,33 +86,47 @@ def run_once(args):
     dates = pd.date_range("2024-01-06", periods=args.dates, freq="W-SAT").to_list()
     levels = np.linspace(0.01, 0.99, args.levels).tolist()
     rng = np.random.default_rng(123)
-    calibrations = []
     codebook = get_location_codebook()
     populations = codebook.loc[codebook.ISO.str.startswith("US-"), "location_name_epydemix"].tolist()
     if args.locations > len(populations):
         msg = f"Use at most {len(populations)} locations to avoid duplicate-location plot keys."
         raise ValueError(msg)
-    for location in range(args.locations):
-        values = rng.normal(100, 15, (args.draws, args.dates, args.variables))
-        values[rng.random(values.shape) < 0.01] = np.nan
-        projections = [
-            {
-                "date": dates,
-                "hospitalizations": draw[:, 0],
-                **{f"S_to_I_{i}": draw[:, i] for i in range(1, args.variables)},
-            }
-            for draw in values
-        ]
-        selected = [{"date": dates, "data": p["hospitalizations"]} for p in projections]
-        results = CalibrationResults(selected_trajectories={0: selected}, projections={"baseline": projections})
-        calibrations.append(
-            CalibrationOutput(
-                primary_id=location,
-                seed=123,
-                population=populations[location],
-                results=results,
+
+    def inputs():
+        """Generate deterministic synthetic calibration outputs one location at a time.
+
+        Yields
+        ------
+        CalibrationOutput
+            One location's raw calibration and projection draws.
+
+        Notes
+        -----
+        Arrays are released after each yield unless the caller retains the output.
+        """
+        for location in range(args.locations):
+            values = rng.normal(100, 15, (args.draws, args.dates, args.variables))
+            values[rng.random(values.shape) < 0.01] = np.nan
+            projections = [
+                {
+                    "date": dates,
+                    "hospitalizations": draw[:, 0],
+                    **{f"S_to_I_{i}": draw[:, i] for i in range(1, args.variables)},
+                }
+                for draw in values
+            ]
+            selected = [{"date": dates, "data": p["hospitalizations"]} for p in projections]
+            results = CalibrationResults(selected_trajectories={0: selected}, projections={"baseline": projections})
+            yield (
+                CalibrationOutput(
+                    primary_id=location,
+                    seed=123,
+                    population=populations[location],
+                    results=results,
+                )
             )
-        )
+            del values, projections, selected, results
+
     config = {"tabular_output_types": [args.format]}
     if "tabular" in args.cases:
         config["quantiles"] = {"selections": levels, "compartments": ["hospitalizations"], "calibration": True}
@@ -123,9 +138,22 @@ def run_once(args):
         config["plots"] = {
             "reference_date": "2024-01-13",
             "figure_output_types": ["PNG"],
-            "quantiles": {"single": True, "grid": True, "quantiles": levels},
+            "quantiles": {"single": True, "grid": not args.no_grid, "quantiles": levels},
         }
     config = OutputConfig.model_validate({"output": config})
+    input_directory = tempfile.TemporaryDirectory(prefix="benchmark-input-")
+    if args.mode == "return":
+        calibrations = list(inputs())
+    elif args.mode == "stream":
+        calibrations = inputs()
+    else:
+        calibrations = []
+        for item in inputs():
+            path = Path(input_directory.name) / f"{len(calibrations)}.pickle"
+            with path.open("wb") as stream:
+                pickle.dump(item, stream, protocol=pickle.HIGHEST_PROTOCOL)
+            calibrations.append(path)
+            del item
     preparation_seconds = time.perf_counter() - started
     timings = {}
     counts = {}
@@ -184,17 +212,33 @@ def run_once(args):
         patch.object(output, "generate_quantile_grid_plot", measured("grid_plots", output.generate_quantile_grid_plot)),
     ):
         before = time.perf_counter()
-        outputs = output.generate_calibration_outputs(calibrations=calibrations, output_config=config)
+        if args.mode == "return":
+            outputs = output.generate_calibration_outputs(calibrations=calibrations, output_config=config)
+        else:
+            from epymodelingsuite.output.streaming import write_outputs, write_outputs_from_files
+
+            directory = Path(input_directory.name) / "outputs"
+            if args.mode == "stream":
+                outputs = write_outputs(results=calibrations, output_config=config, directory=directory)
+            else:
+                outputs = write_outputs_from_files(
+                    paths=calibrations, output_config=config, directory=directory, workers=args.workers
+                )
         output_seconds = time.perf_counter() - before
     tables = hashlib.sha256()
-    for name, objects in outputs.items():
+    for name, objects in sorted(outputs.items()):
         for obj in objects:
-            if isinstance(obj.data, pd.DataFrame):
+            if isinstance(obj, Path):
+                if obj.name.endswith(".csv.gz"):
+                    tables.update(name.encode())
+                    tables.update(gzip.decompress(obj.read_bytes()))
+            elif isinstance(obj.data, pd.DataFrame):
                 tables.update(name.encode())
                 tables.update(obj.data.to_csv(index=False, date_format="%Y-%m-%d").encode())
             elif obj.name.endswith(".csv.gz"):
                 tables.update(name.encode())
                 tables.update(gzip.decompress(obj.data))
+    input_directory.cleanup()
     versions = {name: importlib.metadata.version(name) for name in ("numpy", "pandas", "matplotlib", "epydemix")}
     dependency = importlib.metadata.distribution("epydemix").read_text("direct_url.json")
     return {
@@ -204,6 +248,7 @@ def run_once(args):
         "preparation_seconds": preparation_seconds,
         "output_seconds": output_seconds,
         "stage_seconds_inclusive": timings,
+        "stage_note": "Counters cover the parent only; files mode workers execute in separate processes.",
         "calls": counts,
         "table_sha256": tables.hexdigest(),
         "output_keys": list(outputs),
@@ -225,7 +270,8 @@ def main():
 
     Notes
     -----
-    Parses sys.argv. Samples child-process RSS. Child mode writes a single result file instead of printing medians.
+    Parses sys.argv. Samples summed process-tree RSS, which may double-count
+    shared pages. Child mode writes a single result file instead of printing medians.
     """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source-tree", type=Path, default=Path(__file__).resolve().parents[1])
@@ -235,6 +281,11 @@ def main():
     parser.add_argument("--variables", type=positive_int, default=8)
     parser.add_argument("--levels", type=positive_int, default=23)
     parser.add_argument("--cases", nargs="+", choices=["tabular", "hub", "plots", "trajectories"], default=["tabular"])
+    parser.add_argument("--mode", choices=["return", "stream", "files"], default="return")
+    parser.add_argument("--workers", type=positive_int, default=1)
+    parser.add_argument(
+        "--no-grid", action="store_true", help="Measure independent single figures without a serial grid"
+    )
     parser.add_argument("--format", choices=["DataFrame", "CSVBytes"], default="DataFrame")
     parser.add_argument("--repeat", type=positive_int, default=3)
     parser.add_argument("--sample-ms", type=positive_int, default=10)
@@ -242,6 +293,10 @@ def main():
     args = parser.parse_args()
     if not (args.source_tree / "epymodelingsuite/dispatcher/output.py").is_file():
         parser.error("--source-tree must contain epymodelingsuite/dispatcher/output.py")
+    if args.mode != "return" and args.format != "CSVBytes":
+        parser.error("File/stream modes require --format CSVBytes")
+    if args.mode != "files" and args.workers != 1:
+        parser.error("Multiple workers require --mode files")
     if args.child_result:
         args.child_result.write_text(json.dumps(run_once(args)))
         return

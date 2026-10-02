@@ -256,7 +256,8 @@ def format_quantiles_flusightforecast(
     Returns
     -------
     pd.DataFrame
-        Formatted quantile forecasts with FluSight columns (horizon, target, output_type, output_type_id, target_end_date, value)
+        Formatted quantile forecasts with FluSight columns (horizon, target, output_type, output_type_id,
+        target_end_date, value)
     """
     formatted = copy.deepcopy(quantiles_df)
 
@@ -301,14 +302,16 @@ def compare_thresholds_flusightforecast(
     change_thres : float
         This threshold defines whether non-stable rate-changes are a large increase/decrease or not.
     rate_change : float
-        The difference between the last observed rate (/100k population) and the simulated rate (diff = simulated - observed).
+        The difference between the last observed rate (/100k population) and the simulated rate (diff = simulated -
+        observed).
     count_change : float
         The difference between the last observed count and the simulated count (diff = simulated - observed).
 
     Returns
     -------
     str
-        A string representing the category of the rate-change ("stable", "increase", "large_increase", "decrease", "large_decrease").
+        A string representing the category of the rate-change ("stable", "increase", "large_increase", "decrease",
+        "large_decrease").
     """
     if abs(rate_change) < stable_thres or abs(count_change) < 10:
         return "stable"
@@ -337,7 +340,8 @@ def categorize_rate_change_flusightforecast(
     Parameters
     ----------
     rate_change : float
-        The difference between the last observed rate (/100k population) and the simulated rate (diff = simulated - observed).
+        The difference between the last observed rate (/100k population) and the simulated rate (diff = simulated -
+        observed).
     count_change : float
         The difference between the last observed count and the simulated count (diff = simulated - observed).
     horizon : int
@@ -346,7 +350,8 @@ def categorize_rate_change_flusightforecast(
     Returns
     -------
     str
-        A string representing the category of the rate-change ("stable", "increase", "large_increase", "decrease", "large_decrease").
+        A string representing the category of the rate-change ("stable", "increase", "large_increase", "decrease",
+        "large_decrease").
     """
     if horizon == 0:
         stable_thres = 0.3
@@ -1113,8 +1118,10 @@ def generate_simulation_outputs(
                 meta_dict[p].append(str(v))
 
             # Initial conditions
-            for name, values in simulation.results.get_stacked_compartments().items():
-                meta_dict[f"init_{name}"].append(str([int(v[0]) for v in values]))
+            trajectories = simulation.results.trajectories
+            if trajectories:
+                for name in trajectories[0].compartments:
+                    meta_dict[f"init_{name}"].append(str([int(draw.compartments[name][0]) for draw in trajectories]))
 
         model_meta = pd.DataFrame(meta_dict)
 
@@ -1625,7 +1632,7 @@ def generate_calibration_outputs(
             for calibration in calibrations:
                 # Get trajectories
                 try:
-                    traj = calibration.results.get_projection_trajectories()
+                    traj = calibration.results.get_projection_trajectories(variables=["date", "hospitalizations"])
                 except Exception:
                     warnings.add(
                         f"OUTPUT GENERATOR: failed to obtain projection trajectories for model with primary_id={calibration.primary_id}, continuing to next model."

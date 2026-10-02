@@ -96,6 +96,8 @@ def test_input_is_lazy_and_processed_results_are_released(tmp_path):
 
 def test_trajectories_do_not_use_stacks(tmp_path):
     """Write all trajectory rows without stack APIs and keep every staged frame within the row-chunk limit."""
+    from epymodelingsuite.output.streaming import _Shards
+
     item = calibration()
     settings = OutputConfig.model_validate(
         {
@@ -105,9 +107,41 @@ def test_trajectories_do_not_use_stacks(tmp_path):
             }
         }
     )
-    with patch.object(item.results, "get_projection_trajectories", side_effect=AssertionError("no stack")):
-        saved = write_outputs(results=[item], output_config=settings, directory=tmp_path, chunk_rows=3)
+    sizes = []
+    save = _Shards.frame
+
+    def record(sink, name, frame):
+        if name.startswith("trajectories"):
+            sizes.append(len(frame))
+        save(sink, name, frame)
+
+    with (
+        patch.object(item.results, "get_projection_trajectories", side_effect=AssertionError("no stack")),
+        patch.object(_Shards, "frame", record),
+    ):
+        saved = write_outputs(results=[item], output_config=settings, directory=tmp_path, chunk_rows=5)
+    assert max(sizes) <= 5
     assert len(pd.read_csv(saved["trajectories_projection_compartments"][0])) == 24
+
+
+@pytest.mark.parametrize("selection", [True, ["hospitalizations"], ["missing"]])
+def test_trajectory_metadata_alignment_and_column_order(tmp_path, selection):
+    """Preserve nonnumeric metadata alignment and original trajectory column positions in saved CSVs."""
+    item = calibration()
+    for index, draw in enumerate(item.results.projections["baseline"]):
+        draw["state"] = {"rng": index, "index": 1}
+        draw["date"] = draw.pop("date")  # Date is deliberately the last column.
+    settings = OutputConfig.model_validate(
+        {
+            "output": {
+                "tabular_output_types": ["CSVBytes"],
+                "trajectories": {"compartments": selection, "transitions": True},
+            }
+        }
+    )
+    expected = generate_calibration_outputs(calibrations=[deepcopy(item)], output_config=settings)
+    saved = write_outputs(results=[item], output_config=settings, directory=tmp_path, chunk_rows=3)
+    compare_saved(expected, saved)
 
 
 def test_invalid_format_is_rejected_before_consuming_input(tmp_path):
@@ -297,6 +331,36 @@ def test_empty_input_has_no_outputs(tmp_path):
     """Return no paths and leave no temporary files for an empty result iterator."""
     assert write_outputs(results=iter(()), output_config=config(plots=True), directory=tmp_path) == {}
     assert not list(tmp_path.iterdir())
+
+
+def test_inconsistent_projection_shapes_keep_the_legacy_skip_policy(tmp_path):
+    """Skip malformed calibration trajectory tables consistently with the legacy output path."""
+    item = calibration()
+    item.results.projections["baseline"][1]["S"] = item.results.projections["baseline"][1]["S"][:-1]
+    settings = OutputConfig.model_validate(
+        {
+            "output": {
+                "tabular_output_types": ["CSVBytes"],
+                "trajectories": {"compartments": ["hospitalizations"]},
+            }
+        }
+    )
+    expected = generate_calibration_outputs(calibrations=[deepcopy(item)], output_config=settings)
+    saved = write_outputs(results=[item], output_config=settings, directory=tmp_path)
+    compare_saved(expected, saved)
+    assert "trajectories_projection_compartments" not in saved
+
+
+def test_directory_creation_error_reports_no_completed_files(tmp_path):
+    """Wrap destination creation failures in OutputWriteError with an empty completed-file record."""
+    from pathlib import Path
+
+    with (
+        patch.object(Path, "mkdir", side_effect=OSError("cannot create directory")),
+        pytest.raises(OutputWriteError) as caught,
+    ):
+        write_outputs(results=iter(()), output_config=config(), directory=tmp_path)
+    assert caught.value.completed == {}
 
 
 @pytest.mark.parametrize("first", ["output", "dispatcher"])

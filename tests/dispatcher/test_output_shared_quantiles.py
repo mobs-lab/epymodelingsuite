@@ -97,3 +97,34 @@ def test_iso_single_without_grid_uses_shared_preparation():
         outputs = generate_calibration_outputs(calibrations=[item], output_config=config)
     assert "quantiles_United_States_California_full" in outputs
     stack.assert_called_once_with("baseline", variables=["hospitalizations"])
+
+
+def test_generation_scenario_nan_policy_and_empty_levels_are_isolated():
+    """Keep generations, scenarios and NaN policies in separate groups, including correct empty-level frames."""
+    from copy import deepcopy
+
+    from epymodelingsuite.utils.quantiles import get_calibration_quantiles
+
+    results = calibration().results
+    results.selected_trajectories[1] = deepcopy(results.selected_trajectories[0])
+    results.selected_trajectories[1][0]["data"] += 100
+    results.projections["other"] = deepcopy(results.projections["baseline"])
+    results.projections["other"][0]["S"] += 100
+    results.projections["baseline"][0]["S"] = results.projections["baseline"][0]["S"].astype(float)
+    results.projections["baseline"][0]["S"][0] = np.nan
+    prepared = SharedQuantiles()
+    requests = [
+        ("calibration", dict(generation=0, quantiles=[0.5], variables=["data"])),
+        ("calibration", dict(generation=1, quantiles=[0.5], variables=["data"])),
+        ("projection", dict(scenario_id="baseline", quantiles=[0.5], variables=["S"], ignore_nan=False)),
+        ("projection", dict(scenario_id="baseline", quantiles=[0.5], variables=["S"], ignore_nan=True)),
+        ("projection", dict(scenario_id="other", quantiles=[], variables=["S"])),
+        ("projection", dict(scenario_id="other", quantiles=[0.5], variables=["S"])),
+    ]
+    for kind, kwargs in requests:
+        prepared.add(results, kind, **kwargs)
+    for kind, kwargs in requests:
+        reference = get_calibration_quantiles if kind == "calibration" else get_projection_quantiles
+        pd.testing.assert_frame_equal(
+            getattr(prepared, kind)(results, **kwargs), reference(results, **kwargs), check_exact=True
+        )

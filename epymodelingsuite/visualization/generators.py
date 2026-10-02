@@ -93,9 +93,13 @@ def _close_generated_figures(function):
 def _check_incomplete_generations(calibration: CalibrationOutput) -> str | None:
     """Return a note string if fewer generations completed than requested.
 
-    ABC-SMC from epydemix can return fewer generations than requested if it reaches the stopping criterion (e.g., max_time) before completing all generations. It discards the incomplete generation and returns the previously completed generation as the final result (CalibrationResults).
+    ABC-SMC from epydemix can return fewer generations than requested if it reaches the stopping criterion (e.g.,
+    max_time) before completing all generations. It discards the incomplete generation and returns the previously
+    completed generation as the final result (CalibrationResults).
 
-    This function checks if the number of completed generations in the results is fewer than the number requested in the calibration strategy, and if so, returns a note string to indicate this. If all generations completed or if the necessary information is unavailable, it returns None.
+    This function checks if the number of completed generations in the results is fewer than the number requested in the
+    calibration strategy, and if so, returns a note string to indicate this. If all generations completed or if the
+    necessary information is unavailable, it returns None.
 
     Parameters
     ----------

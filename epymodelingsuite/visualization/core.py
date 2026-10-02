@@ -115,7 +115,8 @@ def plot_quantiles(  # noqa: PLR0913
     """
     Plot quantile ribbons from quantile DataFrame.
 
-    This function accepts a DataFrame with quantiles (typically from CalibrationResults.get_projection_quantiles()) and plots quantile ribbons with graduated transparency.
+    This function accepts a DataFrame with quantiles (typically from CalibrationResults.get_projection_quantiles()) and
+    plots quantile ribbons with graduated transparency.
 
     Parameters
     ----------

@@ -6,18 +6,22 @@ identifiers and pandas dtypes; they are produced and read only by this call.
 """
 
 import logging
+import multiprocessing
 import os
 import pickle
 import tempfile
 from collections import defaultdict
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
+from contextlib import closing
 from pathlib import Path
 from types import SimpleNamespace
 
+import numpy as np
 import pandas as pd
 
 from ..schema.dispatcher import CalibrationOutput, SimulationOutput
-from ..schema.output import FigureOutputTypeEnum, TabularOutputTypeEnum, get_metrocast_quantiles
+from ..schema.output import FigureOutputTypeEnum, OutputConfig, TabularOutputTypeEnum, get_metrocast_quantiles
 from ..utils.surveillance import surveillance_cache
 from ..visualization.generators import (
     POSTERIOR_METADATA_COLUMNS,
@@ -277,6 +281,16 @@ def _trajectory_frames(item, config, chunk_rows):
     ------
     tuple[str, pd.DataFrame]
         Logical table name and a frame with at most chunk_rows rows.
+
+    Raises
+    ------
+    ValueError
+        A selected simulation variable has a different length from its dates.
+
+    Notes
+    -----
+    No all-variable stack is created. Malformed calibration draws are logged
+    and skipped; simulation length mismatches raise an error.
     """
     calibration = isinstance(item, CalibrationOutput)
     if calibration:
@@ -286,6 +300,13 @@ def _trajectory_frames(item, config, chunk_rows):
         keys = list(draws[0])
         if any(any(key not in draw for key in keys) for draw in draws):
             logger.warning("Skipping projection trajectories for primary_id=%s: missing variables", item.primary_id)
+            return
+        try:
+            shapes = {key: np.shape(draws[0][key]) for key in keys}
+            if any(np.shape(draw[key]) != shapes[key] for draw in draws for key in keys):
+                raise ValueError("trajectory shapes differ")
+        except (TypeError, ValueError) as exc:
+            logger.warning("Skipping projection trajectories for primary_id=%s: %s", item.primary_id, exc)
             return
     else:
         draws = item.results.trajectories
@@ -297,20 +318,35 @@ def _trajectory_frames(item, config, chunk_rows):
         name = f"trajectories_{'projection_' if calibration else ''}{kind}"
         for sim_id, draw in enumerate(draws):
             if calibration:
-                columns = [key for key in keys if key != "date" and ("_to_" in key) == (kind == "transitions")]
+                columns = [key for key in keys if ("_to_" in key) == (kind == "transitions")]
+                if kind == "transitions":
+                    columns = ["date", *columns]
                 if isinstance(selection, list) and all(key in keys for key in selection):
-                    columns = selection
-                values, dates = draw, draw["date"]
+                    columns = ["date", *selection]
+                # Preserve Series alignment for nonnumeric metadata as well as
+                # the date column's original position in all-column outputs.
+                index = pd.Series(draw[keys[0]]).index
+                for key in keys[1:]:
+                    index = index.union(pd.Series(draw[key]).index, sort=False)
+                series = [pd.Series(draw[key], name=key) for key in columns]
+                dates = index
             else:
                 values, dates = getattr(draw, kind), draw.dates
                 columns = (
                     selection if isinstance(selection, list) and all(c in values for c in selection) else list(values)
                 )
+                if any(len(values[key]) != len(dates) for key in columns):
+                    raise ValueError(
+                        f"Trajectory/date lengths differ for primary_id={item.primary_id}, sim_id={sim_id}"
+                    )
             for start in range(0, len(dates), chunk_rows):
                 stop = start + chunk_rows
-                frame = pd.DataFrame({key: values[key][start:stop] for key in columns})
+                frame = (
+                    pd.concat([column.reindex(index[start:stop]) for column in series], axis=1)
+                    if calibration
+                    else pd.DataFrame({key: values[key][start:stop] for key in columns})
+                )
                 if calibration:
-                    frame.insert(0, "date", dates[start:stop])
                     frame.insert(0, "sim_id", sim_id)
                     frame.insert(0, "primary_id", item.primary_id)
                     frame.insert(2, "seed", item.seed)
@@ -324,8 +360,10 @@ def _trajectory_frames(item, config, chunk_rows):
                 pending.append(frame)
                 count += len(frame)
                 if count >= chunk_rows:
-                    yield name, pd.concat(pending, ignore_index=True)
-                    pending, count = [], 0
+                    combined = pd.concat(pending, ignore_index=True)
+                    yield name, combined.iloc[:chunk_rows]
+                    remainder = combined.iloc[chunk_rows:].copy()
+                    pending, count = ([remainder], len(remainder)) if not remainder.empty else ([], 0)
         if pending:
             yield name, pd.concat(pending, ignore_index=True)
 
@@ -693,7 +731,13 @@ def _publish(parts, config, staging, destination, chunk_rows, completed):
             completed[name].append(target)
 
 
-def write_outputs(*, results, output_config, directory, chunk_rows=10000):
+def write_outputs(
+    *,
+    results: Iterable[CalibrationOutput | SimulationOutput],
+    output_config: OutputConfig,
+    directory: str | Path,
+    chunk_rows: int = 10000,
+) -> dict[str, list[Path]]:
     """Consume results lazily and save outputs to files.
 
     Parameters
@@ -727,10 +771,10 @@ def write_outputs(*, results, output_config, directory, chunk_rows=10000):
     """
     _validate_config(output_config, chunk_rows)
     destination = Path(directory)
-    destination.mkdir(parents=True, exist_ok=True)
     completed = {}
     current = "input"
     try:
+        destination.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix=".output-", dir=destination) as staging, surveillance_cache():
             parts = []
             kind = None
@@ -747,4 +791,183 @@ def write_outputs(*, results, output_config, directory, chunk_rows=10000):
             _publish(parts, output_config, staging, destination, chunk_rows, completed)
     except Exception as exc:
         raise OutputWriteError(f"Output writing failed during {current}: {exc}", completed) from exc
+    return completed
+
+
+def _stage_file(index, path, config, staging, chunk_rows):
+    """Load and stage one trusted result in a spawn-safe worker.
+
+    Parameters
+    ----------
+    index : int
+        Original input position, used for staging directory names.
+    path : str or Path
+        Trusted pickle containing exactly one result.
+    config : OutputConfig
+        Validated output configuration.
+    staging : str or Path
+        Temporary root shared with workers; removed by the caller after they stop.
+    chunk_rows : int
+        Positive maximum rows per trajectory or CSV write chunk.
+
+    Returns
+    -------
+    Path
+        Per-result manifest path; raw result arrays never cross IPC.
+
+    Raises
+    ------
+    RuntimeError
+        Loading or staging fails; the message identifies the input.
+
+    Notes
+    -----
+    Uses the noninteractive Agg backend and a worker-local surveillance cache.
+    """
+    import matplotlib
+
+    matplotlib.use("Agg")
+    identifier = f"input {index} ({path})"
+    try:
+        item = _load(path)
+        identifier += f", primary_id={getattr(item, 'primary_id', '?')}"
+        with surveillance_cache():
+            return _stage_result(item, config, Path(staging) / str(index), chunk_rows)
+    except Exception as exc:
+        raise RuntimeError(f"{identifier}: {exc}") from exc
+
+
+def _file_parts(paths, config, staging, chunk_rows, workers):
+    """Stage file inputs with at most workers unfinished jobs.
+
+    Parameters
+    ----------
+    paths : iterable of str or Path
+        Trusted pickle paths, each containing one calibration or simulation output.
+    config : OutputConfig
+        Validated output configuration.
+    staging : str or Path
+        Temporary root shared with workers; removed by the caller after they stop.
+    chunk_rows : int
+        Positive maximum rows per trajectory or CSV write chunk.
+    workers : int
+        Positive worker count; one runs directly without creating a process pool.
+
+    Yields
+    ------
+    tuple[int, Path]
+        Input index and manifest path, in completion order for parallel workers.
+
+    Notes
+    -----
+    One worker runs directly. Multiple workers use spawn. Failure or generator
+    closure cancels pending jobs and waits for active jobs before returning.
+    """
+    inputs = iter(enumerate(paths))
+    if workers == 1:
+        for index, path in inputs:
+            yield index, _stage_file(index, path, config, staging, chunk_rows)
+        return
+    executor = ProcessPoolExecutor(max_workers=workers, mp_context=multiprocessing.get_context("spawn"))
+    pending = {}
+
+    def submit_next():
+        """Submit the next input and record its future in the pending set.
+
+        Returns
+        -------
+        bool
+            True if a job was submitted; False when the input iterator is exhausted.
+        """
+        try:
+            index, path = next(inputs)
+        except StopIteration:
+            return False
+        future = executor.submit(_stage_file, index, str(path), config, str(staging), chunk_rows)
+        pending[future] = index
+        return True
+
+    try:
+        for _ in range(workers):
+            if not submit_next():
+                break
+        while pending:
+            done, _ = wait(pending, return_when=FIRST_COMPLETED)
+            # Inspect all finished tasks before submitting any new work. A failed
+            # task stops input consumption even when other tasks have succeeded.
+            finished = [(pending.pop(future), future.result()) for future in done]
+            yield from finished
+            for _ in finished:
+                submit_next()
+    finally:
+        for future in pending:
+            future.cancel()
+        # Workers must stop before TemporaryDirectory removes their staging area.
+        executor.shutdown(wait=True, cancel_futures=True)
+
+
+def write_outputs_from_files(
+    *,
+    paths: Iterable[str | Path],
+    output_config: OutputConfig,
+    directory: str | Path,
+    workers: int = 1,
+    chunk_rows: int = 10000,
+) -> dict[str, list[Path]]:
+    """Save trusted one-result pickle files, optionally using multiple cores.
+
+    Parameters
+    ----------
+    paths : iterable of str or Path
+        Trusted pickle paths, each containing one calibration or simulation output.
+    output_config : OutputConfig
+        Configure exactly CSVBytes and file figure formats PNG, PDF or SVG.
+    directory : str or Path
+        Output directory, created if needed. Matching output files are replaced.
+    workers : int, optional
+        Positive maximum concurrent jobs, default 1 (no process pool).
+    chunk_rows : int, optional
+        Positive trajectory/CSV chunk limit, default 10000 rows.
+
+    Returns
+    -------
+    dict[str, list[Path]]
+        Logical output names mapped to successfully published file paths.
+
+    Raises
+    ------
+    ValueError
+        Configuration, workers or chunk_rows is invalid before paths are consumed.
+    OutputWriteError
+        Loading, staging, mixed input kinds or publication fails; completed lists published files.
+
+    Notes
+    -----
+    Each trusted pickle contains one CalibrationOutput or SimulationOutput,
+    not a list. Pickle can execute code. Multiple workers use spawn and Agg;
+    call from an importable module under an if __name__ == "__main__" guard.
+    The parent assembles in input order and renders global grids. Worker memory
+    scales with workers. Temporary files are cleaned after workers stop; final
+    replacement is atomic per file, not for the whole invocation.
+    """
+    _validate_config(output_config, chunk_rows)
+    if isinstance(workers, bool) or not isinstance(workers, int) or workers < 1:
+        raise ValueError("workers must be a positive integer")
+    destination = Path(directory)
+    completed = {}
+    try:
+        destination.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix=".output-", dir=destination) as staging, surveillance_cache():
+            parts, kinds = {}, set()
+            with closing(_file_parts(paths, output_config, staging, chunk_rows, workers)) as staged:
+                for index, path in staged:
+                    parts[index] = path
+                    kinds.add(_load(path)["kind"])
+                    if len(kinds) > 1:
+                        raise TypeError("Do not mix calibration and simulation results in one output invocation")
+            _publish(
+                [parts[index] for index in sorted(parts)], output_config, staging, destination, chunk_rows, completed
+            )
+    except Exception as exc:
+        raise OutputWriteError(f"Output writing from files failed: {exc}", completed) from exc
     return completed
