@@ -528,11 +528,13 @@ class TestClipToStart:
         )
 
     def test_clips_df_to_start(self, df):
+        """Rows before the start date are removed."""
         result = _clip_to_start(df, date(2024, 1, 5))
         assert len(result) == 6  # Jan 5–10
         assert pd.to_datetime(result["date"]).dt.date.min() == date(2024, 1, 5)
 
     def test_returns_none_when_df_is_none(self):
+        """None stays None."""
         assert _clip_to_start(None, date(2024, 1, 5)) is None
 
     def test_returns_empty_when_all_rows_clipped(self, df):

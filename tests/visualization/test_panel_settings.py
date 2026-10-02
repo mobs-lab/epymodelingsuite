@@ -234,7 +234,7 @@ class TestPreparePanelPlotData:
         assert prepared(without_projection, "filtered")["surveillance"] == ("2023-11-04", "2024-01-27", 13)
 
     def test_filtered_hidden_projection_starts_at_calibration(self, location_data):
-        # The loaded projection does not count when this panel hides it
+        """A loaded but hidden projection does not set the filtered start."""
         result = prepared(location_data, "filtered", show_projection=False)
         assert result == {"calibration": CAL_ALL, "projection": None, "surveillance": ("2023-11-04", "2024-01-27", 13)}
 
@@ -287,7 +287,7 @@ class TestPreparePanelPlotData:
         }
 
     def test_start_date_after_all_surveillance_still_clips_ribbons(self, location_data):
-        # No surveillance is left to show, so the ribbons are clipped to surveillance_start_date instead
+        """With no surveillance left, the ribbons are clipped to surveillance_start_date."""
         result = prepared(location_data, "filtered", surveillance_start_date=date(2024, 2, 10), horizon_max=None)
         assert result == {"calibration": (), "projection": ("2024-02-10", "2024-03-02", 4), "surveillance": ()}
 
