@@ -1,30 +1,24 @@
 """Safe expression evaluation utilities for model parameters.
 
-This module provides tools for safely evaluating numeric expressions from strings,
-allowing literal numbers, basic arithmetic operators, and functions from numpy and scipy.
-
-Classes
--------
-SafeEvalVisitor : ast.NodeVisitor
-    Validates AST nodes to ensure only allowed expressions (numeric, numpy, scipy)
-RetrieveName : ast.NodeTransformer
-    Substitutes parameter values and contact matrix eigenvalues in expressions
+Expressions are evaluated by walking the parsed AST directly, never by ``eval``. Only numbers, lists
+(evaluated as elementwise NumPy arrays), arithmetic operators, a fixed set of ``np.<name>`` functions and
+constants, and names resolved by a caller-supplied function are allowed. Arbitrary attribute access
+(e.g. ``np.ctypeslib``) is rejected.
 
 Functions
 ---------
-_safe_eval : Safely evaluate a numeric expression from a string
+safe_eval : Safely evaluate a numeric expression from a string
+resolve_model_name : Resolve a name in a calculated-parameter expression from an EpiModel
 """
 
 import ast
 import operator
-from typing import Any
+from collections.abc import Callable
 
 import numpy as np
-import scipy
 from epydemix.model import EpiModel
 
-# Allowed binary operators mapping
-_allowed_operators = {
+_BINARY_OPERATORS = {
     ast.Add: operator.add,
     ast.Sub: operator.sub,
     ast.Mult: operator.mul,
@@ -33,218 +27,139 @@ _allowed_operators = {
     ast.Mod: operator.mod,
 }
 
-# Allowed unary operators mapping
-_allowed_unary_operators = {
+_UNARY_OPERATORS = {
     ast.UAdd: operator.pos,
     ast.USub: operator.neg,
 }
 
-# Names of top-level modules we allow
-_allowed_modules = {"np", "scipy"}
+# Functions and constants callable as np.<name>
+_NUMPY_FUNCTIONS = {
+    name: getattr(np, name)
+    for name in (
+        "abs",
+        "exp",
+        "log",
+        "log10",
+        "log2",
+        "sqrt",
+        "sin",
+        "cos",
+        "tan",
+        "minimum",
+        "maximum",
+        "min",
+        "max",
+        "sum",
+        "mean",
+    )
+}
+_NUMPY_CONSTANTS = {"pi": np.pi, "e": np.e}
 
 
-class SafeEvalVisitor(ast.NodeVisitor):
+def safe_eval(expr: str, resolve_name: Callable[[str], float | np.ndarray] | None = None) -> float | np.ndarray:
     """
-    A NodeVisitor that only allows numeric, numpy, and scipy expressions,
-    and enables binary operations on numpy arrays.
-    """
-
-    def visit(self, node):
-        t = type(node)
-        # Permit only these node types
-        if t in (
-            ast.Expression,
-            ast.BinOp,
-            ast.UnaryOp,
-            ast.Constant,
-            ast.List,
-            ast.Load,
-            ast.Name,
-            ast.Attribute,
-            ast.Call,
-        ):
-            return super().visit(node)
-        raise ValueError(f"Disallowed expression: {t.__name__}")
-
-    def visit_BinOp(self, node):
-        left = self.visit(node.left)
-        right = self.visit(node.right)
-
-        if type(node.op) not in _allowed_operators:
-            raise ValueError(f"Operator {type(node.op).__name__} not allowed")
-
-        # Access node data, handle arrays
-        if isinstance(left, ast.Constant) and isinstance(right, ast.Constant):
-            left = left.value
-            right = right.value
-        elif isinstance(left, ast.Constant) and isinstance(right, ast.List):
-            left = np.array([left.value])
-            right = np.array([c.value for c in right.elts], dtype=float)
-        elif isinstance(left, ast.List) and isinstance(right, ast.Constant):
-            left = np.array([c.value for c in left.elts], dtype=float)
-            right = np.array([right.value])
-        elif isinstance(left, ast.List) and isinstance(right, ast.List):
-            left = np.array([c.value for c in left.elts], dtype=float)
-            right = np.array([c.value for c in right.elts], dtype=float)
-        else:
-            raise ValueError(f"Attempted BinOp on unsupported objects:\n\n{left}\n\n{right}")
-
-        # Perform calculation
-        calc_val = None
-        if isinstance(node.op, ast.Add):
-            calc_val = np.add(left, right, dtype=float)
-        elif isinstance(node.op, ast.Sub):
-            calc_val = np.subtract(left, right, dtype=float)
-        elif isinstance(node.op, ast.Mult):
-            calc_val = np.multiply(left, right, dtype=float)
-        elif isinstance(node.op, ast.Div):
-            calc_val = np.divide(left, right, dtype=float)
-
-        if isinstance(calc_val, np.ndarray):
-            ast_nodes = [ast.Constant(value=item) for item in calc_val.flatten()]
-            ast_list = ast.List(elts=ast_nodes, ctx=ast.Load())
-            return ast.fix_missing_locations(ast_list)
-        return ast.fix_missing_locations(ast.Constant(value=calc_val))
-
-    def visit_UnaryOp(self, node):
-        self.visit(node.operand)
-        if type(node.op) not in _allowed_unary_operators:
-            raise ValueError(f"Unary operator {type(node.op).__name__} not allowed")
-
-    def visit_Constant(self, node):
-        # Only allow numeric constants
-        if not isinstance(node.value, (int, float)):
-            raise ValueError(f"Constant of type {type(node.value).__name__} not allowed")
-        return node
-
-    def visit_List(self, node):
-        for v in node.elts:
-            self.visit(v)
-        return node
-
-    def visit_Name(self, node):
-        # Only allow top‐level names 'np' and 'scipy'
-        if node.id not in _allowed_modules:
-            raise ValueError(f"Name '{node.id}' is not allowed")
-
-    def visit_Attribute(self, node):
-        # Recursively ensure base is allowed module (np or scipy)
-        if self._is_allowed_attr_chain(node):
-            # visit the base value to enforce nested checks
-            self.visit(node.value)
-        else:
-            raise ValueError(f"Attribute access '{ast.dump(node)}' not allowed")
-
-    def _is_allowed_attr_chain(self, node):
-        # Base case: node.value is Name in allowed_modules
-        if isinstance(node.value, ast.Name) and node.value.id in _allowed_modules:
-            return True
-        # Recursive: node.value is another Attribute
-        if isinstance(node.value, ast.Attribute):
-            return self._is_allowed_attr_chain(node.value)
-        return False
-
-    def visit_Call(self, node):
-        # Only allow calls of form (np.xxx(...)) or (scipy.xxx(...))
-        if isinstance(node.func, ast.Attribute):
-            # validate the attribute chain (np or scipy)
-            self.visit(node.func)
-            # validate all arguments
-            for arg in node.args:
-                self.visit(arg)
-            for kw in node.keywords:
-                self.visit(kw.value)
-        else:
-            raise ValueError("Function calls other than np.xxx or scipy.xxx are not allowed")
-
-
-class RetrieveName(ast.NodeTransformer):
-    """
-    A NodeTransformer for substituting terms in an expression with parameter values or contact matrix eigenvalue from an EpiModel,
-    or .
-    Used for calculated parameters.
-    Constructor requires an EpiModel with contact matrices, and optionally a dict with initial conditions.
-    """
-
-    def __init__(self, model: EpiModel, compartment_init: dict[str, np.ndarray] | None):
-        self.model = model
-        self.compartment_init = compartment_init
-
-    def visit_Name(self, node):
-        if node.id not in _allowed_modules:
-            # Eigenvalue of contact matrix
-            if node.id == "eigenvalue":
-                try:
-                    C = np.sum([c for _, c in self.model.population.contact_matrices.items()], axis=0)
-                    eigenvalue = np.linalg.eigvals(C).real.max()
-                    return ast.fix_missing_locations(ast.Constant(value=float(eigenvalue)))
-                except Exception as e:
-                    raise ValueError(f"Error calculating eigenvalue of contact matrix: {e}")
-
-            # Proportion of population in compartment from initial conditions
-            elif node.id in self.model.compartments:
-                if self.compartment_init is None:
-                    raise ValueError(
-                        f"Parameter calculation received compartment id {node.id} but initial conditions were not provided."
-                    )
-                if node.id not in self.compartment_init:
-                    raise ValueError(
-                        f"Parameter calculation received compartment id {node.id} but compartment is missing from provided initial conditions."
-                    )
-                try:
-                    init_count = self.compartment_init.get(node.id).sum()
-                    proportion = init_count / self.model.population.Nk.sum()
-                    return ast.fix_missing_locations(ast.Constant(value=float(proportion)))
-                except Exception as e:
-                    raise ValueError(
-                        f"Error calculating proportion of population in compartment{node.id} from initial conditions: {e}"
-                    )
-
-            # Model parameter
-            else:
-                try:
-                    value = self.model.get_parameter(node.id)
-                    if isinstance(value, np.ndarray):
-                        assert value.shape[0] == 1, (
-                            "Parameter calculation using parameters with array values is only implemented for age-varying parameters."
-                        )
-                        ast_nodes = [ast.Constant(value=float(item)) for item in value.flatten()]
-                        return ast.fix_missing_locations(ast.List(elts=ast_nodes, ctx=ast.Load()))
-                    return ast.fix_missing_locations(ast.Constant(value=float(value)))
-                except Exception as e:
-                    raise ValueError(f"Error obtaining parameter value during calculation: {e}")
-
-
-def safe_eval(expr: str) -> Any:
-    """
-    Safely evaluate a numeric expression from a string, allowing literal numbers,
-    basic arithmetic operators, and functions from numpy and scipy.
+    Safely evaluate a numeric expression from a string.
 
     Parameters
     ----------
-        expr: The expression to evaluate (e.g. "1/10" or "np.exp(-2) + 3 * np.sqrt(4)").
+    expr : str
+        The expression to evaluate (e.g. ``"1/10"``, ``"np.exp(-2) + 3 * np.sqrt(4)"``, ``"[1, 2] * 2"``).
+    resolve_name : Callable[[str], float | np.ndarray] | None
+        Function returning the value of a bare name in the expression (e.g. a model parameter).
+        If None, bare names are rejected.
 
     Returns
     -------
-        The result of evaluating the expression. Depending on the expression,
-        this may be one of:
-            - A Python numeric type: int, float, or complex.
-            - A NumPy scalar (e.g. numpy.int64, numpy.float64).
-            - A NumPy ndarray.
-            - A SciPy sparse matrix (subclass of scipy.sparse.spmatrix).
+    float | np.ndarray
+        The value of the expression. Lists evaluate to NumPy arrays with elementwise arithmetic.
 
     Raises
     ------
-        ValueError: If the expression contains disallowed operations or syntax.
-        SyntaxError: If the expression has invalid Python syntax.
-
+    ValueError
+        If the expression contains disallowed operations or syntax.
+    SyntaxError
+        If the expression has invalid Python syntax.
     """
-    # Parse into an AST
     tree = ast.parse(expr, mode="eval")
+    return _evaluate(tree.body, resolve_name)
 
-    # Validate AST nodes
-    SafeEvalVisitor().visit(tree)
 
-    # Compile and evaluate with restricted globals
-    code = compile(tree, filename="<safe_eval>", mode="eval")
-    return eval(code, {"__builtins__": None, "np": np, "scipy": scipy}, {})
+def _evaluate(node: ast.AST, resolve_name: Callable[[str], float | np.ndarray] | None) -> float | np.ndarray:  # noqa: PLR0911
+    match node:
+        # bool is a subclass of int; reject it along with strings and other constants
+        case ast.Constant(value=value) if type(value) in (int, float):
+            # Floats keep Pow from building huge integers (e.g. 9**9**9)
+            return float(value)
+        case ast.List(elts=elements):
+            return np.array([_evaluate(element, resolve_name) for element in elements], dtype=float)
+        case ast.BinOp(left=left, op=op, right=right) if type(op) in _BINARY_OPERATORS:
+            return _BINARY_OPERATORS[type(op)](_evaluate(left, resolve_name), _evaluate(right, resolve_name))
+        case ast.UnaryOp(op=op, operand=operand) if type(op) in _UNARY_OPERATORS:
+            return _UNARY_OPERATORS[type(op)](_evaluate(operand, resolve_name))
+        case ast.Attribute(value=ast.Name(id="np"), attr=attr) if attr in _NUMPY_CONSTANTS:
+            return _NUMPY_CONSTANTS[attr]
+        case ast.Call(func=ast.Attribute(value=ast.Name(id="np"), attr=attr), args=args, keywords=[]) if (
+            attr in _NUMPY_FUNCTIONS
+        ):
+            return _NUMPY_FUNCTIONS[attr](*[_evaluate(arg, resolve_name) for arg in args])
+        case ast.Name(id=name) if resolve_name is not None and name != "np":
+            return resolve_name(name)
+    msg = f"Disallowed expression: {ast.unparse(node)}"
+    raise ValueError(msg)
+
+
+def resolve_model_name(
+    model: EpiModel, compartment_init: dict[str, np.ndarray] | None, name: str
+) -> float | np.ndarray:
+    """
+    Resolve a name in a calculated-parameter expression.
+
+    Parameters
+    ----------
+    model : EpiModel
+        Model with contact matrices and the parameters referenced by the expression.
+    compartment_init : dict[str, np.ndarray] | None
+        Initial conditions by compartment, needed when the expression references a compartment.
+    name : str
+        ``eigenvalue`` (spectral radius of the summed contact matrices), a compartment name
+        (its initial proportion of the population), or a model parameter name.
+
+    Returns
+    -------
+    float | np.ndarray
+        The resolved value. Age-varying parameters resolve to a 1D array.
+    """
+    # Eigenvalue of contact matrix
+    if name == "eigenvalue":
+        try:
+            contact_matrix = np.sum(list(model.population.contact_matrices.values()), axis=0)
+            return float(np.linalg.eigvals(contact_matrix).real.max())
+        except Exception as e:
+            msg = f"Error calculating eigenvalue of contact matrix: {e}"
+            raise ValueError(msg) from e
+
+    # Proportion of population in compartment from initial conditions
+    if name in model.compartments:
+        if compartment_init is None:
+            msg = f"Parameter calculation received compartment id {name} but initial conditions were not provided."
+            raise ValueError(msg)
+        if name not in compartment_init:
+            msg = (
+                f"Parameter calculation received compartment id {name} "
+                "but compartment is missing from provided initial conditions."
+            )
+            raise ValueError(msg)
+        return float(compartment_init[name].sum() / model.population.Nk.sum())
+
+    # Model parameter
+    try:
+        value = model.get_parameter(name)
+    except Exception as e:
+        msg = f"Error obtaining parameter value during calculation: {e}"
+        raise ValueError(msg) from e
+    if isinstance(value, np.ndarray):
+        if value.ndim > 1 and value.shape[0] != 1:
+            msg = "Parameter calculation using parameters with array values is only implemented for age-varying parameters."
+            raise ValueError(msg)
+        return value.astype(float).flatten()
+    return float(value)
