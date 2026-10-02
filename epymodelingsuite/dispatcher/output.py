@@ -12,7 +12,6 @@ from epydemix.calibration import CalibrationResults
 
 from ..schema.dispatcher import CalibrationOutput, SimulationOutput
 from ..schema.output import (
-    FlusightForecastOutput,
     FlusightPropED,
     ObservedValuesConfig,
     OutputConfig,
@@ -22,12 +21,14 @@ from ..schema.output import (
     get_metrocast_quantiles,
 )
 from ..telemetry import ExecutionTelemetry
+from ..output.hub_files import hub_parquet_bytes
+from ..output.samples import make_flusight_samples
 from ..utils.location import (
     convert_location_name_format,
     get_flusight_population,
+    get_hub_location_id,
     parse_population_name,
 )
-from ..utils.trajectory_samples import hub_parquet_bytes, make_sample_rows, select_samples
 from ..visualization.generators import (
     generate_categorical_plots,
     generate_posterior_grid_plot,
@@ -37,30 +38,6 @@ from ..visualization.generators import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-def get_hub_location_id(population_name: str) -> str:
-    """
-    Convert population name to location ID for hub CSV outputs.
-
-    For ISO locations, returns FIPS code (e.g., "06" for California).
-    For metrocast locations, returns metrocast_location_id (e.g., "denver").
-
-    Parameters
-    ----------
-    population_name : str
-        Population name in epydemix format (e.g., "United_States_California" or
-        "metrocast_location_denver").
-
-    Returns
-    -------
-    str
-        Location ID appropriate for hub CSV output format.
-    """
-    location_name, location_type = parse_population_name(population_name)
-    if location_type == "metrocast_location":
-        return location_name
-    return convert_location_name_format(population_name, "FIPS")
 
 
 def get_plot_location_label(population_name: str) -> str:
@@ -857,104 +834,6 @@ def make_prop_ed_flusightforecast(
             raise ValueError(f"Received undefined/unimplemented strategy {config.strategy}")
 
 
-def _horizon_matrix(
-    dates_list: list[np.ndarray], values_list: list[np.ndarray], reference_date: date, horizons: list[int]
-) -> np.ndarray:
-    """Values of each trajectory at the horizons' target dates, shape (trajectories, horizons); NaN where missing."""
-    target_dates = [pd.Timestamp(reference_date) + pd.Timedelta(weeks=h) for h in horizons]
-    out = np.full((len(values_list), len(horizons)), np.nan)
-    for i, (dates, values) in enumerate(zip(dates_list, values_list, strict=True)):
-        lookup = dict(zip(pd.to_datetime(dates), values, strict=True))
-        out[i] = [lookup.get(d, np.nan) for d in target_dates]
-    return out
-
-
-def make_samples_flusightforecast(
-    calibrations: list[CalibrationOutput],
-    flusight_format: FlusightForecastOutput,
-    rescaling_factors: pd.DataFrame,
-) -> tuple[list[pd.DataFrame], list[str]]:
-    """
-    Create FluSight trajectory sample rows for the enabled hospitalization and prop ED targets.
-
-    Hospitalization samples come from the 'hospitalizations' projections. Prop ED samples come from the
-    `transition_name` projections ('transition' strategy), or are the hospitalization trajectories times the
-    location's rescaling factor (window strategies), in which case both targets share sample ids.
-
-    Parameters
-    ----------
-    calibrations : list[CalibrationOutput]
-        One calibration per location.
-    flusight_format : FlusightForecastOutput
-        FluSight output configuration with `samples` set.
-    rescaling_factors : pd.DataFrame
-        Prop ED rescaling factors (`population`, `rescaling_factor`) for the window strategies.
-
-    Returns
-    -------
-    tuple[list[pd.DataFrame], list[str]]
-        Sample rows per location and target, and warnings.
-    """
-    cfg = flusight_format.samples
-    prop_ed = flusight_format.prop_ed
-    horizons = list(range(-1, 4))
-    factors = {}
-    if prop_ed and prop_ed.strategy != "transition" and not rescaling_factors.empty:
-        factors = dict(
-            zip(
-                rescaling_factors.population.map(get_hub_location_id),
-                rescaling_factors.rescaling_factor,
-                strict=True,
-            )
-        )
-
-    rows, warns, seen = [], [], set()
-    for calibration in calibrations:
-        location = get_hub_location_id(calibration.population)
-        if location in seen:
-            warns.append(f"OUTPUT GENERATOR: more than one model for location {location}; samples kept for the first.")
-            continue
-        seen.add(location)
-        try:
-            traj = calibration.results.get_projection_trajectories()
-        except Exception:
-            warns.append(
-                f"OUTPUT GENERATOR: failed to obtain projection trajectories for samples, model primary_id={calibration.primary_id}."
-            )
-            continue
-        seed = cfg.seed if cfg.seed is not None else calibration.seed
-        id_prefix = convert_location_name_format(calibration.population, "abbreviation")
-        ref = flusight_format.reference_date
-
-        # (target, values with shape (trajectories, horizons), rounding options)
-        per_target = []
-        try:
-            if flusight_format.hospitalizations or (prop_ed and prop_ed.strategy != "transition"):
-                hosp = _horizon_matrix(traj["date"], traj["hospitalizations"], ref, horizons)
-            if flusight_format.hospitalizations:
-                per_target.append((flusight_format.hospitalizations.target, hosp, {"integer": True}))
-            if prop_ed and prop_ed.strategy == "transition":
-                ed = _horizon_matrix(traj["date"], traj[prop_ed.transition_name], ref, horizons)
-                per_target.append((prop_ed.target, ed, {"upper": 1}))
-            elif prop_ed and location in factors:
-                per_target.append((prop_ed.target, hosp * factors[location], {"upper": 1}))
-            elif prop_ed:
-                warns.append(f"OUTPUT GENERATOR: no prop ED rescaling factor for {location}; skipping ED samples.")
-        except (KeyError, ValueError) as e:
-            warns.append(f"OUTPUT GENERATOR: failed to create samples for {location}: {e}")
-            continue
-
-        for target, values, options in per_target:
-            idx = select_samples(values, cfg.n_samples, cfg.method, seed)
-            if len(idx) < cfg.n_samples:
-                warns.append(
-                    f"OUTPUT GENERATOR: only {len(idx)} complete trajectories for '{target}' samples in {location} "
-                    f"(requested {cfg.n_samples})."
-                )
-            rows.append(make_sample_rows(values[idx], horizons, ref, location, target, id_prefix, **options))
-    return rows, warns
-
-
 def format_quantiles_flusmh(quantiles_df: pd.DataFrame) -> pd.DataFrame:
     """"""
 
@@ -1735,7 +1614,7 @@ def generate_calibration_outputs(
         # Trajectory samples
         if output.flusight_format.samples:
             logger.info("  - Generating FluSight trajectory samples")
-            sample_rows, sample_warnings = make_samples_flusightforecast(
+            sample_rows, sample_warnings = make_flusight_samples(
                 calibrations,
                 output.flusight_format,
                 rescaling_factors if output.flusight_format.prop_ed else pd.DataFrame(),

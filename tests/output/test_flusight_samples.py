@@ -1,3 +1,5 @@
+"""Tests for FluSight trajectory samples from calibrations (epymodelingsuite.output.samples)."""
+
 import io
 from datetime import date
 from unittest.mock import MagicMock
@@ -7,7 +9,8 @@ import pandas as pd
 import pyarrow.parquet as pq
 import pytest
 
-from epymodelingsuite.dispatcher.output import generate_calibration_outputs, make_samples_flusightforecast
+from epymodelingsuite.dispatcher.output import generate_calibration_outputs
+from epymodelingsuite.output.samples import make_flusight_samples
 from epymodelingsuite.schema.output import (
     FlusightForecastOutput,
     ModelMetaOutput,
@@ -51,12 +54,15 @@ def _concat(rows: list[pd.DataFrame]) -> pd.DataFrame:
 
 
 class TestHospSamples:
+    """Tests for hospitalization trajectory samples."""
+
     def test_one_hundred_integer_samples_per_location(self):
+        """Test that each location gets 100 non-negative integer samples over horizons -1..3."""
         calibrations = [
             _calibration("United_States", _trajectories(500)),
             _calibration("United_States_Massachusetts", _trajectories(500, seed=1)),
         ]
-        rows, warns = make_samples_flusightforecast(calibrations, _flusight(), pd.DataFrame())
+        rows, warns = make_flusight_samples(calibrations, _flusight(), pd.DataFrame())
         df = _concat(rows)
 
         assert warns == []
@@ -68,50 +74,58 @@ class TestHospSamples:
         assert (df.value >= 0).all()
 
     def test_values_are_whole_trajectories(self):
+        """Test that each sample is one projection trajectory, not values mixed across trajectories."""
         traj = _trajectories(200)
-        rows, _ = make_samples_flusightforecast([_calibration("United_States", traj)], _flusight(), pd.DataFrame())
+        rows, _ = make_flusight_samples([_calibration("United_States", traj)], _flusight(), pd.DataFrame())
         sample = _concat(rows).query("output_type_id == 'US00'").sort_values("horizon").value.to_numpy()
         candidates = np.rint(np.stack(traj["hospitalizations"])[:, 3:8])  # horizons -1..3
         assert (candidates == sample).all(axis=1).any()
 
     def test_seed_makes_selection_reproducible(self):
+        """Test that the same seed selects the same samples."""
         traj = _trajectories(500)
-        a, _ = make_samples_flusightforecast([_calibration("United_States", traj)], _flusight(), pd.DataFrame())
-        b, _ = make_samples_flusightforecast([_calibration("United_States", traj)], _flusight(), pd.DataFrame())
+        a, _ = make_flusight_samples([_calibration("United_States", traj)], _flusight(), pd.DataFrame())
+        b, _ = make_flusight_samples([_calibration("United_States", traj)], _flusight(), pd.DataFrame())
         pd.testing.assert_frame_equal(_concat(a), _concat(b))
 
     def test_fewer_trajectories_are_all_submitted_with_warning(self):
-        rows, warns = make_samples_flusightforecast(
+        """Test that all trajectories are submitted with a warning when fewer than requested exist."""
+        rows, warns = make_flusight_samples(
             [_calibration("United_States", _trajectories(60))], _flusight(), pd.DataFrame()
         )
         assert _concat(rows).output_type_id.nunique() == 60
         assert any("only 60 complete trajectories" in w for w in warns)
 
     def test_trajectories_missing_a_horizon_are_skipped(self):
+        """Test that trajectories with NaN in a horizon are not submitted."""
         traj = _trajectories(120)
         for i in range(30):
             traj["hospitalizations"][i] = traj["hospitalizations"][i].copy()
             traj["hospitalizations"][i][5] = np.nan  # horizon 1
-        rows, warns = make_samples_flusightforecast([_calibration("United_States", traj)], _flusight(), pd.DataFrame())
+        rows, warns = make_flusight_samples([_calibration("United_States", traj)], _flusight(), pd.DataFrame())
         assert _concat(rows).output_type_id.nunique() == 90
         assert not _concat(rows).value.isna().any()
         assert warns
 
     def test_duplicate_location_keeps_first_with_warning(self):
+        """Test that only the first model per location is sampled, with a warning."""
         calibrations = [
             _calibration("United_States", _trajectories(200)),
             _calibration("United_States", _trajectories(200)),
         ]
-        rows, warns = make_samples_flusightforecast(calibrations, _flusight(), pd.DataFrame())
+        rows, warns = make_flusight_samples(calibrations, _flusight(), pd.DataFrame())
         assert len(rows) == 1
         assert any("more than one model" in w for w in warns)
 
 
 class TestPropEDSamples:
+    """Tests for prop ED trajectory samples under each strategy."""
+
     def test_transition_strategy_uses_transition_trajectories(self):
+        """Test that the transition strategy samples the transition trajectories within [0, 1]."""
         flusight = _flusight(hospitalizations=None, prop_ed={"strategy": "transition", "transition_name": "ed_prop"})
         traj = _trajectories(300)
-        rows, warns = make_samples_flusightforecast([_calibration("United_States", traj)], flusight, pd.DataFrame())
+        rows, warns = make_flusight_samples([_calibration("United_States", traj)], flusight, pd.DataFrame())
         df = _concat(rows)
 
         assert warns == []
@@ -123,6 +137,7 @@ class TestPropEDSamples:
 
     @pytest.mark.parametrize("strategy", ["surveillance_window", "calibration_window"])
     def test_window_strategies_scale_the_hosp_samples(self, strategy):
+        """Test that window strategies scale the hosp samples by the rescaling factor, sharing ids."""
         extra = (
             {"ed_source": "ed", "hosp_source": "hosp", "fit_start": "2026-09-01", "fit_end": "2026-10-01"}
             if strategy == "surveillance_window"
@@ -131,7 +146,7 @@ class TestPropEDSamples:
         flusight = _flusight(prop_ed={"strategy": strategy, **extra})
         traj = _trajectories(300)
         factors = pd.DataFrame({"population": ["United_States"], "rescaling_factor": [2e-4]})
-        rows, warns = make_samples_flusightforecast([_calibration("United_States", traj)], flusight, factors)
+        rows, warns = make_flusight_samples([_calibration("United_States", traj)], flusight, factors)
         df = _concat(rows)
         hosp = df[df.target == "wk inc flu hosp"].set_index(["output_type_id", "horizon"]).value
         ed = df[df.target == "wk inc flu prop ed visits"].set_index(["output_type_id", "horizon"]).value
@@ -142,8 +157,9 @@ class TestPropEDSamples:
         assert np.allclose(hosp, np.rint(ed / 2e-4))
 
     def test_window_strategy_without_factor_skips_ed(self):
+        """Test that ED samples are skipped with a warning when the location has no rescaling factor."""
         flusight = _flusight(prop_ed={"strategy": "calibration_window", "ed_source": "ed", "num_fit_weeks": 4})
-        rows, warns = make_samples_flusightforecast(
+        rows, warns = make_flusight_samples(
             [_calibration("United_States", _trajectories(200))], flusight, pd.DataFrame()
         )
         assert set(_concat(rows).target) == {"wk inc flu hosp"}
@@ -151,11 +167,13 @@ class TestPropEDSamples:
 
 
 def test_samples_rejected_for_metrocast():
+    """Test that samples cannot be configured for metrocast outputs."""
     with pytest.raises(ValueError, match="metrocast"):
         FlusightForecastOutput(reference_date=REFERENCE_DATE, metrocast=True, samples={})
 
 
 def test_unknown_sample_method_rejected():
+    """Test that an unregistered sample selection method is rejected."""
     with pytest.raises(ValueError, match="Unknown sample selection method"):
         FlusightForecastOutput(reference_date=REFERENCE_DATE, samples={"method": "nope"})
 

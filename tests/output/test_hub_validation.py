@@ -1,17 +1,20 @@
+"""Tests for epymodelingsuite.output.hub_validation."""
+
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from epymodelingsuite.utils.hub_validation import load_tasks, validate_model_output
-from epymodelingsuite.utils.trajectory_samples import make_sample_rows
+from epymodelingsuite.output.hub_validation import load_tasks, validate_model_output
+from epymodelingsuite.output.samples import make_sample_rows
 
 FIXTURES = Path(__file__).parent.parent / "fixtures" / "flusight"
 
 
 @pytest.fixture(scope="module")
 def tasks() -> dict:
+    """FluSight 2026-27 tasks.json."""
     return load_tasks(FIXTURES / "tasks.json")
 
 
@@ -30,16 +33,19 @@ def _is(df, target, output_type) -> pd.Series:
 
 
 def test_example_submission_passes(example, tasks):
+    """Test that the FluSight example submission passes."""
     assert validate_model_output(example, tasks) == []
 
 
 def test_csv_round_trip_passes(example, tasks, tmp_path):
+    """Test that the example passes after a round trip through csv."""
     example.to_csv(tmp_path / "sub.csv", index=False)
     df = pd.read_csv(tmp_path / "sub.csv", dtype={"location": str, "output_type_id": str})
     assert validate_model_output(df, tasks) == []
 
 
 def test_generated_samples_pass(example, tasks):
+    """Test that samples built by make_sample_rows pass."""
     # Replace the example's hosp samples with ones built by make_sample_rows
     hosp = _is(example, "wk inc flu hosp", "sample")
     locations = example.loc[hosp, "location"].unique()
@@ -54,11 +60,13 @@ def test_generated_samples_pass(example, tasks):
 
 
 def test_extra_or_missing_column(example, tasks):
+    """Test that extra or missing columns are reported."""
     assert "Columns must be exactly" in _errors(example.assign(extra=1), tasks)
     assert "Columns must be exactly" in _errors(example.drop(columns="value"), tasks)
 
 
 def test_bad_types(example, tasks):
+    """Test that non-date, non-integer horizon and non-numeric values are reported."""
     assert "not YYYY-MM-DD" in _errors(example.assign(reference_date="10/10/2026"), tasks)
     df = example.astype({"horizon": "float"})
     df.loc[df.horizon.notna(), "horizon"] += 0.5
@@ -67,12 +75,14 @@ def test_bad_types(example, tasks):
 
 
 def test_multiple_reference_dates(example, tasks):
+    """Test that more than one reference_date is reported."""
     df = example.copy()
     df.loc[0, "reference_date"] = "2026-10-17"
     assert "single value" in _errors(df, tasks)
 
 
 def test_unknown_target_and_location(example, tasks):
+    """Test that unknown targets and locations are reported."""
     assert "match no model task" in _errors(
         example.replace({"target": {"wk inc flu hosp": "wk inc covid hosp"}}), tasks
     )
@@ -82,27 +92,32 @@ def test_unknown_target_and_location(example, tasks):
 
 
 def test_peak_rows_must_have_no_horizon(example, tasks):
+    """Test that peak target rows with a horizon are reported."""
     df = example.copy()
     df.loc[df.target == "peak inc flu hosp", "horizon"] = 1
     assert "`horizon` must be NA" in _errors(df, tasks)
 
 
 def test_duplicate_rows(example, tasks):
+    """Test that duplicate rows are reported."""
     assert "duplicate" in _errors(pd.concat([example, example.head(1)], ignore_index=True), tasks)
 
 
 def test_missing_required_quantile(example, tasks):
+    """Test that a missing required quantile level is reported."""
     df = example[~(_is(example, "wk inc flu hosp", "quantile") & (example.output_type_id == "0.5"))]
     assert "miss required output_type_ids" in _errors(df, tasks)
 
 
 def test_missing_required_output_type(example, tasks):
+    """Test that samples without the required quantiles are reported."""
     # Samples without the required quantiles for the same target/location/horizon
     df = example[~_is(example, "wk inc flu hosp", "quantile")]
     assert "required output type `quantile`" in _errors(df, tasks)
 
 
 def test_value_bounds_and_integers(example, tasks):
+    """Test that values outside the bounds or non-integer counts are reported."""
     df = example.copy()
     df.loc[_is(df, "wk inc flu prop ed visits", "quantile").idxmax(), "value"] = 1.5
     assert "above maximum 1" in _errors(df, tasks)
@@ -115,6 +130,7 @@ def test_value_bounds_and_integers(example, tasks):
 
 
 def test_decreasing_quantiles(example, tasks):
+    """Test that quantile values decreasing with level are reported."""
     df = example.copy()
     q = _is(df, "wk inc flu hosp", "quantile") & (df.output_type_id == "0.99")
     df.loc[q, "value"] = -0.0
@@ -122,18 +138,21 @@ def test_decreasing_quantiles(example, tasks):
 
 
 def test_pmf_must_sum_to_one(example, tasks):
+    """Test that pmf probabilities not summing to 1 are reported."""
     df = example.copy()
     df.loc[_is(df, "wk flu hosp rate change", "pmf").idxmax(), "value"] += 0.1
     assert "don't sum to 1" in _errors(df, tasks)
 
 
 def test_sample_count(example, tasks):
+    """Test that a sample count other than 100 is reported."""
     s = _is(example, "wk inc flu hosp", "sample")
     keep = ~(s & example.output_type_id.str.endswith("99"))
     assert "sample count outside [100, 100]" in _errors(example[keep], tasks)
 
 
 def test_sample_id_spanning_locations(example, tasks):
+    """Test that a sample id used for two locations is reported."""
     df = example.copy()
     s = _is(df, "wk inc flu hosp", "sample")
     second = df.loc[s, "location"].unique()[1]
@@ -144,12 +163,14 @@ def test_sample_id_spanning_locations(example, tasks):
 
 
 def test_samples_with_different_horizons(example, tasks):
+    """Test that samples covering different horizons are reported."""
     s = _is(example, "wk inc flu hosp", "sample")
     drop = s & (example.output_type_id == example.loc[s, "output_type_id"].iloc[0]) & (example.horizon == 3)
     assert "cover different" in _errors(example[~drop], tasks)
 
 
 def test_target_end_date_matches_horizon(example, tasks):
+    """Test that target_end_date inconsistent with the horizon is reported."""
     df = example.copy()
     df.loc[df.horizon == 0, "target_end_date"] = "2026-10-17"
     assert "target_end_date != reference_date" in _errors(df, tasks)
