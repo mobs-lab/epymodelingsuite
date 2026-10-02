@@ -4,7 +4,8 @@ These pin down what each drawn axis receives today, so the override refactor can
 Assertions marked ``CURRENT BEHAVIOR`` capture inconsistencies that the refactor fixes on purpose;
 everything else should stay the same.
 
-Frames are summarized with ``span()`` as (first date, last date, number of dates, location label, e.g. "CA alt").
+Frames are summarized with ``span()`` as (first date, last date, number of dates, location label, e.g. "CA hosp_aug").
+Quantile levels are captured separately for calibration and projection frames.
 """
 
 import matplotlib.pyplot as plt
@@ -12,6 +13,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from quantile_plot_test_utils import (
+    QUANTILES,
     PlotCapture,
     make_calibration,
     make_plots_config,
@@ -131,9 +133,11 @@ class TestSingleDefaultOutputs:
             panel("California", CAL_FROM_PROJECTION_START, PROJ_BASE_HORIZON, SURV_FROM_PROJECTION_START),
         ]
 
-    def test_styling(self, out_dict, capture):
-        """Default fitting window, colors and xlabel_interval; only the left panel gets the ylabel."""
+    def test_quantile_levels_and_styling(self, out_dict, capture):
+        """All single panels keep every quantile level and the default styling."""
         for drawn in capture.panels:
+            assert drawn.quantile_levels["calibration_quantiles"] == QUANTILES
+            assert drawn.quantile_levels["projection_quantiles"] == QUANTILES
             assert drawn.fitting_window == FITTING_WINDOW
             assert (drawn.calibration_color, drawn.projection_color) == ("C0", "C1")
             assert drawn.xlabel_interval is None
@@ -214,9 +218,12 @@ class TestGridDefaultOutputs:
             panel("Texas", with_location(CAL_FULL, "TX"), None, None),
         ]
 
-    def test_styling(self, out_dict, capture):
-        """Grid panels share the fitting window and colors; only the leftmost column gets the ylabel."""
+    def test_quantile_levels_and_styling(self, out_dict, capture):
+        """All grid panels keep every quantile level and the default styling."""
         for drawn in capture.panels:
+            assert drawn.quantile_levels["calibration_quantiles"] == QUANTILES
+            if drawn.projection is not None:
+                assert drawn.quantile_levels["projection_quantiles"] == QUANTILES
             assert drawn.fitting_window == FITTING_WINDOW
             assert (drawn.calibration_color, drawn.projection_color) == ("C0", "C1")
         # ylabel only on the leftmost column
@@ -333,17 +340,19 @@ class TestGridOverrides:
 
 
 class TestSurveillanceSourceSelection:
-    """Two sources loaded; every output selects the second one (reported as "CA alt")."""
+    """Outputs alternate between augmented and original hospitalization sources."""
 
     @pytest.fixture
     def config(self):
         outputs = [
-            QuantilesOutputConfig(type=kind, surveillance_source="alt") for kind in ("filtered", "full", "side_by_side")
+            QuantilesOutputConfig(type="filtered", surveillance_source="hosp_aug"),
+            QuantilesOutputConfig(type="full", surveillance_source="hosp"),
+            QuantilesOutputConfig(type="side_by_side", surveillance_source="hosp_aug"),
         ]
         return make_plots_config(single=True, grid=True, outputs=outputs)
 
     def test_single_uses_first_loaded_source(self, capture, sources, config):
-        """Which source single plots draw when every output selects "alt"."""
+        """Single plots use the first loaded source even when outputs select different sources."""
         run_generators([make_calibration(CA)], config, sources)
         single_panels = [drawn for drawn in capture.panels if not drawn.output.startswith("quantiles_grid")]
         assert len(single_panels) == 4
@@ -351,11 +360,14 @@ class TestSurveillanceSourceSelection:
         assert {drawn.surveillance[3] for drawn in single_panels} == {"CA"}
 
     def test_grid_uses_selected_source(self, capture, sources, config):
-        """Grid plots draw the selected "alt" source."""
+        """Each grid output uses its own source, including switching back to "hosp_aug"."""
         run_generators([make_calibration(CA)], config, sources)
-        grid_panels = [drawn for drawn in capture.panels if drawn.output.startswith("quantiles_grid")]
-        assert len(grid_panels) == 4
-        assert {drawn.surveillance[3] for drawn in grid_panels} == {"CA alt"}
+        for name, expected in (
+            ("quantiles_grid_filtered", ["CA hosp_aug"]),
+            ("quantiles_grid_full", ["CA"]),
+            ("quantiles_grid_sidebyside", ["CA hosp_aug", "CA hosp_aug"]),
+        ):
+            assert [drawn.surveillance[3] for drawn in capture.panels_for(name)] == expected
 
 
 class TestHiddenSurveillance:

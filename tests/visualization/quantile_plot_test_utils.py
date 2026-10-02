@@ -25,7 +25,7 @@ REFERENCE_DATE = date(2024, 1, 13)
 QUANTILES = [0.025, 0.25, 0.5, 0.75, 0.975]
 
 # Each location's values are offset by a location number * 1000, so a captured frame tells which location it
-# came from. The second surveillance source ("alt") adds 5 to the location number.
+# came from. The second surveillance source ("hosp_aug") adds 5 to the location number.
 LOCATION_NUMBERS = {
     "United_States_California": 1,
     "United_States_New_York": 2,
@@ -36,9 +36,9 @@ ISO_CODES = {
     "United_States_New_York": "US-NY",
     "United_States_Texas": "US-TX",
 }
-ALT_SOURCE_OFFSET = 5
+HOSP_AUG_SOURCE_OFFSET = 5
 # Label that span() reports for each value range
-VALUE_RANGE_LABELS = {1: "CA", 2: "NY", 3: "TX", 6: "CA alt", 7: "NY alt", 8: "TX alt"}
+VALUE_RANGE_LABELS = {1: "CA", 2: "NY", 3: "TX", 6: "CA hosp_aug", 7: "NY hosp_aug", 8: "TX hosp_aug"}
 
 SURVEILLANCE_DATES = pd.date_range("2023-10-07", "2024-01-27", freq="W-SAT")  # 17 weeks
 CALIBRATION_DATES = pd.date_range("2023-11-04", "2024-01-13", freq="W-SAT")  # 11 weeks
@@ -80,9 +80,13 @@ def make_calibration(population: str, *, with_projection: bool = True, incomplet
 
 
 def write_surveillance_sources(tmp_path) -> dict[str, ObservedValuesConfig]:
-    """Write two surveillance CSVs ("hosp", then "alt") covering every location."""
+    """Write synthetic "hosp" and "hosp_aug" CSVs covering every location.
+
+    "hosp_aug" stands in for an augmented hospitalizations source; the offset only
+    distinguishes source selection and does not perform real augmentation.
+    """
     sources = {}
-    for name, source_offset in (("hosp", 0), ("alt", ALT_SOURCE_OFFSET)):
+    for name, source_offset in (("hosp", 0), ("hosp_aug", HOSP_AUG_SOURCE_OFFSET)):
         rows = [
             {
                 "week_end": d.date().isoformat(),
@@ -132,6 +136,7 @@ class Panel:
     calibration: tuple | None
     projection: tuple | None
     surveillance: tuple | None
+    quantile_levels: dict[str, list[float]]
     fitting_window: tuple | None
     calibration_color: str
     projection_color: str
@@ -159,6 +164,11 @@ class PlotCapture:
                     calibration=span(kwargs.get("calibration_quantiles")),
                     projection=span(kwargs.get("projection_quantiles")),
                     surveillance=span(kwargs.get("df_surveillance")),
+                    quantile_levels={
+                        name: sorted(df["quantile"].unique())
+                        for name, df in kwargs.items()
+                        if name in ("calibration_quantiles", "projection_quantiles") and df is not None
+                    },
                     fitting_window=None if start is None else (str(start), str(end)),
                     calibration_color=kwargs.get("calibration_color"),
                     projection_color=kwargs.get("projection_color"),
