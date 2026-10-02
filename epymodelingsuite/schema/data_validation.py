@@ -131,7 +131,7 @@ def validate_calibration_data_for_config_set(
             load_basemodel_config_from_file,
             load_calibration_config_from_file,
         )
-        from ..utils import get_location_codebook
+        from ..utils.location import resolve_population_names
 
         # Load configs
         basemodel_config = load_basemodel_config_from_file(basemodel_path)
@@ -141,10 +141,9 @@ def validate_calibration_data_for_config_set(
 
         # Resolve population names (same logic as create_model_collection)
         population_names = calibration_config.modelset.population_names
-        if "all" in population_names:
-            # Expand to all locations from codebook
-            population_names = get_location_codebook()["location_name_epydemix"].tolist()
-        elif not population_names:
+        if population_names:
+            population_names = [name for name, _ in resolve_population_names(population_names)]
+        else:
             # Use population from basemodel
             population_names = [basemodel_config.model.population.name]
 

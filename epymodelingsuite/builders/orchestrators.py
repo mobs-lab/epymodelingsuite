@@ -3,7 +3,6 @@
 import copy
 import datetime as dt
 import logging
-import warnings
 from collections.abc import Callable
 from typing import Any, TypedDict
 
@@ -17,8 +16,8 @@ from ..builders.utils import get_data_in_location, get_data_in_window
 from ..schema.basemodel import BaseEpiModel, BasemodelConfig, LocationTypeEnum, Parameter, Population, Timespan
 from ..schema.calibration import CalibrationConfig, ComparisonSpec
 from ..school_closures import make_school_closure_dict
-from ..utils import get_location_codebook, make_dummy_population, validate_iso3166
-from ..utils.location import get_metrocast_locations, get_parent_region
+from ..utils import make_dummy_population
+from ..utils.location import get_metrocast_locations, get_parent_region, resolve_population_names
 from ..vaccinations import reaggregate_vaccines, scenario_to_epydemix
 from .base import (
     add_model_compartments_from_config,
@@ -34,7 +33,7 @@ from .interventions import (
     add_school_closure_intervention_from_config,
 )
 from .seasonality import add_seasonality_from_config
-from .vaccination import add_vaccination_schedules_from_config
+from .vaccination import add_vaccination_schedules_from_config, load_preprocessed_vaccination_schedule
 
 logger = logging.getLogger(__name__)
 
@@ -100,42 +99,7 @@ def create_model_collection(
     # Create models with populations set
     if population_names:
         # Resolve keywords and normalize to (name, type) tuples
-        resolved_locations = []
-        for pop in population_names:
-            if isinstance(pop, str):
-                if pop == "all":
-                    # Legacy (deprecated): all states + US
-                    warnings.warn(
-                        "The 'all' keyword is deprecated. Use 'all-states' instead.",
-                        DeprecationWarning,
-                        stacklevel=2,
-                    )
-                    for iso_name in get_location_codebook()["ISO"].tolist():
-                        resolved_locations.append((iso_name, LocationTypeEnum.iso))
-                elif pop == "all-states":
-                    # All states + US
-                    for iso_name in get_location_codebook()["ISO"].tolist():
-                        resolved_locations.append((iso_name, LocationTypeEnum.iso))
-                elif pop == "all-metrocast":
-                    # All metrocast locations (including state-level, excluding NYC)
-                    metrocast_locs = get_metrocast_locations()
-                    excluded_locations = {"nyc"}
-                    for loc_name in metrocast_locs["metrocast_location_id"].tolist():
-                        if loc_name not in excluded_locations:
-                            resolved_locations.append((loc_name, LocationTypeEnum.metrocast_location))
-                else:
-                    # Auto-detect type
-                    try:
-                        validate_iso3166(pop)
-                        resolved_locations.append((pop, LocationTypeEnum.iso))
-                    except ValueError:
-                        # Assume metrocast
-                        resolved_locations.append((pop, LocationTypeEnum.metrocast_location))
-            elif isinstance(pop, dict):
-                # Explicit type from dict
-                name = pop["name"]
-                loc_type = LocationTypeEnum(pop.get("type", "iso"))
-                resolved_locations.append((name, loc_type))
+        resolved_locations = resolve_population_names(population_names)
 
         # Create models for each location
         resolved_names = []
@@ -143,7 +107,7 @@ def create_model_collection(
             m = copy.deepcopy(init_model)
             pop_config = Population(
                 name=name,
-                location_type=location_type,
+                location_type=LocationTypeEnum(location_type),
                 age_groups=basemodel.population.age_groups,
                 contact_matrix=basemodel.population.contact_matrix,
             )
@@ -216,6 +180,9 @@ def setup_vaccination_schedules(
 
     # If start_date is sampled, precalculate schedule with earliest start for later reaggregation
     if sampled_start_timespan:
+        if basemodel.vaccination.preprocessed_vaccination_data_path:
+            earliest_vax = load_preprocessed_vaccination_schedule(basemodel.vaccination)
+            return models, earliest_vax
         earliest_vax = scenario_to_epydemix(
             input_filepath=basemodel.vaccination.scenario_data_path,
             start_date=sampled_start_timespan.start_date,
@@ -808,7 +775,8 @@ def make_simulate_wrapper(
                 def transform(trajectory, context=None): ...  # With optional context
                 def transform(trajectory, **kwargs): ...  # Flexible signature
     rng : np.random.Generator | None, optional
-            Random number generator for reproducible simulations.
+            Random number generator for reproducible simulations, used when the caller does not
+            pass its own generator as ``params["rng"]`` (a seeded ABCSampler does).
             If None, a default generator will be created.
 
     Returns
@@ -914,9 +882,15 @@ def make_simulate_wrapper(
             )
 
         # 8. Handle random state
-        if "random_state" in params.keys():
-            rng.bit_generator.state = params["random_state"]
-        random_state = rng.bit_generator.state
+        # A seeded ABCSampler injects its own generator as params["rng"] (one stream per
+        # calibration run, one child stream per projection trajectory); prefer it over the
+        # builder-level generator so the whole calibration/projection is reproducible.
+        sim_rng = params.get("rng", rng)
+        if "random_state" in params:
+            # Restore a recorded state on a copy so the injected generator is not rewound
+            sim_rng = copy.deepcopy(sim_rng)
+            sim_rng.bit_generator.state = params["random_state"]
+        random_state = sim_rng.bit_generator.state
 
         # 9. Collect settings for simulation
         sim_params = {
@@ -926,7 +900,7 @@ def make_simulate_wrapper(
             "end_date": params["end_date"],
             "dt": basemodel.timespan.delta_t,
             "resample_frequency": basemodel.simulation.resample_frequency,
-            "rng": rng,
+            "rng": sim_rng,
         }
 
         # 10. Extract observed dates for calibration (before simulation to avoid duplication)

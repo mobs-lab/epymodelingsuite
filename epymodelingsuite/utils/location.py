@@ -420,3 +420,54 @@ def parse_population_name(population_name: str) -> tuple[str, str]:
         location_name = population_name[len(METROCAST_PREFIX) :]
         return location_name, "metrocast_location"
     return population_name, "iso"
+
+
+def resolve_population_names(population_names: list[str | dict[str, str]]) -> list[tuple[str, str]]:
+    """
+    Expand modelset population names into validated ``(name, location_type)`` pairs.
+
+    Parameters
+    ----------
+    population_names : list[str | dict[str, str]]
+        Entries as accepted by the modelset schema:
+        - Keywords: "all" (deprecated), "all-states", "all-metrocast"
+        - Strings (type auto-detected): "US-MA", "denver"
+        - Dicts (explicit type): {"name": "denver", "type": "metrocast_location"}
+
+    Returns
+    -------
+    list[tuple[str, str]]
+        Resolved location names and types ("iso" or "metrocast_location").
+
+    Raises
+    ------
+    ValueError
+        If an entry is not a valid location.
+    """
+    import warnings
+
+    resolved = []
+    for population in population_names:
+        if isinstance(population, dict):
+            name = population["name"]
+            location_type = population.get("type", "iso")
+            resolved.append((validate_location_by_type(name, location_type), location_type))
+        elif population in ("all", "all-states"):
+            if population == "all":
+                warnings.warn(
+                    "The 'all' keyword is deprecated. Use 'all-states' instead.", DeprecationWarning, stacklevel=2
+                )
+            resolved.extend((iso_name, "iso") for iso_name in get_location_codebook()["ISO"].tolist())
+        elif population == "all-metrocast":
+            # All metrocast locations (including state-level, excluding NYC)
+            resolved.extend(
+                (location_id, "metrocast_location")
+                for location_id in get_metrocast_locations()["metrocast_location_id"].tolist()
+                if location_id != "nyc"
+            )
+        else:
+            try:
+                resolved.append((validate_iso3166(population), "iso"))
+            except ValueError:
+                resolved.append((validate_metrocast_location(population), "metrocast_location"))
+    return resolved

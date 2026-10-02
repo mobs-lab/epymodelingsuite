@@ -11,6 +11,9 @@ from epymodelingsuite.schema.data_validation import (
     validate_calibration_data_for_config_set,
 )
 
+# Expected value for keywords that expand to every ISO code in the codebook
+ALL_ISO = object()
+
 
 class TestValidateCalibrationData:
     """Tests for validate_calibration_data function."""
@@ -363,45 +366,57 @@ class TestValidateCalibrationDataForConfigSet:
         assert error is not None
         assert "fitting window" in error.lower()
 
+    @pytest.mark.parametrize(
+        ("population_names", "expected"),
+        [
+            (["all"], ALL_ISO),
+            (["all-states"], ALL_ISO),
+            (["US-CA", "US-TX"], ["US-CA", "US-TX"]),
+            ([{"name": "US-CA", "type": "iso"}], ["US-CA"]),
+            ([{"name": "denver", "type": "metrocast_location"}], ["denver"]),
+        ],
+    )
     @patch("epymodelingsuite.config_loader.load_basemodel_config_from_file")
     @patch("epymodelingsuite.config_loader.load_calibration_config_from_file")
-    @patch("epymodelingsuite.utils.get_location_codebook")
     @patch("epymodelingsuite.builders.utils.get_data_in_window")
-    @patch("pandas.read_csv")
-    def test_handles_all_population(
+    def test_expands_populations_like_create_model_collection(
         self,
-        mock_read_csv,
         mock_get_window,
-        mock_codebook,
         mock_load_calib,
         mock_load_base,
+        population_names,
+        expected,
+        tmp_path,
     ):
-        """Test that 'all' population is expanded from codebook."""
-        mock_load_base.return_value = MagicMock()
-        mock_load_calib.return_value = MagicMock()
-        mock_load_calib.return_value.modelset.population_names = ["all"]
-        mock_load_calib.return_value.modelset.calibration.observed_data_path = "data.csv"
-        mock_load_calib.return_value.modelset.calibration.fitting_window.start_date = date(2024, 1, 1)
-        mock_load_calib.return_value.modelset.calibration.fitting_window.end_date = date(2024, 3, 1)
-        mock_load_calib.return_value.modelset.calibration.comparison = [MagicMock()]
-        mock_load_calib.return_value.modelset.calibration.comparison[0].observed_location_column = "location"
-        mock_load_calib.return_value.modelset.calibration.comparison[0].observed_location_format = "ISO"
-        mock_load_calib.return_value.modelset.calibration.comparison[0].observed_date_column = "date"
+        """Keywords and dict forms are expanded with the shared resolver (R14)."""
+        from epymodelingsuite.utils.location import get_location_codebook
 
-        mock_codebook.return_value = pd.DataFrame({"location_name_epydemix": ["California", "Texas", "New York"]})
-
-        mock_read_csv.return_value = pd.DataFrame({"col": [1]})
+        if expected is ALL_ISO:
+            expected = get_location_codebook()["ISO"].tolist()
+        mock_load_calib.return_value.modelset.population_names = population_names
+        observed_path = tmp_path / "data.csv"
+        observed_path.write_text("col\n1\n")
+        mock_load_calib.return_value.modelset.calibration.observed_data_path = observed_path
         mock_get_window.return_value = pd.DataFrame({"col": [1]})
 
-        with patch("epymodelingsuite.schema.data_validation.get_data_in_location") as mock_get_location:
-            mock_get_location.return_value = pd.DataFrame({"col": [1], "date": ["2024-01-01"]})
-
-            success, error = validate_calibration_data_for_config_set(
-                "basemodel.yml",
-                "calibration.yml",
-            )
+        with patch(
+            "epymodelingsuite.schema.data_validation.validate_calibration_data", return_value=(expected, [])
+        ) as mock_validate:
+            success, error = validate_calibration_data_for_config_set("basemodel.yml", "calibration.yml")
 
         assert success is True
         assert error is None
-        # Verify codebook was called to expand 'all'
-        mock_codebook.assert_called_once()
+        assert mock_validate.call_args.kwargs["population_names"] == expected
+
+    @patch("epymodelingsuite.config_loader.load_basemodel_config_from_file")
+    @patch("epymodelingsuite.config_loader.load_calibration_config_from_file")
+    @patch("epymodelingsuite.builders.utils.get_data_in_window")
+    def test_invalid_population_fails(self, mock_get_window, mock_load_calib, mock_load_base):
+        """Unknown locations are rejected rather than silently validated."""
+        mock_load_calib.return_value.modelset.population_names = ["notaplace"]
+        mock_get_window.return_value = pd.DataFrame({"col": [1]})
+
+        success, error = validate_calibration_data_for_config_set("basemodel.yml", "calibration.yml")
+
+        assert success is False
+        assert "notaplace" in error

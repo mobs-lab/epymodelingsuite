@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "epymodelingsuite"
-version = "0.3.0"
+version = "0.4.0"
 authors = [
   { name="Remy LeWinter", email="lewinter.r@northeastern.edu" },
   { name="Nima Moghaddas", email="moghaddas.n@northeastern.edu" },
@@ -12,7 +12,7 @@ authors = [
 ]
 description = "Models and calibrators for forecasting and scenario modeling. A codebase for large workloads with epydemix and expanded functionality."
 dependencies = [
-    "epydemix @ git+https://github.com/mobs-lab/epydemix.git",
+    "epydemix @ git+https://github.com/mobs-lab/epydemix.git@v1.3.2",
     "pandas",
     "numpy",
     "scipy",
@@ -52,17 +52,10 @@ dev = [
 Homepage = "https://github.com/mobs-lab/epymodelingsuite"
 
 [tool.setuptools]
-packages = [
-    "epymodelingsuite",
-    "epymodelingsuite.schema",
-    "epymodelingsuite.builders",
-    "epymodelingsuite.dispatcher",
-    "epymodelingsuite.utils",
-    "epymodelingsuite.data",
-    "epymodelingsuite.visualization",
-    "epymodelingsuite.telemetry",
-]
 include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["epymodelingsuite*"]
 
 [tool.sphinx-pyproject]
 project = "epymodelingsuite"
