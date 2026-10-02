@@ -50,9 +50,20 @@ SURV_FROM_PROJECTION_START = ("2023-12-02", "2024-01-27", 9, None)
 def frame_with_location(summary: tuple, label: str) -> tuple:
     """Return a new frame summary with its location field replaced by ``label``.
 
-    ``summary`` is ``(first_date, last_date, unique_date_count, location)``.
-    For example, ``frame_with_location(CALIB_FULL, "CA")`` returns
-    ``("2023-11-04", "2024-01-13", 11, "CA")`` while keeping the shared template unchanged.
+    Parameters
+    ----------
+    summary : tuple
+        ``(first_date, last_date, unique_date_count, location)``. Dates are ISO
+        date strings, the count is the number of distinct dates, and location
+        may be ``None`` in a shared template.
+    label : str
+        Location label to use in the returned summary, such as ``"CA"`` or ``"NY"``.
+
+    Returns
+    -------
+    tuple
+        ``(first_date, last_date, unique_date_count, label)`` with the first
+        three fields copied from ``summary``. The input tuple is unchanged.
     """
     return (*summary[:3], label)
 
@@ -60,13 +71,27 @@ def frame_with_location(summary: tuple, label: str) -> tuple:
 def make_expected_panel_summary(title, calibration, projection, surveillance):
     """Build the expected dictionary for one drawn axis in a plot assertion.
 
-    ``title`` is the expected panel title. Each data argument is a frame-summary
-    tuple ``(first_date, last_date, unique_date_count, location)``, or ``None``
-    when that layer is absent.
+    Parameters
+    ----------
+    title : str
+        Expected axis title, such as ``"California"``.
+    calibration : tuple or None
+        Expected calibration frame as ``(first_date, last_date,
+        unique_date_count, location)``: ISO date bounds, number of distinct
+        dates, and location label. ``None`` means the layer is absent.
+    projection : tuple or None
+        Expected projection frame in the same tuple format as ``calibration``,
+        or ``None`` when the layer is absent.
+    surveillance : tuple or None
+        Expected surveillance frame in the same tuple format as ``calibration``,
+        or ``None`` when the layer is absent.
 
-    The dictionary groups these already-summarized values under the keys
-    ``title``, ``calibration``, ``projection`` and ``surveillance`` for comparison
-    with one item from ``PlotCapture.summarize_output()``.
+    Returns
+    -------
+    dict
+        The supplied values grouped under ``title``, ``calibration``,
+        ``projection`` and ``surveillance``, for comparison with one item
+        from ``PlotCapture.summarize_output()``.
     """
     return {"title": title, "calibration": calibration, "projection": projection, "surveillance": surveillance}
 
