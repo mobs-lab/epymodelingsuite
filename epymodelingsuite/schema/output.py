@@ -5,6 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from ..output.trajectory_samples import SAMPLE_SELECTORS
 from .common import Meta
 
 logger = logging.getLogger(__name__)
@@ -283,6 +284,43 @@ class FlusightHospitalizations(BaseModel):
     )
 
 
+class FlusightTrajectorySamples(BaseModel):
+    """Specifications for trajectory sample outputs ('sample' output type)."""
+
+    n_samples: int = Field(
+        100,
+        gt=0,
+        description="Samples per location and target. If fewer complete trajectories exist, all are submitted.",
+    )
+    method: str = Field("random", description="Sample selection method, a key of SAMPLE_SELECTORS.")
+    seed: int | None = Field(None, description="Seed for sample selection. Defaults to each model's seed.")
+
+    @field_validator("method")
+    @classmethod
+    def validate_method(cls, v: str) -> str:
+        """Validate the trajectory selection method.
+
+        Parameters
+        ----------
+        v : str
+            Requested key in ``SAMPLE_SELECTORS``.
+
+        Returns
+        -------
+        str
+            The unchanged method name if it is registered.
+
+        Raises
+        ------
+        ValueError
+            If the method is not registered.
+        """
+        if v not in SAMPLE_SELECTORS:
+            msg = f"Unknown sample selection method '{v}'. Available: {sorted(SAMPLE_SELECTORS)}"
+            raise ValueError(msg)
+        return v
+
+
 class FlusightForecastOutput(BaseModel):
     """Specifications for outputs in flusight forecast hub format."""
 
@@ -306,7 +344,30 @@ class FlusightForecastOutput(BaseModel):
         description="Desired quantiles for hospitalizations and prop_ed expressed as floats.",
         validate_default=True,
     )
+    samples: FlusightTrajectorySamples | None = Field(
+        None,
+        description="Add trajectory samples for the enabled hospitalization and prop_ed targets. Omit to disable.",
+    )
     metrocast: bool | None = Field(False, description="Treat outputs as metrocast.")
+
+    @model_validator(mode="after")
+    def check_samples(self) -> "FlusightForecastOutput":
+        """Reject trajectory samples for Metrocast output.
+
+        Returns
+        -------
+        FlusightForecastOutput
+            The validated configuration instance.
+
+        Raises
+        ------
+        ValueError
+            If samples are configured while Metrocast output is enabled.
+        """
+        if self.samples is not None and self.metrocast:
+            msg = "Trajectory samples are not supported for metrocast outputs."
+            raise ValueError(msg)
+        return self
 
 
 class QuantilesOutput(BaseModel):

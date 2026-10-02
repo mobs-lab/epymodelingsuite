@@ -1,7 +1,6 @@
 """Output generation functions for formatting and saving results."""
 
 import copy
-import io
 import logging
 from collections import defaultdict
 from datetime import date, timedelta
@@ -10,13 +9,18 @@ import numpy as np
 import pandas as pd
 from epydemix.calibration import CalibrationResults
 
+from ..output.tabular import (
+    dataframe_to_gzipped_csv as dataframe_to_gzipped_csv,
+    format_hub_objects,
+    format_tabular_object,
+)
+from ..output.trajectory_samples import build_flusight_trajectory_samples
 from ..schema.dispatcher import CalibrationOutput, SimulationOutput
 from ..schema.output import (
     FlusightPropED,
     ObservedValuesConfig,
     OutputConfig,
     OutputObject,
-    TabularOutputTypeEnum,
     get_metrocast_horizons,
     get_metrocast_quantiles,
 )
@@ -24,6 +28,7 @@ from ..telemetry import ExecutionTelemetry
 from ..utils.location import (
     convert_location_name_format,
     get_flusight_population,
+    get_hub_location_id,
     parse_population_name,
 )
 from ..visualization.generators import (
@@ -35,30 +40,6 @@ from ..visualization.generators import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-def get_hub_location_id(population_name: str) -> str:
-    """
-    Convert population name to location ID for hub CSV outputs.
-
-    For ISO locations, returns FIPS code (e.g., "06" for California).
-    For metrocast locations, returns metrocast_location_id (e.g., "denver").
-
-    Parameters
-    ----------
-    population_name : str
-        Population name in epydemix format (e.g., "United_States_California" or
-        "metrocast_location_denver").
-
-    Returns
-    -------
-    str
-        Location ID appropriate for hub CSV output format.
-    """
-    location_name, location_type = parse_population_name(population_name)
-    if location_type == "metrocast_location":
-        return location_name
-    return convert_location_name_format(population_name, "FIPS")
 
 
 def get_plot_location_label(population_name: str) -> str:
@@ -878,62 +859,6 @@ def format_quantiles_covid19forecast(quantiles_df: pd.DataFrame) -> pd.DataFrame
     return pd.DataFrame()
 
 
-def format_tabular_object(df: pd.DataFrame, name: str, output_type: TabularOutputTypeEnum) -> OutputObject:
-    """
-    Create an OutputObject containing tabular data as the requested type.
-
-    Parameters
-    ----------
-    df: pd.DataFrame
-        DataFrame containing tabular data.
-    name: str
-        Name for identifying tabular data.
-    output_type: TabularOutputTypeEnum
-        Requested output type, e.g. CSVBytes or DataFrame.
-
-    Returns
-    -------
-    OutputObject
-        Object containing tabular data as requested type.
-    """
-    match output_type:
-        case TabularOutputTypeEnum.CSVBytes:
-            return OutputObject(
-                output_type=output_type,
-                name=f"{name}.csv.gz",
-                data=dataframe_to_gzipped_csv(df, header=True, index=False),
-            )
-        case TabularOutputTypeEnum.DataFrame:
-            return OutputObject(output_type=output_type, name=name, data=df)
-        case TabularOutputTypeEnum.Parquet:
-            msg = "Parquet output not yet implemented."
-            logger.warning(msg)
-        case _:
-            msg = f"Requested undefined tabular object format {output_format}."
-            logger.warning(msg)
-
-
-def dataframe_to_gzipped_csv(df: pd.DataFrame, **csv_kwargs) -> bytes:
-    """
-    Convert a DataFrame to gzip-compressed CSV bytes.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        The DataFrame to convert
-    **csv_kwargs
-        Additional keyword arguments to pass to DataFrame.to_csv()
-
-    Returns
-    -------
-    bytes
-        Gzip-compressed CSV data as bytes
-    """
-    buffer = io.BytesIO()
-    df.to_csv(buffer, date_format="%Y-%m-%d", compression="gzip", **csv_kwargs)
-    return buffer.getvalue()
-
-
 # ===== Output Generator Registry and Functions =====
 
 
@@ -1156,8 +1081,7 @@ def generate_simulation_outputs(
     if not hub_format_output.empty:
         # will want to build filename to be something better, like to fit hub standards
         hf_name = "output_hub_formatted"
-        hf_objects = [format_tabular_object(hub_format_output, hf_name, _type) for _type in output.tabular_output_types]
-        out_dict[hf_name] = hf_objects
+        out_dict[hf_name] = format_hub_objects(hub_format_output, hf_name, output.tabular_output_types)
     if not model_meta.empty:
         mm_name = "model_metadata"
         mm_objects = [format_tabular_object(model_meta, mm_name, _type) for _type in output.tabular_output_types]
@@ -1680,6 +1604,17 @@ def generate_calibration_outputs(
                     )
                     continue
 
+        # Trajectory samples
+        if output.flusight_format.samples:
+            logger.info("  - Generating FluSight trajectory samples")
+            sample_rows, sample_warnings = build_flusight_trajectory_samples(
+                calibrations,
+                output.flusight_format,
+                rescaling_factors if output.flusight_format.prop_ed else pd.DataFrame(),
+            )
+            hub_format_output_list.extend(sample_rows)
+            warnings.update(sample_warnings)
+
         hub_format_output = (
             pd.concat(hub_format_output_list, ignore_index=True) if hub_format_output_list else pd.DataFrame()
         )
@@ -1832,8 +1767,7 @@ def generate_calibration_outputs(
     if not hub_format_output.empty:
         # will want to build filename to be something better, like to fit hub standards
         hf_name = "output_hub_formatted"
-        hf_objects = [format_tabular_object(hub_format_output, hf_name, _type) for _type in output.tabular_output_types]
-        out_dict[hf_name] = hf_objects
+        out_dict[hf_name] = format_hub_objects(hub_format_output, hf_name, output.tabular_output_types)
     if not model_meta.empty:
         mm_name = "model_metadata"
         mm_objects = [format_tabular_object(model_meta, mm_name, _type) for _type in output.tabular_output_types]
