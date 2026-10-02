@@ -94,7 +94,7 @@ class CalibrationStrategy(BaseModel):
 class ProjectionSpec(BaseModel):
     """Specification for projection after calibration."""
 
-    n_trajectories: int = Field("Number of trajectories to simulate from posterior after calibration")
+    n_trajectories: int = Field(gt=0, description="Number of trajectories to simulate from posterior after calibration")
     generation_number: int | None = Field(
         default=None, description="SMC generation number from which to draw parameter sets for projection"
     )
@@ -340,9 +340,9 @@ class CalibrationConfiguration(BaseModel):
                 msg = f"Comparison for '{comp.observed}' must specify at least one simulation transition"
                 raise ValueError(msg)
 
-        assert self.start_date or self.parameters or self.compartments, (
-            "Calibration requires at least one of start_date, parameters, or compartments"
-        )
+        if not (self.start_date or self.parameters or self.compartments):
+            msg = "Calibration requires at least one of start_date, parameters, or compartments"
+            raise ValueError(msg)
         return self
 
     @model_validator(mode="after")

@@ -70,16 +70,22 @@ class BuilderOutput(BaseModel):
         """
         Ensure combination of fields is valid.
         """
-        assert self.model or self.calibrator, "BuilderOutput must contain an EpiModel or ABCSampler."
+        if not (self.model or self.calibrator):
+            msg = "BuilderOutput must contain an EpiModel or ABCSampler."
+            raise ValueError(msg)
 
         if self.simulation:
-            assert not self.calibration and not self.projection, (
-                "Simulation workflow cannot be combined with calibration/projection."
-            )
-            assert self.model, "Simulation workflow requires EpiModel but received only ABCSampler."
+            if self.calibration or self.projection:
+                msg = "Simulation workflow cannot be combined with calibration/projection."
+                raise ValueError(msg)
+            if not self.model:
+                msg = "Simulation workflow requires EpiModel but received only ABCSampler."
+                raise ValueError(msg)
 
         elif self.calibration or self.projection:
-            assert self.calibrator, "Calibration/projection workflow requires ABCSampler but received only EpiModel."
+            if not self.calibrator:
+                msg = "Calibration/projection workflow requires ABCSampler but received only EpiModel."
+                raise ValueError(msg)
 
         return self
 
