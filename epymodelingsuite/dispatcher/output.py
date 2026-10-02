@@ -12,6 +12,7 @@ from epydemix.calibration import CalibrationResults
 
 from ..schema.dispatcher import CalibrationOutput, SimulationOutput
 from ..schema.output import (
+    FlusightForecastOutput,
     FlusightPropED,
     ObservedValuesConfig,
     OutputConfig,
@@ -26,6 +27,7 @@ from ..utils.location import (
     get_flusight_population,
     parse_population_name,
 )
+from ..utils.trajectory_samples import hub_parquet_bytes, make_sample_rows, select_samples
 from ..visualization.generators import (
     generate_categorical_plots,
     generate_posterior_grid_plot,
@@ -855,6 +857,104 @@ def make_prop_ed_flusightforecast(
             raise ValueError(f"Received undefined/unimplemented strategy {config.strategy}")
 
 
+def _horizon_matrix(
+    dates_list: list[np.ndarray], values_list: list[np.ndarray], reference_date: date, horizons: list[int]
+) -> np.ndarray:
+    """Values of each trajectory at the horizons' target dates, shape (trajectories, horizons); NaN where missing."""
+    target_dates = [pd.Timestamp(reference_date) + pd.Timedelta(weeks=h) for h in horizons]
+    out = np.full((len(values_list), len(horizons)), np.nan)
+    for i, (dates, values) in enumerate(zip(dates_list, values_list, strict=True)):
+        lookup = dict(zip(pd.to_datetime(dates), values, strict=True))
+        out[i] = [lookup.get(d, np.nan) for d in target_dates]
+    return out
+
+
+def make_samples_flusightforecast(
+    calibrations: list[CalibrationOutput],
+    flusight_format: FlusightForecastOutput,
+    rescaling_factors: pd.DataFrame,
+) -> tuple[list[pd.DataFrame], list[str]]:
+    """
+    Create FluSight trajectory sample rows for the enabled hospitalization and prop ED targets.
+
+    Hospitalization samples come from the 'hospitalizations' projections. Prop ED samples come from the
+    `transition_name` projections ('transition' strategy), or are the hospitalization trajectories times the
+    location's rescaling factor (window strategies), in which case both targets share sample ids.
+
+    Parameters
+    ----------
+    calibrations : list[CalibrationOutput]
+        One calibration per location.
+    flusight_format : FlusightForecastOutput
+        FluSight output configuration with `samples` set.
+    rescaling_factors : pd.DataFrame
+        Prop ED rescaling factors (`population`, `rescaling_factor`) for the window strategies.
+
+    Returns
+    -------
+    tuple[list[pd.DataFrame], list[str]]
+        Sample rows per location and target, and warnings.
+    """
+    cfg = flusight_format.samples
+    prop_ed = flusight_format.prop_ed
+    horizons = list(range(-1, 4))
+    factors = {}
+    if prop_ed and prop_ed.strategy != "transition" and not rescaling_factors.empty:
+        factors = dict(
+            zip(
+                rescaling_factors.population.map(get_hub_location_id),
+                rescaling_factors.rescaling_factor,
+                strict=True,
+            )
+        )
+
+    rows, warns, seen = [], [], set()
+    for calibration in calibrations:
+        location = get_hub_location_id(calibration.population)
+        if location in seen:
+            warns.append(f"OUTPUT GENERATOR: more than one model for location {location}; samples kept for the first.")
+            continue
+        seen.add(location)
+        try:
+            traj = calibration.results.get_projection_trajectories()
+        except Exception:
+            warns.append(
+                f"OUTPUT GENERATOR: failed to obtain projection trajectories for samples, model primary_id={calibration.primary_id}."
+            )
+            continue
+        seed = cfg.seed if cfg.seed is not None else calibration.seed
+        id_prefix = convert_location_name_format(calibration.population, "abbreviation")
+        ref = flusight_format.reference_date
+
+        # (target, values with shape (trajectories, horizons), rounding options)
+        per_target = []
+        try:
+            if flusight_format.hospitalizations or (prop_ed and prop_ed.strategy != "transition"):
+                hosp = _horizon_matrix(traj["date"], traj["hospitalizations"], ref, horizons)
+            if flusight_format.hospitalizations:
+                per_target.append((flusight_format.hospitalizations.target, hosp, {"integer": True}))
+            if prop_ed and prop_ed.strategy == "transition":
+                ed = _horizon_matrix(traj["date"], traj[prop_ed.transition_name], ref, horizons)
+                per_target.append((prop_ed.target, ed, {"upper": 1}))
+            elif prop_ed and location in factors:
+                per_target.append((prop_ed.target, hosp * factors[location], {"upper": 1}))
+            elif prop_ed:
+                warns.append(f"OUTPUT GENERATOR: no prop ED rescaling factor for {location}; skipping ED samples.")
+        except (KeyError, ValueError) as e:
+            warns.append(f"OUTPUT GENERATOR: failed to create samples for {location}: {e}")
+            continue
+
+        for target, values, options in per_target:
+            idx = select_samples(values, cfg.n_samples, cfg.method, seed)
+            if len(idx) < cfg.n_samples:
+                warns.append(
+                    f"OUTPUT GENERATOR: only {len(idx)} complete trajectories for '{target}' samples in {location} "
+                    f"(requested {cfg.n_samples})."
+                )
+            rows.append(make_sample_rows(values[idx], horizons, ref, location, target, id_prefix, **options))
+    return rows, warns
+
+
 def format_quantiles_flusmh(quantiles_df: pd.DataFrame) -> pd.DataFrame:
     """"""
 
@@ -899,8 +999,9 @@ def format_tabular_object(df: pd.DataFrame, name: str, output_type: TabularOutpu
         case TabularOutputTypeEnum.DataFrame:
             return OutputObject(output_type=output_type, name=name, data=df)
         case TabularOutputTypeEnum.Parquet:
-            msg = "Parquet output not yet implemented."
-            logger.warning(msg)
+            buffer = io.BytesIO()
+            df.to_parquet(buffer, index=False)
+            return OutputObject(output_type=output_type, name=f"{name}.parquet", data=buffer.getvalue())
         case _:
             msg = f"Requested undefined tabular object format {output_format}."
             logger.warning(msg)
@@ -1137,7 +1238,12 @@ def generate_simulation_outputs(
     if not hub_format_output.empty:
         # will want to build filename to be something better, like to fit hub standards
         hf_name = "output_hub_formatted"
-        hf_objects = [format_tabular_object(hub_format_output, hf_name, _type) for _type in output.tabular_output_types]
+        hf_objects = [
+            OutputObject(output_type=_type, name=f"{hf_name}.parquet", data=hub_parquet_bytes(hub_format_output))
+            if _type == TabularOutputTypeEnum.Parquet
+            else format_tabular_object(hub_format_output, hf_name, _type)
+            for _type in output.tabular_output_types
+        ]
         out_dict[hf_name] = hf_objects
     if not model_meta.empty:
         mm_name = "model_metadata"
@@ -1626,6 +1732,17 @@ def generate_calibration_outputs(
                     )
                     continue
 
+        # Trajectory samples
+        if output.flusight_format.samples:
+            logger.info("  - Generating FluSight trajectory samples")
+            sample_rows, sample_warnings = make_samples_flusightforecast(
+                calibrations,
+                output.flusight_format,
+                rescaling_factors if output.flusight_format.prop_ed else pd.DataFrame(),
+            )
+            hub_format_output_list.extend(sample_rows)
+            warnings.update(sample_warnings)
+
         hub_format_output = (
             pd.concat(hub_format_output_list, ignore_index=True) if hub_format_output_list else pd.DataFrame()
         )
@@ -1778,7 +1895,12 @@ def generate_calibration_outputs(
     if not hub_format_output.empty:
         # will want to build filename to be something better, like to fit hub standards
         hf_name = "output_hub_formatted"
-        hf_objects = [format_tabular_object(hub_format_output, hf_name, _type) for _type in output.tabular_output_types]
+        hf_objects = [
+            OutputObject(output_type=_type, name=f"{hf_name}.parquet", data=hub_parquet_bytes(hub_format_output))
+            if _type == TabularOutputTypeEnum.Parquet
+            else format_tabular_object(hub_format_output, hf_name, _type)
+            for _type in output.tabular_output_types
+        ]
         out_dict[hf_name] = hf_objects
     if not model_meta.empty:
         mm_name = "model_metadata"
