@@ -88,8 +88,8 @@ def get_plot_location_label(population_name: str) -> str:
 # ===== Output Generator Helper Functions =====
 
 
-def prepend_metadata_columns(df: pd.DataFrame, **metadata: object) -> pd.DataFrame:
-    """Prepend metadata in one batch, preserving the index and rejecting duplicate columns."""
+def add_metadata_columns(df: pd.DataFrame, **metadata: object) -> pd.DataFrame:
+    """Add metadata as leading columns in one batch, preserving the index and rejecting duplicate columns."""
     return pd.concat([pd.DataFrame(metadata, index=df.index), df], axis=1, verify_integrity=True)
 
 
@@ -264,7 +264,7 @@ def format_quantiles_flusightforecast(
     horizons = get_metrocast_horizons() if metrocast else range(-1, 4)
 
     # Create horizon column and filter for appropriate horizons
-    formatted = prepend_metadata_columns(
+    formatted = add_metadata_columns(
         formatted,
         horizon=(formatted.date - pd.to_datetime(reference_date))
         .apply(lambda x: x / np.timedelta64(1, "W"))
@@ -279,18 +279,10 @@ def format_quantiles_flusightforecast(
     formatted.rename(
         columns={"date": "target_end_date", "hospitalizations": "value", "quantile": "output_type_id"}, inplace=True
     )
-    formatted = pd.concat(
-        [
-            formatted.iloc[:, :2],
-            pd.DataFrame({"target": target, "output_type": "quantile"}, index=formatted.index),
-            formatted.iloc[:, 2:],
-        ],
-        axis=1,
-        verify_integrity=True,
-    )
+    formatted = add_metadata_columns(formatted, target=target, output_type="quantile")
     formatted.target_end_date = formatted.target_end_date.apply(lambda x: x.date())
 
-    return formatted
+    return formatted[["horizon", "target_end_date", "target", "output_type", "output_type_id", "value"]]
 
 
 def compare_thresholds_flusightforecast(
@@ -824,7 +816,7 @@ def make_prop_ed_flusightforecast(
                     raise ValueError(msg)
 
             # Create horizon column and filter for appropriate horizons
-            formatted = prepend_metadata_columns(
+            formatted = add_metadata_columns(
                 formatted,
                 horizon=(formatted.date - pd.to_datetime(reference_date))
                 .apply(lambda x: x / np.timedelta64(1, "W"))
@@ -841,7 +833,7 @@ def make_prop_ed_flusightforecast(
 
             # Add location and reference_date columns
             # Convert population to location ID (FIPS for ISO, metrocast_location_id for metrocast)
-            formatted = prepend_metadata_columns(
+            formatted = add_metadata_columns(
                 formatted,
                 location=formatted.population.apply(get_hub_location_id),
                 reference_date=reference_date,
@@ -1004,7 +996,7 @@ def generate_simulation_outputs(
                         warnings.add(
                             f"OUTPUT GENERATOR: Exception occured selecting compartment quantiles, returning all compartments: {e}"
                         )
-                quanc_df = prepend_metadata_columns(
+                quanc_df = add_metadata_columns(
                     quanc_df,
                     primary_id=simulation.primary_id,
                     seed=simulation.seed,
@@ -1026,7 +1018,7 @@ def generate_simulation_outputs(
                         warnings.add(
                             f"OUTPUT GENERATOR: Exception occured selecting transition quantiles, returning all transitions: {e}"
                         )
-                quant_df = prepend_metadata_columns(
+                quant_df = add_metadata_columns(
                     quant_df,
                     primary_id=simulation.primary_id,
                     seed=simulation.seed,
@@ -1056,7 +1048,7 @@ def generate_simulation_outputs(
                             warnings.add(
                                 f"OUTPUT GENERATOR: Exception occured selecting compartment trajectories, returning all compartments: {e}"
                             )
-                    trajc_df = prepend_metadata_columns(
+                    trajc_df = add_metadata_columns(
                         trajc_df,
                         primary_id=simulation.primary_id,
                         sim_id=i,
@@ -1076,7 +1068,7 @@ def generate_simulation_outputs(
                             warnings.add(
                                 f"OUTPUT GENERATOR: Exception occured selecting transition trajectories, returning all transitions: {e}"
                             )
-                    trajt_df = prepend_metadata_columns(
+                    trajt_df = add_metadata_columns(
                         trajt_df,
                         primary_id=simulation.primary_id,
                         sim_id=i,
@@ -1230,7 +1222,7 @@ def generate_calibration_outputs(
                                 variables=["data"],
                                 ignore_nan=True,
                             )
-                            quancal_df = prepend_metadata_columns(
+                            quancal_df = add_metadata_columns(
                                 quancal_df,
                                 primary_id=calibration.primary_id,
                                 seed=calibration.seed,
@@ -1252,7 +1244,7 @@ def generate_calibration_outputs(
                             variables=["data"],
                             ignore_nan=True,
                         )
-                        quancal_df = prepend_metadata_columns(
+                        quancal_df = add_metadata_columns(
                             quancal_df,
                             primary_id=calibration.primary_id,
                             seed=calibration.seed,
@@ -1301,7 +1293,7 @@ def generate_calibration_outputs(
                         # Use all compartments, filter out transitions
                         quanc_df = quan_df.copy()
                         quanc_df.drop(columns=transition_columns, inplace=True)
-                    quanc_df = prepend_metadata_columns(
+                    quanc_df = add_metadata_columns(
                         quanc_df,
                         primary_id=calibration.primary_id,
                         seed=calibration.seed,
@@ -1332,7 +1324,7 @@ def generate_calibration_outputs(
                         columns_to_select = ["date", "quantile"]
                         columns_to_select.extend(transition_columns)
                         quant_df = quan_df[columns_to_select].copy()
-                    quant_df = prepend_metadata_columns(
+                    quant_df = add_metadata_columns(
                         quant_df,
                         primary_id=calibration.primary_id,
                         seed=calibration.seed,
@@ -1377,7 +1369,7 @@ def generate_calibration_outputs(
                 for name, values in traj.items():
                     columns.append(pd.Series(values[i], name=name))
                 traj_df = pd.concat(columns, axis=1)
-                traj_df = prepend_metadata_columns(traj_df, sim_id=i)
+                traj_df = add_metadata_columns(traj_df, sim_id=i)
                 trajectories_list.append(traj_df)
 
             trajectories = pd.concat(trajectories_list, ignore_index=True) if trajectories_list else pd.DataFrame()
@@ -1401,7 +1393,7 @@ def generate_calibration_outputs(
                 else:
                     # Use all compartments, filter out transitions
                     traj_c.drop(columns=transition_columns, inplace=True)
-                traj_c = prepend_metadata_columns(
+                traj_c = add_metadata_columns(
                     traj_c.drop(columns="sim_id"),
                     primary_id=calibration.primary_id,
                     sim_id=traj_c["sim_id"],
@@ -1432,7 +1424,7 @@ def generate_calibration_outputs(
                     columns_to_select = ["sim_id", "date"]
                     columns_to_select.extend(transition_columns)
                     traj_t = traj_t[columns_to_select].copy()
-                traj_t = prepend_metadata_columns(
+                traj_t = add_metadata_columns(
                     traj_t.drop(columns="sim_id"),
                     primary_id=calibration.primary_id,
                     sim_id=traj_t["sim_id"],
@@ -1472,7 +1464,7 @@ def generate_calibration_outputs(
                 for g in output.posteriors.generations:
                     try:
                         post = calibration.results.get_posterior_distribution(generation=g).copy()
-                        post = prepend_metadata_columns(post, generation=g)
+                        post = add_metadata_columns(post, generation=g)
                         post_df_list.append(post)
                     except Exception:
                         warnings.add(
@@ -1485,7 +1477,7 @@ def generate_calibration_outputs(
                 raise ValueError(msg)
             # Record identifiers and add to list
             if not post_df.empty:
-                post_df = prepend_metadata_columns(
+                post_df = add_metadata_columns(
                     post_df,
                     primary_id=calibration.primary_id,
                     seed=calibration.seed,
@@ -1533,7 +1525,7 @@ def generate_calibration_outputs(
                     target=output.flusight_format.hospitalizations.target,
                     metrocast=output.flusight_format.metrocast,
                 )
-                quanf_df = prepend_metadata_columns(
+                quanf_df = add_metadata_columns(
                     quanf_df,
                     location=get_hub_location_id(calibration.population),
                     reference_date=output.flusight_format.reference_date,
@@ -1561,7 +1553,7 @@ def generate_calibration_outputs(
                             variables=["data"],
                             ignore_nan=True,
                         )
-                        quancalflu_df = prepend_metadata_columns(
+                        quancalflu_df = add_metadata_columns(
                             quancalflu_df,
                             primary_id=calibration.primary_id,
                             seed=calibration.seed,
@@ -1587,7 +1579,7 @@ def generate_calibration_outputs(
                             variables=[transition_name],
                             ignore_nan=True,
                         )
-                        quanproj_df = prepend_metadata_columns(
+                        quanproj_df = add_metadata_columns(
                             quanproj_df,
                             primary_id=calibration.primary_id,
                             seed=calibration.seed,
@@ -1673,7 +1665,7 @@ def generate_calibration_outputs(
                         observed=surv,
                         population=get_flusight_population(calibration.population),
                     )
-                    trends_df = prepend_metadata_columns(
+                    trends_df = add_metadata_columns(
                         trends_df,
                         location=get_hub_location_id(calibration.population),
                         reference_date=output.flusight_format.reference_date,

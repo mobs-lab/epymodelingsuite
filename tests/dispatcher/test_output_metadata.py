@@ -8,11 +8,11 @@ import pandas as pd
 import pytest
 
 from epymodelingsuite.dispatcher.output import (
+    add_metadata_columns,
     format_quantiles_flusightforecast,
     generate_calibration_outputs,
     generate_simulation_outputs,
     make_prop_ed_flusightforecast,
-    prepend_metadata_columns,
 )
 from epymodelingsuite.schema.output import FlusightPropED, OutputConfig
 
@@ -114,7 +114,7 @@ def test_wide_output_metadata(workflow: str, *, generations: bool | list[int]) -
 
 
 @pytest.mark.parametrize("index", [[], [4, 9], [4, 4]])
-def test_prepend_metadata_preserves_frame(index: list[int]) -> None:
+def test_add_metadata_preserves_frame(index: list[int]) -> None:
     frame = pd.DataFrame({"value": pd.array(range(len(index)), dtype="Int64")}, index=index)
     original = frame.copy()
     metadata = {"seed": None, "date": pd.date_range("2025-11-29", periods=len(index))}
@@ -127,16 +127,17 @@ def test_prepend_metadata_preserves_frame(index: list[int]) -> None:
             expected.insert(position, name, value)
     with warnings.catch_warnings():
         warnings.simplefilter("error", pd.errors.PerformanceWarning)
-        actual = prepend_metadata_columns(frame, **metadata)
+        actual = add_metadata_columns(frame, **metadata)
     pd.testing.assert_frame_equal(actual, expected)
     pd.testing.assert_frame_equal(frame, original)
     with pytest.raises(ValueError, match="overlapping"):
-        prepend_metadata_columns(frame, value=0)
+        add_metadata_columns(frame, value=0)
 
 
 @pytest.mark.parametrize("metrocast", [False, True])
 @pytest.mark.parametrize("forecast", ["hospitalizations", "prop_ed"])
-def test_forecast_metadata_order_and_values(forecast: str, *, metrocast: bool) -> None:
+@pytest.mark.parametrize("reverse_columns", [False, True])
+def test_forecast_metadata_order_and_values(forecast: str, *, metrocast: bool, reverse_columns: bool) -> None:
     dates = pd.date_range("2025-11-15", periods=4, freq="7D")
     reference_date = dates[2].date()
     frame = pd.DataFrame(
@@ -144,6 +145,8 @@ def test_forecast_metadata_order_and_values(forecast: str, *, metrocast: bool) -
     )
     if forecast == "prop_ed":
         frame["population"] = "United_States_California"
+    if reverse_columns:
+        frame = frame[list(reversed(frame.columns))]
     original = frame.copy()
     with warnings.catch_warnings():
         warnings.simplefilter("error", pd.errors.PerformanceWarning)
