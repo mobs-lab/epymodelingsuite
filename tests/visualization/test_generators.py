@@ -694,6 +694,7 @@ class TestGeneratorsDoNotFilterResults:
     """Generators expect pre-filtered results and must not replace `calibration.results`."""
 
     def test_single_and_grid_keep_results_identity(self):
+        """The generators plot without replacing calibration.results."""
         calibration = _make_mock_calibration("US-CA")
         original_results = calibration.results
         plots_config = PlotsConfig(
@@ -718,18 +719,22 @@ class TestLocationsToPlot:
     """ISO locations in `single` must match epydemix population names."""
 
     def test_iso_list_is_accepted_by_quantiles_schema(self):
+        """An ISO code in quantiles.single passes validation."""
         assert QuantilesPlotConfig(single=["US-CA"]).single == ["US-CA"]
 
     def test_invalid_location_rejected_by_quantiles_schema(self):
+        """An unknown code in quantiles.single fails validation."""
         with pytest.raises(ValueError, match="Invalid ISO 3166"):
             QuantilesPlotConfig(single=["XX-INVALID"])
 
     @pytest.mark.parametrize("requested", ["US-CA", "United_States__California", "United_States_California"])
     def test_matches_epydemix_population_names(self, requested):
+        """ISO, current and deprecated names all match the epydemix population name."""
         calibrations = [_make_mock_calibration("United_States__California"), _make_mock_calibration("United_States")]
         assert get_locations_to_plot(calibrations, [requested]) == {"United_States__California"}
 
     def test_single_quantile_plots_with_iso_input(self):
+        """Quantile single: ["US-CA"] plots only California."""
         calibrations = [_make_mock_calibration("United_States__California"), _make_mock_calibration("United_States")]
         plots_config = PlotsConfig(reference_date=date(2024, 1, 15), quantiles=QuantilesPlotConfig(single=["US-CA"]))
         out_dict = {}
@@ -739,6 +744,7 @@ class TestLocationsToPlot:
         assert all("United_States__California" in output_name for output_name in out_dict)
 
     def test_single_posterior_plots_with_iso_input(self):
+        """Posterior single: ["US-CA"] plots only California."""
         calibrations = [_make_mock_calibration("United_States__California"), _make_mock_calibration("United_States")]
         plots_config = PlotsConfig(reference_date=date(2024, 1, 15), posterior=PosteriorPlotConfig(single=["US-CA"]))
         out_dict = {}
@@ -762,6 +768,7 @@ class TestQuantileGridEnabled:
         ],
     )
     def test_grid_enabled(self, grid_value, expected_drawn):
+        """grid: true, false, {enabled}, options only or missing decide whether the grid is drawn."""
         quantiles_kwargs = {} if grid_value is None else {"grid": grid_value}
         plots_config = PlotsConfig(reference_date=date(2024, 1, 15), quantiles=QuantilesPlotConfig(**quantiles_kwargs))
         with patch("epymodelingsuite.visualization.generators.plot_calibration_projection_grid") as mock_grid:
