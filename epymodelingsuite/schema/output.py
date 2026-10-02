@@ -5,6 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, ValidationInfo, field_validator, model_validator
 
+from ..utils import validate_iso3166
 from .common import Meta
 
 logger = logging.getLogger(__name__)
@@ -454,7 +455,7 @@ class QuantilesOutputConfig(BaseModel):
 class QuantilesGridConfig(BaseModel):
     """Configuration for quantiles grid plot."""
 
-    enabled: bool = Field(False, description="Create grid plot.")
+    enabled: bool = Field(True, description="Create grid plot.")
     panels_per_row: int = Field(4, description="Number of panels per row in grid.")
 
 
@@ -479,7 +480,7 @@ class QuantilesPlotConfig(BaseModel):
     )
     grid: QuantilesGridConfig | bool = Field(
         default_factory=QuantilesGridConfig,
-        description="Grid plot with all locations (default enabled). Set true to use default options, or set options in subfields.",
+        description="Grid plot with all locations (default enabled). Set true to use default options, false or {enabled: false} to disable, or set options in subfields.",
     )
 
     # Output configuration
@@ -549,9 +550,9 @@ class QuantilesPlotConfig(BaseModel):
     @field_validator("grid")
     @classmethod
     def validate_grid(cls, v: QuantilesGridConfig | bool) -> QuantilesGridConfig | bool:
-        """If passed True, use default factory."""
+        """If passed True, enable the grid with default options."""
         if v is True:
-            return QuantilesGridConfig()
+            return QuantilesGridConfig(enabled=True)
         return v
 
     @field_validator("calibration", "projection", mode="before")
