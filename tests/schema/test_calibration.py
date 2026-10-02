@@ -1,17 +1,21 @@
 """Tests for calibration schema validation."""
 
+import subprocess
+import sys
 from datetime import timedelta
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 from epydemix.calibration import ABCSampler
+from pydantic import ValidationError
 
 from epymodelingsuite.config_loader import load_calibration_config_from_file
 from epymodelingsuite.schema.calibration import (
     CalibrationConfig,
     CalibrationStrategy,
     ComparisonSpec,
+    ProjectionSpec,
 )
 
 
@@ -408,3 +412,28 @@ class TestCalibrationModelsetPopulationNames:
         base_config["modelset"]["population_names"] = ["invalid_location_xyz"]
         with pytest.raises(ValueError):
             CalibrationConfig(**base_config)
+
+
+class TestProjectionSpecTrajectories:
+    def test_n_trajectories_required(self):
+        with pytest.raises(ValidationError, match="n_trajectories"):
+            ProjectionSpec()
+
+    @pytest.mark.parametrize("n_trajectories", [0, -1])
+    def test_n_trajectories_positive(self, n_trajectories):
+        with pytest.raises(ValidationError, match="greater than 0"):
+            ProjectionSpec(n_trajectories=n_trajectories)
+
+
+def test_schema_validation_survives_optimized_mode():
+    """Validators must not rely on assert, which `python -O` strips."""
+    code = (
+        "from pydantic import ValidationError\n"
+        "from epymodelingsuite.schema.basemodel import Timespan\n"
+        "try:\n"
+        "    Timespan(start_date='2025-01-01', end_date='2025-02-01', delta_t=-1)\n"
+        "except ValidationError:\n"
+        "    raise SystemExit(0)\n"
+        "raise SystemExit(1)\n"
+    )
+    assert subprocess.run([sys.executable, "-O", "-c", code], check=False).returncode == 0
