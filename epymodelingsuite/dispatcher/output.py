@@ -949,17 +949,22 @@ def register_output_generator(kind_set):
 def generate_simulation_outputs(
     *, simulations: list[SimulationOutput], output_config: OutputConfig, **_
 ) -> dict[str, list[OutputObject]]:
-    """
-    Create a dictionary of outputs specified in an OutputConfig for a simulation workflow.
+    """Generate configured outputs for a simulation workflow.
 
     Parameters
     ----------
-        simulations: a list of SimulationOutputs containing SimulationResults.
-        output_config: an OutputConfig instance with output specifications.
+    simulations : list[SimulationOutput]
+        Result objects supplying tables and plots.
+    output_config : OutputConfig
+        Enabled output types, formatting and plot settings.
+    **_ : dict
+        Additional dispatcher arguments, ignored.
 
     Returns
     -------
-        A dictionary where keys are intended filenames for writing data, and values are gzip-compressed CSV strings.
+    dict[str, list[OutputObject]]
+        Logical output names mapped to configured DataFrame, bytes or figure objects; an internal sink may stage them
+        instead.
     """
     logger.info("OUTPUT GENERATOR: dispatched for simulation")
     output = output_config.output
@@ -1165,7 +1170,25 @@ def generate_simulation_outputs(
 
 
 def _projection_quantile_variables(projections: list[dict], config: QuantilesOutput) -> list[str] | None:
-    """Select before stacking; keep the existing all-column fallback for missing names."""
+    """Select projection variables before stacking, preserving fallback behavior.
+
+    Parameters
+    ----------
+    projections : list of dict
+        Raw projection draws; the first draw defines available numeric names.
+    config : QuantilesOutput
+        Compartment and transition selections.
+
+    Returns
+    -------
+    list of str or None
+        Selected numeric variables, ["date"] for an empty selection, or None for all variables.
+
+    Notes
+    -----
+    Missing requested names retain the existing all-column fallback. An empty
+    list means all variables in epydemix, so ["date"] represents no numeric variables.
+    """
     if not projections:
         return None
     numeric_names = [name for name, values in projections[0].items() if np.issubdtype(np.asarray(values).dtype, np.number)]
@@ -1185,17 +1208,27 @@ def _projection_quantile_variables(projections: list[dict], config: QuantilesOut
 def generate_calibration_outputs(
     *, calibrations: list[CalibrationOutput], output_config: OutputConfig, **_
 ) -> dict[str, list[OutputObject]]:
-    """
-    Create a dictionary of outputs specified in an OutputConfig for a calibration workflow.
+    """Generate configured outputs for a calibration workflow.
 
     Parameters
     ----------
-        calibrations: a list of CalibrationOutputs containing CalibrationResults.
-        output_config: an OutputConfig instance with output specifications.
+    calibrations : list[CalibrationOutput]
+        Result objects supplying tables and plots.
+    output_config : OutputConfig
+        Enabled output types, formatting and plot settings.
+    **_ : dict
+        Additional dispatcher arguments, ignored.
 
     Returns
     -------
-        A dictionary where keys are intended filenames for writing data, and values are gzip-compressed CSV strings.
+    dict[str, list[OutputObject]]
+        Logical output names mapped to configured DataFrame, bytes or figure objects; an internal sink may stage them
+        instead.
+
+
+    Notes
+    -----
+    Failed projections are filtered in place.
     """
     logger.info("OUTPUT GENERATOR: dispatched for calibration")
     output = output_config.output

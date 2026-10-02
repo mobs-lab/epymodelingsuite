@@ -24,6 +24,25 @@ import psutil
 
 
 def positive_int(value):
+    """Parse a positive integer command-line argument.
+
+    Parameters
+    ----------
+    value : str
+        Argument text supplied by argparse.
+
+    Returns
+    -------
+    int
+        Parsed integer greater than zero.
+
+    Raises
+    ------
+    argparse.ArgumentTypeError
+        The parsed integer is not positive.
+    ValueError
+        The text cannot be parsed as an integer.
+    """
     result = int(value)
     if result < 1:
         raise argparse.ArgumentTypeError("must be positive")
@@ -31,6 +50,24 @@ def positive_int(value):
 
 
 def run_once(args):
+    """Benchmark one synthetic output workload in a fresh child process.
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Parsed workload, source-tree and format options.
+
+    Returns
+    -------
+    dict
+        JSON-compatible dependency versions, preparation/output timings, parent call counts, output keys and table hash.
+
+
+    Notes
+    -----
+    Synthetic input preparation is measured separately from output processing.
+    Instrumentation covers the child process running this workload.
+    """
     sys.path.insert(0, str(args.source_tree.resolve()))
     import matplotlib
 
@@ -95,7 +132,36 @@ def run_once(args):
     counts = {}
 
     def measured(name, fn):
+        """Wrap a callable to accumulate inclusive parent-process time and calls.
+
+        Parameters
+        ----------
+        name : str
+            Counter and timing label.
+        fn : callable
+            Operation to instrument.
+
+        Returns
+        -------
+        callable
+            Wrapper forwarding arguments, return values and exceptions.
+        """
+
         def call(*positional, **keywords):
+            """Measure a call, including elapsed time when it raises.
+
+            Parameters
+            ----------
+            *positional : tuple
+                Positional arguments passed through to the measured function.
+            **keywords : dict
+                Keyword arguments passed through to the measured function.
+
+            Returns
+            -------
+            object
+                The measured function's return value.
+            """
             before = time.perf_counter()
             try:
                 return fn(*positional, **keywords)
@@ -146,6 +212,22 @@ def run_once(args):
 
 
 def main():
+    """Run fresh-process repetitions and print benchmark results as JSON.
+
+    Returns
+    -------
+    None
+        No value is returned.
+
+    Raises
+    ------
+    RuntimeError
+        A child fails or repeated runs produce different table hashes.
+
+    Notes
+    -----
+    Parses sys.argv. Samples child-process RSS. Child mode writes a single result file instead of printing medians.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source-tree", type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument("--locations", type=positive_int, default=1)

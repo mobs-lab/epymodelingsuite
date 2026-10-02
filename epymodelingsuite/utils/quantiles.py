@@ -15,12 +15,33 @@ def compute_quantiles(
     *,
     ignore_nan: bool = False,
 ) -> pd.DataFrame:
-    """Batch levels per numeric variable, preserving values and input arrays.
+    """Compute quantiles across draws without modifying the input arrays.
 
-    Arrays have shape (draws, dates). Rows are quantile-major, as in epydemix.
-    Non-numeric metadata is ignored. Low-precision floats retain scalar calls
-    to preserve NumPy's rounding. With no supplied dates, retain epydemix's
-    integer timestep labels and its error for an empty trajectory mapping.
+    Parameters
+    ----------
+    trajectories : dict[str, ndarray]
+        Variable arrays of shape (draws, dates); nonnumeric arrays are ignored.
+    dates : sequence or ndarray or None, optional
+        Labels for the time axis. None uses integer timestep labels.
+    quantiles : sequence of float
+        Quantile levels in [0, 1], preserving the requested order and duplicates.
+    ignore_nan : bool, optional
+        If True, exclude NaNs and warn when a time point has more than 50% NaNs.
+
+    Returns
+    -------
+    pd.DataFrame
+        Quantile-major rows with date, quantile and numeric variable columns.
+
+    Raises
+    ------
+    ValueError
+        A numeric array is not two-dimensional or NumPy rejects the quantile levels.
+
+    Notes
+    -----
+    float16/float32 retain scalar quantile calls to preserve NumPy rounding.
+    With missing dates, an empty trajectory mapping retains epydemix's IndexError.
     """
     if dates is None:
         dates = np.arange(list(trajectories.values())[0].shape[1])  # noqa: RUF015 -- preserve epydemix's IndexError
@@ -61,7 +82,32 @@ def get_calibration_quantiles(  # noqa: PLR0913 -- match the epydemix public API
     variables: list[str] | None = None,
     ignore_nan: bool = False,
 ) -> pd.DataFrame:
-    """Use the public trajectory API, retaining generation and variable selection."""
+    """Compute calibration quantiles using epydemix's public trajectory API.
+
+    Parameters
+    ----------
+    results : CalibrationResults
+        Source results; their identity distinguishes shared computation groups.
+    dates : sequence or ndarray or None, optional
+        Labels for the time axis. None uses integer timestep labels.
+    quantiles : sequence of float
+        Quantile levels in [0, 1], preserving the requested order and duplicates.
+    generation : int or None, optional
+        Calibration generation to select. None uses epydemix's default selection.
+    variables : list of str or None, optional
+        Variables to stack. None or an empty list selects all variables through epydemix.
+    ignore_nan : bool, optional
+        If True, exclude NaNs and warn when a time point has more than 50% NaNs.
+
+    Returns
+    -------
+    pd.DataFrame
+        Quantile-major rows with date, quantile and numeric variable columns.
+
+    Notes
+    -----
+    Trajectory selection and validation errors propagate from epydemix.
+    """
     trajectories = results.get_calibration_trajectories(generation, variables=variables)
     return compute_quantiles(trajectories, dates, quantiles, ignore_nan=ignore_nan)
 
@@ -75,6 +121,31 @@ def get_projection_quantiles(  # noqa: PLR0913 -- match the epydemix public API
     variables: list[str] | None = None,
     ignore_nan: bool = False,
 ) -> pd.DataFrame:
-    """Use the public trajectory API, retaining scenario and variable selection."""
+    """Compute projection quantiles using epydemix's public trajectory API.
+
+    Parameters
+    ----------
+    results : CalibrationResults
+        Source results; their identity distinguishes shared computation groups.
+    dates : sequence or ndarray or None, optional
+        Labels for the time axis. None uses integer timestep labels.
+    quantiles : sequence of float
+        Quantile levels in [0, 1], preserving the requested order and duplicates.
+    scenario_id : str, optional
+        Projection scenario key, defaulting to baseline.
+    variables : list of str or None, optional
+        Variables to stack. None or an empty list selects all variables through epydemix.
+    ignore_nan : bool, optional
+        If True, exclude NaNs and warn when a time point has more than 50% NaNs.
+
+    Returns
+    -------
+    pd.DataFrame
+        Quantile-major rows with date, quantile and numeric variable columns.
+
+    Notes
+    -----
+    Scenario selection and validation errors propagate from epydemix.
+    """
     trajectories = results.get_projection_trajectories(scenario_id, variables=variables)
     return compute_quantiles(trajectories, dates, quantiles, ignore_nan=ignore_nan)

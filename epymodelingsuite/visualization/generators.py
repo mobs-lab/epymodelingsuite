@@ -119,8 +119,7 @@ def _fetch_quantiles_for_location(
     needs_calibration: bool,
     needs_projection: bool,
 ) -> tuple[pd.DataFrame | None, pd.DataFrame | None]:
-    """
-    Fetch calibration and projection quantiles for a single location.
+    """Fetch calibration and projection quantiles for a single location.
 
     Parameters
     ----------
