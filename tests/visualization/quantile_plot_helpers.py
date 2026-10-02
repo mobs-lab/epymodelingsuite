@@ -24,9 +24,9 @@ mpl.use("Agg")
 REFERENCE_DATE = date(2024, 1, 13)
 QUANTILES = [0.025, 0.25, 0.5, 0.75, 0.975]
 
-# Each location's values are offset by tag * 1000, so a captured frame tells which location it came from.
-# A second surveillance source ("alt") adds 5 to the tag.
-LOCATION_TAGS = {
+# Each location's values are offset by a location number * 1000, so a captured frame tells which location it
+# came from. The second surveillance source ("alt") adds 5 to the location number.
+LOCATION_NUMBERS = {
     "United_States_California": 1,
     "United_States_New_York": 2,
     "United_States_Texas": 3,
@@ -36,7 +36,9 @@ ISO_CODES = {
     "United_States_New_York": "US-NY",
     "United_States_Texas": "US-TX",
 }
-ALT_SOURCE_TAG_OFFSET = 5
+ALT_SOURCE_OFFSET = 5
+# Label that span() reports for each value range
+VALUE_RANGE_LABELS = {1: "CA", 2: "NY", 3: "TX", 6: "CA alt", 7: "NY alt", 8: "TX alt"}
 
 SURVEILLANCE_DATES = pd.date_range("2023-10-07", "2024-01-27", freq="W-SAT")  # 17 weeks
 CALIBRATION_DATES = pd.date_range("2023-11-04", "2024-01-13", freq="W-SAT")  # 11 weeks
@@ -45,12 +47,12 @@ PROJECTION_DATES = pd.date_range("2023-12-02", "2024-03-02", freq="W-SAT")  # 14
 
 def make_calibration(population: str, *, with_projection: bool = True, incomplete: bool = False) -> CalibrationOutput:
     """Build a CalibrationOutput with real CalibrationResults for one location."""
-    tag = LOCATION_TAGS[population]
+    location_number = LOCATION_NUMBERS[population]
     n_draws = 5
     calibration_dates = [d.date() for d in CALIBRATION_DATES]
     projection_dates = [d.date() for d in PROJECTION_DATES]
     selected = [
-        {"date": calibration_dates, "data": tag * 1000.0 + np.arange(len(calibration_dates)) + draw}
+        {"date": calibration_dates, "data": location_number * 1000.0 + np.arange(len(calibration_dates)) + draw}
         for draw in range(n_draws)
     ]
     projections = {}
@@ -58,7 +60,7 @@ def make_calibration(population: str, *, with_projection: bool = True, incomplet
         projections["baseline"] = [
             {
                 "date": projection_dates,
-                "hospitalizations": tag * 1000.0 + 500 + np.arange(len(projection_dates)) + draw,
+                "hospitalizations": location_number * 1000.0 + 500 + np.arange(len(projection_dates)) + draw,
             }
             for draw in range(n_draws)
         ]
@@ -69,8 +71,8 @@ def make_calibration(population: str, *, with_projection: bool = True, incomplet
     )
     strategy = CalibrationStrategy(name="SMC", options={"num_generations": 3}) if incomplete else None
     return CalibrationOutput(
-        primary_id=tag,
-        seed=tag,
+        primary_id=location_number,
+        seed=location_number,
         population=population,
         results=results,
         calibration_strategy=strategy,
@@ -80,14 +82,14 @@ def make_calibration(population: str, *, with_projection: bool = True, incomplet
 def write_surveillance_sources(tmp_path) -> dict[str, ObservedValuesConfig]:
     """Write two surveillance CSVs ("hosp", then "alt") covering every location."""
     sources = {}
-    for name, tag_offset in (("hosp", 0), ("alt", ALT_SOURCE_TAG_OFFSET)):
+    for name, source_offset in (("hosp", 0), ("alt", ALT_SOURCE_OFFSET)):
         rows = [
             {
                 "week_end": d.date().isoformat(),
                 "location": ISO_CODES[population],
-                "observed": (tag + tag_offset) * 1000 + i,
+                "observed": (location_number + source_offset) * 1000 + i,
             }
-            for population, tag in LOCATION_TAGS.items()
+            for population, location_number in LOCATION_NUMBERS.items()
             for i, d in enumerate(SURVEILLANCE_DATES)
         ]
         path = tmp_path / f"{name}.csv"
@@ -107,13 +109,18 @@ def make_plots_config(**quantiles_kwargs) -> PlotsConfig:
 
 
 def span(df: pd.DataFrame | None) -> tuple | None:
-    """Summarize a captured frame as (first date, last date, number of dates, location tag)."""
+    """Summarize a captured frame as (first date, last date, number of dates, location label such as "CA")."""
     if df is None:
         return None
     if df.empty:
         return ()
     dates = pd.to_datetime(df["date"]).dt.date
-    return (dates.min().isoformat(), dates.max().isoformat(), dates.nunique(), int(df["value"].min() // 1000))
+    return (
+        dates.min().isoformat(),
+        dates.max().isoformat(),
+        dates.nunique(),
+        VALUE_RANGE_LABELS[int(df["value"].min() // 1000)],
+    )
 
 
 @dataclass

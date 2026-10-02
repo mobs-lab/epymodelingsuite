@@ -4,7 +4,7 @@ These pin down what each drawn axis receives today, so the override refactor can
 Assertions marked ``CURRENT BEHAVIOR`` capture inconsistencies that the refactor fixes on purpose;
 everything else should stay the same.
 
-Frames are summarized with ``span()`` as (first date, last date, number of dates, location tag).
+Frames are summarized with ``span()`` as (first date, last date, number of dates, location label, e.g. "CA alt").
 """
 
 import matplotlib.pyplot as plt
@@ -36,16 +36,16 @@ TX = "United_States_Texas"
 
 FITTING_WINDOW = ("2023-11-04", "2024-01-13")
 
-# Frames shared by many panels (tag 1 = California)
-CAL_FULL = ("2023-11-04", "2024-01-13", 11, 1)
-CAL_FROM_PROJECTION_START = ("2023-12-02", "2024-01-13", 7, 1)
-PROJ_BASE_HORIZON = ("2023-12-02", "2024-02-03", 10, 1)  # reference_date + 3 weeks
-SURV_ALL = ("2023-10-07", "2024-01-27", 17, 1)
-SURV_FROM_PROJECTION_START = ("2023-12-02", "2024-01-27", 9, 1)
+# Frames shared by many panels (California)
+CAL_FULL = ("2023-11-04", "2024-01-13", 11, "CA")
+CAL_FROM_PROJECTION_START = ("2023-12-02", "2024-01-13", 7, "CA")
+PROJ_BASE_HORIZON = ("2023-12-02", "2024-02-03", 10, "CA")  # reference_date + 3 weeks
+SURV_ALL = ("2023-10-07", "2024-01-27", 17, "CA")
+SURV_FROM_PROJECTION_START = ("2023-12-02", "2024-01-27", 9, "CA")
 
 
-def with_tag(summary: tuple, tag: int) -> tuple:
-    return (*summary[:3], tag)
+def with_location(summary: tuple, label: str) -> tuple:
+    return (*summary[:3], label)
 
 
 def panel(title, calibration, projection, surveillance):
@@ -112,9 +112,9 @@ class TestSingleDefaultOutputs:
         assert capture.summary(f"quantiles_{NY}_filtered") == [
             panel(
                 "New York",
-                with_tag(CAL_FROM_PROJECTION_START, 2),
-                with_tag(PROJ_BASE_HORIZON, 2),
-                with_tag(SURV_FROM_PROJECTION_START, 2),
+                with_location(CAL_FROM_PROJECTION_START, "NY"),
+                with_location(PROJ_BASE_HORIZON, "NY"),
+                with_location(SURV_FROM_PROJECTION_START, "NY"),
             )
         ]
 
@@ -166,33 +166,43 @@ class TestGridDefaultOutputs:
             panel("California", CAL_FROM_PROJECTION_START, PROJ_BASE_HORIZON, SURV_FROM_PROJECTION_START),
             panel(
                 "New York",
-                with_tag(CAL_FROM_PROJECTION_START, 2),
-                with_tag(PROJ_BASE_HORIZON, 2),
-                with_tag(SURV_FROM_PROJECTION_START, 2),
+                with_location(CAL_FROM_PROJECTION_START, "NY"),
+                with_location(PROJ_BASE_HORIZON, "NY"),
+                with_location(SURV_FROM_PROJECTION_START, "NY"),
             ),
-            panel("Texas", with_tag(CAL_FULL, 3), None, None),
+            panel("Texas", with_location(CAL_FULL, "TX"), None, None),
         ]
 
     def test_full(self, out_dict, capture):
         assert capture.summary("quantiles_grid_full") == [
             panel("California", CAL_FULL, PROJ_BASE_HORIZON, SURV_ALL),
-            panel("New York", with_tag(CAL_FULL, 2), with_tag(PROJ_BASE_HORIZON, 2), with_tag(SURV_ALL, 2)),
-            panel("Texas", with_tag(CAL_FULL, 3), None, None),
+            panel(
+                "New York",
+                with_location(CAL_FULL, "NY"),
+                with_location(PROJ_BASE_HORIZON, "NY"),
+                with_location(SURV_ALL, "NY"),
+            ),
+            panel("Texas", with_location(CAL_FULL, "TX"), None, None),
         ]
 
     def test_side_by_side(self, out_dict, capture):
         assert capture.summary("quantiles_grid_sidebyside") == [
             panel("California", CAL_FULL, PROJ_BASE_HORIZON, SURV_ALL),
             panel("California", CAL_FROM_PROJECTION_START, PROJ_BASE_HORIZON, SURV_FROM_PROJECTION_START),
-            panel("New York", with_tag(CAL_FULL, 2), with_tag(PROJ_BASE_HORIZON, 2), with_tag(SURV_ALL, 2)),
             panel(
                 "New York",
-                with_tag(CAL_FROM_PROJECTION_START, 2),
-                with_tag(PROJ_BASE_HORIZON, 2),
-                with_tag(SURV_FROM_PROJECTION_START, 2),
+                with_location(CAL_FULL, "NY"),
+                with_location(PROJ_BASE_HORIZON, "NY"),
+                with_location(SURV_ALL, "NY"),
             ),
-            panel("Texas", with_tag(CAL_FULL, 3), None, None),
-            panel("Texas", with_tag(CAL_FULL, 3), None, None),
+            panel(
+                "New York",
+                with_location(CAL_FROM_PROJECTION_START, "NY"),
+                with_location(PROJ_BASE_HORIZON, "NY"),
+                with_location(SURV_FROM_PROJECTION_START, "NY"),
+            ),
+            panel("Texas", with_location(CAL_FULL, "TX"), None, None),
+            panel("Texas", with_location(CAL_FULL, "TX"), None, None),
         ]
 
     def test_styling(self, out_dict, capture):
@@ -239,13 +249,13 @@ def override_config(**kwargs):
 # filtered output: surveillance_start_date=2023-12-16, horizon_max=1
 OVERRIDE_FILTERED = panel(
     "California",
-    ("2023-12-16", "2024-01-13", 5, 1),
-    ("2023-12-16", "2024-01-20", 6, 1),
-    ("2023-12-16", "2024-01-27", 7, 1),
+    ("2023-12-16", "2024-01-13", 5, "CA"),
+    ("2023-12-16", "2024-01-20", 6, "CA"),
+    ("2023-12-16", "2024-01-27", 7, "CA"),
 )
 # full output: surveillance_points=4 (4 on or before reference_date + 2 after)
 # CURRENT BEHAVIOR: horizon_max=6 is capped at the base horizon_max=3.
-OVERRIDE_FULL = panel("California", CAL_FULL, PROJ_BASE_HORIZON, ("2023-12-23", "2024-01-27", 6, 1))
+OVERRIDE_FULL = panel("California", CAL_FULL, PROJ_BASE_HORIZON, ("2023-12-23", "2024-01-27", 6, "CA"))
 
 
 class TestSingleOverrides:
@@ -280,18 +290,18 @@ class TestGridOverrides:
     def test_filtered_and_full(self, out_dict, capture):
         assert capture.summary("quantiles_grid_filtered")[0] == OVERRIDE_FILTERED
         assert capture.summary("quantiles_grid_full")[0] == OVERRIDE_FULL
-        assert capture.summary("quantiles_grid_full")[1]["surveillance"] == ("2023-12-23", "2024-01-27", 6, 2)
+        assert capture.summary("quantiles_grid_full")[1]["surveillance"] == ("2023-12-23", "2024-01-27", 6, "NY")
 
     def test_side_by_side(self, out_dict, capture):
         # CURRENT BEHAVIOR: grid side_by_side uses panel limits only; the output surveillance_points=3
         # and output horizon_max=1 are ignored.
         assert capture.summary("quantiles_grid_sidebyside")[:2] == [
-            panel("California", CAL_FULL, PROJ_BASE_HORIZON, ("2023-11-04", "2024-01-27", 13, 1)),
+            panel("California", CAL_FULL, PROJ_BASE_HORIZON, ("2023-11-04", "2024-01-27", 13, "CA")),
             panel(
                 "California",
-                ("2024-01-06", "2024-01-13", 2, 1),
-                ("2024-01-06", "2024-02-03", 5, 1),
-                ("2024-01-06", "2024-01-27", 4, 1),
+                ("2024-01-06", "2024-01-13", 2, "CA"),
+                ("2024-01-06", "2024-02-03", 5, "CA"),
+                ("2024-01-06", "2024-01-27", 4, "CA"),
             ),
         ]
 
@@ -307,7 +317,7 @@ class TestGridOverrides:
 
 
 class TestSurveillanceSourceSelection:
-    """Two sources loaded; every output selects the second one ("alt", tag + 5)."""
+    """Two sources loaded; every output selects the second one (reported as "CA alt")."""
 
     @pytest.fixture
     def config(self):
@@ -320,14 +330,14 @@ class TestSurveillanceSourceSelection:
         run_generators([make_calibration(CA)], config, sources)
         single_panels = [drawn for drawn in capture.panels if not drawn.output.startswith("quantiles_grid")]
         assert len(single_panels) == 4
-        # CURRENT BEHAVIOR: single plots ignore surveillance_source and use "hosp" (tag 1).
-        assert {drawn.surveillance[3] for drawn in single_panels} == {1}
+        # CURRENT BEHAVIOR: single plots ignore surveillance_source and use "hosp" (reported as "CA").
+        assert {drawn.surveillance[3] for drawn in single_panels} == {"CA"}
 
     def test_grid_uses_selected_source(self, capture, sources, config):
         run_generators([make_calibration(CA)], config, sources)
         grid_panels = [drawn for drawn in capture.panels if drawn.output.startswith("quantiles_grid")]
         assert len(grid_panels) == 4
-        assert {drawn.surveillance[3] for drawn in grid_panels} == {6}
+        assert {drawn.surveillance[3] for drawn in grid_panels} == {"CA alt"}
 
 
 class TestHiddenSurveillance:
@@ -366,7 +376,7 @@ class TestSideBySideAllCalibrationClipped:
         run_generators([make_calibration(CA)], make_plots_config(single=False, grid=True, outputs=outputs), hosp_only)
         # CURRENT BEHAVIOR: the fully clipped calibration comes back as the full calibration.
         assert capture.summary("quantiles_grid_sidebyside")[1] == panel(
-            "California", CAL_FULL, ("2024-01-20", "2024-02-03", 3, 1), ("2024-01-20", "2024-01-27", 2, 1)
+            "California", CAL_FULL, ("2024-01-20", "2024-02-03", 3, "CA"), ("2024-01-20", "2024-01-27", 2, "CA")
         )
 
 
@@ -426,6 +436,6 @@ class TestDispatcherFiltersFailedProjections:
 
 def test_span_helper():
     df = pd.DataFrame({"date": ["2024-01-06", "2024-01-13", "2024-01-13"], "value": [1500.0, 1600.0, 1700.0]})
-    assert span(df) == ("2024-01-06", "2024-01-13", 2, 1)
+    assert span(df) == ("2024-01-06", "2024-01-13", 2, "CA")
     assert span(df.iloc[0:0]) == ()
     assert span(None) is None
