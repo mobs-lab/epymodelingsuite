@@ -1129,7 +1129,7 @@ def generate_simulation_outputs(
         logger.warning(warning)
 
     logger.info("Formatting tabular outputs")
-    out_dict = {}
+    out_dict = _.get("_sink", {})
     if not quantiles_compartments.empty:
         qc_name = "quantiles_compartments"
         qc_objects = [
@@ -1220,10 +1220,11 @@ def generate_calibration_outputs(
     projection_parameters_long_list: list[pd.DataFrame] = []
 
     # Filter out failed projections
-    for calibration in calibrations:
-        calibration.results = filter_failed_projections(calibration.results)
+    if not _.get("_filtered", False):
+        for calibration in calibrations:
+            calibration.results = filter_failed_projections(calibration.results)
 
-    prepared = prepare_quantiles(calibrations, output)
+    prepared = _.get("_prepared") or prepare_quantiles(calibrations, output)
 
     ### Quantiles
     if output.quantiles:
@@ -1787,7 +1788,7 @@ def generate_calibration_outputs(
         logger.warning(warning)
 
     logger.info("Formatting tabular outputs")
-    out_dict = {}
+    out_dict = _.get("_sink", {})
     if not quantiles_projection_compartments.empty:
         qc_name = "quantiles_projection_compartments"
         qc_objects = [
@@ -1861,10 +1862,12 @@ def generate_calibration_outputs(
             surveillance_sources = output.options.surveillance
 
         surveillance_data = _load_surveillance_sources(surveillance_sources, plots_config.quantiles.outputs)
-        plot_data = {}
+        plot_data = _.get("_plot_data", {})
         grid = plots_config.quantiles.grid
         single_locations = get_locations_to_plot(calibrations, plots_config.quantiles.single)
         for calibration in calibrations:
+            if id(calibration) in plot_data:
+                continue
             if not ((grid is not False and grid.enabled) or calibration.population in single_locations):
                 continue
             try:

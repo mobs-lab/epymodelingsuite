@@ -22,7 +22,11 @@ from .runner import (
     run_simulation,
 )
 
+from .streaming import OutputWriteError, write_outputs
+
 __all__ = [
+    "OutputWriteError",
+    "write_outputs",
     # Builder functions and utilities
     "build_basemodel",
     "build_calibration",
