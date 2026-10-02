@@ -9,6 +9,7 @@ import logging
 import math
 from dataclasses import dataclass
 from datetime import date, timedelta
+from functools import wraps
 from typing import Any, Literal
 
 import matplotlib.pyplot as plt
@@ -43,6 +44,20 @@ logger = logging.getLogger(__name__)
 
 # Columns that are metadata/identifiers and should be excluded when extracting parameter names
 POSTERIOR_METADATA_COLUMNS = {"sim_id", "location", "population", "primary_id", "seed"}
+
+
+def _close_generated_figures(function):
+    @wraps(function)
+    def wrapped(*args, **kwargs):
+        existing = set(plt.get_fignums())
+        try:
+            return function(*args, **kwargs)
+        finally:
+            # Also close figures whose renderer failed before returning a handle.
+            for number in set(plt.get_fignums()) - existing:
+                plt.close(number)
+
+    return wrapped
 
 
 def _check_incomplete_generations(calibration: CalibrationOutput) -> str | None:
@@ -658,10 +673,13 @@ def _package_figure_outputs(
     list[OutputObject]
         One OutputObject per configured figure output type.
     """
-    return [
-        figure_to_output_object(fig, name, output_type, plots_config.dpi)
-        for output_type in plots_config.figure_output_types
-    ]
+    try:
+        return [
+            figure_to_output_object(fig, name, output_type, plots_config.dpi)
+            for output_type in plots_config.figure_output_types
+        ]
+    finally:
+        plt.close(fig)
 
 
 def _collect_location_plot_data(
@@ -850,6 +868,7 @@ def _to_epydemix_population_name(location: str) -> str:
         return location
 
 
+@_close_generated_figures
 def generate_single_quantile_plots(
     calibrations: list[CalibrationOutput],
     plots_config: PlotsConfig,
@@ -1073,6 +1092,7 @@ GRID_OUTPUT_NAMES = {
 }
 
 
+@_close_generated_figures
 def generate_quantile_grid_plot(
     calibrations: list[CalibrationOutput],
     plots_config: PlotsConfig,
@@ -1166,6 +1186,7 @@ def generate_quantile_grid_plot(
             logger.warning("Failed to create %s quantile grid plot: %s", output_type_name, e, exc_info=True)
 
 
+@_close_generated_figures
 def generate_single_location_posterior_plots(
     calibrations: list[CalibrationOutput],
     plots_config: PlotsConfig,
@@ -1272,11 +1293,16 @@ def generate_single_location_posterior_plots(
             logger.warning("Failed to get posterior distribution for %s: %s", location, e)
 
 
+@_close_generated_figures
 def generate_posterior_grid_plot(
     calibrations: list[CalibrationOutput],
     plots_config: PlotsConfig,
     out_dict: dict[str, list[OutputObject]],
     start_date_reference: str | None = None,
+    *,
+    prepared_posteriors=None,
+    prepared_parameters=None,
+    prepared_notes=None,
 ) -> None:
     """
     Generate multi-location posterior histogram grid plot.
@@ -1308,29 +1334,35 @@ def generate_posterior_grid_plot(
 
     logger.info("Generating grid posterior plot for %d locations", len(calibrations))
 
-    location_posteriors = {}
-    all_params = set()
-    location_notes: dict[str, tuple[str, str]] = {}  # loc -> (title_suffix, footnote)
+    if prepared_posteriors is None:
+        location_posteriors = {}
+        all_params = set()
+        location_notes: dict[str, tuple[str, str]] = {}  # loc -> (title_suffix, footnote)
 
-    # Collect posterior distributions for each location
-    for calibration in calibrations:
-        loc = calibration.population
+        # Collect posterior distributions for each location
+        for calibration in calibrations:
+            loc = calibration.population
 
-        # Check for incomplete generations
-        notes = []
-        if note := _check_incomplete_generations(calibration):
-            notes.append(note)
-        location_notes[loc] = _format_plot_notes(notes)
+            # Check for incomplete generations
+            notes = []
+            if note := _check_incomplete_generations(calibration):
+                notes.append(note)
+            location_notes[loc] = _format_plot_notes(notes)
 
-        try:
-            posterior_df = calibration.results.get_posterior_distribution()
-            if not posterior_df.empty:
-                location_posteriors[loc] = posterior_df
-                all_params.update(col for col in posterior_df.columns if col not in POSTERIOR_METADATA_COLUMNS)
-            else:
-                logger.warning("Skipping posterior plot for %s: posterior data is empty", loc)
-        except (ValueError, AttributeError) as e:
-            logger.warning("Failed to get posterior distribution for %s: %s", loc, e)
+            try:
+                posterior_df = calibration.results.get_posterior_distribution()
+                if not posterior_df.empty:
+                    location_posteriors[loc] = posterior_df
+                    all_params.update(col for col in posterior_df.columns if col not in POSTERIOR_METADATA_COLUMNS)
+                else:
+                    logger.warning("Skipping posterior plot for %s: posterior data is empty", loc)
+            except (ValueError, AttributeError) as e:
+                logger.warning("Failed to get posterior distribution for %s: %s", loc, e)
+
+    else:
+        location_posteriors = prepared_posteriors
+        all_params = prepared_parameters
+        location_notes = prepared_notes
 
     if location_posteriors and all_params:
         parameters = sorted(all_params)
@@ -1365,6 +1397,7 @@ def generate_posterior_grid_plot(
             logger.warning("Failed to create posterior grid plot: %s", e, exc_info=True)
 
 
+@_close_generated_figures
 def generate_categorical_plots(
     plots_config: PlotsConfig,
     out_dict: dict[str, list[OutputObject]],

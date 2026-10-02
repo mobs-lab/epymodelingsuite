@@ -1213,6 +1213,8 @@ def plot_posterior_histogram_grid(
             else:
                 ax.set_title("")
 
+        del df_post  # Permit file-backed mappings to release this location before loading the next.
+
     plt.tight_layout()
 
     return fig, axes
