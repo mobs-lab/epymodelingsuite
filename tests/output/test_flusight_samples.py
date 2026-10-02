@@ -1,5 +1,6 @@
 """Tests for FluSight trajectory samples from calibrations (epymodelingsuite.output.trajectory_samples)."""
 
+import gzip
 import io
 from datetime import date
 from unittest.mock import MagicMock
@@ -199,7 +200,11 @@ def test_ed_model_parquet_output_is_submission_ready():
     )
     config = OutputConfig(
         output=OutputConfiguration(
-            tabular_output_types=[TabularOutputTypeEnum.Parquet],
+            tabular_output_types=[
+                TabularOutputTypeEnum.Parquet,
+                TabularOutputTypeEnum.CSVBytes,
+                TabularOutputTypeEnum.DataFrame,
+            ],
             flusight_format={
                 "reference_date": REFERENCE_DATE,
                 "hospitalizations": None,
@@ -213,7 +218,7 @@ def test_ed_model_parquet_output_is_submission_ready():
 
     outputs = generate_calibration_outputs(calibrations=[calibration], output_config=config)
 
-    (hub,) = outputs["output_hub_formatted"]
+    hub, csv, dataframe = outputs["output_hub_formatted"]
     assert hub.name == "output_hub_formatted.parquet"
     table = pq.read_table(io.BytesIO(hub.data))
     assert [f.type for f in table.schema] == [
@@ -230,3 +235,13 @@ def test_ed_model_parquet_output_is_submission_ready():
     assert df.groupby("output_type").size().to_dict() == {"quantile": 15, "sample": 500}
     assert set(df.target) == {"wk inc flu prop ed visits"}
     assert df.query("output_type == 'quantile'").output_type_id.unique().tolist() == ["0.025", "0.5", "0.975"]
+
+    # Requesting Parquet first must not normalize the later CSV/DataFrame outputs.
+    legacy = dataframe.data
+    assert legacy.columns.tolist() == [
+        "location", "reference_date", "horizon", "target_end_date", "target", "output_type", "output_type_id", "value"
+    ]
+    assert legacy.reference_date.iloc[0] == REFERENCE_DATE
+    assert legacy.horizon.dtype == np.dtype("int64")
+    assert legacy.output_type_id.iloc[0] == 0.025
+    assert gzip.decompress(csv.data).decode() == legacy.to_csv(index=False, date_format="%Y-%m-%d")
