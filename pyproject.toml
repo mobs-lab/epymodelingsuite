@@ -23,6 +23,7 @@ dependencies = [
     "psutil",
     "sodapy",
     "epiweeks",
+    "pyarrow>=21.0.0",
 ]
 
 readme = "README.md"
