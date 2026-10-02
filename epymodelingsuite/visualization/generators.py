@@ -262,29 +262,24 @@ def _rename_value_column(df: pd.DataFrame | None, old_name: str) -> pd.DataFrame
     raise ValueError(msg)
 
 
-def _clip_to_surveillance_start(
-    df: pd.DataFrame | None,
-    surv: pd.DataFrame | None,
-) -> pd.DataFrame | None:
+def _clip_to_start(df: pd.DataFrame | None, start: date) -> pd.DataFrame | None:
     """
-    Clip a dataframe to start at the earliest date in surveillance data. Used to align calibration/projection quantile ribbons with the visible surveillance range.
+    Keep the rows of ``df`` dated on or after ``start``.
 
     Parameters
     ----------
     df : pd.DataFrame or None
         DataFrame with a "date" column (e.g. calibration or projection quantiles).
-    surv : pd.DataFrame or None
-        Surveillance DataFrame with a "date" column whose minimum date defines the clip boundary.
+    start : date
+        First date to keep.
 
     Returns
     -------
     pd.DataFrame or None
-        Rows of ``df`` where date >= earliest surveillance date (possibly empty).
-        Returns ``df`` unchanged when ``surv`` is None or empty.
+        Rows of ``df`` where date >= ``start`` (possibly empty), or None if ``df`` is None.
     """
-    if df is None or surv is None or surv.empty:
-        return df
-    start = pd.to_datetime(surv["date"]).dt.date.min()
+    if df is None:
+        return None
     return df[pd.to_datetime(df["date"]).dt.date >= start]
 
 
@@ -344,7 +339,6 @@ def _clip_to_horizon(
     Clip projection quantiles to a maximum forecast horizon.
 
     Keeps only rows whose date is at most ``reference_date + horizon_max`` weeks.
-    Returns a copy to avoid mutating the caller's DataFrame.
 
     Parameters
     ----------
@@ -362,7 +356,6 @@ def _clip_to_horizon(
     """
     if proj is None or horizon_max is None:
         return proj
-    proj = proj.copy()
     dates = pd.to_datetime(proj["date"]).dt.date
     end = reference_date + timedelta(weeks=horizon_max)
     return proj[dates.values <= end]
@@ -497,7 +490,9 @@ def prepare_panel_plot_data(
        before ``reference_date`` (all later rows are kept). With neither, the full view keeps everything and the
        filtered view starts at the first projection date (falling back to the first calibration date).
     3. Projection is clipped to ``reference_date + horizon_max`` weeks.
-    4. Filtered view: calibration and projection are clipped to the first visible surveillance date.
+    4. Filtered view: calibration and projection are clipped to the first visible surveillance date. If no
+       surveillance is left visible, they are clipped to where it would have started instead
+       (``surveillance_start_date``, or the first projection/calibration date without limits).
     5. Hidden layers are returned as ``None``. Frames that become empty stay empty.
 
     Parameters
@@ -522,6 +517,7 @@ def prepare_panel_plot_data(
     if settings.show_surveillance and settings.surveillance_source is not None:
         surveillance = location_plot_data.surveillance.get(settings.surveillance_source)
 
+    filtered_start = None  # None = the filtered view is not clipped
     if surveillance is not None:
         if settings.surveillance_start_date is not None or settings.surveillance_points is not None:
             surveillance = _clip_surveillance(
@@ -530,17 +526,20 @@ def prepare_panel_plot_data(
                 surveillance_points=settings.surveillance_points,
                 reference_date=reference_date,
             )
+            filtered_start = settings.surveillance_start_date
         elif settings.view == "filtered":
             timespan = projection if projection is not None else calibration
             if timespan is not None:
-                timespan_start = pd.to_datetime(timespan["date"]).min().date()
-                surveillance = surveillance[pd.to_datetime(surveillance["date"]).dt.date >= timespan_start]
+                filtered_start = pd.to_datetime(timespan["date"]).min().date()
+                surveillance = _clip_to_start(surveillance, filtered_start)
+        if not surveillance.empty:
+            filtered_start = pd.to_datetime(surveillance["date"]).min().date()
 
     projection = _clip_to_horizon(projection, settings.horizon_max, reference_date)
 
-    if settings.view == "filtered":
-        calibration = _clip_to_surveillance_start(calibration, surveillance)
-        projection = _clip_to_surveillance_start(projection, surveillance)
+    if settings.view == "filtered" and filtered_start is not None:
+        calibration = _clip_to_start(calibration, filtered_start)
+        projection = _clip_to_start(projection, filtered_start)
 
     return PanelPlotData(
         calibration=calibration if settings.show_calibration else None,

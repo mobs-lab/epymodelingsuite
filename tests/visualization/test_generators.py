@@ -13,7 +13,7 @@ from epymodelingsuite.visualization.generators import (
     _check_incomplete_generations,
     _clip_surveillance,
     _clip_to_horizon,
-    _clip_to_surveillance_start,
+    _clip_to_start,
     _format_plot_notes,
     _select_surveillance,
     _rename_value_column,
@@ -513,8 +513,8 @@ class TestFormatPlotNotes:
         assert footnote == "* Note one; Note two"
 
 
-class TestClipToSurveillanceStart:
-    """Tests for _clip_to_surveillance_start helper."""
+class TestClipToStart:
+    """Tests for _clip_to_start helper."""
 
     @pytest.fixture()
     def df(self):
@@ -527,36 +527,17 @@ class TestClipToSurveillanceStart:
             }
         )
 
-    def test_clips_df_to_earliest_surveillance_date(self, df):
-        """Rows before the earliest surveillance date are removed."""
-        surv = pd.DataFrame({"date": pd.date_range("2024-01-05", periods=3, freq="D"), "value": [1, 2, 3]})
-        result = _clip_to_surveillance_start(df, surv)
-        assert result is not None
+    def test_clips_df_to_start(self, df):
+        result = _clip_to_start(df, date(2024, 1, 5))
         assert len(result) == 6  # Jan 5–10
         assert pd.to_datetime(result["date"]).dt.date.min() == date(2024, 1, 5)
 
-    def test_returns_df_unchanged_when_surv_is_none(self, df):
-        """When surv is None, df is returned as-is."""
-        result = _clip_to_surveillance_start(df, None)
-        assert result is not None
-        assert len(result) == 10
-
-    def test_returns_df_unchanged_when_surv_is_empty(self, df):
-        """When surv is an empty DataFrame, df is returned as-is."""
-        empty_surv = pd.DataFrame({"date": pd.Series(dtype="datetime64[ns]"), "value": pd.Series(dtype="float64")})
-        result = _clip_to_surveillance_start(df, empty_surv)
-        assert result is not None
-        assert len(result) == 10
-
     def test_returns_none_when_df_is_none(self):
-        """When df is None, None is returned."""
-        surv = pd.DataFrame({"date": ["2024-01-05"], "value": [1]})
-        assert _clip_to_surveillance_start(None, surv) is None
+        assert _clip_to_start(None, date(2024, 1, 5)) is None
 
     def test_returns_empty_when_all_rows_clipped(self, df):
-        """When surveillance starts after all df dates, the result is empty (not None, which means "not drawn")."""
-        surv = pd.DataFrame({"date": ["2024-02-01"], "value": [1]})
-        result = _clip_to_surveillance_start(df, surv)
+        """The result is empty, not None (which means "not drawn")."""
+        result = _clip_to_start(df, date(2024, 2, 1))
         assert result is not None
         assert result.empty
 
