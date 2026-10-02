@@ -104,10 +104,33 @@ class TestWrmse:
 
         result = wrmse(data, simulation)
 
-        w = np.array([1 / 4, 1 / 3, 1 / 2, 1])
-        expected = np.sqrt(np.mean(w * 1.0)) / np.sum(w)
+        # Weighted RMSE of a constant error equals that error, whatever the weights
+        assert np.isclose(result, 1.0)
 
-        assert np.isclose(result, expected, rtol=1e-5)
+    @pytest.mark.parametrize("n_points", [1, 4, 10])
+    def test_scale_independent_of_number_of_points(self, n_points):
+        """Verify a constant error gives the same distance regardless of series length."""
+        data = {"data": np.zeros(n_points)}
+        simulation = {"data": np.full(n_points, 2.0)}
+
+        assert np.isclose(wrmse(data, simulation), 2.0)
+
+    def test_matches_standard_weighted_rmse(self):
+        """Verify wrmse equals sqrt(sum(w * e^2) / sum(w))."""
+        data = {"data": np.array([0.0, 0.0, 0.0, 0.0])}
+        simulation = {"data": np.array([1.0, 2.0, 3.0, 4.0])}
+
+        w = np.array([1 / 4, 1 / 3, 1 / 2, 1])
+        expected = np.sqrt(np.sum(w * np.array([1.0, 4.0, 9.0, 16.0])) / np.sum(w))
+
+        assert np.isclose(wrmse(data, simulation), expected)
+
+    def test_nan_points_excluded_from_weights(self):
+        """Verify NaN points are dropped from both the errors and the normalizing weights."""
+        data = {"data": np.array([0.0, np.nan, 0.0])}
+        simulation = {"data": np.array([3.0, 100.0, 3.0])}
+
+        assert np.isclose(wrmse(data, simulation), 3.0)
 
 
 class TestWrmseInConfig:
