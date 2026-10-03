@@ -8,7 +8,7 @@ from ..schema.output import QuantilesOutput
 from ..utils.quantiles import compute_quantiles
 
 
-def projection_quantile_variables(projections: list[dict], config: QuantilesOutput) -> list[str] | None:
+def select_projection_quantile_variables(projections: list[dict], config: QuantilesOutput) -> list[str] | None:
     """Select projection variables before stacking, preserving fallback behavior.
 
     Parameters

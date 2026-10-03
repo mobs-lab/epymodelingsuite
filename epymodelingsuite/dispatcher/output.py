@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 from epydemix.calibration import CalibrationResults
 
-from ..output.quantiles import get_simulation_quantiles, projection_quantile_variables
+from ..output.quantiles import get_simulation_quantiles, select_projection_quantile_variables
 from ..schema.dispatcher import CalibrationOutput, SimulationOutput
 from ..schema.output import (
     FlusightPropED,
@@ -1260,7 +1260,7 @@ def generate_calibration_outputs(
                     calibration.results,
                     quantiles=output.quantiles.selections,
                     dates=proj_dates,
-                    variables=projection_quantile_variables(proj_sims, output.quantiles),
+                    variables=select_projection_quantile_variables(proj_sims, output.quantiles),
                     ignore_nan=True,
                 )
             except ValueError:
