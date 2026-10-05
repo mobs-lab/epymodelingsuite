@@ -94,6 +94,11 @@ def _normalize(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
     out["horizon"] = horizon.astype("Int64").astype("string")
     for col in ["location", "target", "output_type", "output_type_id"]:
         out[col] = out[col].astype("string")
+    # Canonicalize quantile levels before duplicate detection as well as ID checks.
+    quantiles = out["output_type"] == "quantile"
+    out.loc[quantiles, "output_type_id"] = (
+        _parse_quantile_levels(out.loc[quantiles, "output_type_id"]).astype("Float64").astype("string")
+    )
     value = pd.to_numeric(out["value"], errors="coerce").convert_dtypes(dtype_backend="numpy_nullable")
     if value.isna().any():
         errors.append(f"`value` has {int(value.isna().sum())} missing or non-numeric values.")
@@ -272,13 +277,12 @@ def _check_output_type_ids(out: pd.DataFrame, spec: dict, target: list, output_t
     if output_type == "quantile":
         # Compare quantile levels numerically ("0.1" == "0.10")
         canon = {str(float(v)) for v in allowed}
-        out = out.assign(output_type_id=_parse_quantile_levels(out["output_type_id"]).map(lambda v: str(float(v))))
         required = {str(float(v)) for v in required}
         allowed = canon
     bad = ~out["output_type_id"].isin(allowed)
     if bad.any():
         errors.append(
-            f"{target} {output_type}: invalid output_type_id {sorted(out.loc[bad, 'output_type_id'].unique())[:5]}."
+            f"{target} {output_type}: invalid output_type_id {sorted(out.loc[bad, 'output_type_id'].unique(), key=str)[:5]}."
         )
 
     groups = out.groupby(TASK_ID_COLUMNS, dropna=False)

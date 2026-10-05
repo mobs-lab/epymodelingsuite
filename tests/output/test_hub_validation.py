@@ -129,6 +129,27 @@ def test_missing_required_quantile(example, tasks):
     assert "miss required output_type_ids" in _errors(df, tasks)
 
 
+def test_equivalent_quantile_ids_are_duplicates(example, tasks):
+    """Reject a repeated numeric quantile even when its string spelling differs."""
+    row = example[example.output_type.eq("quantile") & example.output_type_id.eq("0.01")].head(1)
+    duplicate = row.assign(output_type_id="0.010")
+    assert "duplicate" in _errors(pd.concat([example, duplicate], ignore_index=True), tasks)
+    # Alternative spellings alone are valid and validation must not modify the input.
+    alternate = example.replace({"output_type_id": {"0.01": "0.010"}})
+    original = alternate.copy(deep=True)
+    assert validate_model_output(alternate, tasks) == []
+    pd.testing.assert_frame_equal(alternate, original)
+
+
+@pytest.mark.parametrize("output_type", ["pmf", "quantile"])
+def test_missing_and_invalid_output_ids_return_diagnostics(example, tasks, output_type):
+    """Report mixed missing and invalid IDs without failing to sort them."""
+    df = example.copy()
+    indices = df.index[df.output_type.eq(output_type)][:2]
+    df.loc[indices, "output_type_id"] = [None, "invalid"]
+    assert "invalid output_type_id" in _errors(df, tasks)
+
+
 def test_missing_required_output_type(example, tasks):
     """Test that samples without the required quantiles are reported."""
     # Samples alone are insufficient: hospitalization forecasts also require quantiles.
