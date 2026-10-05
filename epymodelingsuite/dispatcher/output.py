@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 from epydemix.calibration import CalibrationResults
 
+from ..output.hub_format import normalize_target_values
 from ..output.tabular import (
     dataframe_to_gzipped_csv as dataframe_to_gzipped_csv,
     format_hub_objects,
@@ -253,10 +254,10 @@ def format_quantiles_flusightforecast(
 
     # Name and format remaining fields
     # FRAGILE: the name 'hospitalizations' is user-supplied in the modelset as the column to look for in the surveillance data.
-    # pandas round uses ties-to-even rounding (10.5 -> 10, 11.5 -> 12),
-    # matching NumPy rint used for hospitalization samples.
-    # Use nullable integer dtype to handle potential NaN values
-    formatted.hospitalizations = formatted.hospitalizations.round().astype("Int64")
+    formatted.hospitalizations = normalize_target_values(formatted.hospitalizations, target)
+    if target == "wk inc flu hosp":
+        # Preserve the existing nullable count dtype for CSV/DataFrame output.
+        formatted.hospitalizations = formatted.hospitalizations.astype("Int64")
     formatted.rename(
         columns={"date": "target_end_date", "hospitalizations": "value", "quantile": "output_type_id"}, inplace=True
     )
@@ -610,6 +611,7 @@ def prop_ed_surveillance_window(
     # Format and return
     prop_ed = pd.concat(prop_ed_list)
     prop_ed.target = target
+    prop_ed.value = normalize_target_values(prop_ed.value, target)
     rescaling_factors = pd.DataFrame.from_dict(r_dict, orient="columns")
     return prop_ed, rescaling_factors
 
@@ -697,8 +699,7 @@ def prop_ed_calibration_window(
     # Format and return
     prop_ed = pd.concat(prop_ed_list)
     prop_ed.target = target
-    prop_ed.value = prop_ed.value.apply(lambda x: max(x, 0))
-    prop_ed.value = prop_ed.value.apply(lambda x: min(x, 1))
+    prop_ed.value = normalize_target_values(prop_ed.value, target)
     rescaling_factors = pd.DataFrame.from_dict(r_dict, orient="columns")
     return prop_ed, rescaling_factors
 
@@ -808,6 +809,7 @@ def make_prop_ed_flusightforecast(
                 columns={"date": "target_end_date", config.transition_name: "value", "quantile": "output_type_id"},
                 inplace=True,
             )
+            formatted.value = normalize_target_values(formatted.value, config.target)
             formatted.target_end_date = formatted.target_end_date.apply(lambda x: x.date() if hasattr(x, "date") else x)
 
             # Add location and reference_date columns

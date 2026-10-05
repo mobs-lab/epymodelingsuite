@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 
 from ..utils.location import convert_location_name_format, get_hub_location_id
+from .hub_format import normalize_target_values
 
 if TYPE_CHECKING:
     from ..schema.dispatcher import CalibrationOutput
@@ -118,12 +119,7 @@ def trajectories_to_sample_rows(  # noqa: PLR0913
     pd.DataFrame
         One row per sample and horizon with the hub columns.
     """
-    upper = {"wk inc flu prop ed visits": 1, "Flu ED visits pct": 100, "ILI ED visits pct": 100}.get(target)
-    values = np.clip(values, 0, upper)
-    if target == "wk inc flu hosp":
-        # NumPy rint rounds exact .5 ties to the nearest even integer (10.5 -> 10, 11.5 -> 12),
-        # matching pandas round used for hospitalization quantiles.
-        values = np.rint(values)
+    values = normalize_target_values(values, target)
     n_samples, n_horizons = values.shape
     sample_ids = [str(i + 1) if id_prefix is None else f"{id_prefix}{i:02d}" for i in range(n_samples)]
     ref = pd.Timestamp(reference_date)
