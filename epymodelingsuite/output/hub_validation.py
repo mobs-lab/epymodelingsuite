@@ -85,14 +85,16 @@ def _normalize(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
         if (parsed.isna() & out[col].notna() & (out[col].astype(str) != "")).any():
             errors.append(f"`{col}` has values that are not YYYY-MM-DD dates.")
         out[col] = parsed.dt.strftime("%Y-%m-%d")
-    horizon = pd.to_numeric(out["horizon"], errors="coerce")
+    # Parquet may preserve Arrow dtypes, which do not support modulo. Normalize
+    # numeric columns to pandas nullable dtypes before checking integer values.
+    horizon = pd.to_numeric(out["horizon"], errors="coerce").convert_dtypes(dtype_backend="numpy_nullable")
     if (horizon.notna() & (horizon % 1 != 0)).any() or (horizon.isna() & out["horizon"].notna()).any():
         errors.append("`horizon` has non-integer values.")
         horizon = horizon.round()
     out["horizon"] = horizon.astype("Int64").astype("string")
     for col in ["location", "target", "output_type", "output_type_id"]:
         out[col] = out[col].astype("string")
-    value = pd.to_numeric(out["value"], errors="coerce")
+    value = pd.to_numeric(out["value"], errors="coerce").convert_dtypes(dtype_backend="numpy_nullable")
     if value.isna().any():
         errors.append(f"`value` has {int(value.isna().sum())} missing or non-numeric values.")
     out["value"] = value
