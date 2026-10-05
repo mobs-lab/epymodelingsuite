@@ -255,6 +255,8 @@ def format_quantiles_flusightforecast(
 
     # Name and format remaining fields
     # FRAGILE: the name 'hospitalizations' is user-supplied in the modelset as the column to look for in the surveillance data.
+    # pandas round uses ties-to-even rounding (10.5 -> 10, 11.5 -> 12),
+    # matching NumPy rint used for hospitalization samples.
     # Use nullable integer dtype to handle potential NaN values
     formatted.hospitalizations = formatted.hospitalizations.round().astype("Int64")
     formatted.rename(

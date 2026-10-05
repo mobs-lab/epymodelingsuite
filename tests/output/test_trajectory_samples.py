@@ -122,7 +122,8 @@ class TestTrajectoriesToSampleRows:
 
     def test_counts_are_rounded_non_negative_integers(self):
         """Test that count values are clipped at 0 and rounded to integers."""
-        # Cover negative clipping, rounding down/up, and ties-to-even rounding (10.5 -> 10).
+        # Cover negative clipping and rounding down/up. NumPy rint, like pandas round,
+        # rounds exact .5 ties to the nearest even integer (10.5 -> 10).
         values = np.array([[-2.0, 0.4, 1.6, 10.5, 3.2]])
         rows = ts.trajectories_to_sample_rows(
             values, HORIZONS, date(2026, 10, 10), "US", "wk inc flu hosp", "US", integer=True

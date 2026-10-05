@@ -124,6 +124,8 @@ def trajectories_to_sample_rows(  # noqa: PLR0913
     """
     values = np.clip(values, 0, upper)
     if integer:
+        # NumPy rint rounds exact .5 ties to the nearest even integer (10.5 -> 10, 11.5 -> 12),
+        # matching pandas round used for hospitalization quantiles.
         values = np.rint(values)
     n_samples, n_horizons = values.shape
     ref = pd.Timestamp(reference_date)
