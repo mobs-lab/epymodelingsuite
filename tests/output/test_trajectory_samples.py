@@ -59,37 +59,54 @@ def _concat(rows: list[pd.DataFrame]) -> pd.DataFrame:
     return pd.concat(rows, ignore_index=True)
 
 
-class TestSelectTrajectoryIndices:
-    """Tests for sample selection."""
+class TestSelectRandomIndices:
+    """Tests specific to the random trajectory sampler."""
 
     def test_selects_n_distinct_rows(self):
         """Test that n distinct trajectories are selected."""
         # Requesting 100 of 1,000 forces subsampling; unique indices rule out replacement.
         values = np.arange(1000 * 5, dtype=float).reshape(1000, 5)
-        idx = ts.select_trajectory_indices(values, 100, seed=1)
+        idx = ts.select_random_indices(values, 100, np.random.default_rng(1))
         assert len(idx) == 100
         assert len(set(idx)) == 100
+        assert ((0 <= idx) & (idx < len(values))).all()
 
     def test_same_seed_same_selection(self):
         """Test that the same seed gives the same selection."""
         values = np.random.default_rng(0).random((500, 5))
         # Hold the input fixed and verify that the selection seed reproduces the same indices.
         assert (
-            ts.select_trajectory_indices(values, 100, seed=7) == ts.select_trajectory_indices(values, 100, seed=7)
+            ts.select_random_indices(values, 100, np.random.default_rng(7))
+            == ts.select_random_indices(values, 100, np.random.default_rng(7))
         ).all()
+
+    def test_different_seeds_select_different_rows(self):
+        """Test that the random sampler uses the supplied generator to select rows."""
+        values = np.ones((500, 5))
+        # Fixed seeds make the check repeatable and reject always selecting the first rows.
+        # Compare sets so changing only the order of the same rows cannot satisfy this check.
+        first = ts.select_random_indices(values, 100, np.random.default_rng(7))
+        second = ts.select_random_indices(values, 100, np.random.default_rng(8))
+        assert set(first) != set(second)
 
     def test_fewer_than_n_returns_all_without_resampling(self):
         """Test that all trajectories are returned, without resampling, when fewer than n exist."""
         values = np.ones((60, 5))
         # Each original index should appear once; the result must not be padded to 100.
-        assert ts.select_trajectory_indices(values, 100, seed=1).tolist() == list(range(60))
+        assert ts.select_random_indices(values, 100, np.random.default_rng(1)).tolist() == list(range(60))
 
-    def test_trajectories_with_nan_are_never_selected(self):
+
+class TestSelectTrajectoryIndices:
+    """Tests for filtering and dispatch shared by trajectory samplers."""
+
+    def test_trajectories_with_nan_are_never_selected(self, monkeypatch):
         """Test that trajectories with NaN are never selected."""
+        # Use a deterministic selector to exercise shared filtering independently of randomness.
+        monkeypatch.setitem(ts.SAMPLE_SELECTORS, "first", lambda values, n, rng: np.arange(min(n, len(values))))
         values = np.ones((150, 5))
         # A single missing horizon invalidates the whole trajectory, leaving 75 complete rows.
         values[::2, 3] = np.nan
-        idx = ts.select_trajectory_indices(values, 100, seed=1)
+        idx = ts.select_trajectory_indices(values, 100, method="first")
         assert len(idx) == 75
         assert not np.isnan(values[idx]).any()
 
@@ -180,6 +197,20 @@ class TestBuildFlusightTrajectorySamples:
         a, _ = ts.build_flusight_trajectory_samples([_calibration("United_States", traj)], _flusight(), pd.DataFrame())
         b, _ = ts.build_flusight_trajectory_samples([_calibration("United_States", traj)], _flusight(), pd.DataFrame())
         pd.testing.assert_frame_equal(_concat(a), _concat(b))
+
+    def test_different_calibration_seeds_change_random_selection(self):
+        """Test that calibration seeds affect the submitted samples when using random selection."""
+        traj = _trajectories(500)
+        flusight = FlusightForecastOutput(reference_date=REFERENCE_DATE, samples={"n_samples": 100, "method": "random"})
+        # Keep the input paths and config fixed, with no output-level seed override.
+        # Different calibration seeds must change selection for the random method.
+        a, _ = ts.build_flusight_trajectory_samples(
+            [_calibration("United_States", traj, seed=7)], flusight, pd.DataFrame()
+        )
+        b, _ = ts.build_flusight_trajectory_samples(
+            [_calibration("United_States", traj, seed=8)], flusight, pd.DataFrame()
+        )
+        assert not _concat(a).equals(_concat(b))
 
     def test_fewer_trajectories_are_all_submitted_with_warning(self):
         """Test that all trajectories are submitted with a warning when fewer than requested exist."""
