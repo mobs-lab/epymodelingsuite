@@ -1,7 +1,7 @@
 """Characterization tests for quantile plots: {single, grid} x {filtered, full, side_by_side}.
 
 These pin down what each drawn axis receives. Assertions marked ``CHANGED`` were updated on purpose by the
-override refactor; ``TODO: CURRENT BEHAVIOR`` marks inconsistencies still to be fixed.
+override refactor.
 
 Frames are summarized with ``summarize_frame()`` as (first date, last date, number of unique dates, location label, e.g. "CA hosp_aug").
 Quantile levels are captured separately for calibration and projection frames.
@@ -30,7 +30,7 @@ from epymodelingsuite.schema.output import (
     QuantilesOutputConfig,
     TabularOutputTypeEnum,
 )
-from epymodelingsuite.visualization.generators import generate_quantile_grid_plot, generate_single_quantile_plots
+from epymodelingsuite.visualization.generators import generate_quantile_plots
 
 CA = "United_States_California"
 NY = "United_States_New_York"
@@ -103,8 +103,7 @@ def make_expected_panel_summary(title, calibration, projection, surveillance):
 
 def run_generators(calibrations, plots_config, surveillance_sources):
     out_dict = {}
-    generate_single_quantile_plots(calibrations, plots_config, out_dict, surveillance_sources)
-    generate_quantile_grid_plot(calibrations, plots_config, out_dict, surveillance_sources)
+    generate_quantile_plots(calibrations, plots_config, out_dict, surveillance_sources)
     return out_dict
 
 
@@ -128,7 +127,7 @@ def hosp_only(sources):
     return {"hosp": sources["hosp"]}
 
 
-def make_outputs_with_calibration():
+def make_variant_configs_with_calibration():
     return [
         QuantilesOutputConfig(type="filtered", surveillance_points=8, show_calibration=True),
         QuantilesOutputConfig(type="full", show_calibration=True),
@@ -145,7 +144,9 @@ class TestSingleDefaultOutputs:
 
     @pytest.fixture
     def out_dict(self, capture, hosp_only):
-        config = make_plots_config(single=True, grid=False, outputs=make_outputs_with_calibration(), ylabel="Hosp")
+        config = make_plots_config(
+            single=True, grid=False, outputs=make_variant_configs_with_calibration(), ylabel="Hosp"
+        )
         return run_generators([make_calibration(CA), make_calibration(NY)], config, hosp_only)
 
     def test_output_keys_and_panel_counts(self, out_dict, capture):
@@ -251,7 +252,7 @@ class TestGridDefaultOutputs:
     @pytest.fixture
     def out_dict(self, capture, hosp_only):
         config = make_plots_config(
-            single=False, grid={"panels_per_row": 4}, outputs=make_outputs_with_calibration(), ylabel="Hosp"
+            single=False, grid={"panels_per_row": 4}, outputs=make_variant_configs_with_calibration(), ylabel="Hosp"
         )
         calibrations = [make_calibration(CA), make_calibration(NY), make_calibration(TX, with_projection=False)]
         return run_generators(calibrations, config, hosp_only)
@@ -393,7 +394,7 @@ class TestGridDefaultOutputs:
 
 
 def make_override_config(**kwargs):
-    outputs = [
+    variant_configs = [
         QuantilesOutputConfig(
             type="filtered",
             show_calibration=True,
@@ -412,7 +413,11 @@ def make_override_config(**kwargs):
         ),
     ]
     return make_plots_config(
-        outputs=outputs, calibration={"color": "tab:green"}, projection={"color": "tab:red"}, ylabel="Hosp", **kwargs
+        outputs=variant_configs,
+        calibration={"color": "tab:green"},
+        projection={"color": "tab:red"},
+        ylabel="Hosp",
+        **kwargs,
     )
 
 
@@ -546,12 +551,12 @@ class TestSurveillanceSourceSelection:
 
     @pytest.fixture
     def config(self):
-        outputs = [
+        variant_configs = [
             QuantilesOutputConfig(type="filtered", surveillance_source="hosp_aug"),
             QuantilesOutputConfig(type="full", surveillance_source="hosp"),
             QuantilesOutputConfig(type="side_by_side", surveillance_source="hosp_aug"),
         ]
-        return make_plots_config(single=True, grid=True, outputs=outputs)
+        return make_plots_config(single=True, grid=True, outputs=variant_configs)
 
     def test_single_uses_selected_source(self, capture, sources, config):
         """Single outputs requesting hosp_aug, hosp and hosp_aug in succession.
@@ -591,11 +596,11 @@ class TestHiddenSurveillance:
 
     @pytest.fixture
     def config(self):
-        outputs = [
+        variant_configs = [
             QuantilesOutputConfig(type="filtered", show_calibration=True, show_surveillance=False),
             QuantilesOutputConfig(type="full", show_calibration=True),
         ]
-        return make_plots_config(single=True, grid=True, outputs=outputs)
+        return make_plots_config(single=True, grid=True, outputs=variant_configs)
 
     def test_single_filtered_not_clipped(self, capture, hosp_only, config):
         """Single filtered output with surveillance hidden.
@@ -646,12 +651,14 @@ class TestSideBySideAllCalibrationClipped:
         and surveillance start at January 20. The grid axis draws only projection
         ribbons and surveillance points.
         """
-        outputs = [
+        variant_configs = [
             QuantilesOutputConfig(
                 type="side_by_side", show_calibration=True, filtered_panel={"surveillance_start_date": "2024-01-20"}
             )
         ]
-        run_generators([make_calibration(CA)], make_plots_config(single=True, grid=True, outputs=outputs), hosp_only)
+        run_generators(
+            [make_calibration(CA)], make_plots_config(single=True, grid=True, outputs=variant_configs), hosp_only
+        )
         # CHANGED: the fully clipped calibration used to come back as the full calibration.
         expected = make_expected_panel_summary(
             "California",
@@ -675,8 +682,10 @@ class TestSideBySideOutputLimits:
         later ones. Only the filtered panel clips projection to December 30,
         the first retained surveillance date; calibration is hidden in both.
         """
-        outputs = [QuantilesOutputConfig(type="side_by_side", surveillance_points=3)]
-        run_generators([make_calibration(CA)], make_plots_config(single=True, grid=True, outputs=outputs), hosp_only)
+        variant_configs = [QuantilesOutputConfig(type="side_by_side", surveillance_points=3)]
+        run_generators(
+            [make_calibration(CA)], make_plots_config(single=True, grid=True, outputs=variant_configs), hosp_only
+        )
         last_3 = ("2023-12-30", "2024-01-27", 5, "CA")
         for name in (f"quantiles_{CA}_side_by_side", "quantiles_grid_sidebyside"):
             assert capture.summarize_output(name) == [
@@ -726,8 +735,8 @@ class TestDispatcherFiltersFailedProjections:
         """Dispatcher output generation with two failed projections among five valid ones.
 
         Check single and grid full plots, the five retained projections and their
-        matching parameter rows, and a five-row parameter table. Record the current
-        _filtered_count of zero after the plot generators filter again.
+        matching parameter rows, and a five-row parameter table. Plot generation
+        must preserve the failure count recorded by dispatcher preprocessing.
         """
         calibration = make_calibration(CA)
         valid = calibration.results.projections["baseline"]
@@ -760,8 +769,8 @@ class TestDispatcherFiltersFailedProjections:
         assert len(calibration.results.projections["baseline"]) == 5
         assert calibration.results.projection_parameters["baseline"]["R0"].tolist() == [0.0, 2.0, 3.0, 4.0, 5.0]
         assert len(outputs["projection_parameters_long"][0].data) == 5
-        # TODO: CURRENT BEHAVIOR — the plot generators filter again, which resets the count to 0.
-        assert calibration.results._filtered_count == 0
+        # Plotting does not filter the shared results again or reset their failure count.
+        assert calibration.results._filtered_count == 2
 
 
 def test_summarize_frame():

@@ -266,3 +266,46 @@ class TestQuantilesStylingRejectsBool:
         assert config.calibration.color == "red"
         assert config.projection.color == "C1"
         assert QuantilesPlotConfig().calibration.color == "C0"
+
+
+class TestQuantilePlotVariantsAndGrid:
+    @pytest.mark.parametrize(
+        ("grid", "enabled", "columns"),
+        [
+            (True, True, 4),
+            (False, False, 4),
+            ({}, True, 4),
+            ({"enabled": False}, False, 4),
+            ({"panels_per_row": 6}, True, 6),
+        ],
+    )
+    def test_grid_normalized(self, grid, enabled, columns):
+        """Boolean and object syntax produce one consistent internal grid configuration."""
+        config = QuantilesPlotConfig(grid=grid)
+        assert config.grid.enabled is enabled
+        assert config.grid.panels_per_row == columns
+        assert QuantilesPlotConfig.model_validate_json(config.model_dump_json()) == config
+
+    def test_grid_default_retains_existing_enabled_behavior(self):
+        assert QuantilesPlotConfig().grid.enabled is True
+
+    @pytest.mark.parametrize("columns", [0, -1])
+    def test_grid_columns_must_be_positive(self, columns):
+        with pytest.raises(ValidationError, match="panels_per_row"):
+            QuantilesPlotConfig(grid={"panels_per_row": columns})
+
+    @pytest.mark.parametrize("columns", [1, 3, 5])
+    def test_side_by_side_grid_needs_complete_pairs(self, columns):
+        with pytest.raises(ValidationError, match="even number >= 2"):
+            QuantilesPlotConfig(grid={"panels_per_row": columns})
+
+    def test_odd_columns_allowed_without_side_by_side_grid(self):
+        assert QuantilesPlotConfig(grid={"panels_per_row": 3}, outputs=[{"type": "full"}]).grid.panels_per_row == 3
+        assert not QuantilesPlotConfig(grid={"enabled": False, "panels_per_row": 1}).grid.enabled
+
+    @pytest.mark.parametrize("variant_type", ["full", "filtered", "side_by_side"])
+    def test_duplicate_variants_rejected_before_output_overwrite(self, variant_type):
+        with pytest.raises(ValidationError, match=f"duplicate type '{variant_type}'"):
+            QuantilesPlotConfig(
+                outputs=[{"type": variant_type, "horizon_max": 1}, {"type": variant_type, "horizon_max": 6}]
+            )

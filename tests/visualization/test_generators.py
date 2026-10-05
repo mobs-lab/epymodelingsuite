@@ -9,15 +9,15 @@ import pytest
 from epymodelingsuite.schema.calibration import CalibrationStrategy
 from epymodelingsuite.schema.dispatcher import CalibrationOutput
 from epymodelingsuite.schema.output import ObservedValuesConfig, PlotsConfig, QuantilesPlotConfig
-from epymodelingsuite.visualization.generators import (
+from epymodelingsuite.visualization.generators import generate_single_quantile_plots
+from epymodelingsuite.visualization.preparation import (
     _check_incomplete_generations,
     _clip_surveillance,
     _clip_to_horizon,
     _clip_to_start,
     _format_plot_notes,
-    _select_surveillance,
     _rename_value_column,
-    generate_single_quantile_plots,
+    _select_surveillance,
 )
 
 
@@ -93,13 +93,13 @@ class TestSurveillanceDataFiltering:
     @pytest.fixture
     def plots_config_with_surveillance(self):
         """Create a PlotsConfig with surveillance data enabled."""
-        quantiles_config = QuantilesPlotConfig(
+        plot_config = QuantilesPlotConfig(
             single=True,  # Enable single plots
         )
 
         return PlotsConfig(
             reference_date=date(2024, 1, 15),
-            quantiles=quantiles_config,
+            quantiles=plot_config,
         )
 
     def test_surveillance_filtered_to_timespan_start(
@@ -108,8 +108,8 @@ class TestSurveillanceDataFiltering:
         """Test that surveillance data is filtered to start from projection timespan start in filtered plot."""
         out_dict = {}
 
-        # Mock plot_calibration_projection to capture the surveillance data passed to it
-        with patch("epymodelingsuite.visualization.generators.plot_calibration_projection") as mock_plot:
+        # Mock plot_quantile_panel to capture the surveillance data passed to it
+        with patch("epymodelingsuite.visualization.generators.plot_quantile_panel") as mock_plot:
             mock_plot.return_value = (MagicMock(), MagicMock())
 
             generate_single_quantile_plots(
@@ -119,8 +119,8 @@ class TestSurveillanceDataFiltering:
                 surveillance_sources=surveillance_sources,
             )
 
-            # Verify plot_calibration_projection was called twice (filtered and full)
-            assert mock_plot.call_count == 2
+            # All four panels (filtered, full, and the side-by-side pair) share the same drawing function.
+            assert mock_plot.call_count == 4
 
             # Extract the surveillance data passed to both plot calls
             first_call_kwargs = mock_plot.call_args_list[0].kwargs
@@ -165,7 +165,7 @@ class TestSurveillanceDataFiltering:
 
         out_dict = {}
 
-        with patch("epymodelingsuite.visualization.generators.plot_calibration_projection") as mock_plot:
+        with patch("epymodelingsuite.visualization.generators.plot_quantile_panel") as mock_plot:
             mock_plot.return_value = (MagicMock(), MagicMock())
 
             generate_single_quantile_plots(
@@ -175,35 +175,16 @@ class TestSurveillanceDataFiltering:
                 surveillance_sources=surveillance_sources,
             )
 
-            # Verify plot was called twice (filtered and full)
-            assert mock_plot.call_count == 2
-
-            # Extract surveillance data from both calls
-            first_call_kwargs = mock_plot.call_args_list[0].kwargs
-            second_call_kwargs = mock_plot.call_args_list[1].kwargs
-
-            df_surv_filtered = first_call_kwargs["df_surveillance"]
-            df_surv_full = second_call_kwargs["df_surveillance"]
-
-            # When no calibration/projection quantiles, filtered surveillance should still be loaded
-            # and filtered to 8 points before reference_date (2024-01-15) plus all after
-            assert df_surv_filtered is not None
-            dates_filtered = pd.to_datetime(df_surv_filtered["date"]).dt.date
-            before_ref = dates_filtered[dates_filtered <= date(2024, 1, 15)]
-            after_ref = dates_filtered[dates_filtered > date(2024, 1, 15)]
-            assert len(before_ref) == 8
-            assert len(after_ref) > 0
-            max_date_filtered = dates_filtered.max()
-            assert max_date_filtered == date(2024, 2, 15)
-
-            # Full surveillance should show all data (no filtering)
-            assert df_surv_full is not None
-            assert len(df_surv_full) == 77  # All dates from 2023-12-01 to 2024-02-15
+            mock_plot.assert_not_called()
+            assert out_dict == {}
 
     def test_surveillance_filtering_falls_back_to_calibration_quantiles(
         self, calibration_quantiles, plots_config_with_surveillance, surveillance_sources
     ):
         """Test that surveillance falls back to calibration quantiles when no projection quantiles available."""
+        for variant_config in plots_config_with_surveillance.quantiles.outputs:
+            variant_config.show_calibration = True
+
         # Create calibration output with only calibration quantiles (no projection)
         calibration = MagicMock(spec=CalibrationOutput)
         calibration.population = "US-CA"
@@ -213,7 +194,7 @@ class TestSurveillanceDataFiltering:
 
         out_dict = {}
 
-        with patch("epymodelingsuite.visualization.generators.plot_calibration_projection") as mock_plot:
+        with patch("epymodelingsuite.visualization.generators.plot_quantile_panel") as mock_plot:
             mock_plot.return_value = (MagicMock(), MagicMock())
 
             generate_single_quantile_plots(
@@ -223,8 +204,8 @@ class TestSurveillanceDataFiltering:
                 surveillance_sources=surveillance_sources,
             )
 
-            # Verify plot was called twice (filtered and full)
-            assert mock_plot.call_count == 2
+            # All four panels use the same drawing function.
+            assert mock_plot.call_count == 4
 
             # Extract surveillance data from both calls
             first_call_kwargs = mock_plot.call_args_list[0].kwargs
@@ -254,7 +235,7 @@ class TestSurveillanceDataFiltering:
 
         out_dict = {}
 
-        with patch("epymodelingsuite.visualization.generators.plot_calibration_projection") as mock_plot:
+        with patch("epymodelingsuite.visualization.generators.plot_quantile_panel") as mock_plot:
             mock_plot.return_value = (MagicMock(), MagicMock())
 
             generate_single_quantile_plots(
@@ -264,8 +245,8 @@ class TestSurveillanceDataFiltering:
                 surveillance_sources=surveillance_sources,
             )
 
-            # Verify plot was called twice (filtered and full)
-            assert mock_plot.call_count == 2
+            # All four panels use the same drawing function.
+            assert mock_plot.call_count == 4
 
             # Extract surveillance data from both calls
             first_call_kwargs = mock_plot.call_args_list[0].kwargs

@@ -366,7 +366,7 @@ def plot_quantiles_grid(  # noqa: PLR0913
     return fig, axes
 
 
-def plot_calibration_projection(  # noqa: PLR0913
+def plot_quantile_panel(  # noqa: PLR0913
     calibration_quantiles: pd.DataFrame | None = None,
     projection_quantiles: pd.DataFrame | None = None,
     value_col: str = "hospitalizations",
@@ -386,7 +386,7 @@ def plot_calibration_projection(  # noqa: PLR0913
     ylabel: str | None = None,
 ) -> tuple[plt.Figure | None, plt.Axes]:
     """
-    Plot calibration and projection quantiles on top of each other for a single location.
+    Draw one quantile panel with calibration/projection ribbons and optional surveillance.
 
     This function combines calibration and projection quantile ribbons on the same axes,
     optionally adding surveillance data as scatter points and a reference date line.
@@ -458,7 +458,7 @@ def plot_calibration_projection(  # noqa: PLR0913
     ... )
     >>> # Filter surveillance data for location
     >>> surv = surveillance_df[surveillance_df["location"] == "US-CA"]
-    >>> fig, ax = plot_calibration_projection(
+    >>> fig, ax = plot_quantile_panel(
     ...     calibration_quantiles=cal_quant,
     ...     projection_quantiles=proj_quant,
     ...     value_col="hospitalizations",
@@ -586,7 +586,7 @@ def plot_calibration_projection(  # noqa: PLR0913
     return fig, ax
 
 
-def plot_calibration_projection_sidebyside(  # noqa: PLR0913
+def plot_quantile_panels_side_by_side(  # noqa: PLR0913
     calibration_quantiles: pd.DataFrame | None = None,
     calibration_quantiles_filtered: pd.DataFrame | None = None,
     projection_quantiles_full: pd.DataFrame | None = None,
@@ -613,7 +613,7 @@ def plot_calibration_projection_sidebyside(  # noqa: PLR0913
     xlabel_interval_filtered: str | None = None,
 ) -> tuple[plt.Figure, tuple[plt.Axes, plt.Axes]]:
     """
-    Create side-by-side quantile plots: [Full Range | Filtered].
+    Draw two quantile panels: full range on the left, filtered range on the right.
 
     Left panel shows full surveillance range with projection filtered only by horizon_max.
     Right panel shows limited surveillance points with projection filtered by both
@@ -687,7 +687,7 @@ def plot_calibration_projection_sidebyside(  # noqa: PLR0913
     >>> proj_quant_full = results.get_projection_quantiles([0.025, 0.5, 0.975])
     >>> # Filter projection for right panel
     >>> proj_quant_filtered = proj_quant_full[proj_quant_full["date"] >= surveillance_start]
-    >>> fig, (ax_full, ax_filtered) = plot_calibration_projection_sidebyside(
+    >>> fig, (ax_full, ax_filtered) = plot_quantile_panels_side_by_side(
     ...     calibration_quantiles=cal_quant,
     ...     projection_quantiles_full=proj_quant_full,
     ...     projection_quantiles_filtered=proj_quant_filtered,
@@ -710,7 +710,7 @@ def plot_calibration_projection_sidebyside(  # noqa: PLR0913
         fig = ax_full.figure
 
     # Left panel: Full range
-    plot_calibration_projection(
+    plot_quantile_panel(
         calibration_quantiles=calibration_quantiles,
         projection_quantiles=projection_quantiles_full,
         value_col=value_col,
@@ -734,7 +734,7 @@ def plot_calibration_projection_sidebyside(  # noqa: PLR0913
     cal_quant_for_filtered = (
         calibration_quantiles_filtered if calibration_quantiles_filtered is not None else calibration_quantiles
     )
-    plot_calibration_projection(
+    plot_quantile_panel(
         calibration_quantiles=cal_quant_for_filtered,
         projection_quantiles=projection_quantiles_filtered,
         value_col=value_col,
@@ -756,7 +756,7 @@ def plot_calibration_projection_sidebyside(  # noqa: PLR0913
     return fig, (ax_full, ax_filtered)
 
 
-def plot_calibration_projection_grid(  # noqa: PLR0913
+def plot_quantile_panels_grid(  # noqa: PLR0913
     location_calibration_quantiles: dict[str, pd.DataFrame] | None = None,
     location_projection_quantiles: dict[str, pd.DataFrame] | None = None,
     value_col: str = "hospitalizations",
@@ -777,7 +777,7 @@ def plot_calibration_projection_grid(  # noqa: PLR0913
     suptitle: str | None = None,
 ) -> tuple[plt.Figure, np.ndarray]:
     """
-    Create multipanel grid of calibration and projection quantile plots.
+    Draw a grid with one quantile panel per location.
 
     This function creates a grid layout with one panel per location, each showing
     calibration and projection quantile ribbons with optional overlays.
@@ -852,7 +852,7 @@ def plot_calibration_projection_grid(  # noqa: PLR0913
     ...         variables=["date", "quantile", "hospitalizations"]
     ...     )
     ...     surv[loc] = surveillance_df[surveillance_df["location"] == loc]
-    >>> fig, axes = plot_calibration_projection_grid(
+    >>> fig, axes = plot_quantile_panels_grid(
     ...     location_calibration_quantiles=cal_quants,
     ...     location_projection_quantiles=proj_quants,
     ...     location_surveillance=surv,
@@ -895,7 +895,7 @@ def plot_calibration_projection_grid(  # noqa: PLR0913
         fitting_window_start = location_fitting_window_starts.get(location) if location_fitting_window_starts else None
         fitting_window_end = location_fitting_window_ends.get(location) if location_fitting_window_ends else None
 
-        plot_calibration_projection(
+        plot_quantile_panel(
             calibration_quantiles=cal_quant,
             projection_quantiles=proj_quant,
             value_col=value_col,
@@ -933,6 +933,12 @@ def plot_calibration_projection_grid(  # noqa: PLR0913
     plt.tight_layout()
 
     return fig, axes
+
+
+# Preserve the existing public plotting names for callers outside this package.
+plot_calibration_projection_sidebyside = plot_quantile_panels_side_by_side
+plot_calibration_projection_grid = plot_quantile_panels_grid
+plot_calibration_projection = plot_quantile_panel
 
 
 def plot_surveillance_scatter(  # noqa: PLR0913
