@@ -60,6 +60,8 @@ def test_generated_hub_parquet_passes_validation(tmp_path):
     # Validation can accept omitted optional targets/types, so explicitly require
     # both targets and both output types at each location, including leading-zero IDs.
     targets = ["wk inc flu hosp", "wk inc flu prop ed visits"]
+    # Each quantile/sample contributes one row per horizon: [-1, 0, 1, 2, 3] (5 weeks).
+    # Check row counts per location/target/output type; validate contents below.
     counts = {"quantile": len(config.output.flusight_format.quantiles) * 5, "sample": 100 * 5}
     assert submission.groupby(["location", "target", "output_type"]).size().to_dict() == {
         (location, target, output_type): count
