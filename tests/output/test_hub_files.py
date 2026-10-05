@@ -30,6 +30,7 @@ FLUSIGHT_EXAMPLE_SCHEMA = {
 
 
 def _quantile_rows() -> pd.DataFrame:
+    # Mimic existing tabular outputs: Python dates, numeric quantile IDs, and nullable counts.
     return pd.DataFrame(
         {
             "location": "25",
@@ -49,6 +50,7 @@ def test_hub_parquet_matches_flusight_example_schema():
     samples = trajectories_to_sample_rows(
         np.ones((2, 5)), HORIZONS, date(2026, 10, 10), "25", "wk inc flu hosp", "MA", integer=True
     )
+    # Mixing numeric quantile IDs with string sample IDs exercises hub dtype conversion.
     original = pd.concat([_quantile_rows(), samples], ignore_index=True)
     expected = original.copy(deep=True)
     casted = hub_files.cast_hub_dtypes(original)
@@ -57,8 +59,11 @@ def test_hub_parquet_matches_flusight_example_schema():
 
     parquet_output = format_tabular_object(casted, "hub", TabularOutputTypeEnum.Parquet)
     table = pq.read_table(io.BytesIO(parquet_output.data))
+    # Inspect the stored Arrow schema: pandas dtypes alone do not establish that
+    # the written file uses the hub's exact string, int32, and double types.
     assert {f.name: f.type for f in table.schema} == FLUSIGHT_EXAMPLE_SCHEMA
     df = table.to_pandas()
+    # The first two rows are quantiles; casting must preserve their probability levels as strings.
     assert df.output_type_id.tolist()[:2] == ["0.025", "0.5"]
     assert df.reference_date.unique().tolist() == ["2026-10-10"]
     assert df.location.unique().tolist() == ["25"]
@@ -69,6 +74,7 @@ def test_read_hub_table_parquet_extensions(tmp_path, suffix):
     """Read Parquet files with either extension, preserving leading zeros in IDs."""
     expected = pd.DataFrame({"location": ["01"], "output_type_id": ["001"], "value": [10.0]})
     path = tmp_path / f"submission{suffix}"
+    # Put real Parquet bytes under each suffix to exercise reader selection and ID preservation.
     expected.to_parquet(path, index=False)
 
     pd.testing.assert_frame_equal(hub_files.read_hub_table(path), expected)
@@ -79,6 +85,8 @@ class TestCombineSubmissions:
 
     def test_concatenates_hosp_and_ed(self):
         """Test that concatenation preserves distinct hosp and ED values for every sample and horizon."""
+        # Different values at every sample/horizon expose accidental mixing or reordering.
+        # The two targets also use separate ranges: counts for hosp, proportions for ED.
         hosp_values = np.arange(10, 20, dtype=float).reshape(2, 5)
         ed_values = np.arange(1, 11, dtype=float).reshape(2, 5) / 100
         hosp = trajectories_to_sample_rows(
@@ -90,6 +98,8 @@ class TestCombineSubmissions:
         combined = hub_files.combine_submissions([hosp, ed])
         assert len(combined) == 20
         assert set(combined.target) == {"wk inc flu hosp", "wk inc flu prop ed visits"}
+        # Within each target, the combined table is ordered by sample ID then horizon,
+        # matching the original matrices flattened one trajectory at a time.
         np.testing.assert_array_equal(
             combined.loc[combined.target == "wk inc flu hosp", "value"].to_numpy(), hosp_values.ravel()
         )
@@ -100,5 +110,6 @@ class TestCombineSubmissions:
     def test_same_forecast_from_two_tables_raises(self):
         """Test that the same location/target/output_type from two tables raises."""
         hosp = trajectories_to_sample_rows(np.ones((2, 5)), HORIZONS, date(2026, 10, 10), "25", "wk inc flu hosp", "MA")
+        # A distinct DataFrame with the same forecast keys must still count as an overlap.
         with pytest.raises(ValueError, match="more than one table"):
             hub_files.combine_submissions([hosp, hosp.copy()])
