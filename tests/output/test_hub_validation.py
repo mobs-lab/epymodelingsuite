@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from epymodelingsuite.output.hub_validation import load_tasks, validate_model_output
+from epymodelingsuite.output.hub_validation import load_hub_tasks, validate_model_output
 from epymodelingsuite.output.trajectory_samples import trajectories_to_sample_rows
 
 FIXTURES = Path(__file__).parent.parent / "fixtures" / "flusight"
@@ -18,7 +18,7 @@ FIXTURES = Path(__file__).parent.parent / "fixtures" / "flusight"
 @pytest.fixture(scope="module")
 def tasks() -> dict:
     """FluSight 2026-27 tasks.json."""
-    return load_tasks(FIXTURES / "tasks.json")
+    return load_hub_tasks(FIXTURES / "tasks.json")
 
 
 @pytest.fixture

@@ -25,7 +25,7 @@ DATE_COLUMNS = ["reference_date", "target_end_date"]
 SUM1_TOLERANCE = 1.5e-8
 
 
-def load_tasks(path: str | Path) -> dict:
+def load_hub_tasks(path: str | Path) -> dict:
     """Read a hub's task configuration from JSON.
 
     Parameters
