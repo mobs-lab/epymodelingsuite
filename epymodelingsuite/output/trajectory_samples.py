@@ -167,6 +167,23 @@ def _build_horizon_matrix(
     ------
     ValueError
         If trajectory counts or corresponding date/value array lengths differ.
+
+    Examples
+    --------
+    With reference date 2026-10-10, horizons -1, 0 and 1 correspond to
+    2026-10-03, 2026-10-10 and 2026-10-17. Rows represent trajectories and
+    columns follow the requested horizon order. The second trajectory has no
+    value on 2026-10-10, so its horizon-zero entry is NaN. Dates are matched
+    exactly, without aggregation or interpolation.
+
+    >>> dates_list = [
+    ...     np.array(["2026-10-03", "2026-10-10", "2026-10-17"], dtype="datetime64[D]"),
+    ...     np.array(["2026-10-03", "2026-10-17"], dtype="datetime64[D]"),
+    ... ]
+    >>> values_list = [np.array([10, 20, 30]), np.array([100, 300])]
+    >>> _build_horizon_matrix(dates_list, values_list, date(2026, 10, 10), [-1, 0, 1])
+    array([[ 10.,  20.,  30.],
+           [100.,  nan, 300.]])
     """
     target_dates = [pd.Timestamp(reference_date) + pd.Timedelta(weeks=h) for h in horizons]
     out = np.full((len(values_list), len(horizons)), np.nan)
