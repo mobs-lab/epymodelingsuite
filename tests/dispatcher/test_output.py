@@ -13,6 +13,7 @@ from epymodelingsuite.dispatcher.output import filter_failed_projections, genera
 from epymodelingsuite.schema.output import (
     CategoricalPlotConfig,
     FigureOutputTypeEnum,
+    FlusightForecastOutput,
     ModelMetaOutput,
     OutputConfig,
     OutputConfiguration,
@@ -792,22 +793,23 @@ class TestFormatQuantilesFlusightforecast:
         return pd.DataFrame(data), reference_date
 
     def test_standard_flusight_includes_horizon_minus_one(self, sample_quantiles_df):
-        """Test that standard FluSight (metrocast=False) includes horizon -1."""
+        """Test that default FluSight horizons include the preceding week."""
         from epymodelingsuite.dispatcher.output import format_quantiles_flusightforecast
 
         df, reference_date = sample_quantiles_df
-        result = format_quantiles_flusightforecast(df, reference_date, metrocast=False)
+        result = format_quantiles_flusightforecast(df, reference_date)
 
         horizons = result["horizon"].unique()
         assert -1 in horizons
         assert set(horizons) == {-1, 0, 1, 2, 3}
 
     def test_metrocast_excludes_horizon_minus_one(self, sample_quantiles_df):
-        """Test that metrocast=True excludes horizon -1."""
+        """Test that configured Metrocast horizons exclude the preceding week."""
         from epymodelingsuite.dispatcher.output import format_quantiles_flusightforecast
 
         df, reference_date = sample_quantiles_df
-        result = format_quantiles_flusightforecast(df, reference_date, metrocast=True)
+        config = FlusightForecastOutput(reference_date=reference_date, metrocast=True)
+        result = format_quantiles_flusightforecast(df, reference_date, horizons=config.horizons)
 
         horizons = result["horizon"].unique()
         assert -1 not in horizons

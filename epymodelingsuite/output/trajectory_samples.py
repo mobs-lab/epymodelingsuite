@@ -87,9 +87,6 @@ def trajectories_to_sample_rows(  # noqa: PLR0913
     location: str,
     target: str,
     id_prefix: str | None,
-    *,
-    integer: bool = False,
-    upper: float | None = None,
 ) -> pd.DataFrame:
     """
     Convert selected trajectories into a hub-format sample table.
@@ -108,23 +105,22 @@ def trajectories_to_sample_rows(  # noqa: PLR0913
     location : str
         Hub location id (e.g. FIPS code).
     target : str
-        Hub target name.
+        Hub target name. ``wk inc flu hosp`` is rounded to non-negative integers;
+        ``wk inc flu prop ed visits`` is clipped to [0, 1]; ``Flu ED visits pct``
+        and ``ILI ED visits pct`` are clipped to [0, 100]. Other targets are
+        clipped at zero without rounding or an upper bound. No units are converted.
     id_prefix : str or None
         Prefix of `output_type_id`; samples are numbered `<prefix>00`, `<prefix>01`, ...
         None uses Metrocast's sample indexes ``"1"``, ``"2"``, ... per location and target.
-    integer : bool, optional
-        Round values to integers (counts). Defaults to False.
-    upper : float or None, optional
-        Upper clipping bound, such as 1 for proportions or 100 for percentages. Defaults to no upper
-        bound. Values are always clipped to be non-negative.
 
     Returns
     -------
     pd.DataFrame
         One row per sample and horizon with the hub columns.
     """
+    upper = {"wk inc flu prop ed visits": 1, "Flu ED visits pct": 100, "ILI ED visits pct": 100}.get(target)
     values = np.clip(values, 0, upper)
-    if integer:
+    if target == "wk inc flu hosp":
         # NumPy rint rounds exact .5 ties to the nearest even integer (10.5 -> 10, 11.5 -> 12),
         # matching pandas round used for hospitalization quantiles.
         values = np.rint(values)
@@ -212,8 +208,8 @@ def build_flusight_trajectory_samples(
     Hospitalization samples come from the 'hospitalizations' projections. Prop ED samples come from the
     `transition_name` projections ('transition' strategy), or are the hospitalization trajectories times the
     location's rescaling factor (window strategies), in which case both targets share sample ids.
-    Metrocast ED projections and rescaling factors must already use percentage
-    units, matching the existing Metrocast quantile output; no unit conversion is applied.
+    ED projections and rescaling factors must already use the configured target's
+    units; ``trajectories_to_sample_rows`` clips and rounds by target without conversion.
 
     Parameters
     ----------
@@ -227,8 +223,7 @@ def build_flusight_trajectory_samples(
     Returns
     -------
     rows : list[pd.DataFrame]
-        Sample tables per location and enabled target over horizons -1 through 3
-        for FluSight, or 0 through 3 for Metrocast.
+        Sample tables per location and enabled target over the configured horizons.
         Window-based ED outputs use the selected hospitalization trajectories.
     warnings : list[str]
         Diagnostics for skipped models or targets, duplicate locations, and
@@ -236,10 +231,8 @@ def build_flusight_trajectory_samples(
     """
     cfg = flusight_format.samples
     prop_ed = flusight_format.prop_ed
-    # Metrocast starts at the reference week; FluSight also requires the previous week.
-    horizons = list(range(0 if flusight_format.metrocast else -1, 4))
-    # Metrocast values are percentages, whereas FluSight ED values are proportions.
-    ed_upper = 100 if flusight_format.metrocast else 1
+    # The validated config supplies the requested weeks, including any longer trajectories.
+    horizons = flusight_format.horizons
 
     # Window strategies convert hospitalization trajectories to ED proportions or percentages.
     # Key the factors by the same hub location IDs used for calibration outputs.
@@ -282,7 +275,7 @@ def build_flusight_trajectory_samples(
         )
         ref = flusight_format.reference_date
 
-        # Collect (target, selected values with shape (samples, horizons), formatting options).
+        # Collect (target, selected values with shape (samples, horizons)).
         # Keep values unrounded until row formatting so window ED can use the original counts.
         per_target = []
         try:
@@ -294,17 +287,17 @@ def build_flusight_trajectory_samples(
                 hosp = _build_horizon_matrix(traj["date"], traj["hospitalizations"], ref, horizons)
                 hosp = hosp[select_trajectory_indices(hosp, cfg.n_samples, cfg.method, seed)]
             if flusight_format.hospitalizations:
-                per_target.append((flusight_format.hospitalizations.target, hosp, {"integer": True}))
+                per_target.append((flusight_format.hospitalizations.target, hosp))
             if prop_ed and prop_ed.strategy == "transition":
                 # Transition ED uses its own configured projection variable and
                 # selects its trajectories separately from the hospitalization target.
                 ed = _build_horizon_matrix(traj["date"], traj[prop_ed.transition_name], ref, horizons)
                 ed = ed[select_trajectory_indices(ed, cfg.n_samples, cfg.method, seed)]
-                per_target.append((prop_ed.target, ed, {"upper": ed_upper}))
+                per_target.append((prop_ed.target, ed))
             elif prop_ed and location in factors:
                 # Scale the selected, unrounded hospitalization values. Preserving
                 # their row order keeps hospitalization and ED sample IDs paired.
-                per_target.append((prop_ed.target, hosp * factors[location], {"upper": ed_upper}))
+                per_target.append((prop_ed.target, hosp * factors[location]))
             elif prop_ed:
                 # Missing factors skip ED only; any requested hospitalization rows remain.
                 warns.append(f"OUTPUT GENERATOR: no prop ED rescaling factor for {location}; skipping ED samples.")
@@ -313,7 +306,7 @@ def build_flusight_trajectory_samples(
             warns.append(f"OUTPUT GENERATOR: failed to create samples for {location}: {e}")
             continue
 
-        for target, values, options in per_target:
+        for target, values in per_target:
             # Rescaling can introduce NaNs even in complete selected trajectories.
             values = values[~np.isnan(values).any(axis=1)]
             # Submit the available complete trajectories without duplicating them
@@ -324,8 +317,8 @@ def build_flusight_trajectory_samples(
                     f"(requested {cfg.n_samples})."
                 )
             # Expand each trajectory into one row per horizon, adding dates and IDs.
-            # Formatting rounds non-negative counts, or clips ED to the hub's units.
-            rows.append(trajectories_to_sample_rows(values, horizons, ref, location, target, id_prefix, **options))
+            # Formatting applies the target's rounding/clipping rules independently of the hub.
+            rows.append(trajectories_to_sample_rows(values, horizons, ref, location, target, id_prefix))
 
     # The caller combines these tables with other forecast types and serializes them.
     return rows, warns

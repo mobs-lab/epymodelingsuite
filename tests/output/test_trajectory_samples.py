@@ -126,7 +126,7 @@ class TestTrajectoriesToSampleRows:
     def test_ids_horizons_and_dates(self):
         """Test sample ids, horizons and target end dates of the rows."""
         rows = ts.trajectories_to_sample_rows(
-            np.ones((3, 5)), HORIZONS, date(2026, 10, 10), "25", "wk inc flu hosp", "MA", integer=True
+            np.ones((3, 5)), HORIZONS, date(2026, 10, 10), "25", "wk inc flu hosp", "MA"
         )
         # Three trajectories create 15 rows, with one sample ID shared across five horizons.
         assert len(rows) == 15
@@ -142,9 +142,7 @@ class TestTrajectoriesToSampleRows:
         # Cover negative clipping and rounding down/up. NumPy rint, like pandas round,
         # rounds exact .5 ties to the nearest even integer (10.5 -> 10).
         values = np.array([[-2.0, 0.4, 1.6, 10.5, 3.2]])
-        rows = ts.trajectories_to_sample_rows(
-            values, HORIZONS, date(2026, 10, 10), "US", "wk inc flu hosp", "US", integer=True
-        )
+        rows = ts.trajectories_to_sample_rows(values, HORIZONS, date(2026, 10, 10), "US", "wk inc flu hosp", "US")
         assert rows.value.tolist() == [0.0, 0.0, 2.0, 10.0, 3.0]
 
     def test_proportions_are_clipped_to_unit_interval(self):
@@ -152,9 +150,23 @@ class TestTrajectoriesToSampleRows:
         # Include values outside both bounds and valid fractions that must remain unchanged.
         values = np.array([[-0.1, 0.2, 1.3, 0.5, 1.0]])
         rows = ts.trajectories_to_sample_rows(
-            values, HORIZONS, date(2026, 10, 10), "US", "wk inc flu prop ed visits", "US", upper=1
+            values, HORIZONS, date(2026, 10, 10), "US", "wk inc flu prop ed visits", "US"
         )
         assert rows.value.tolist() == [0.0, 0.2, 1.0, 0.5, 1.0]
+
+    @pytest.mark.parametrize("target", ["Flu ED visits pct", "ILI ED visits pct"])
+    def test_percentage_targets_are_clipped_without_unit_conversion(self, target):
+        """Percentage targets retain decimals and values above 1, clipping only outside [0, 100]."""
+        values = np.array([[-2.0, 2.5, 12.5, 120.0, 100.0]])
+        # The target alone determines the bounds; no hub flag or clipping arguments are passed.
+        rows = ts.trajectories_to_sample_rows(values, HORIZONS, REFERENCE_DATE, "denver", target, None)
+        assert rows.value.tolist() == [0.0, 2.5, 12.5, 100.0, 100.0]
+
+    def test_custom_target_has_no_upper_bound_or_rounding(self):
+        """Custom targets remain non-negative without assuming a unit or integer counts."""
+        values = np.array([[-2.0, 0.5, 2.5, 12.5, 120.0]])
+        rows = ts.trajectories_to_sample_rows(values, HORIZONS, REFERENCE_DATE, "US", "custom_target", "US")
+        assert rows.value.tolist() == [0.0, 0.5, 2.5, 12.5, 120.0]
 
 
 class TestBuildFlusightTrajectorySamples:
@@ -308,6 +320,31 @@ class TestBuildFlusightTrajectorySamples:
         assert set(_concat(rows).target) == {"wk inc flu hosp"}
         assert any("no prop ED rescaling factor" in w for w in warns)
 
+    @pytest.mark.parametrize(
+        "metrocast,target,expected",
+        [
+            (True, "wk inc flu prop ed visits", [0, 1, 1, 1, 1]),
+            (False, "Flu ED visits pct", [0, 2.5, 12.5, 100, 100]),
+        ],
+    )
+    def test_ed_clipping_depends_on_target_not_hub(self, metrocast, target, expected):
+        """The configured target determines ED bounds even when hub defaults suggest other units."""
+        flusight = _flusight(
+            metrocast=metrocast,
+            horizons=HORIZONS,
+            hospitalizations=None,
+            prop_ed={"target": target, "strategy": "transition", "transition_name": "ed_prop"},
+        )
+        traj = {
+            "date": [DATES[3:8].to_numpy() for _ in range(100)],
+            "ed_prop": list(np.tile([-2.0, 2.5, 12.5, 120.0, 100.0], (100, 1))),
+        }
+        rows, warns = ts.build_flusight_trajectory_samples(
+            [_calibration("United_States", traj)], flusight, pd.DataFrame()
+        )
+        assert not warns
+        assert _concat(rows).value.tolist() == expected * 100
+
     @pytest.mark.parametrize("strategy", ["transition", "surveillance_window", "calibration_window"])
     def test_metrocast_ed_samples_use_percentages_and_horizons_zero_to_three(self, strategy):
         """Metrocast preserves percentage units and indexes each location's trajectories from 1."""
@@ -362,12 +399,14 @@ def test_unknown_sample_method_rejected():
         FlusightForecastOutput(reference_date=REFERENCE_DATE, samples={"method": "invalid_method"})
 
 
+@pytest.mark.parametrize("horizons", [None, [0, 2, 4]])
 @pytest.mark.parametrize("metrocast", [False, True])
-def test_ed_model_parquet_output_is_submission_ready(metrocast):
+def test_ed_model_parquet_output_is_submission_ready(metrocast, horizons):
     """ED model output preserves FluSight formats and emits only samples for Metrocast."""
     traj = _trajectories(300)
     population = "metrocast_location_denver" if metrocast else "United_States"
     target = "Flu ED visits pct" if metrocast else "wk inc flu prop ed visits"
+    expected_horizons = horizons if horizons is not None else ([0, 1, 2, 3] if metrocast else HORIZONS)
     calibration = _calibration(population, traj)
     # The dispatcher requires projection metadata as well as trajectory/quantile results.
     calibration.results.projections = {"baseline": [{"date": list(DATES)}]}
@@ -396,6 +435,7 @@ def test_ed_model_parquet_output_is_submission_ready(metrocast):
                 "quantiles": quantiles,
                 "samples": {"n_samples": 100},
                 "metrocast": metrocast,
+                "horizons": horizons,
             },
             model_meta=ModelMetaOutput(projection_parameters=False),
         )
@@ -419,15 +459,20 @@ def test_ed_model_parquet_output_is_submission_ready(metrocast):
     ]
     df = table.to_pandas()
     assert set(df.target) == {target}
+    # Explicit horizons must reach both quantile and sample generation, including
+    # horizon 4 outside either hub's defaults and the omission of horizons 1 and 3.
+    for _, rows in df.groupby("output_type"):
+        assert rows.horizon.unique().tolist() == expected_horizons
     if metrocast:
-        # 100 draws x four horizons, with no quantiles in the submitted file.
-        assert df.groupby("output_type").size().to_dict() == {"sample": 400}
+        # 100 draws over the configured horizons, without submitted quantiles.
+        assert df.groupby("output_type").size().to_dict() == {"sample": 100 * len(expected_horizons)}
         assert set(df.location) == {"denver"}
         assert df.output_type_id.unique().tolist() == [str(i) for i in range(1, 101)]
-        assert df.horizon.unique().tolist() == [0, 1, 2, 3]
     else:
-        # Three quantile levels x five horizons; 100 samples x five horizons.
-        assert df.groupby("output_type").size().to_dict() == {"quantile": 15, "sample": 500}
+        assert df.groupby("output_type").size().to_dict() == {
+            "quantile": 3 * len(expected_horizons),
+            "sample": 100 * len(expected_horizons),
+        }
         assert df.query("output_type == 'quantile'").output_type_id.unique().tolist() == ["0.025", "0.5", "0.975"]
 
     # Requesting Parquet first must not normalize the later CSV/DataFrame outputs.

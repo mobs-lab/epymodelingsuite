@@ -57,7 +57,7 @@ def test_generated_samples_pass(example, tasks):
     locations = example.loc[hosp, "location"].unique()
     generated = [
         trajectories_to_sample_rows(
-            np.full((100, 5), 50.0), [-1, 0, 1, 2, 3], "2026-10-10", loc, "wk inc flu hosp", f"{loc}x", integer=True
+            np.full((100, 5), 50.0), [-1, 0, 1, 2, 3], "2026-10-10", loc, "wk inc flu hosp", f"{loc}x"
         )
         for loc in locations
     ]
@@ -101,9 +101,7 @@ def test_multiple_reference_dates(example, tasks, missing_date, reference_date):
 
 def test_unknown_target_and_location(example, tasks):
     """Test that unknown targets and locations are reported."""
-    assert "match no model task" in _errors(
-        example.replace({"target": {"wk inc flu hosp": "invalid_target"}}), tasks
-    )
+    assert "match no model task" in _errors(example.replace({"target": {"wk inc flu hosp": "invalid_target"}}), tasks)
     # Start with valid targets again so unmatched-target filtering cannot hide a bad location.
     df = example.copy()
     df.loc[0, "location"] = "999"  # Invalid location ID.

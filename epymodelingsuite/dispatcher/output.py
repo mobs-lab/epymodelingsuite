@@ -3,6 +3,7 @@
 import copy
 import logging
 from collections import defaultdict
+from collections.abc import Sequence
 from datetime import date, timedelta
 
 import numpy as np
@@ -21,7 +22,6 @@ from ..schema.output import (
     ObservedValuesConfig,
     OutputConfig,
     OutputObject,
-    get_metrocast_horizons,
     get_metrocast_quantiles,
 )
 from ..telemetry import ExecutionTelemetry
@@ -218,7 +218,7 @@ def format_quantiles_flusightforecast(
     quantiles_df: pd.DataFrame,
     reference_date: date,
     target: str = "wk inc flu hosp",
-    metrocast: bool = False,
+    horizons: Sequence[int] = range(-1, 4),
 ) -> pd.DataFrame:
     """
     Create FluSight forecast formatted quantile outputs for a single model. Rate-trends are handled separately.
@@ -231,8 +231,9 @@ def format_quantiles_flusightforecast(
         Reference date for calculating forecast horizons
     target : str
         Target name for the submission file (default: "wk inc flu hosp")
-    metrocast : bool
-        Use horizons for metrocast (0-3) instead of standard FluSight horizons (-1 to 3)
+    horizons : sequence of int, optional
+        Forecast week offsets to include. Defaults to -1 through 3. The
+        dispatcher passes the horizons resolved by the output configuration.
 
     Returns
     -------
@@ -240,9 +241,6 @@ def format_quantiles_flusightforecast(
         Formatted quantile forecasts with FluSight columns (horizon, target, output_type, output_type_id, target_end_date, value)
     """
     formatted = copy.deepcopy(quantiles_df)
-
-    # Horizons required for quantile outputs (metrocast excludes horizon -1)
-    horizons = get_metrocast_horizons() if metrocast else range(-1, 4)
 
     # Create horizon column and filter for appropriate horizons
     formatted = add_metadata_columns(
@@ -712,7 +710,7 @@ def make_prop_ed_flusightforecast(
     calibration_quantiles: pd.DataFrame | None = None,
     projection_quantiles: pd.DataFrame | None = None,
     reference_date: date | None = None,
-    metrocast: bool = False,
+    horizons: Sequence[int] = range(-1, 4),
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Create FluSight prop ed forecasts from hosp forecast and surveillance data.
@@ -731,8 +729,9 @@ def make_prop_ed_flusightforecast(
         Quantiles from the projection phase (if config.strategy is 'transition')
     reference_date: date | None
         Reference date for calculating horizons (required if pred_hosp is empty)
-    metrocast: bool
-        Use horizons for metrocast (0-3)
+    horizons : sequence of int, optional
+        Forecast week offsets to include for transition outputs. Window outputs
+        inherit the hospitalization table's horizons. Defaults to -1 through 3.
 
     Returns
     -------
@@ -784,9 +783,6 @@ def make_prop_ed_flusightforecast(
 
             # Format the transition quantiles into FluSight format
             formatted = copy.deepcopy(projection_quantiles)
-
-            # Horizons required for quantile outputs
-            horizons = get_metrocast_horizons() if metrocast else range(-1, 4)
 
             # Get the reference date from parameter or pred_hosp
             if reference_date is None:
@@ -1449,7 +1445,7 @@ def generate_calibration_outputs(
                     quanf_df,
                     output.flusight_format.reference_date,
                     target=output.flusight_format.hospitalizations.target,
-                    metrocast=output.flusight_format.metrocast,
+                    horizons=output.flusight_format.horizons,
                 )
                 quanf_df = add_metadata_columns(
                     quanf_df,
@@ -1535,7 +1531,7 @@ def generate_calibration_outputs(
                     quantiles_calibration_flusight,
                     quantiles_projection_flusight,
                     output.flusight_format.reference_date,
-                    metrocast=output.flusight_format.metrocast,
+                    horizons=output.flusight_format.horizons,
                 )
                 hub_format_output_list.append(prop_ed_df)
             except (ValueError, AssertionError, KeyError, IndexError) as e:

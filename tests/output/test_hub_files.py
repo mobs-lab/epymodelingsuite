@@ -47,9 +47,7 @@ def _quantile_rows() -> pd.DataFrame:
 
 def test_hub_parquet_matches_flusight_example_schema():
     """Test that hub parquet bytes use the column types of the FluSight example submission."""
-    samples = trajectories_to_sample_rows(
-        np.ones((2, 5)), HORIZONS, date(2026, 10, 10), "25", "wk inc flu hosp", "MA", integer=True
-    )
+    samples = trajectories_to_sample_rows(np.ones((2, 5)), HORIZONS, date(2026, 10, 10), "25", "wk inc flu hosp", "MA")
     # Mixing numeric quantile IDs with string sample IDs exercises hub dtype conversion.
     original = pd.concat([_quantile_rows(), samples], ignore_index=True)
     expected = original.copy(deep=True)
@@ -89,9 +87,7 @@ class TestCombineSubmissions:
         # The two targets also use separate ranges: counts for hosp, proportions for ED.
         hosp_values = np.arange(10, 20, dtype=float).reshape(2, 5)
         ed_values = np.arange(1, 11, dtype=float).reshape(2, 5) / 100
-        hosp = trajectories_to_sample_rows(
-            hosp_values, HORIZONS, date(2026, 10, 10), "25", "wk inc flu hosp", "MA"
-        )
+        hosp = trajectories_to_sample_rows(hosp_values, HORIZONS, date(2026, 10, 10), "25", "wk inc flu hosp", "MA")
         ed = trajectories_to_sample_rows(
             ed_values, HORIZONS, date(2026, 10, 10), "25", "wk inc flu prop ed visits", "MA"
         )
