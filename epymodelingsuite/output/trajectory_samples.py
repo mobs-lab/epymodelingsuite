@@ -229,7 +229,11 @@ def build_flusight_trajectory_samples(
     """
     cfg = flusight_format.samples
     prop_ed = flusight_format.prop_ed
+    # FluSight samples cover the previous week, reference week, and next three weeks.
     horizons = list(range(-1, 4))
+
+    # Window strategies convert hospitalization trajectories to ED proportions.
+    # Key the factors by the same hub location IDs used for calibration outputs.
     factors = {}
     if prop_ed and prop_ed.strategy != "transition" and not rescaling_factors.empty:
         factors = dict(
@@ -243,10 +247,14 @@ def build_flusight_trajectory_samples(
     rows, warns, seen = [], [], set()
     for calibration in calibrations:
         location = get_hub_location_id(calibration.population)
+        # Keep only the first calibration per location to avoid duplicate sample IDs.
         if location in seen:
             warns.append(f"OUTPUT GENERATOR: more than one model for location {location}; samples kept for the first.")
             continue
         seen.add(location)
+
+        # Read the raw projection trajectories. An extraction failure skips this
+        # calibration while allowing the remaining locations to be processed.
         try:
             traj = calibration.results.get_projection_trajectories()
         except Exception:
@@ -254,37 +262,57 @@ def build_flusight_trajectory_samples(
                 f"OUTPUT GENERATOR: failed to obtain projection trajectories for samples, model primary_id={calibration.primary_id}."
             )
             continue
+
+        # An output-level seed overrides the calibration seed. If both are None,
+        # selection is unseeded.
         seed = cfg.seed if cfg.seed is not None else calibration.seed
         id_prefix = convert_location_name_format(calibration.population, "abbreviation")
         ref = flusight_format.reference_date
 
-        # (target, selected values with shape (samples, horizons), rounding options)
+        # Collect (target, selected values with shape (samples, horizons), formatting options).
+        # Keep values unrounded until row formatting so window ED can use the original counts.
         per_target = []
         try:
+            # Window ED also needs hospitalization trajectories when hospitalization
+            # output is disabled. Align to the requested weeks, then select whole
+            # trajectories with no missing horizons. Select once so window ED reuses
+            # exactly these rows, including when selection is unseeded.
             if flusight_format.hospitalizations or (prop_ed and prop_ed.strategy != "transition"):
                 hosp = _build_horizon_matrix(traj["date"], traj["hospitalizations"], ref, horizons)
                 hosp = hosp[select_trajectory_indices(hosp, cfg.n_samples, cfg.method, seed)]
             if flusight_format.hospitalizations:
                 per_target.append((flusight_format.hospitalizations.target, hosp, {"integer": True}))
             if prop_ed and prop_ed.strategy == "transition":
+                # Transition ED uses its own configured projection variable and
+                # selects its trajectories separately from the hospitalization target.
                 ed = _build_horizon_matrix(traj["date"], traj[prop_ed.transition_name], ref, horizons)
                 ed = ed[select_trajectory_indices(ed, cfg.n_samples, cfg.method, seed)]
                 per_target.append((prop_ed.target, ed, {"upper": 1}))
             elif prop_ed and location in factors:
+                # Scale the selected, unrounded hospitalization values. Preserving
+                # their row order keeps hospitalization and ED sample IDs paired.
                 per_target.append((prop_ed.target, hosp * factors[location], {"upper": 1}))
             elif prop_ed:
+                # Missing factors skip ED only; any requested hospitalization rows remain.
                 warns.append(f"OUTPUT GENERATOR: no prop ED rescaling factor for {location}; skipping ED samples.")
         except (KeyError, ValueError) as e:
+            # Invalid projection data skips all sample targets for this location.
             warns.append(f"OUTPUT GENERATOR: failed to create samples for {location}: {e}")
             continue
 
         for target, values, options in per_target:
             # Rescaling can introduce NaNs even in complete selected trajectories.
             values = values[~np.isnan(values).any(axis=1)]
+            # Submit the available complete trajectories without duplicating them
+            # to reach the requested count; report the shortfall to the caller.
             if len(values) < cfg.n_samples:
                 warns.append(
                     f"OUTPUT GENERATOR: only {len(values)} complete trajectories for '{target}' samples in {location} "
                     f"(requested {cfg.n_samples})."
                 )
+            # Expand each trajectory into one row per horizon, adding dates and IDs.
+            # Formatting clips counts at zero and rounds them, or clips ED to [0, 1].
             rows.append(trajectories_to_sample_rows(values, horizons, ref, location, target, id_prefix, **options))
+
+    # The caller combines these tables with other forecast types and serializes them.
     return rows, warns
