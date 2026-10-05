@@ -1,10 +1,14 @@
-"""Minimal content checks for hubverse model output, driven by the hub's `tasks.json`.
+"""Hubverse content validation based on the R package hubValidations.
+
+Upstream: https://github.com/hubverse-org/hubValidations
+
+This module implements a subset of hubValidations checks in Python for the output types we use
+(``quantile``, ``pmf``, ``sample``), driven by the hub's ``tasks.json``.
 
 Covers what our submissions can get wrong: columns and types, allowed task id / output type values, duplicate
 rows, required output type ids and output types, value ranges, quantile ordering, pmf sums, sample structure and
-`target_end_date = reference_date + horizon` weeks. Mirrors the corresponding hubValidations (R) checks for the
-output types we use (quantile, pmf, sample). File name, location, metadata and submission time checks are left
-to the hub's own validation.
+``target_end_date = reference_date + horizon`` weeks. File name, location, metadata and submission time checks
+are left to the hub's own validation.
 """
 
 import json
