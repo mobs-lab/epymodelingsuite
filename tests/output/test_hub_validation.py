@@ -77,10 +77,13 @@ def test_bad_types(example, tasks):
 @pytest.mark.parametrize("reference_date", ["2026-10-17", "2099-01-01"])
 @pytest.mark.parametrize("missing_date", [False, True])
 def test_multiple_reference_dates(example, tasks, missing_date, reference_date):
-    """Test that more than one reference_date is reported."""
+    """Report multiple reference dates even when a missing date is also present."""
     df = example.copy()
+    # This second date causes the "single value" error in both missing_date cases.
     df.loc[0, "reference_date"] = reference_date
     if missing_date:
+        # The same error must be reported without crashing when dates and missing
+        # values are sorted to build the error message.
         df.loc[1, "reference_date"] = None
     assert "single value" in _errors(df, tasks)
 
@@ -88,10 +91,10 @@ def test_multiple_reference_dates(example, tasks, missing_date, reference_date):
 def test_unknown_target_and_location(example, tasks):
     """Test that unknown targets and locations are reported."""
     assert "match no model task" in _errors(
-        example.replace({"target": {"wk inc flu hosp": "wk inc covid hosp"}}), tasks
+        example.replace({"target": {"wk inc flu hosp": "invalid_target"}}), tasks
     )
     df = example.copy()
-    df.loc[0, "location"] = "99"
+    df.loc[0, "location"] = "999"  # Invalid location ID.
     assert "`location` must be an allowed value" in _errors(df, tasks)
 
 
