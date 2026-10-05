@@ -63,6 +63,16 @@ def test_hub_parquet_matches_flusight_example_schema():
     assert df.location.unique().tolist() == ["25"]
 
 
+@pytest.mark.parametrize("suffix", [".parquet", ".pq", ".PARQUET", ".PQ"])
+def test_read_hub_table_parquet_extensions(tmp_path, suffix):
+    """Read Parquet files with either extension, preserving leading zeros in IDs."""
+    expected = pd.DataFrame({"location": ["01"], "output_type_id": ["001"], "value": [10.0]})
+    path = tmp_path / f"submission{suffix}"
+    expected.to_parquet(path, index=False)
+
+    pd.testing.assert_frame_equal(hub_files.read_hub_table(path), expected)
+
+
 class TestCombineSubmissions:
     """Tests for combining hub tables into one submission."""
 

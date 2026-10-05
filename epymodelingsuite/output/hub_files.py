@@ -112,8 +112,9 @@ def read_hub_table(path: str | Path) -> pd.DataFrame:
     Parameters
     ----------
     path : str or pathlib.Path
-        Input file. A ``.parquet`` suffix selects the Parquet reader; other
-        suffixes use the CSV reader, including compressed files such as ``.csv.gz``.
+        Input file. A ``.parquet`` or ``.pq`` suffix selects the Parquet reader
+        (case-insensitive); other suffixes use the CSV reader, including
+        compressed files such as ``.csv.gz``.
 
     Returns
     -------
@@ -122,6 +123,6 @@ def read_hub_table(path: str | Path) -> pd.DataFrame:
         preserve leading zeros; Parquet retains its stored column types.
     """
     path = Path(path)
-    if path.suffix == ".parquet":
+    if path.suffix.lower() in {".parquet", ".pq"}:
         return pd.read_parquet(path)
     return pd.read_csv(path, dtype={"location": str, "output_type_id": str})
