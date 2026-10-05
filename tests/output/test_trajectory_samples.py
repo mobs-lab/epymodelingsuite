@@ -162,11 +162,11 @@ class TestTrajectoriesToSampleRows:
         rows = ts.trajectories_to_sample_rows(values, HORIZONS, REFERENCE_DATE, "denver", target, None)
         assert rows.value.tolist() == [0.0, 2.5, 12.5, 100.0, 100.0]
 
-    def test_custom_target_has_no_upper_bound_or_rounding(self):
-        """Custom targets remain non-negative without assuming a unit or integer counts."""
+    def test_custom_target_values_are_unchanged(self):
+        """Custom targets preserve signed values without assuming bounds or integer counts."""
         values = np.array([[-2.0, 0.5, 2.5, 12.5, 120.0]])
         rows = ts.trajectories_to_sample_rows(values, HORIZONS, REFERENCE_DATE, "US", "custom_target", "US")
-        assert rows.value.tolist() == [0.0, 0.5, 2.5, 12.5, 120.0]
+        assert rows.value.tolist() == [-2.0, 0.5, 2.5, 12.5, 120.0]
 
 
 class TestBuildFlusightTrajectorySamples:

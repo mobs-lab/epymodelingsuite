@@ -108,8 +108,8 @@ def trajectories_to_sample_rows(  # noqa: PLR0913
     target : str
         Hub target name. ``wk inc flu hosp`` is rounded to non-negative integers;
         ``wk inc flu prop ed visits`` is clipped to [0, 1]; ``Flu ED visits pct``
-        and ``ILI ED visits pct`` are clipped to [0, 100]. Other targets are
-        clipped at zero without rounding or an upper bound. No units are converted.
+        and ``ILI ED visits pct`` are clipped to [0, 100]. Values for other
+        targets are unchanged. No units are converted.
     id_prefix : str or None
         Prefix of `output_type_id`; samples are numbered `<prefix>00`, `<prefix>01`, ...
         None uses Metrocast's sample indexes ``"1"``, ``"2"``, ... per location and target.

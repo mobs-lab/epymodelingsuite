@@ -16,8 +16,8 @@ def normalize_target_values(values: np.ndarray | pd.Series, target: str) -> np.n
         ``wk inc flu hosp`` rounds non-negative counts to integers;
         ``wk inc flu prop ed visits`` clips proportions to [0, 1];
         ``Flu ED visits pct`` and ``ILI ED visits pct`` clip percentages to
-        [0, 100]. Other targets are clipped at zero without rounding or an
-        upper bound. No units are converted.
+        [0, 100]. Values for other targets are returned unchanged. No units
+        are converted.
 
     Returns
     -------
@@ -30,6 +30,13 @@ def normalize_target_values(values: np.ndarray | pd.Series, target: str) -> np.n
     NumPy rint, like pandas round, rounds exact .5 ties to the nearest even
     integer (10.5 -> 10, 11.5 -> 12).
     """
-    upper = {"wk inc flu prop ed visits": 1, "Flu ED visits pct": 100, "ILI ED visits pct": 100}.get(target)
-    normalized = np.clip(values, 0, upper)
+    upper_bounds = {
+        "wk inc flu hosp": None,
+        "wk inc flu prop ed visits": 1,
+        "Flu ED visits pct": 100,
+        "ILI ED visits pct": 100,
+    }
+    if target not in upper_bounds:
+        return values.copy()
+    normalized = np.clip(values, 0, upper_bounds[target])
     return np.rint(normalized) if target == "wk inc flu hosp" else normalized
