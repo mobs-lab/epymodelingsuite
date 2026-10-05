@@ -1614,7 +1614,12 @@ def generate_calibration_outputs(
                 output.flusight_format,
                 rescaling_factors if output.flusight_format.prop_ed else pd.DataFrame(),
             )
-            hub_format_output_list.extend(sample_rows)
+            if output.flusight_format.metrocast:
+                # Metrocast 2026-27 accepts samples only. Quantiles above still
+                # supply the rescaling factors needed by window-based ED samples.
+                hub_format_output_list = sample_rows
+            else:
+                hub_format_output_list.extend(sample_rows)
             warnings.update(sample_warnings)
 
         hub_format_output = (

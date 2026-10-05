@@ -308,30 +308,73 @@ class TestBuildFlusightTrajectorySamples:
         assert set(_concat(rows).target) == {"wk inc flu hosp"}
         assert any("no prop ED rescaling factor" in w for w in warns)
 
+    @pytest.mark.parametrize("strategy", ["transition", "surveillance_window", "calibration_window"])
+    def test_metrocast_ed_samples_use_percentages_and_horizons_zero_to_three(self, strategy):
+        """Metrocast preserves percentage units and indexes each location's trajectories from 1."""
+        prop_ed = {"target": "Flu ED visits pct", "strategy": strategy}
+        if strategy == "transition":
+            prop_ed["transition_name"] = "ed_prop"
+        elif strategy == "surveillance_window":
+            prop_ed.update(ed_source="ed", hosp_source="hosp", fit_start=REFERENCE_DATE, fit_end=REFERENCE_DATE)
+        else:
+            prop_ed.update(ed_source="ed", num_fit_weeks=4)
+        flusight = _flusight(metrocast=True, hospitalizations=None, prop_ed=prop_ed)
+        calibrations = []
+        for offset, location in enumerate(["denver", "colorado"]):
+            # Two locations in the same state must retain their own values. Their
+            # required horizon 0-3 paths have no preceding week, which is valid here.
+            values = np.tile([-2.0, 2.5 + offset, 12.5 + offset, 120.0], (100, 1))
+            traj = {
+                "date": [DATES[4:8].to_numpy() for _ in range(100)],
+                "ed_prop": list(values),
+                "hospitalizations": list(values * 10),
+            }
+            calibrations.append(_calibration(f"metrocast_location_{location}", traj))
+        # Window factors convert counts directly to percentage units, as in the
+        # existing Metrocast quantile path; do not apply another factor of 100.
+        factors = pd.DataFrame({"population": [c.population for c in calibrations], "rescaling_factor": [0.1, 0.1]})
+        rows, warns = ts.build_flusight_trajectory_samples(calibrations, flusight, factors)
+        assert not warns
+        df = _concat(rows)
+        assert set(df.target) == {"Flu ED visits pct"}
+        assert len(df) == 2 * 100 * 4
+        for offset, location in enumerate(["denver", "colorado"]):
+            output = df[df.location == location]
+            assert output.output_type_id.tolist() == np.repeat([str(i) for i in range(1, 101)], 4).tolist()
+            assert output.horizon.tolist() == [0, 1, 2, 3] * 100
+            assert output.target_end_date.tolist() == [d.date() for d in DATES[4:8]] * 100
+            # Clip only outside [0, 100]; preserve decimals and percentages above 1.
+            np.testing.assert_allclose(output.value, [0, 2.5 + offset, 12.5 + offset, 100] * 100)
 
-def test_samples_rejected_for_metrocast():
-    """Test that samples cannot be configured for metrocast outputs."""
-    # An empty samples mapping enables the default sample settings, so the config must reject it.
-    with pytest.raises(ValueError, match="metrocast"):
-        FlusightForecastOutput(reference_date=REFERENCE_DATE, metrocast=True, samples={})
+
+def test_samples_enabled_for_metrocast():
+    """Test that Metrocast accepts the default sample configuration."""
+    # Metrocast 2026-27 requires 100 trajectory samples per location and target.
+    config = FlusightForecastOutput(reference_date=REFERENCE_DATE, metrocast=True, samples={})
+    assert config.samples.n_samples == 100
+    assert config.samples.method == "random"
 
 
 def test_unknown_sample_method_rejected():
     """Test that an unregistered sample selection method is rejected."""
     # Reject an unknown selector during configuration, before output generation can use it.
     with pytest.raises(ValueError, match="Unknown sample selection method"):
-        FlusightForecastOutput(reference_date=REFERENCE_DATE, samples={"method": "nope"})
+        FlusightForecastOutput(reference_date=REFERENCE_DATE, samples={"method": "invalid_method"})
 
 
-def test_ed_model_parquet_output_is_submission_ready():
-    """Production ED model config (hospitalizations: null, transition ed_prop) with samples and Parquet output."""
+@pytest.mark.parametrize("metrocast", [False, True])
+def test_ed_model_parquet_output_is_submission_ready(metrocast):
+    """ED model output preserves FluSight formats and emits only samples for Metrocast."""
     traj = _trajectories(300)
-    calibration = _calibration("United_States", traj)
+    population = "metrocast_location_denver" if metrocast else "United_States"
+    target = "Flu ED visits pct" if metrocast else "wk inc flu prop ed visits"
+    calibration = _calibration(population, traj)
     # The dispatcher requires projection metadata as well as trajectory/quantile results.
     calibration.results.projections = {"baseline": [{"date": list(DATES)}]}
     quantiles = [0.025, 0.5, 0.975]
     # Provide quantiles over the same nine weeks as the trajectories; the submission
-    # should keep only five horizons and include both quantile and sample rows.
+    # should retain the hub's horizons. Metrocast must exclude quantile rows even
+    # though they are available; its 2026-27 specification accepts samples only.
     calibration.results.get_projection_quantiles.return_value = pd.DataFrame(
         {
             "date": np.tile(DATES, len(quantiles)),
@@ -349,9 +392,10 @@ def test_ed_model_parquet_output_is_submission_ready():
             flusight_format={
                 "reference_date": REFERENCE_DATE,
                 "hospitalizations": None,
-                "prop_ed": {"strategy": "transition", "transition_name": "ed_prop"},
+                "prop_ed": {"target": target, "strategy": "transition", "transition_name": "ed_prop"},
                 "quantiles": quantiles,
                 "samples": {"n_samples": 100},
+                "metrocast": metrocast,
             },
             model_meta=ModelMetaOutput(projection_parameters=False),
         )
@@ -374,19 +418,28 @@ def test_ed_model_parquet_output_is_submission_ready():
         "double",
     ]
     df = table.to_pandas()
-    # Three quantile levels x five horizons = 15 rows; 100 samples x five horizons = 500.
-    assert df.groupby("output_type").size().to_dict() == {"quantile": 15, "sample": 500}
-    assert set(df.target) == {"wk inc flu prop ed visits"}
-    assert df.query("output_type == 'quantile'").output_type_id.unique().tolist() == ["0.025", "0.5", "0.975"]
+    assert set(df.target) == {target}
+    if metrocast:
+        # 100 draws x four horizons, with no quantiles in the submitted file.
+        assert df.groupby("output_type").size().to_dict() == {"sample": 400}
+        assert set(df.location) == {"denver"}
+        assert df.output_type_id.unique().tolist() == [str(i) for i in range(1, 101)]
+        assert df.horizon.unique().tolist() == [0, 1, 2, 3]
+    else:
+        # Three quantile levels x five horizons; 100 samples x five horizons.
+        assert df.groupby("output_type").size().to_dict() == {"quantile": 15, "sample": 500}
+        assert df.query("output_type == 'quantile'").output_type_id.unique().tolist() == ["0.025", "0.5", "0.975"]
 
     # Requesting Parquet first must not normalize the later CSV/DataFrame outputs.
-    # Preserve their existing column order, Python dates, integer horizons, and numeric quantile IDs.
+    # Preserve the original table's column order, dates and integer horizons. FluSight
+    # also retains numeric quantile IDs; Metrocast has only string sample indexes.
     legacy = dataframe.data
-    assert legacy.columns.tolist() == [
-        "location",
-        "reference_date",
-        "horizon",
-        "target_end_date",
+    leading_columns = (
+        ["reference_date", "horizon", "target_end_date", "location"]
+        if metrocast
+        else ["location", "reference_date", "horizon", "target_end_date"]
+    )
+    assert legacy.columns.tolist() == leading_columns + [
         "target",
         "output_type",
         "output_type_id",
@@ -394,6 +447,6 @@ def test_ed_model_parquet_output_is_submission_ready():
     ]
     assert legacy.reference_date.iloc[0] == REFERENCE_DATE
     assert legacy.horizon.dtype == np.dtype("int64")
-    assert legacy.output_type_id.iloc[0] == 0.025
+    assert legacy.output_type_id.iloc[0] == ("1" if metrocast else 0.025)
     # Compare decompressed CSV text so gzip metadata does not affect the compatibility check.
     assert gzip.decompress(csv.data).decode() == legacy.to_csv(index=False, date_format="%Y-%m-%d")

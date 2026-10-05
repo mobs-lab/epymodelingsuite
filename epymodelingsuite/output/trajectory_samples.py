@@ -1,4 +1,4 @@
-"""Trajectory samples for hubverse (FluSight) submissions."""
+"""Trajectory samples for hubverse (FluSight and Metrocast) submissions."""
 
 from collections.abc import Callable
 from datetime import date
@@ -86,7 +86,7 @@ def trajectories_to_sample_rows(  # noqa: PLR0913
     reference_date: date,
     location: str,
     target: str,
-    id_prefix: str,
+    id_prefix: str | None,
     *,
     integer: bool = False,
     upper: float | None = None,
@@ -109,12 +109,13 @@ def trajectories_to_sample_rows(  # noqa: PLR0913
         Hub location id (e.g. FIPS code).
     target : str
         Hub target name.
-    id_prefix : str
+    id_prefix : str or None
         Prefix of `output_type_id`; samples are numbered `<prefix>00`, `<prefix>01`, ...
+        None uses Metrocast's sample indexes ``"1"``, ``"2"``, ... per location and target.
     integer : bool, optional
         Round values to integers (counts). Defaults to False.
     upper : float or None, optional
-        Upper clipping bound, such as 1 for proportions. Defaults to no upper
+        Upper clipping bound, such as 1 for proportions or 100 for percentages. Defaults to no upper
         bound. Values are always clipped to be non-negative.
 
     Returns
@@ -128,6 +129,7 @@ def trajectories_to_sample_rows(  # noqa: PLR0913
         # matching pandas round used for hospitalization quantiles.
         values = np.rint(values)
     n_samples, n_horizons = values.shape
+    sample_ids = [str(i + 1) if id_prefix is None else f"{id_prefix}{i:02d}" for i in range(n_samples)]
     ref = pd.Timestamp(reference_date)
     return pd.DataFrame(
         {
@@ -137,7 +139,7 @@ def trajectories_to_sample_rows(  # noqa: PLR0913
             "location": location,
             "target": target,
             "output_type": "sample",
-            "output_type_id": np.repeat([f"{id_prefix}{i:02d}" for i in range(n_samples)], n_horizons),
+            "output_type_id": np.repeat(sample_ids, n_horizons),
             "value": values.reshape(-1).astype(float),
         }
     )
@@ -201,7 +203,7 @@ def build_flusight_trajectory_samples(
     rescaling_factors: pd.DataFrame,
 ) -> tuple[list[pd.DataFrame], list[str]]:
     """
-    Build FluSight trajectory sample tables from calibration results.
+    Build FluSight or Metrocast trajectory sample tables from calibration results.
 
     For each location and enabled target, align projections to weekly horizons,
     select trajectories with ``select_trajectory_indices``, and convert them to
@@ -210,6 +212,8 @@ def build_flusight_trajectory_samples(
     Hospitalization samples come from the 'hospitalizations' projections. Prop ED samples come from the
     `transition_name` projections ('transition' strategy), or are the hospitalization trajectories times the
     location's rescaling factor (window strategies), in which case both targets share sample ids.
+    Metrocast ED projections and rescaling factors must already use percentage
+    units, matching the existing Metrocast quantile output; no unit conversion is applied.
 
     Parameters
     ----------
@@ -223,7 +227,8 @@ def build_flusight_trajectory_samples(
     Returns
     -------
     rows : list[pd.DataFrame]
-        Sample tables per location and enabled target over horizons -1 through 3.
+        Sample tables per location and enabled target over horizons -1 through 3
+        for FluSight, or 0 through 3 for Metrocast.
         Window-based ED outputs use the selected hospitalization trajectories.
     warnings : list[str]
         Diagnostics for skipped models or targets, duplicate locations, and
@@ -231,10 +236,12 @@ def build_flusight_trajectory_samples(
     """
     cfg = flusight_format.samples
     prop_ed = flusight_format.prop_ed
-    # FluSight samples cover the previous week, reference week, and next three weeks.
-    horizons = list(range(-1, 4))
+    # Metrocast starts at the reference week; FluSight also requires the previous week.
+    horizons = list(range(0 if flusight_format.metrocast else -1, 4))
+    # Metrocast values are percentages, whereas FluSight ED values are proportions.
+    ed_upper = 100 if flusight_format.metrocast else 1
 
-    # Window strategies convert hospitalization trajectories to ED proportions.
+    # Window strategies convert hospitalization trajectories to ED proportions or percentages.
     # Key the factors by the same hub location IDs used for calibration outputs.
     factors = {}
     if prop_ed and prop_ed.strategy != "transition" and not rescaling_factors.empty:
@@ -268,7 +275,11 @@ def build_flusight_trajectory_samples(
         # An output-level seed overrides the calibration seed. If both are None,
         # selection is unseeded.
         seed = cfg.seed if cfg.seed is not None else calibration.seed
-        id_prefix = convert_location_name_format(calibration.population, "abbreviation")
+        # Metrocast indexes restart at 1 for each location/target. State abbreviations
+        # cannot distinguish metros in the same state; FluSight keeps its existing IDs.
+        id_prefix = (
+            None if flusight_format.metrocast else convert_location_name_format(calibration.population, "abbreviation")
+        )
         ref = flusight_format.reference_date
 
         # Collect (target, selected values with shape (samples, horizons), formatting options).
@@ -289,11 +300,11 @@ def build_flusight_trajectory_samples(
                 # selects its trajectories separately from the hospitalization target.
                 ed = _build_horizon_matrix(traj["date"], traj[prop_ed.transition_name], ref, horizons)
                 ed = ed[select_trajectory_indices(ed, cfg.n_samples, cfg.method, seed)]
-                per_target.append((prop_ed.target, ed, {"upper": 1}))
+                per_target.append((prop_ed.target, ed, {"upper": ed_upper}))
             elif prop_ed and location in factors:
                 # Scale the selected, unrounded hospitalization values. Preserving
                 # their row order keeps hospitalization and ED sample IDs paired.
-                per_target.append((prop_ed.target, hosp * factors[location], {"upper": 1}))
+                per_target.append((prop_ed.target, hosp * factors[location], {"upper": ed_upper}))
             elif prop_ed:
                 # Missing factors skip ED only; any requested hospitalization rows remain.
                 warns.append(f"OUTPUT GENERATOR: no prop ED rescaling factor for {location}; skipping ED samples.")
@@ -313,7 +324,7 @@ def build_flusight_trajectory_samples(
                     f"(requested {cfg.n_samples})."
                 )
             # Expand each trajectory into one row per horizon, adding dates and IDs.
-            # Formatting clips counts at zero and rounds them, or clips ED to [0, 1].
+            # Formatting rounds non-negative counts, or clips ED to the hub's units.
             rows.append(trajectories_to_sample_rows(values, horizons, ref, location, target, id_prefix, **options))
 
     # The caller combines these tables with other forecast types and serializes them.

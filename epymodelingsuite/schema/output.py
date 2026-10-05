@@ -346,28 +346,9 @@ class FlusightForecastOutput(BaseModel):
     )
     samples: FlusightTrajectorySamples | None = Field(
         None,
-        description="Add trajectory samples for the enabled hospitalization and prop_ed targets. Omit to disable.",
+        description="Add trajectory samples for the enabled hospitalization and prop_ed targets. Metrocast emits samples only when enabled. Omit to disable.",
     )
     metrocast: bool | None = Field(False, description="Treat outputs as metrocast.")
-
-    @model_validator(mode="after")
-    def check_samples(self) -> "FlusightForecastOutput":
-        """Reject trajectory samples for Metrocast output.
-
-        Returns
-        -------
-        FlusightForecastOutput
-            The validated configuration instance.
-
-        Raises
-        ------
-        ValueError
-            If samples are configured while Metrocast output is enabled.
-        """
-        if self.samples is not None and self.metrocast:
-            msg = "Trajectory samples are not supported for metrocast outputs."
-            raise ValueError(msg)
-        return self
 
 
 class QuantilesOutput(BaseModel):
