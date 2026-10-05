@@ -51,11 +51,12 @@ def test_hub_parquet_matches_flusight_example_schema():
     )
     original = pd.concat([_quantile_rows(), samples], ignore_index=True)
     expected = original.copy(deep=True)
-    formatted = hub_files.cast_hub_dtypes(original)
-    output = format_tabular_object(formatted, "hub", TabularOutputTypeEnum.Parquet)
-
+    casted = hub_files.cast_hub_dtypes(original)
+    # Casting must leave the original table unchanged.
     pd.testing.assert_frame_equal(original, expected)
-    table = pq.read_table(io.BytesIO(output.data))
+
+    parquet_output = format_tabular_object(casted, "hub", TabularOutputTypeEnum.Parquet)
+    table = pq.read_table(io.BytesIO(parquet_output.data))
     assert {f.name: f.type for f in table.schema} == FLUSIGHT_EXAMPLE_SCHEMA
     df = table.to_pandas()
     assert df.output_type_id.tolist()[:2] == ["0.025", "0.5"]
