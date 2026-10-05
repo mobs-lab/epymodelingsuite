@@ -13,6 +13,8 @@ from epydemix.calibration import CalibrationResults
 from ..output.hub_format import normalize_target_values
 from ..output.tabular import (
     dataframe_to_gzipped_csv as dataframe_to_gzipped_csv,
+)
+from ..output.tabular import (
     format_hub_objects,
     format_tabular_object,
 )
