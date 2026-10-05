@@ -384,8 +384,8 @@ class ResolvedPanelSettings:
 
 
 def resolve_panel_settings(
-    quantiles: QuantilesPlotConfig,
-    output: QuantilesOutputConfig,
+    plot_config: QuantilesPlotConfig,
+    variants_config: QuantilesOutputConfig,
     loaded_source_names: list[str],
 ) -> list[ResolvedPanelSettings]:
     """
@@ -397,10 +397,10 @@ def resolve_panel_settings(
 
     Parameters
     ----------
-    quantiles : QuantilesPlotConfig
-        Base quantile plot configuration.
-    output : QuantilesOutputConfig
-        The output being plotted.
+    plot_config : QuantilesPlotConfig
+        Shared quantile plot configuration from ``output.plots.quantiles``.
+    variants_config : QuantilesOutputConfig
+        One plot variant from ``output.plots.quantiles.outputs[]``.
     loaded_source_names : list of str
         Names of the surveillance sources that were loaded successfully.
 
@@ -409,27 +409,27 @@ def resolve_panel_settings(
     list of ResolvedPanelSettings
         One entry for filtered/full outputs, ``[full, filtered]`` for side_by_side.
     """
-    if output.surveillance_source in loaded_source_names:
-        surveillance_source = output.surveillance_source
+    if variants_config.surveillance_source in loaded_source_names:
+        surveillance_source = variants_config.surveillance_source
     elif len(loaded_source_names) == 1:
         surveillance_source = loaded_source_names[0]
     else:
         surveillance_source = None
 
-    horizon_max = output.horizon_max if output.horizon_max is not None else quantiles.horizon_max
+    horizon_max = variants_config.horizon_max if variants_config.horizon_max is not None else plot_config.horizon_max
 
-    if output.type == QuantilesOutputTypeEnum.SIDE_BY_SIDE:
-        views = [("full", output.full_panel), ("filtered", output.filtered_panel)]
+    if variants_config.type == QuantilesOutputTypeEnum.SIDE_BY_SIDE:
+        views = [("full", variants_config.full_panel), ("filtered", variants_config.filtered_panel)]
     else:
-        views = [(output.type.value, None)]
+        views = [(variants_config.type.value, None)]
 
     settings = []
     for view, panel in views:
         panel_sets_limits = panel is not None and (
             panel.surveillance_points is not None or panel.surveillance_start_date is not None
         )
-        limits = panel if panel_sets_limits else output
-        xlabel_interval = output.xlabel_interval
+        limits = panel if panel_sets_limits else variants_config
+        xlabel_interval = variants_config.xlabel_interval
         if panel is not None and panel.xlabel_interval is not None:
             xlabel_interval = panel.xlabel_interval
         start_date = limits.surveillance_start_date
@@ -441,12 +441,12 @@ def resolve_panel_settings(
                 surveillance_start_date=None if start_date is None else pd.to_datetime(start_date).date(),
                 horizon_max=horizon_max,
                 xlabel_interval=xlabel_interval,
-                show_calibration=output.show_calibration,
-                show_projection=output.show_projection,
-                show_surveillance=output.show_surveillance,
-                show_fitting_window_line=output.show_fitting_window_line,
-                calibration_color=quantiles.calibration.color,
-                projection_color=quantiles.projection.color,
+                show_calibration=variants_config.show_calibration,
+                show_projection=variants_config.show_projection,
+                show_surveillance=variants_config.show_surveillance,
+                show_fitting_window_line=variants_config.show_fitting_window_line,
+                calibration_color=plot_config.calibration.color,
+                projection_color=plot_config.projection.color,
             )
         )
     return settings
