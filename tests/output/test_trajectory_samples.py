@@ -9,9 +9,11 @@ import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
 import pytest
+from epydemix.calibration import CalibrationResults
 
 from epymodelingsuite.dispatcher.output import generate_calibration_outputs
 from epymodelingsuite.output import trajectory_samples as ts
+from epymodelingsuite.schema.dispatcher import CalibrationOutput
 from epymodelingsuite.schema.output import (
     FlusightForecastOutput,
     ModelMetaOutput,
@@ -390,6 +392,58 @@ def test_samples_enabled_for_metrocast():
     config = FlusightForecastOutput(reference_date=REFERENCE_DATE, metrocast=True, samples={})
     assert config.samples.n_samples == 100
     assert config.samples.method == "random"
+
+
+@pytest.mark.parametrize("strategy", ["surveillance_window", "calibration_window"])
+def test_dispatcher_generates_window_ed_samples_without_hospitalization_output(tmp_path, strategy):
+    """Fit ED factors and emit ED-only forecasts through the real dispatcher."""
+    dates = pd.date_range(REFERENCE_DATE, periods=4, freq="7D").to_list()
+    calibration = CalibrationOutput(
+        primary_id=0,
+        population="United_States",
+        seed=42,
+        delta_t=1.0,
+        results=CalibrationResults(
+            selected_trajectories={0: [{"date": dates, "data": np.full(4, 100.0)}]},
+            projections={"baseline": [{"date": dates, "hospitalizations": np.full(4, 20.0)} for _ in range(100)]},
+        ),
+    )
+    surveillance = {}
+    for name, value in [("ed", 0.01), ("hosp", 100.0)]:
+        path = tmp_path / f"{name}.csv"
+        pd.DataFrame({"date": dates, "location": "US", "value": value}).to_csv(path, index=False)
+        surveillance[name] = {
+            "data_path": str(path),
+            "value_column": "value",
+            "date_column": "date",
+            "location_column": "location",
+            "location_format": "FIPS",
+        }
+    extra = (
+        {"hosp_source": "hosp", "fit_start": dates[0], "fit_end": dates[-1]}
+        if strategy == "surveillance_window"
+        else {"num_fit_weeks": 4}
+    )
+    config = OutputConfig(
+        output=OutputConfiguration(
+            tabular_output_types=[TabularOutputTypeEnum.DataFrame],
+            options={"surveillance": surveillance},
+            flusight_format={
+                "reference_date": REFERENCE_DATE,
+                "horizons": [0, 1, 2, 3],
+                "hospitalizations": None,
+                "prop_ed": {"strategy": strategy, "ed_source": "ed", **extra},
+                "samples": {},
+            },
+        )
+    )
+
+    outputs = generate_calibration_outputs(calibrations=[calibration], output_config=config)
+    (hub,) = outputs["output_hub_formatted"]
+    assert set(hub.data.target) == {"wk inc flu prop ed visits"}
+    assert hub.data.groupby("output_type").size().to_dict() == {"quantile": 23 * 4, "sample": 100 * 4}
+    # Both fitting strategies recover 0.01 / 100 and apply it to the projected 20 admissions.
+    np.testing.assert_allclose(hub.data.value.to_numpy(dtype=float), 0.002)
 
 
 def test_unknown_sample_method_rejected():

@@ -1426,8 +1426,11 @@ def generate_calibration_outputs(
         else:
             flusight_quantiles = output.flusight_format.quantiles
 
-        # Quantile forecasts (hospitalizations)
-        if output.flusight_format.hospitalizations:
+        # Window ED needs hospitalization forecasts internally even for ED-only output.
+        hosp_forecast_list = []
+        if output.flusight_format.hospitalizations or (
+            output.flusight_format.prop_ed and output.flusight_format.prop_ed.strategy != "transition"
+        ):
             logger.info("  - Generating FluSight quantile forecasts (hospitalizations)")
             for calibration in calibrations:
                 try:
@@ -1448,7 +1451,11 @@ def generate_calibration_outputs(
                 quanf_df = format_quantiles_flusightforecast(
                     quanf_df,
                     output.flusight_format.reference_date,
-                    target=output.flusight_format.hospitalizations.target,
+                    target=(
+                        output.flusight_format.hospitalizations.target
+                        if output.flusight_format.hospitalizations
+                        else "wk inc flu hosp"
+                    ),
                     horizons=output.flusight_format.horizons,
                 )
                 quanf_df = add_metadata_columns(
@@ -1456,7 +1463,10 @@ def generate_calibration_outputs(
                     location=get_hub_location_id(calibration.population),
                     reference_date=output.flusight_format.reference_date,
                 )
-                hub_format_output_list.append(quanf_df)
+                hosp_forecast_list.append(quanf_df)
+
+        if output.flusight_format.hospitalizations:
+            hub_format_output_list.extend(hosp_forecast_list)
 
         # Prop ED forecasts
         if output.flusight_format.prop_ed:
@@ -1525,7 +1535,7 @@ def generate_calibration_outputs(
                 pd.concat(quantiles_projection_flusight_list) if quantiles_projection_flusight_list else None
             )
             hosp_forecast = (
-                pd.concat(hub_format_output_list, ignore_index=True) if hub_format_output_list else pd.DataFrame()
+                pd.concat(hosp_forecast_list, ignore_index=True) if hosp_forecast_list else pd.DataFrame()
             )
             try:
                 prop_ed_df, rescaling_factors = make_prop_ed_flusightforecast(
