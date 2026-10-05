@@ -78,14 +78,24 @@ class TestCombineSubmissions:
     """Tests for combining hub tables into one submission."""
 
     def test_concatenates_hosp_and_ed(self):
-        """Test that hosp and ED tables are concatenated into one submission."""
-        hosp = trajectories_to_sample_rows(np.ones((2, 5)), HORIZONS, date(2026, 10, 10), "25", "wk inc flu hosp", "MA")
+        """Test that concatenation preserves distinct hosp and ED values for every sample and horizon."""
+        hosp_values = np.arange(10, 20, dtype=float).reshape(2, 5)
+        ed_values = np.arange(1, 11, dtype=float).reshape(2, 5) / 100
+        hosp = trajectories_to_sample_rows(
+            hosp_values, HORIZONS, date(2026, 10, 10), "25", "wk inc flu hosp", "MA"
+        )
         ed = trajectories_to_sample_rows(
-            np.ones((2, 5)), HORIZONS, date(2026, 10, 10), "25", "wk inc flu prop ed visits", "MA"
+            ed_values, HORIZONS, date(2026, 10, 10), "25", "wk inc flu prop ed visits", "MA"
         )
         combined = hub_files.combine_submissions([hosp, ed])
         assert len(combined) == 20
         assert set(combined.target) == {"wk inc flu hosp", "wk inc flu prop ed visits"}
+        np.testing.assert_array_equal(
+            combined.loc[combined.target == "wk inc flu hosp", "value"].to_numpy(), hosp_values.ravel()
+        )
+        np.testing.assert_array_equal(
+            combined.loc[combined.target == "wk inc flu prop ed visits", "value"].to_numpy(), ed_values.ravel()
+        )
 
     def test_same_forecast_from_two_tables_raises(self):
         """Test that the same location/target/output_type from two tables raises."""
