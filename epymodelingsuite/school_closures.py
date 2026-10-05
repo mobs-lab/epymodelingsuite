@@ -11,7 +11,8 @@ logger = logging.getLogger(__name__)
 def make_school_closure_dict(
     years: list[int], interval_reduction_iter: int | None = 5
 ) -> dict[str, set[tuple[dt.date, dt.date, str]]]:
-    """
+    """Create a dictionary of school closures by location.
+
     Create a dictionary where the keys are location abbreviations and the values are sets of named tuples representing closures.
     For example, in normal usage if you want closures for 2024 and 2025 simply call make_school_closure_dict([2024, 2025]).
 
@@ -24,12 +25,15 @@ def make_school_closure_dict(
 
     Parameters
     ----------
-            years: a list of integer years for which to calculate closures
-            interval_reduction_iter: maximum iterations used when merging date intervals for the total US model
+    years : list[int]
+        A list of integer years for which to calculate closures.
+    interval_reduction_iter : int or None, optional
+        Maximum iterations used when merging date intervals for the total US model. Default is 5.
 
     Returns
     -------
-            closure_dict: a dictionary where the keys are location abbreviations and the values are sets of named tuples representing closures
+    closure_dict : dict[str, set[tuple[dt.date, dt.date, str]]]
+        A dictionary where the keys are location abbreviations and the values are sets of named tuples representing closures.
     """
     import datetime as dt
     import os
@@ -98,10 +102,9 @@ def make_school_closure_dict(
         # Sort table
         tmp = df.sort_values(by=[cat, start_str]).reset_index(drop=True)
         # Create a new column 'InPrev' thats true for all rows > 0, if start time at Event_(X) > end time at Event_(X-1)
+        # Use shift() to compare current row's start with previous row's end
+        tmp["InPrev"] = tmp[start_str] > tmp[end_str].shift(1)
         tmp.loc[0, "InPrev"] = False
-        tmp.InPrev.to_numpy()[1:] = tmp.loc[1:, start_str].reset_index(drop=True) > tmp.loc[
-            : (len(tmp) - 2), end_str
-        ].reset_index(drop=True)
         tmp["InPrev"] = tmp["InPrev"].astype("bool")
         # Create a new column 'GrpCount' that creates a cumulative sum of all 'InPrev' column bools
         # If 'GrpCount' does not change value between subsequent rows, these rows will be grouped into a single interval
@@ -243,25 +246,25 @@ def make_school_closure_dict(
 def add_school_closure_interventions(
     model: EpiModel, closure_dict: dict[str, set[tuple[dt.date, dt.date, str]]], reduction_factor: float
 ) -> EpiModel:
-    """
-    Add school closure interventions to a model. Called for effect.
+    """Add school closure interventions to a model.
 
     Parameters
     ----------
-            model: an already defined epydemix EpiModel. This must be using a US population with contact matrices.
-            closure_dict: a dictionary created by calling make_school_closure_dict(...) from this module.
-            reduction_factor: the factor by which to reduce the contact matrix.
+    model : EpiModel
+        An already defined epydemix EpiModel. This must be using a US population
+        with contact matrices.
+    closure_dict : dict[str, set[tuple[dt.date, dt.date, str]]]
+        A dictionary created by calling make_school_closure_dict(...) from this
+        module.
+    reduction_factor : float
+        The factor by which to reduce the contact matrix.
 
     Returns
     -------
-            None
+    EpiModel
+        The model with school closure interventions added (modified in-place).
     """
-    import copy
-
     from .utils import convert_location_name_format
-
-    # Make a deep copy of the model to avoid modifying the original
-    model = copy.deepcopy(model)
 
     # Get the school closures that apply to the location/population of the model
     closures = closure_dict[convert_location_name_format(model.population.name, "abbreviation")]

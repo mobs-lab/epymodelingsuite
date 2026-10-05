@@ -1,10 +1,13 @@
 """Common utility functions."""
 
+import re
 from datetime import timedelta
 
 import pandas as pd
 from pandas.tseries.frequencies import to_offset
-from pandas.tseries.offsets import Tick, Week
+from pandas.tseries.offsets import Day, Tick, Week
+
+_UNIT_ALIASES = {"H": "h", "S": "s", "d": "D", "T": "min", "t": "min"}
 
 
 def parse_timedelta(text: str) -> timedelta:
@@ -78,6 +81,10 @@ def parse_timedelta(text: str) -> timedelta:
     """
     s = text.strip()
 
+    # Normalize units pandas deprecates ('H', 'S', 'd', 'T'). Only match a standalone unit
+    # at the start or after a number, so anchors like 'W-SAT' are left alone.
+    s = re.sub(r"(?:^|(?<=[\d.\s]))[HSdTt](?![a-zA-Z])", lambda m: _UNIT_ALIASES[m.group()], s)
+
     # 1) First try Timedelta-style strings (e.g., '30m', '1h30m', '2D', '45s')
     try:
         td = pd.to_timedelta(s)
@@ -91,7 +98,7 @@ def parse_timedelta(text: str) -> timedelta:
         # Not a valid Timedelta string, try frequency alias next
         pass
 
-    # 2) Next try frequency aliases (e.g., 'W', '2H', '30T', '3S')
+    # 2) Next try frequency aliases (e.g., 'W', '2H', '30min', '3S')
     try:
         off = to_offset(s)
     except Exception as e:
@@ -103,36 +110,15 @@ def parse_timedelta(text: str) -> timedelta:
         # off.nanos is the exact length in nanoseconds
         return pd.Timedelta(off.nanos, unit="ns").to_pytimedelta()
 
-    # Weeks are also fixed-length (7 days each)
+    # Days (not a Tick since pandas 3) and weeks are also fixed-length
+    if isinstance(off, Day):
+        return timedelta(days=off.n)
     if isinstance(off, Week):
         return timedelta(weeks=off.n)
 
     # Otherwise it's calendar/anchored/variable; cannot be a pure timedelta
     msg = f"Frequency {text!r} is not a fixed-length duration and cannot be represented as a datetime.timedelta."
     raise ValueError(msg)
-
-
-def to_set(values: object | None) -> set:
-    """
-    Normalize an optional iterable into a set.
-
-    Parameters
-    ----------
-    values : Iterable or None
-        Input iterable (or ``None``) to convert.
-
-    Returns
-    -------
-    set
-        Set containing the iterable values, or an empty set when ``None``.
-    """
-    from collections.abc import Iterable
-
-    if values is None:
-        return set()
-    if isinstance(values, Iterable) and not isinstance(values, (str, bytes)):
-        return set(values)
-    return set()
 
 
 def strip_agegroup_suffix(name: str, age_group: str = "total") -> str:

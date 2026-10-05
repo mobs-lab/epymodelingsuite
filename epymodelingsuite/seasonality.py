@@ -13,15 +13,23 @@ def _calc_seasonality_balcan_at_t(
 
     Parameters
     ----------
-        t (float): Time in units defined by delta_t (e.g., days if delta_t=1, hours if delta_t=1/24).
-        t_max (float): Time unit when the transmission rate is at its maximum.
-        val_min (float): The minimum value that the parameter can take after scaling.
-        val_max (float): The maximum value that the parameter can take after scaling.
-        period (float): The period of the seasonality in time units (default=365 for daily units).
+    t : float
+        Time in units defined by delta_t (e.g., days if delta_t=1, hours if delta_t=1/24).
+    t_max : float
+        Time unit when the scaling factor is at its maximum (1.0).
+    val_min : float
+        Together with val_max, determines the trough as val_min/val_max.
+        When val_max=1.0, this directly equals the trough factor (e.g., 0.2 = 20% of peak).
+    val_max : float
+        Together with val_min, determines the trough as val_min/val_max.
+        Typically set to 1.0. The output always peaks at 1.0 regardless of this value.
+    period : float, default 365.0
+        The period of the seasonality in time units (default=365 for daily units).
 
     Returns
     -------
-        float: The seasonal transmission factor at time t.
+    float
+        Seasonal scaling factor at time t, ranging from val_min/val_max (at trough) to 1.0 (at peak).
     """
     import numpy as np
 
@@ -41,22 +49,37 @@ def calc_seasonality_balcan_at_date(
     delta_t: float = 1.0,
 ) -> float:
     """
-    Compute the seasonal rate for a given date using the Balcan model.
+    Compute the seasonal scaling factor for a given date using the Balcan model.
+
+    The scaling factor ranges from (val_min/val_max) at trough to 1.0 at peak.
+    When val_max=1.0, this simplifies to ranging from val_min to 1.0.
 
     Parameters
     ----------
-        date_t: Target date/datetime.
-        date_start: Reference start date/datetime where t=0.
-        date_tmax: Date/datetime when the transmission rate is at its maximum.
-        date_tmin: Date/datetime when the transmission rate is at its minimum (optional).
-        val_min: The minimum value that the parameter can take after scaling.
-        val_max: The maximum value that the parameter can take after scaling.
-        period: The period of the seasonality in days (default=365). If None, derives using date_tmin and date_start or defaults to 365.
-        delta_t: Time step in days (default=1.0). For example, 0.25 for 6-hour intervals, 1/24 for hourly.
+    date_t : date or datetime
+        Target date/datetime.
+    date_start : date or datetime
+        Reference start date/datetime where t=0.
+    date_tmax : date or datetime
+        Date/datetime when the scaling factor is at its maximum (1.0).
+    val_min : float
+        Together with val_max, determines the trough as val_min/val_max.
+        When val_max=1.0, this directly equals the trough factor (e.g., 0.2 = 20% of peak).
+    val_max : float
+        Together with val_min, determines the trough as val_min/val_max.
+        Typically set to 1.0. The output always peaks at 1.0 regardless of this value.
+    date_tmin : date or datetime, optional
+        Date/datetime of seasonal trough. Used to derive the period as
+        2 * |date_tmin - date_tmax| when period is not specified.
+    period : float, optional
+        The period of the seasonality in days. If None, derives from date_tmin or defaults to 365.
+    delta_t : float, default 1.0
+        Time step in days.
 
     Returns
     -------
-        float: Seasonality factor at date_t, a scaling factor between 0 and 1.
+    float
+        Seasonal scaling factor at date_t, ranging from val_min/val_max (at trough) to 1.0 (at peak).
     """
     # Convert dates to datetime if needed for consistent calculation
     if isinstance(date_t, dt.date) and not isinstance(date_t, dt.datetime):
@@ -239,24 +262,37 @@ def get_seasonal_transmission_balcan(
     delta_t: float = 1.0,
 ) -> tuple[list[dt.date | dt.datetime], list[float]]:
     """
-    Return seasonal transmission rates for the specified simulation period using the Balcan model.
+    Return seasonal scaling factors for the specified simulation period using the Balcan model.
+
+    The scaling factors range from (val_min/val_max) at trough to 1.0 at peak.
+    When val_max=1.0, this simplifies to ranging from val_min to 1.0.
     This is a wrapper for calc_seasonality_balcan_at_date() and generate_seasonal_values().
 
     Parameters
     ----------
-        date_start: Reference start date/datetime where t=0 (start of simulation period).
-        date_stop: End date/datetime.
-        date_tmax: Date/datetime when the transmission rate is at its maximum.
-        date_tmin: Date/datetime when the transmission rate is at its minimum (optional).
-        val_min: The minimum transmission rate.
-        val_max: The maximum transmission rate.
-        delta_t : float, default 1.0
-            Time step in days for calculating seasonality. Default 1.0 means daily.
-            Examples: 0.25 for 6-hour intervals, 1/24 for hourly, 7 for weekly.
+    date_start : date or datetime
+        Reference start date/datetime where t=0 (start of simulation period).
+    date_stop : date or datetime
+        End date/datetime.
+    date_tmax : date or datetime
+        Date/datetime when the scaling factor is at its maximum (1.0).
+    val_min : float
+        Together with val_max, determines the trough as val_min/val_max.
+        When val_max=1.0, this directly equals the trough factor (e.g., 0.2 = 20% of peak).
+    val_max : float
+        Together with val_min, determines the trough as val_min/val_max.
+        Typically set to 1.0. The output always peaks at 1.0 regardless of this value.
+    date_tmin : date or datetime, optional
+        Date/datetime of seasonal trough. Used to derive the period as
+        2 * |date_tmin - date_tmax| when period is not specified.
+    delta_t : float, default 1.0
+        Time step in days.
 
     Returns
     -------
-        Tuple of (dates/datetimes, values).
+    tuple[list, list]
+        Tuple of (dates/datetimes, scaling_factors) where scaling_factors range
+        from val_min/val_max (at trough) to 1.0 (at peak).
     """
     from functools import partial
 

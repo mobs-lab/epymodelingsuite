@@ -7,7 +7,13 @@ from dataclasses import dataclass
 import numpy as np
 import pytest
 
-from epymodelingsuite.builders.base import calculate_compartment_initial_conditions
+from epymodelingsuite.builders.base import (
+    _parse_age_group,
+    calculate_compartment_initial_conditions,
+    load_iso_population,
+    load_metrocast_population,
+)
+from epymodelingsuite.utils.location import get_metrocast_population_data
 
 
 @dataclass
@@ -36,7 +42,7 @@ class TestCalculateCompartmentInitialConditions:
         result = calculate_compartment_initial_conditions([], population_array)
         assert result is None
 
-    def test_count_initialization_distributes_proportionally(self, population_array, total_population):
+    def test_count_initialization_distributes_proportionally(self, population_array):
         """Test that counts (init >= 1) are distributed proportionally across age groups."""
         compartments = [
             DummyCompartment(id="L", init=10),
@@ -49,17 +55,14 @@ class TestCalculateCompartmentInitialConditions:
         assert "L" in result
         assert "I" in result
 
-        # Check L compartment distribution
-        expected_L = 10 * population_array / total_population
-        np.testing.assert_array_almost_equal(result["L"], expected_L)
+        # Proportional shares are rounded to integers by largest remainder
+        # (10 -> [0.67, 1.33, 2, 2.67, 3.33], 100 -> [6.67, 13.33, 20, 26.67, 33.33])
+        np.testing.assert_array_equal(result["L"], [1, 1, 2, 3, 3])
+        np.testing.assert_array_equal(result["I"], [7, 13, 20, 27, 33])
 
-        # Check I compartment distribution
-        expected_I = 100 * population_array / total_population
-        np.testing.assert_array_almost_equal(result["I"], expected_I)
-
-        # Verify sum equals original count
-        assert np.isclose(sum(result["L"]), 10)
-        assert np.isclose(sum(result["I"]), 100)
+        # Verify sum equals original count exactly
+        assert result["L"].sum() == 10
+        assert result["I"].sum() == 100
 
     def test_proportion_initialization_applies_to_population(self, population_array):
         """Test that proportions (init < 1) are applied directly to population array."""
@@ -107,13 +110,12 @@ class TestCalculateCompartmentInitialConditions:
         result = calculate_compartment_initial_conditions(compartments, population_array)
 
         # Calculate expected distribution
-        count_distributed = 100 * population_array / total_population
+        count_distributed = np.array([7, 13, 20, 27, 33])
         remaining = population_array - count_distributed
 
-        expected_per_default = remaining / 2  # 2 default compartments
-
-        np.testing.assert_array_almost_equal(result["S"], expected_per_default)
-        np.testing.assert_array_almost_equal(result["S_vax"], expected_per_default)
+        # 2 default compartments; odd leftovers go to the first default compartment
+        np.testing.assert_array_equal(result["S"], (remaining + 1) // 2)
+        np.testing.assert_array_equal(result["S_vax"], remaining // 2)
 
         # Verify population conservation
         total_initial = sum(result["S"]) + sum(result["S_vax"]) + sum(result["I"])
@@ -143,7 +145,7 @@ class TestCalculateCompartmentInitialConditions:
         total_initial = sum(result["S"]) + sum(result["L"]) + sum(result["I"])
         assert np.isclose(total_initial, total_population)
 
-    def test_sampled_compartments_count_override(self, population_array, total_population):
+    def test_sampled_compartments_count_override(self, population_array):
         """Test that sampled compartments with counts override base configuration."""
         compartments = [
             DummyCompartment(id="L", init=10),
@@ -155,14 +157,12 @@ class TestCalculateCompartmentInitialConditions:
         result = calculate_compartment_initial_conditions(compartments, population_array, sampled_compartments)
 
         # L should use sampled value
-        expected_L = 50 * population_array / total_population
-        np.testing.assert_array_almost_equal(result["L"], expected_L)
-        assert np.isclose(sum(result["L"]), 50)
+        np.testing.assert_array_equal(result["L"], [3, 7, 10, 13, 17])
+        assert result["L"].sum() == 50
 
         # I should use original value
-        expected_I = 100 * population_array / total_population
-        np.testing.assert_array_almost_equal(result["I"], expected_I)
-        assert np.isclose(sum(result["I"]), 100)
+        np.testing.assert_array_equal(result["I"], [7, 13, 20, 27, 33])
+        assert result["I"].sum() == 100
 
     def test_sampled_compartments_proportion_override(self, population_array):
         """Test that sampled compartments with proportions override base configuration."""
@@ -207,11 +207,12 @@ class TestCalculateCompartmentInitialConditions:
         result = calculate_compartment_initial_conditions(compartments, population_array, sampled_compartments)
 
         # L should use sampled value
-        sampled_L = 50 * population_array / total_population
+        sampled_L = np.array([3, 7, 10, 13, 17])
+        np.testing.assert_array_equal(result["L"], sampled_L)
 
         # S should get remaining population
         remaining = population_array - sampled_L
-        np.testing.assert_array_almost_equal(result["S"], remaining)
+        np.testing.assert_array_equal(result["S"], remaining)
 
         # Verify population conservation
         total_initial = sum(result["S"]) + sum(result["L"])
@@ -276,7 +277,7 @@ class TestCalculateCompartmentInitialConditions:
             assert isinstance(val, np.ndarray), f"{key} should be array, got {type(val)}"
             assert val.shape == population_array.shape, f"{key} should match population shape"
 
-    def test_numpy_numeric_types_handled(self, population_array, total_population):
+    def test_numpy_numeric_types_handled(self, population_array):
         """Test that numpy numeric types (np.int64, np.float64) are handled correctly."""
         compartments = [
             DummyCompartment(id="L", init=np.int64(10)),
@@ -286,13 +287,13 @@ class TestCalculateCompartmentInitialConditions:
         result = calculate_compartment_initial_conditions(compartments, population_array)
 
         # Should handle numpy types same as Python types
-        expected_L = 10 * population_array / total_population
+        expected_L = [1, 1, 2, 3, 3]
         expected_I = 0.02 * population_array
 
-        np.testing.assert_array_almost_equal(result["L"], expected_L)
+        np.testing.assert_array_equal(result["L"], expected_L)
         np.testing.assert_array_almost_equal(result["I"], expected_I)
 
-    def test_edge_case_init_exactly_one(self, population_array, total_population):
+    def test_edge_case_init_exactly_one(self, population_array):
         """Test boundary case where init == 1.0 is treated as count."""
         compartments = [
             DummyCompartment(id="L", init=1.0),  # Exactly 1.0 should be treated as count
@@ -300,10 +301,72 @@ class TestCalculateCompartmentInitialConditions:
 
         result = calculate_compartment_initial_conditions(compartments, population_array)
 
-        # Should be distributed as a count
-        expected = 1.0 * population_array / total_population
-        np.testing.assert_array_almost_equal(result["L"], expected)
-        assert np.isclose(sum(result["L"]), 1.0)
+        # Should be distributed as a count; the single individual goes to the largest share
+        np.testing.assert_array_equal(result["L"], [0, 0, 0, 0, 1])
+        assert result["L"].sum() == 1
+
+    def test_initial_conditions_are_integer_counts(self, population_array):
+        """Test that every compartment receives integer counts so the engine does not truncate them."""
+        compartments = [
+            DummyCompartment(id="S", init="default"),
+            DummyCompartment(id="I", init=7),
+            DummyCompartment(id="R", init=0.123),
+            DummyCompartment(id="M", init=[0.3333, 2.6, 0, 0, 0]),
+        ]
+
+        result = calculate_compartment_initial_conditions(compartments, population_array)
+
+        for compartment_id, values in result.items():
+            assert np.issubdtype(values.dtype, np.integer), f"{compartment_id} has dtype {values.dtype}"
+        np.testing.assert_array_equal(sum(result.values()), population_array)
+
+    def test_single_infection_in_small_population_is_preserved(self):
+        """Test that one initial infection survives and the total population is conserved."""
+        population_array = np.array([100, 200])
+        compartments = [
+            DummyCompartment(id="S", init="default"),
+            DummyCompartment(id="I", init=1),
+        ]
+
+        result = calculate_compartment_initial_conditions(compartments, population_array)
+
+        np.testing.assert_array_equal(result["I"], [0, 1])
+        np.testing.assert_array_equal(result["S"], [100, 199])
+
+    @pytest.mark.parametrize("with_default", [False, True])
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_counts_respect_age_capacities(self, with_default, reverse):
+        compartments = [DummyCompartment(id="I", init=1), DummyCompartment(id="R", init=201)]
+        if reverse:
+            compartments.reverse()
+        if with_default:
+            compartments.append(DummyCompartment(id="S", init="default"))
+        population = np.array([101, 101])
+
+        result = calculate_compartment_initial_conditions(compartments, population)
+
+        np.testing.assert_array_equal(sum(result.values()), population)
+        assert result["I"].sum() == 1
+        assert result["R"].sum() == 201
+        assert all((counts >= 0).all() for counts in result.values())
+
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_counts_reserve_age_specific_initial_conditions(self, reverse):
+        compartments = [DummyCompartment(id="I", init=1), DummyCompartment(id="R", init=[101, 100])]
+        if reverse:
+            compartments.reverse()
+
+        result = calculate_compartment_initial_conditions(compartments, np.array([101, 101]))
+
+        np.testing.assert_array_equal(result["I"], [0, 1])
+        np.testing.assert_array_equal(result["R"], [101, 100])
+
+    @pytest.mark.parametrize("initial_value", [203, [102, 100]])
+    def test_over_capacity_rejected_without_default(self, initial_value):
+        with pytest.raises(ValueError, match="exceed population"):
+            calculate_compartment_initial_conditions(
+                [DummyCompartment(id="I", init=initial_value)], np.array([101, 101])
+            )
 
     def test_edge_case_init_just_below_one(self, population_array):
         """Test boundary case where init is just below 1.0 is treated as proportion."""
@@ -424,3 +487,488 @@ class TestCalculateCompartmentInitialConditions:
 
         expected = np.zeros_like(population_array)
         np.testing.assert_array_almost_equal(result["I"], expected)
+
+
+class TestInitialImmuneCompartment:
+    """Tests for Initial_immune compartment behavior (residual immunity)."""
+
+    @pytest.fixture
+    def population_array(self):
+        """Sample population array with 5 age groups."""
+        return np.array([10000, 20000, 30000, 40000, 50000])
+
+    @pytest.fixture
+    def total_population(self, population_array):
+        """Total population sum."""
+        return sum(population_array)
+
+    def test_calibrated_initial_immune_sets_initial_conditions(self, population_array, total_population):
+        """Verify Initial_immune prior value correctly sets initial conditions.
+
+        When Initial_immune is calibrated with a proportion (e.g., 0.20), it should
+        initialize 20% of the population in the Initial_immune compartment, with
+        the default compartment (S) receiving the remainder.
+        """
+        compartments = [
+            DummyCompartment(id="S", init="default"),
+            DummyCompartment(id="I", init=10),
+            DummyCompartment(id="R", init=0),
+            DummyCompartment(id="Initial_immune", init="calibrated"),  # Calibrated compartment
+        ]
+
+        # Simulate calibration providing Initial_immune = 0.20 (20% residual immunity)
+        params_dict = {"Initial_immune": 0.20}
+
+        result = calculate_compartment_initial_conditions(compartments, population_array, params_dict)
+
+        # Initial_immune should have 20% of population in each age group
+        expected_initial_immune = population_array * 0.20
+        np.testing.assert_array_almost_equal(result["Initial_immune"], expected_initial_immune)
+
+        # S (default) should receive remaining population minus I and Initial_immune
+        infected = np.array([1, 1, 2, 3, 3])
+        expected_S = population_array - infected - expected_initial_immune
+        np.testing.assert_array_equal(result["S"], expected_S)
+
+        # Verify total equals 20% of population
+        assert np.isclose(sum(result["Initial_immune"]), total_population * 0.20)
+
+    def test_initial_immune_compartment_no_transitions(self):
+        """Verify Initial_immune has no outgoing transitions (remains isolated).
+
+        The Initial_immune compartment should be a sink - population placed there
+        at initialization should not flow to other compartments.
+        """
+        from epymodelingsuite.schema.basemodel import Transition
+
+        # Define typical transitions for an SIR model with Initial_immune
+        transitions = [
+            Transition(source="S", target="I", type="mediated", rate="beta", mediator="I"),
+            Transition(source="I", target="R", type="spontaneous", rate="gamma"),
+        ]
+
+        # Verify Initial_immune is NOT a source in any transition
+        source_compartments = {t.source for t in transitions}
+        assert "Initial_immune" not in source_compartments, "Initial_immune should not be a transition source"
+
+        # Verify Initial_immune is NOT a target in any transition (except maybe vaccination)
+        target_compartments = {t.target for t in transitions}
+        assert "Initial_immune" not in target_compartments, "Initial_immune should not be a transition target"
+
+    def test_population_conservation_with_initial_immune(self, population_array, total_population):
+        """Verify total population is conserved when Initial_immune is used.
+
+        The sum of all compartments at initialization should equal the total population.
+        """
+        compartments = [
+            DummyCompartment(id="S", init="default"),
+            DummyCompartment(id="L", init=10),
+            DummyCompartment(id="I", init=0.02),
+            DummyCompartment(id="R", init=0),
+            DummyCompartment(id="Initial_immune", init="calibrated"),
+        ]
+
+        # Test with various Initial_immune values
+        for initial_immune_value in [0.05, 0.15, 0.25, 0.35]:
+            params_dict = {"Initial_immune": initial_immune_value}
+            result = calculate_compartment_initial_conditions(compartments, population_array, params_dict)
+
+            # Sum all compartments
+            total_initial = sum(sum(result[comp.id]) for comp in compartments)
+
+            # Should equal total population
+            assert np.isclose(total_initial, total_population, rtol=1e-5), (
+                f"Population not conserved with Initial_immune={initial_immune_value}. "
+                f"Got {total_initial}, expected {total_population}"
+            )
+
+    def test_initial_immune_reduces_susceptible_pool(self, population_array):
+        """Verify that Initial_immune reduces the susceptible pool appropriately.
+
+        Higher Initial_immune values should result in fewer susceptibles.
+        """
+        compartments = [
+            DummyCompartment(id="S", init="default"),
+            DummyCompartment(id="I", init=10),
+            DummyCompartment(id="R", init=0),
+            DummyCompartment(id="Initial_immune", init="calibrated"),
+        ]
+
+        # Calculate with low and high Initial_immune
+        low_immune = calculate_compartment_initial_conditions(compartments, population_array, {"Initial_immune": 0.10})
+        high_immune = calculate_compartment_initial_conditions(compartments, population_array, {"Initial_immune": 0.30})
+
+        # Higher Initial_immune should mean fewer susceptibles
+        assert sum(high_immune["S"]) < sum(low_immune["S"]), "Higher Initial_immune should reduce susceptible pool"
+
+        # The difference should be exactly the difference in Initial_immune
+        s_diff = sum(low_immune["S"]) - sum(high_immune["S"])
+        immune_diff = sum(high_immune["Initial_immune"]) - sum(low_immune["Initial_immune"])
+        assert np.isclose(s_diff, immune_diff, rtol=1e-5)
+
+    def test_initial_immune_without_calibrated_value_skipped(self, population_array):
+        """Verify that calibrated Initial_immune without params_dict value is skipped.
+
+        If Initial_immune is marked as 'calibrated' but no value is provided,
+        it should not appear in the initial conditions.
+        """
+        from epymodelingsuite.schema.basemodel import Compartment
+
+        compartments = [
+            Compartment(id="S", label="Susceptible", init="default"),
+            Compartment(id="I", label="Infected", init=10),
+            Compartment(id="Initial_immune", label="Initially immune", init="calibrated"),
+        ]
+
+        # No params_dict provided - Initial_immune should be skipped
+        result = calculate_compartment_initial_conditions(compartments, population_array, None)
+
+        # Initial_immune should not be in result (no value was provided)
+        assert "Initial_immune" not in result, "Initial_immune without value should be skipped"
+
+        # S should get all remaining population
+        infected = np.array([1, 1, 2, 3, 3])
+        expected_S = population_array - infected
+        np.testing.assert_array_equal(result["S"], expected_S)
+
+
+class TestParseAgeGroup:
+    """Tests for _parse_age_group function."""
+
+    def test_parse_simple_range(self):
+        """Test parsing a simple age range like '0-4'."""
+        result = _parse_age_group("0-4")
+        expected = ["0", "1", "2", "3", "4"]
+        assert result == expected
+
+    def test_parse_teenage_range(self):
+        """Test parsing a teenage age range like '5-17'."""
+        result = _parse_age_group("5-17")
+        expected = [str(i) for i in range(5, 18)]
+        assert result == expected
+        assert len(result) == 13
+
+    def test_parse_adult_range(self):
+        """Test parsing an adult age range like '18-49'."""
+        result = _parse_age_group("18-49")
+        expected = [str(i) for i in range(18, 50)]
+        assert result == expected
+        assert len(result) == 32
+
+    def test_parse_middle_age_range(self):
+        """Test parsing a middle age range like '50-64'."""
+        result = _parse_age_group("50-64")
+        expected = [str(i) for i in range(50, 65)]
+        assert result == expected
+        assert len(result) == 15
+
+    def test_parse_plus_notation(self):
+        """Test parsing plus notation like '65+'."""
+        result = _parse_age_group("65+")
+        # Should return ["65", "66", ..., "83", "84+"]
+        expected = [str(i) for i in range(65, 84)] + ["84+"]
+        assert result == expected
+        assert len(result) == 20  # 65-83 (19 ages) + "84+"
+
+    def test_parse_plus_notation_starts_with_84(self):
+        """Test parsing '84+' edge case."""
+        result = _parse_age_group("84+")
+        # Should return just ["84+"] since range(84, 84) is empty
+        expected = ["84+"]
+        assert result == expected
+
+    def test_parse_plus_notation_zero(self):
+        """Test parsing '0+' which represents all ages."""
+        result = _parse_age_group("0+")
+        # Should return ["0", "1", ..., "83", "84+"]
+        expected = [str(i) for i in range(84)] + ["84+"]
+        assert result == expected
+        assert len(result) == 85  # 0-83 (84 ages) + "84+"
+
+    def test_parse_single_age_range(self):
+        """Test parsing a single age like '5-5'."""
+        result = _parse_age_group("5-5")
+        expected = ["5"]
+        assert result == expected
+
+    def test_result_types_are_strings(self):
+        """Test that all returned values are strings."""
+        result = _parse_age_group("0-4")
+        assert all(isinstance(age, str) for age in result)
+
+        result_plus = _parse_age_group("65+")
+        assert all(isinstance(age, str) for age in result_plus)
+
+
+class TestLoadMetrocastPopulation:
+    """Tests for load_metrocast_population function."""
+
+    def test_loads_denver_population(self):
+        """Test loading population for Denver metrocast location."""
+        age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
+        population = load_metrocast_population("denver", age_groups)
+
+        assert population is not None
+        assert population.name == "metrocast_location_denver"
+        assert len(population.Nk) == len(age_groups)
+        assert all(nk > 0 for nk in population.Nk)
+
+    def test_loads_boston_population(self):
+        """Test loading population for Boston metrocast location."""
+        age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
+        population = load_metrocast_population("boston", age_groups)
+
+        assert population is not None
+        assert population.name == "metrocast_location_boston"
+        assert len(population.Nk) == len(age_groups)
+        assert all(nk > 0 for nk in population.Nk)
+
+    def test_loads_nc_flu_region_population(self):
+        """Test loading population for NC flu region (nenc)."""
+        age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
+        population = load_metrocast_population("nenc", age_groups)
+
+        assert population is not None
+        assert population.name == "metrocast_location_nenc"
+        assert len(population.Nk) == len(age_groups)
+
+    def test_has_contact_matrices(self):
+        """Test that loaded population has contact matrices from parent region.
+
+        This is a regression test for the fix where age_group_mapping was
+        incorrectly passed as contacts_source parameter.
+        """
+        age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
+        population = load_metrocast_population("denver", age_groups)
+
+        # Should have contact matrices inherited from parent region (Colorado)
+        assert population.contact_matrices is not None
+        assert len(population.contact_matrices) > 0
+        # Should have standard layers
+        assert "home" in population.layers or "community" in population.layers
+
+    def test_contact_matrix_dimensions_match_age_groups(self):
+        """Test that contact matrix dimensions match the number of age groups."""
+        age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
+        population = load_metrocast_population("denver", age_groups)
+
+        for layer, matrix in population.contact_matrices.items():
+            assert matrix.shape == (len(age_groups), len(age_groups)), (
+                f"Contact matrix for layer '{layer}' should have shape "
+                f"({len(age_groups)}, {len(age_groups)}), got {matrix.shape}"
+            )
+
+    def test_invalid_location_raises_error(self):
+        """Test that invalid metrocast location raises ValueError."""
+        age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
+        with pytest.raises(ValueError, match="No population data found"):
+            load_metrocast_population("invalid_location", age_groups)
+
+    def test_with_contact_matrix_override(self):
+        """Test loading population with contact matrix override."""
+        age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
+        # Use Texas contact matrix instead of Colorado for Denver
+        population = load_metrocast_population(
+            "denver",
+            age_groups,
+            contact_matrix_override="US-TX",
+        )
+
+        assert population is not None
+        assert population.name == "metrocast_location_denver"
+        # Contact matrices should be loaded from Texas
+        assert len(population.contact_matrices) > 0
+
+    def test_iso_contact_matrix_override_keeps_population(self):
+        """ISO override replaces only contact matrices; name and Nk stay from location_name."""
+        age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
+        ca_pop = load_iso_population("US-CA", age_groups)
+        ma_pop = load_iso_population("US-MA", age_groups)
+        population = load_iso_population("US-CA", age_groups, contact_matrix_override="US-MA")
+
+        assert population.name == ca_pop.name
+        np.testing.assert_array_equal(population.Nk, ca_pop.Nk)
+        for layer, matrix in ma_pop.contact_matrices.items():
+            np.testing.assert_array_equal(population.contact_matrices[layer], matrix)
+
+    def test_total_population_matches_input_data(self):
+        """Test that total population Nk matches the input metrocast data."""
+        age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
+
+        # Load population using the function
+        population = load_metrocast_population("denver", age_groups)
+
+        # Load raw data to compare
+        raw_data = get_metrocast_population_data()
+        denver_data = raw_data[raw_data["metrocast_location_id"] == "denver"]
+        expected_total = denver_data["population"].sum()
+
+        # Compare total population
+        actual_total = sum(population.Nk)
+        assert actual_total == expected_total, (
+            f"Total population mismatch for denver: expected {expected_total}, got {actual_total}"
+        )
+
+    def test_age_group_populations_match_input_data(self):
+        """Test that each age group population matches the aggregated input data."""
+        age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
+
+        # Load population using the function
+        population = load_metrocast_population("boston", age_groups)
+
+        # Load raw data to compare
+        raw_data = get_metrocast_population_data()
+        boston_data = raw_data[raw_data["metrocast_location_id"] == "boston"]
+
+        # Define age mapping (same as in load_metrocast_population)
+        age_group_ranges = {
+            "0-4": ["0", "1", "2", "3", "4"],
+            "5-17": [str(i) for i in range(5, 18)],
+            "18-49": [str(i) for i in range(18, 50)],
+            "50-64": [str(i) for i in range(50, 65)],
+            "65+": [str(i) for i in range(65, 84)] + ["84+"],
+        }
+
+        # Check each age group
+        for i, age_group in enumerate(age_groups):
+            ages = age_group_ranges[age_group]
+            expected_pop = 0
+            for age in ages:
+                age_rows = boston_data[boston_data["age"].astype(str) == age]
+                expected_pop += age_rows["population"].sum()
+
+            assert population.Nk[i] == expected_pop, (
+                f"Population mismatch for age group {age_group}: expected {expected_pop}, got {population.Nk[i]}"
+            )
+
+    def test_contact_matrix_inherited_from_parent_region(self):
+        """Test that contact matrices are inherited from parent region.
+
+        Denver is in Colorado, so its contact matrix should match US-CO.
+        """
+        age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
+
+        # Load metrocast population for Denver
+        denver_pop = load_metrocast_population("denver", age_groups)
+
+        # Load ISO population for Colorado (parent region)
+        colorado_pop = load_iso_population("US-CO", age_groups)
+
+        # Verify they have the same layers
+        assert set(denver_pop.layers) == set(colorado_pop.layers), (
+            f"Layer mismatch: Denver has {denver_pop.layers}, Colorado has {colorado_pop.layers}"
+        )
+
+        # Verify contact matrices are identical for each layer
+        for layer in denver_pop.layers:
+            np.testing.assert_array_equal(
+                denver_pop.contact_matrices[layer],
+                colorado_pop.contact_matrices[layer],
+                err_msg=f"Contact matrix mismatch for layer '{layer}' between Denver and Colorado",
+            )
+
+    def test_contact_matrix_inherited_boston_massachusetts(self):
+        """Test that Boston inherits contact matrix from Massachusetts (US-MA)."""
+        age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
+
+        boston_pop = load_metrocast_population("boston", age_groups)
+        ma_pop = load_iso_population("US-MA", age_groups)
+
+        assert set(boston_pop.layers) == set(ma_pop.layers)
+
+        for layer in boston_pop.layers:
+            np.testing.assert_array_equal(
+                boston_pop.contact_matrices[layer],
+                ma_pop.contact_matrices[layer],
+                err_msg=f"Contact matrix mismatch for layer '{layer}' between Boston and Massachusetts",
+            )
+
+    def test_contact_matrix_inherited_nenc_north_carolina(self):
+        """Test that NENC (NC flu region) inherits contact matrix from North Carolina (US-NC)."""
+        age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
+
+        nenc_pop = load_metrocast_population("nenc", age_groups)
+        nc_pop = load_iso_population("US-NC", age_groups)
+
+        assert set(nenc_pop.layers) == set(nc_pop.layers)
+
+        for layer in nenc_pop.layers:
+            np.testing.assert_array_equal(
+                nenc_pop.contact_matrices[layer],
+                nc_pop.contact_matrices[layer],
+                err_msg=f"Contact matrix mismatch for layer '{layer}' between NENC and North Carolina",
+            )
+
+    def test_state_level_location_uses_iso_population(self):
+        """Test that state-level metrocast locations use ISO population data."""
+        age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
+
+        # Load state-level metrocast location
+        colorado_metrocast = load_metrocast_population("colorado", age_groups)
+
+        # Load the corresponding ISO location
+        colorado_iso = load_iso_population("US-CO", age_groups)
+
+        # Both should have the same population values
+        np.testing.assert_array_equal(
+            colorado_metrocast.Nk,
+            colorado_iso.Nk,
+            err_msg="State-level metrocast population should match ISO population",
+        )
+
+    def test_state_level_location_has_metrocast_naming(self):
+        """Test that state-level metrocast locations use metrocast naming convention."""
+        age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
+
+        colorado_pop = load_metrocast_population("colorado", age_groups)
+
+        # Should use metrocast naming convention for output formatting
+        assert colorado_pop.name == "metrocast_location_colorado"
+
+    def test_state_level_location_has_contact_matrices(self):
+        """Test that state-level metrocast locations have contact matrices."""
+        age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
+
+        georgia_pop = load_metrocast_population("georgia", age_groups)
+
+        # Should have contact matrices from the state
+        assert georgia_pop.contact_matrices is not None
+        assert len(georgia_pop.contact_matrices) > 0
+
+    def test_state_level_contact_matrix_matches_iso(self):
+        """Test that state-level metrocast location contact matrices match ISO location."""
+        age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
+
+        massachusetts_metrocast = load_metrocast_population("massachusetts", age_groups)
+        massachusetts_iso = load_iso_population("US-MA", age_groups)
+
+        # Contact matrices should be identical
+        assert set(massachusetts_metrocast.layers) == set(massachusetts_iso.layers)
+
+        for layer in massachusetts_metrocast.layers:
+            np.testing.assert_array_equal(
+                massachusetts_metrocast.contact_matrices[layer],
+                massachusetts_iso.contact_matrices[layer],
+                err_msg=f"Contact matrix mismatch for layer '{layer}'",
+            )
+
+    def test_multiple_state_level_locations(self):
+        """Test multiple state-level locations to verify consistent behavior."""
+        age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
+
+        state_locations = ["colorado", "georgia", "texas", "north-carolina"]
+        iso_codes = ["US-CO", "US-GA", "US-TX", "US-NC"]
+
+        for state_loc, iso_code in zip(state_locations, iso_codes):
+            metrocast_pop = load_metrocast_population(state_loc, age_groups)
+            iso_pop = load_iso_population(iso_code, age_groups)
+
+            # Population values should match
+            np.testing.assert_array_equal(
+                metrocast_pop.Nk,
+                iso_pop.Nk,
+                err_msg=f"Population mismatch for {state_loc}",
+            )
+
+            # Name should use metrocast convention
+            assert metrocast_pop.name == f"metrocast_location_{state_loc}"

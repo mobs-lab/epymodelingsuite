@@ -5,7 +5,7 @@ from datetime import timedelta
 import pytest
 
 from epymodelingsuite.utils import parse_timedelta
-from epymodelingsuite.utils.common import parse_transition_name, strip_agegroup_suffix, to_set
+from epymodelingsuite.utils.common import parse_transition_name, strip_agegroup_suffix
 
 
 class TestParseTimedelta:
@@ -63,7 +63,7 @@ class TestParseTimedelta:
 
     def test_parse_compound_days_hours(self):
         """Test parsing compound duration like '2D3H'."""
-        result = parse_timedelta("2D3H")
+        result = parse_timedelta("2D3h")
         assert result == timedelta(days=2, hours=3)
 
     def test_parse_with_whitespace(self):
@@ -73,7 +73,7 @@ class TestParseTimedelta:
 
     def test_parse_fractional_hours(self):
         """Test parsing fractional hours."""
-        result = parse_timedelta("1.5H")
+        result = parse_timedelta("1.5h")
         assert result == timedelta(hours=1, minutes=30)
 
     def test_parse_week_with_anchor_sunday(self):
@@ -86,14 +86,27 @@ class TestParseTimedelta:
         result = parse_timedelta("W-MON")
         assert result == timedelta(weeks=1)
 
+    @pytest.mark.parametrize("anchor", ["W-SAT", "W-TUE", "W-THU"])
+    def test_parse_week_with_anchor_containing_t(self, anchor: str) -> None:
+        """Anchors containing 'T' are not rewritten as minutes."""
+        assert parse_timedelta(anchor) == timedelta(weeks=1)
+
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [("H", timedelta(hours=1)), ("h", timedelta(hours=1)), ("d", timedelta(days=1)), ("D", timedelta(days=1))],
+    )
+    def test_parse_unit_without_number(self, text: str, expected: timedelta) -> None:
+        """A bare unit means one of that unit."""
+        assert parse_timedelta(text) == expected
+
     def test_invalid_month_raises_error(self):
         """Test that variable-length month duration raises ValueError."""
-        with pytest.raises(ValueError, match="not a fixed-length duration"):
+        with pytest.raises(ValueError, match="(not a fixed-length duration|Unrecognized duration)"):
             parse_timedelta("M")
 
     def test_invalid_year_raises_error(self):
         """Test that variable-length year duration raises ValueError."""
-        with pytest.raises(ValueError, match="not a fixed-length duration"):
+        with pytest.raises(ValueError, match="(not a fixed-length duration|Unrecognized duration)"):
             parse_timedelta("A")
 
     def test_empty_string_raises_error(self):
@@ -113,7 +126,7 @@ class TestParseTimedelta:
 
     def test_large_duration(self):
         """Test parsing large duration."""
-        result = parse_timedelta("1000H")
+        result = parse_timedelta("1000h")
         assert result == timedelta(hours=1000)
 
     def test_microseconds(self):
@@ -131,26 +144,6 @@ class TestParseTimedelta:
         result = parse_timedelta("1000ns")
         # Note: timedelta precision is microseconds, so 1000ns = 1us
         assert result == timedelta(microseconds=1)
-
-
-class TestToSet:
-    """Tests for to_set function."""
-
-    def test_none_input(self):
-        """Test converting None to empty set."""
-        assert to_set(None) == set()
-
-    def test_list_input(self):
-        """Test converting list to set."""
-        assert to_set([1, 2, 3]) == {1, 2, 3}
-
-    def test_set_input(self):
-        """Test converting set to set."""
-        assert to_set({1, 2}) == {1, 2}
-
-    def test_empty_list(self):
-        """Test converting empty list to empty set."""
-        assert to_set([]) == set()
 
 
 class TestStripAgegroupSuffix:
