@@ -66,6 +66,7 @@ class TestSetupInterventions:
             Intervention(
                 type="school_closure",
                 label="School Closures",
+                scaling_factor=0.5,
             )
         ]
         models = sample_models
@@ -113,6 +114,7 @@ class TestSetupInterventions:
                 type="contact_matrix",
                 label="Contact Matrix Changes",
                 contact_matrix_layer="work",
+                scaling_factor=0.5,
                 start_date=date(2024, 3, 1),
                 end_date=date(2024, 6, 1),
             )
@@ -145,11 +147,12 @@ class TestSetupInterventions:
 
         # Mock interventions configuration
         base_model_config.interventions = [
-            Intervention(type="school_closure", label="School Closures"),
+            Intervention(type="school_closure", label="School Closures", scaling_factor=0.5),
             Intervention(
                 type="contact_matrix",
                 label="Contact Matrix",
                 contact_matrix_layer="work",
+                scaling_factor=0.5,
                 start_date=date(2024, 3, 1),
                 end_date=date(2024, 6, 1),
             ),
@@ -186,7 +189,9 @@ class TestSetupInterventions:
         """Test that basemodel.timespan is used when sampled_start_timespan is None."""
         from epymodelingsuite.schema.basemodel import Intervention
 
-        base_model_config.interventions = [Intervention(type="school_closure", label="School Closures")]
+        base_model_config.interventions = [
+            Intervention(type="school_closure", label="School Closures", scaling_factor=0.5)
+        ]
         models = sample_models
         intervention_types = ["school_closure"]
 
@@ -213,7 +218,9 @@ class TestSetupInterventions:
         """Test that sampled_start_timespan is used when provided instead of basemodel.timespan."""
         from epymodelingsuite.schema.basemodel import Intervention, Timespan
 
-        base_model_config.interventions = [Intervention(type="school_closure", label="School Closures")]
+        base_model_config.interventions = [
+            Intervention(type="school_closure", label="School Closures", scaling_factor=0.5)
+        ]
         models = sample_models
         intervention_types = ["school_closure"]
 
@@ -248,7 +255,9 @@ class TestSetupInterventions:
 
         # Create a multi-year timespan
         base_model_config.timespan = Timespan(start_date=date(2022, 6, 1), end_date=date(2024, 3, 31), delta_t=1.0)
-        base_model_config.interventions = [Intervention(type="school_closure", label="School Closures")]
+        base_model_config.interventions = [
+            Intervention(type="school_closure", label="School Closures", scaling_factor=0.5)
+        ]
         models = sample_models
         intervention_types = ["school_closure"]
 
@@ -345,11 +354,12 @@ class TestSetupInterventions:
         from epymodelingsuite.schema.basemodel import Intervention
 
         base_model_config.interventions = [
-            Intervention(type="school_closure", label="School Closures"),
+            Intervention(type="school_closure", label="School Closures", scaling_factor=0.5),
             Intervention(
                 type="contact_matrix",
                 label="Contact Matrix",
                 contact_matrix_layer="work",
+                scaling_factor=0.5,
                 start_date=date(2024, 3, 1),
                 end_date=date(2024, 6, 1),
             ),
@@ -389,7 +399,9 @@ class TestSetupInterventions:
         models, _ = create_model_collection(base_model_config, ["US-CA"])
 
         # Add school closure
-        base_model_config.interventions = [Intervention(type="school_closure", label="School Closures")]
+        base_model_config.interventions = [
+            Intervention(type="school_closure", label="School Closures", scaling_factor=0.5)
+        ]
         intervention_types = ["school_closure"]
 
         with (
@@ -424,6 +436,7 @@ class TestSetupInterventions:
                 type="contact_matrix",
                 label="Contact Matrix",
                 contact_matrix_layer="work",
+                scaling_factor=0.5,
                 start_date=date(2024, 3, 1),
                 end_date=date(2024, 6, 1),
             )
@@ -448,7 +461,9 @@ class TestSetupInterventions:
         """Test that the function returns the same list object (models are modified in place)."""
         from epymodelingsuite.schema.basemodel import Intervention
 
-        base_model_config.interventions = [Intervention(type="school_closure", label="School Closures")]
+        base_model_config.interventions = [
+            Intervention(type="school_closure", label="School Closures", scaling_factor=0.5)
+        ]
         models = sample_models
         intervention_types = ["school_closure"]
 
