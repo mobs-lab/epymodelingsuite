@@ -285,7 +285,9 @@ def create_submission(
         pop_data = df[df["location"] == pop]
         if trajectory_samples is not None:
             sample_tables.append(
-                _sample_rows(pop_data, reference_date, p, pop, location, value_col, trajectory_samples)
+                _build_location_trajectory_samples(
+                    pop_data, reference_date, p, pop, location, value_col, trajectory_samples
+                )
             )
 
         for horizon in p["horizons"]:
@@ -328,22 +330,34 @@ def create_submission(
     )
 
 
-def _sample_rows(  # noqa: PLR0913
+def _build_location_trajectory_samples(  # noqa: PLR0913
     pop_data: pd.DataFrame,
     reference_date: str,
     p: dict,
     pop: str,
     location: str,
     value_col: str,
-    samples: FlusightTrajectorySamples,
+    trajectory_samples: FlusightTrajectorySamples,
 ) -> pd.DataFrame:
-    """Select trajectories of one location and format them as 'sample' rows."""
+    """
+    Build the hub 'sample' rows of one location from its aggregated trajectories.
+
+    Multistrain counterpart of the per-location body of `build_flusight_trajectory_samples`: reshapes the
+    long trajectories into a (sample_id x horizon) array, then selects and formats them with the shared
+    `select_trajectory_indices` and `trajectories_to_sample_rows`.
+    """
     target_dates = [pd.to_datetime(reference_date) + pd.Timedelta(weeks=h) for h in p["horizons"]]
     values = pop_data.pivot(index="sample_id", columns="date", values=value_col).reindex(columns=target_dates)
     values = values.to_numpy(dtype=float)
-    selected = values[select_trajectory_indices(values, samples.n_samples, samples.method, samples.seed)]
-    if len(selected) < samples.n_samples:
-        print(f"  WARNING: only {len(selected)} complete trajectories for {location} (requested {samples.n_samples}).")
+    selected = values[
+        select_trajectory_indices(
+            values, trajectory_samples.n_samples, trajectory_samples.method, trajectory_samples.seed
+        )
+    ]
+    if len(selected) < trajectory_samples.n_samples:
+        print(
+            f"  WARNING: only {len(selected)} complete trajectories for {location} (requested {trajectory_samples.n_samples})."
+        )
     prefix = p["sample_prefix"](pop) if p["sample_prefix"] else None
     rows = trajectories_to_sample_rows(selected, p["horizons"], reference_date, location, p["target"], prefix)
     # Match the quantile rows: the given reference_date and 'YYYY-MM-DD' target dates
