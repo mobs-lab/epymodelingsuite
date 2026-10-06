@@ -353,13 +353,36 @@ def _build_location_trajectory_samples(  # noqa: PLR0913
     """
     Build the hub 'sample' rows of one location from its aggregated trajectories.
 
-    `population` is the epydemix name (used for the sample id prefix, e.g. "MA00"), `location` the hub location
-    id written to the rows (e.g. "25"), and `population_trajectories` that population's rows of the aggregated
-    trajectories (all sample_ids and dates).
+    Multistrain counterpart of the per-location body of `build_flusight_trajectory_samples`. Reshapes the long
+    trajectories into a (sample_id x horizon) array, then selects and formats them with the shared
+    `select_trajectory_indices` and `trajectories_to_sample_rows`. Trajectories missing any horizon are never
+    selected; if fewer than `trajectory_samples.n_samples` complete ones remain, all are used and a warning is
+    printed.
 
-    Multistrain counterpart of the per-location body of `build_flusight_trajectory_samples`: reshapes the
-    long trajectories into a (sample_id x horizon) array, then selects and formats them with the shared
-    `select_trajectory_indices` and `trajectories_to_sample_rows`.
+    Parameters
+    ----------
+    population_trajectories : pd.DataFrame
+        This population's rows of the aggregated trajectories (all sample_ids and dates), with `sample_id`,
+        `date` and `value_col` columns.
+    reference_date : str
+        Reference date of the submission (horizon 0). Written as is to the `reference_date` column.
+    profile_spec : dict
+        Entry of `SUBMISSION_PROFILES`. Uses its `horizons`, `target` and `sample_prefix`.
+    population : str
+        Epydemix population name (e.g. "United_States__Massachusetts"). Only used to build the sample id
+        prefix via `profile_spec["sample_prefix"]` (e.g. "MA" -> "MA00", "MA01", ...).
+    location : str
+        Hub location id written to the rows (e.g. "25").
+    value_col : str
+        Column of `population_trajectories` with the values to sample, the same one the quantiles use.
+    trajectory_samples : FlusightTrajectorySamples
+        Number of samples, selection method and seed.
+
+    Returns
+    -------
+    pd.DataFrame
+        One row per selected trajectory and horizon with the 8 hubverse columns, `output_type` "sample".
+        `target_end_date` is a 'YYYY-MM-DD' string, matching the quantile rows.
     """
     target_dates = [pd.to_datetime(reference_date) + pd.Timedelta(weeks=h) for h in profile_spec["horizons"]]
     values = population_trajectories.pivot(index="sample_id", columns="date", values=value_col).reindex(
