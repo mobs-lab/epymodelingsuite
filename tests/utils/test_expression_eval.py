@@ -70,6 +70,26 @@ class TestCalculateParameters:
         calculate_parameters_from_config(model, parameters, None)
         assert np.isclose(model.get_parameter("R0"), 3.0)
 
+    @pytest.mark.parametrize(
+        ("expr", "values", "expected"),
+        [
+            ("1 - np.exp(-mu*delta_t)", {"mu": 0.5, "delta_t": 1.0}, 1 - np.exp(-0.5)),
+            (
+                "Reff*(1-np.exp(-mu*delta_t))/(eig*delta_t*(1-R))",
+                {"Reff": 1.2, "mu": 0.5, "delta_t": 1.0, "eig": 15.0, "R": 0.3},
+                1.2 * (1 - np.exp(-0.5)) / (15.0 * 0.7),
+            ),
+            ("1/(omega_months*days_per_month)", {"omega_months": 5, "days_per_month": 30}, 1 / 150),
+        ],
+        ids=["np_call", "beta_expression", "plain_arithmetic"],
+    )
+    def test_calculated_expression_regressions(self, model, expr, values, expected):
+        """Cover the parameter-substitution expressions reported in PR #290."""
+        model.add_parameter(parameters_dict=values)
+        parameters = {"result": Parameter(type="calculated", value=expr)}
+        calculate_parameters_from_config(model, parameters, None)
+        assert np.isclose(model.get_parameter("result"), expected)
+
     def test_age_varying(self, model):
         parameters = {"scaled": Parameter(type="calculated", value="susceptibility / (1 - 0.5)")}
         calculate_parameters_from_config(model, parameters, None)
