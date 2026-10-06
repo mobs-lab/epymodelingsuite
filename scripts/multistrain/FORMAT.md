@@ -83,7 +83,7 @@ The config's `profile` picks the hub format. Everything that differs between hub
 - FluSight quantiles: `0.01, 0.025, 0.05, 0.1, 0.15, …, 0.9, 0.95, 0.975, 0.99`.
 - Metrocast quantiles: `0.025, 0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.975`.
 - `flusight_hosp` pmf rows: target `wk flu hosp rate change`, horizons 0..3, `output_type_id` in `large_decrease`, `decrease`, `stable`, `increase`, `large_increase`. The baseline is the observed value at `reference_date - 1 week` from the surveillance file, so this profile needs `surveillance` in its config. The other profiles don't.
-- `sample` rows are only written when the config has `samples`. Up to `samples.n_samples` trajectories per location are picked (`select_trajectory_indices` in `epymodelingsuite/output/trajectory_samples.py`) from the same `aggregated.target_column` as the quantiles, over the profile's horizons. Trajectories missing any horizon are never picked, and fewer complete trajectories means fewer samples (with a warning). Values follow the single-strain FluSight output, not the profile's decimals: `wk inc flu hosp` is rounded to integers, ED percentages and proportions are clipped to their range, and `wk inc ed signal` is left as is. Sample ids are `<state abbreviation>00`, `01`, … for `flusight_*` and `1`, `2`, … per location for `metrocast` / `bphc_ed`, so samples are independent across locations. Selection is unseeded unless `samples.seed` is set.
+- `sample` rows are only written when the config has `trajectory_samples`. Up to `trajectory_samples.n_samples` trajectories per location are picked (`select_trajectory_indices` in `epymodelingsuite/output/trajectory_samples.py`) from the same `aggregated.target_column` as the quantiles, over the profile's horizons. Trajectories missing any horizon are never picked, and fewer complete trajectories means fewer samples (with a warning). Values follow the single-strain FluSight output, not the profile's decimals: `wk inc flu hosp` is rounded to integers, ED percentages and proportions are clipped to their range, and `wk inc ed signal` is left as is. Sample ids are `<state abbreviation>00`, `01`, … for `flusight_*` and `1`, `2`, … per location for `metrocast` / `bphc_ed`, so samples are independent across locations. Selection is unseeded unless `trajectory_samples.seed` is set.
 
 ## Commands
 
@@ -134,7 +134,7 @@ submission:
     directory: ../flu-forecast-epydemix/common-data/surveillance
     fit_fname: flu_hosp_25_202616_prelim.csv
     location_column: location_code    # column holding hub location ids (FIPS here)
-  samples:                            # optional, adds 'sample' rows
+  trajectory_samples:                 # optional, adds 'sample' rows
     n_samples: 100
     seed: 1337
 ```

@@ -90,7 +90,7 @@ def test_submission_samples(profile):
     samples = FlusightTrajectorySamples(n_samples=10, seed=1)
 
     sub = create_submission(
-        _trajectories(populations), REFERENCE_DATE, profile, surveillance_df=surveillance, samples=samples
+        _trajectories(populations), REFERENCE_DATE, profile, surveillance_df=surveillance, trajectory_samples=samples
     )
 
     rows = sub[sub["output_type"] == "sample"]
@@ -110,7 +110,9 @@ def test_samples_skip_incomplete_trajectories():
     horizon_0 = pd.Timestamp(REFERENCE_DATE)
     df = df[~((df["sample_id"] < 45) & (df["date"] == horizon_0))]
 
-    sub = create_submission(df, REFERENCE_DATE, "flusight_ed", samples=FlusightTrajectorySamples(n_samples=10, seed=1))
+    sub = create_submission(
+        df, REFERENCE_DATE, "flusight_ed", trajectory_samples=FlusightTrajectorySamples(n_samples=10, seed=1)
+    )
 
     assert sub[sub["output_type"] == "sample"]["output_type_id"].nunique() == 5
 

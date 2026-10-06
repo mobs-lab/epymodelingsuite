@@ -246,7 +246,7 @@ def create_submission(
     profile: str,
     value_col: str = "target_total",
     surveillance_df: pd.DataFrame | None = None,
-    samples: FlusightTrajectorySamples | None = None,
+    trajectory_samples: FlusightTrajectorySamples | None = None,
 ) -> pd.DataFrame:
     """
     Create a hubverse submission file from sampled trajectories.
@@ -264,9 +264,9 @@ def create_submission(
     surveillance_df : pd.DataFrame | None
         Observed `date`, `location`, `target` (see `read_surveillance`) for the rate-trend baseline.
         Required when the profile has `pmf`.
-    samples : FlusightTrajectorySamples | None
-        If given, add up to `samples.n_samples` trajectories per location from `value_col` as the 'sample'
-        output type. Trajectories missing any horizon are never selected. Unseeded unless `samples.seed` is set.
+    trajectory_samples : FlusightTrajectorySamples | None
+        If given, add up to `trajectory_samples.n_samples` trajectories per location from `value_col` as the 'sample'
+        output type. Trajectories missing any horizon are never selected. Unseeded unless `trajectory_samples.seed` is set.
 
     Returns
     -------
@@ -283,8 +283,10 @@ def create_submission(
     for pop in df["location"].unique():
         location = p["location"](pop)
         pop_data = df[df["location"] == pop]
-        if samples is not None:
-            sample_tables.append(_sample_rows(pop_data, reference_date, p, pop, location, value_col, samples))
+        if trajectory_samples is not None:
+            sample_tables.append(
+                _sample_rows(pop_data, reference_date, p, pop, location, value_col, trajectory_samples)
+            )
 
         for horizon in p["horizons"]:
             target_end_date = reference_date_dt + pd.Timedelta(weeks=horizon)

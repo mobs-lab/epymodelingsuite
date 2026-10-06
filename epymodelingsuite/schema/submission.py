@@ -56,10 +56,10 @@ class SubmissionConfiguration(BaseModel):
         None, description="Surveillance file for the rate-trend baseline. Only needed by 'flusight_hosp'."
     )
     aggregated: AggregatedTrajectoriesConfig = Field(description="Specifications for aggregated trajectories.")
-    samples: FlusightTrajectorySamples | None = Field(
+    trajectory_samples: FlusightTrajectorySamples | None = Field(
         None,
         description="Trajectory samples ('sample' output type) drawn from `aggregated.target_column`. "
-        "Unseeded unless `samples.seed` is set. Omit for no samples.",
+        "Unseeded unless `trajectory_samples.seed` is set. Omit for no samples.",
     )
 
     @model_validator(mode="after")
