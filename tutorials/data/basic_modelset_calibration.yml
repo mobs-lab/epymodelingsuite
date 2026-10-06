@@ -12,7 +12,7 @@ modelset:
   calibration:
 
     strategy:
-      name: SMC
+      name: smc
       options: # strategy specific arguments in calibrate() function
         num_particles: 100
         num_generations: 5

@@ -64,7 +64,12 @@ def load_sampling_config_from_file(path: str) -> SamplingConfig:
     with Path(path).open() as f:
         raw = yaml.safe_load(f)
 
-    root = validate_sampling(raw)
+    try:
+        root = validate_sampling(raw)
+    except ValueError as e:
+        msg = f"Invalid sampling configuration file '{path}': {e}"
+        logger.error(msg)  # noqa: TRY400 - log a concise config error without duplicating its traceback
+        raise ValueError(msg) from e
     logger.info("Sampling configuration loaded successfully.")
     return root
 
@@ -88,7 +93,12 @@ def load_calibration_config_from_file(path: str) -> CalibrationConfig:
     with Path(path).open() as f:
         raw = yaml.safe_load(f)
 
-    root = validate_calibration(raw)
+    try:
+        root = validate_calibration(raw)
+    except ValueError as e:
+        msg = f"Invalid calibration configuration file '{path}': {e}"
+        logger.error(msg)  # noqa: TRY400 - log a concise config error without duplicating its traceback
+        raise ValueError(msg) from e
     logger.info("Calibration configuration loaded successfully.")
     return root
 

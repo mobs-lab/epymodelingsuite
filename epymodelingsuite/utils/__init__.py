@@ -17,7 +17,7 @@ from .common import parse_timedelta
 from .config import identify_config_type
 from .data import fetch_hhs_hospitalizations
 from .distance import wrmse
-from .distributions import distribution_to_scipy
+from .distributions import distribution_to_scipy, validate_distribution
 from .epydemix_data import EPYDEMIX_DATA_VERSION, get_available_locations, load_epydemix_population
 from .expression_eval import RetrieveName, SafeEvalVisitor, safe_eval
 from .formatting import format_data_size, format_duration
@@ -35,6 +35,7 @@ __all__ = [
     "wrmse",
     # Distribution utilities
     "distribution_to_scipy",
+    "validate_distribution",
     # epydemix-data (pinned)
     "EPYDEMIX_DATA_VERSION",
     "get_available_locations",

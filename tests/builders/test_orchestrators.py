@@ -69,6 +69,18 @@ class TestCreateModelCollection:
         for model, expected_name in zip(models, expected_names, strict=False):
             assert model.population.name == expected_name
 
+    def test_dict_population_form(self, base_model_config):
+        """Test that the {name, type} dict form resolves like the string form."""
+        models, resolved_names = create_model_collection(base_model_config, [{"name": "US-CA", "type": "iso"}])
+
+        assert resolved_names == ["US-CA"]
+        assert models[0].population.name == "United_States__California"
+
+    def test_rejects_invalid_population(self, base_model_config):
+        """Test that unknown locations raise instead of being assumed metrocast."""
+        with pytest.raises(ValueError, match="Invalid metrocast location: notaplace"):
+            create_model_collection(base_model_config, ["notaplace"])
+
     def test_expands_all_keyword_to_all_locations(self, base_model_config):
         """Test that 'all' in population_names expands to all locations in codebook."""
         # Mock codebook with 3 locations (major + minor states) for faster testing
@@ -83,7 +95,7 @@ class TestCreateModelCollection:
             }
         )
 
-        with patch("epymodelingsuite.builders.orchestrators.get_location_codebook", return_value=mock_codebook):
+        with patch("epymodelingsuite.utils.location.get_location_codebook", return_value=mock_codebook):
             population_names = ["all"]
             models, resolved_names = create_model_collection(base_model_config, population_names)
 
@@ -109,7 +121,7 @@ class TestCreateModelCollection:
             }
         )
 
-        with patch("epymodelingsuite.builders.orchestrators.get_location_codebook", return_value=mock_codebook):
+        with patch("epymodelingsuite.utils.location.get_location_codebook", return_value=mock_codebook):
             population_names = ["all-states"]
             models, resolved_names = create_model_collection(base_model_config, population_names)
 
@@ -139,7 +151,7 @@ class TestCreateModelCollection:
 
         with (
             patch(
-                "epymodelingsuite.builders.orchestrators.get_metrocast_locations",
+                "epymodelingsuite.utils.location.get_metrocast_locations",
                 return_value=mock_metrocast,
             ),
             patch("epymodelingsuite.builders.orchestrators.set_population_from_config"),
@@ -171,7 +183,7 @@ class TestCreateModelCollection:
 
         with (
             patch(
-                "epymodelingsuite.builders.orchestrators.get_metrocast_locations",
+                "epymodelingsuite.utils.location.get_metrocast_locations",
                 return_value=mock_metrocast,
             ),
             patch("epymodelingsuite.builders.orchestrators.set_population_from_config"),

@@ -934,7 +934,7 @@ class TestStrategyInfoCapture:
 
         assert len(telemetry.runner["models"]) == 1
         model = telemetry.runner["models"][0]
-        assert model["calibration"]["strategy"] == "SMC"
+        assert model["calibration"]["strategy"] == "smc"
         assert model["calibration"]["num_particles"] == 100
         assert model["calibration"]["num_generations_requested"] == 5
         # max_time should not be included (only particles, generations, distance_function)
@@ -959,7 +959,7 @@ class TestStrategyInfoCapture:
 
         assert len(telemetry.runner["models"]) == 1
         model = telemetry.runner["models"][0]
-        assert model["calibration"]["strategy"] == "SMC"
+        assert model["calibration"]["strategy"] == "smc"
         assert model["calibration"]["num_particles"] == 100
         assert model["calibration"]["num_generations_requested"] == 5
 

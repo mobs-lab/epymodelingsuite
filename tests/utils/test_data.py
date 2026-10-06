@@ -344,6 +344,36 @@ class TestFetchHHSHospitalizations:
             limit=100000,
         )
 
+    @patch("epymodelingsuite.utils.data.Socrata")
+    @patch("epymodelingsuite.utils.data.get_flusight_locations")
+    def test_reporting_frac_and_missing_counts(self, mock_get_locations, mock_socrata_class, mock_locations_data):
+        """Test reporting fractions are normalized and missing counts stay NaN when requested."""
+        mock_client = MagicMock()
+        mock_client.get.return_value = [
+            {
+                "weekendingdate": "2024-10-19T00:00:00.000",
+                "jurisdiction": "CA",
+                "totalconfflunewadm": "150",
+                "totalconfflunewadmperchosprep": "80",
+            },
+            {
+                "weekendingdate": "2024-10-19T00:00:00.000",
+                "jurisdiction": "TX",
+                "totalconfflunewadm": None,
+                "totalconfflunewadmperchosprep": "0",
+            },
+        ]
+        mock_socrata_class.return_value = mock_client
+        mock_get_locations.return_value = mock_locations_data
+
+        result = fetch_hhs_hospitalizations(include_reporting_frac=True, preserve_missing_counts=True)
+
+        assert list(result.columns)[-1] == "reporting_frac"
+        by_location = result.set_index("location_iso")
+        assert by_location.loc["US-CA", "reporting_frac"] == 0.8
+        assert by_location.loc["US-TX", "reporting_frac"] == 0.0
+        assert pd.isna(by_location.loc["US-TX", "hospitalizations"])
+
     def test_invalid_data_type(self):
         """Test that invalid data_type raises ValueError."""
         with pytest.raises(ValueError, match="Invalid data_type"):
