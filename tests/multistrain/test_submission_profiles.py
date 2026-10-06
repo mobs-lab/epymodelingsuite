@@ -3,6 +3,7 @@ import pandas as pd
 import pytest
 
 from epymodelingsuite.multistrain.formatter import SUBMISSION_PROFILES, create_submission
+from epymodelingsuite.schema.output import FlusightTrajectorySamples
 from epymodelingsuite.schema.submission import SubmissionProfile, validate_submission
 
 REFERENCE_DATE = "2026-04-25"
@@ -71,6 +72,47 @@ def test_submission_profile(profile):
         assert np.allclose(pmf.groupby(["location", "horizon"])["value"].sum(), 1)
     else:
         assert pmf.empty
+
+
+SAMPLE_IDS = {
+    "flusight_hosp": {"US": "US00", "25": "MA00"},
+    "flusight_ed": {"US": "US00", "25": "MA00"},
+    "metrocast": {"boston": "1", "denver": "1"},
+    "bphc_ed": {"boston-all": "1"},
+}
+
+
+@pytest.mark.parametrize("profile", list(SUBMISSION_PROFILES))
+def test_submission_samples(profile):
+    populations, locations = POPULATIONS[profile]
+    target, horizons, _ = EXPECTED[profile]
+    surveillance = _surveillance() if SUBMISSION_PROFILES[profile]["pmf"] else None
+    samples = FlusightTrajectorySamples(n_samples=10, seed=1)
+
+    sub = create_submission(
+        _trajectories(populations), REFERENCE_DATE, profile, surveillance_df=surveillance, samples=samples
+    )
+
+    rows = sub[sub["output_type"] == "sample"]
+    assert set(rows["target"]) == {target}
+    assert len(rows) == len(locations) * len(horizons) * 10
+    for location, first_id in SAMPLE_IDS[profile].items():
+        loc_rows = rows[rows["location"] == location]
+        assert loc_rows["output_type_id"].nunique() == 10
+        assert first_id in set(loc_rows["output_type_id"])
+        # every sample covers every horizon
+        assert all(sorted(h) == horizons for h in loc_rows.groupby("output_type_id")["horizon"].apply(list))
+    assert (rows["target_end_date"].map(type) == str).all()
+
+
+def test_samples_skip_incomplete_trajectories():
+    df = _trajectories(["United_States"])
+    horizon_0 = pd.Timestamp(REFERENCE_DATE)
+    df = df[~((df["sample_id"] < 45) & (df["date"] == horizon_0))]
+
+    sub = create_submission(df, REFERENCE_DATE, "flusight_ed", samples=FlusightTrajectorySamples(n_samples=10, seed=1))
+
+    assert sub[sub["output_type"] == "sample"]["output_type_id"].nunique() == 5
 
 
 def test_pmf_profile_requires_surveillance():

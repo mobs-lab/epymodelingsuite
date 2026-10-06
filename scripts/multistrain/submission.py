@@ -65,6 +65,7 @@ def main():
         profile=config.profile,
         value_col=config.aggregated.target_column,
         surveillance_df=surv_fit,
+        samples=config.samples,
     )
     print(submission.groupby(["target", "output_type"]).size())
     sub_file = subs_path / f"{reference_date}-{config.model_name}.csv"

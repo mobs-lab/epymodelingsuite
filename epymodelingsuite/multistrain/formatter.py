@@ -1,6 +1,8 @@
 import pandas as pd
 
+from ..output.trajectory_samples import select_trajectory_indices, trajectories_to_sample_rows
 from ..schema.output import (
+    FlusightTrajectorySamples,
     get_flusight_categorical_horizons,
     get_flusight_horizons,
     get_flusight_quantiles,
@@ -186,12 +188,18 @@ def _epydemix_to_fips(population: str) -> str:
     )
 
 
+def _epydemix_to_abbreviation(population: str) -> str:
+    return convert_location_name_format(value=population, output_format="abbreviation", location_type="iso")
+
+
 def _strip_metrocast_prefix(population: str) -> str:
     return population.removeprefix("metrocast_location_")
 
 
 # Everything that differs between hub submission files. `location` maps an epydemix population name to the
 # hub location id. `pmf` adds the FluSight rate-trend target, which needs surveillance for the baseline.
+# `sample_prefix` maps the population to the prefix of sample ids (`MA00`, ...); None numbers them 1, 2, ...
+# per location, as Metrocast does.
 SUBMISSION_PROFILES = {
     "flusight_hosp": {
         "location": _epydemix_to_fips,
@@ -200,6 +208,7 @@ SUBMISSION_PROFILES = {
         "horizons": list(get_flusight_horizons()),
         "quantiles": get_flusight_quantiles(),
         "pmf": True,
+        "sample_prefix": _epydemix_to_abbreviation,
     },
     "flusight_ed": {
         "location": _epydemix_to_fips,
@@ -208,6 +217,7 @@ SUBMISSION_PROFILES = {
         "horizons": list(get_flusight_horizons()),
         "quantiles": get_flusight_quantiles(),
         "pmf": False,
+        "sample_prefix": _epydemix_to_abbreviation,
     },
     "metrocast": {
         "location": _strip_metrocast_prefix,
@@ -216,6 +226,7 @@ SUBMISSION_PROFILES = {
         "horizons": list(get_metrocast_horizons()),
         "quantiles": get_metrocast_quantiles(),
         "pmf": False,
+        "sample_prefix": None,
     },
     "bphc_ed": {
         "location": _strip_metrocast_prefix,
@@ -224,6 +235,7 @@ SUBMISSION_PROFILES = {
         "horizons": list(get_flusight_horizons()),
         "quantiles": get_flusight_quantiles(),
         "pmf": False,
+        "sample_prefix": None,
     },
 }
 
@@ -234,6 +246,7 @@ def create_submission(
     profile: str,
     value_col: str = "target_total",
     surveillance_df: pd.DataFrame | None = None,
+    samples: FlusightTrajectorySamples | None = None,
 ) -> pd.DataFrame:
     """
     Create a hubverse submission file from sampled trajectories.
@@ -251,6 +264,9 @@ def create_submission(
     surveillance_df : pd.DataFrame | None
         Observed `date`, `location`, `target` (see `read_surveillance`) for the rate-trend baseline.
         Required when the profile has `pmf`.
+    samples : FlusightTrajectorySamples | None
+        If given, add up to `samples.n_samples` trajectories per location from `value_col` as the 'sample'
+        output type. Trajectories missing any horizon are never selected. Unseeded unless `samples.seed` is set.
 
     Returns
     -------
@@ -263,9 +279,12 @@ def create_submission(
     reference_date_dt = pd.to_datetime(reference_date)
 
     results = []
+    sample_tables = []
     for pop in df["location"].unique():
         location = p["location"](pop)
         pop_data = df[df["location"] == pop]
+        if samples is not None:
+            sample_tables.append(_sample_rows(pop_data, reference_date, p, pop, location, value_col, samples))
 
         for horizon in p["horizons"]:
             target_end_date = reference_date_dt + pd.Timedelta(weeks=horizon)
@@ -287,7 +306,7 @@ def create_submission(
                         "value": round(target_data.quantile(q), p["decimals"]),
                     }
                 )
-    submission = pd.DataFrame(results)
+    submission = pd.concat([pd.DataFrame(results), *sample_tables], ignore_index=True)
 
     if p["pmf"]:
         if surveillance_df is None:
@@ -305,6 +324,30 @@ def create_submission(
     return submission.sort_values(["location", "target", "horizon", "output_type", "output_type_id"]).reset_index(
         drop=True
     )
+
+
+def _sample_rows(  # noqa: PLR0913
+    pop_data: pd.DataFrame,
+    reference_date: str,
+    p: dict,
+    pop: str,
+    location: str,
+    value_col: str,
+    samples: FlusightTrajectorySamples,
+) -> pd.DataFrame:
+    """Select trajectories of one location and format them as 'sample' rows."""
+    target_dates = [pd.to_datetime(reference_date) + pd.Timedelta(weeks=h) for h in p["horizons"]]
+    values = pop_data.pivot(index="sample_id", columns="date", values=value_col).reindex(columns=target_dates)
+    values = values.to_numpy(dtype=float)
+    selected = values[select_trajectory_indices(values, samples.n_samples, samples.method, samples.seed)]
+    if len(selected) < samples.n_samples:
+        print(f"  WARNING: only {len(selected)} complete trajectories for {location} (requested {samples.n_samples}).")
+    prefix = p["sample_prefix"](pop) if p["sample_prefix"] else None
+    rows = trajectories_to_sample_rows(selected, p["horizons"], reference_date, location, p["target"], prefix)
+    # Match the quantile rows: the given reference_date and 'YYYY-MM-DD' target dates
+    rows["reference_date"] = reference_date
+    rows["target_end_date"] = [d.strftime("%Y-%m-%d") for d in rows["target_end_date"]]
+    return rows
 
 
 def _pmf_rows(pmf_df: pd.DataFrame, reference_date: str) -> pd.DataFrame:
