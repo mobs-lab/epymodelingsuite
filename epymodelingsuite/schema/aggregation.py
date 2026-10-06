@@ -58,7 +58,8 @@ class BaselineStrategyEnum(str, Enum):
     Strategy for post-aggregation baseline noise addition.
     """
 
-    negative_binomial = "negative_binomial"
+    negative_binomial = "negative_binomial"  # counts, e.g. hospitalizations
+    beta = "beta"  # proportions in (0, 1), e.g. ED visits; stub
 
 
 class SamplingConfiguration(BaseModel):

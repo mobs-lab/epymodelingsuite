@@ -392,37 +392,77 @@ def dispatch_strain_aggregator(
 
 
 def _baseline_negative_binomial(
-    aggregated_trajectories: pd.DataFrame,
-    combined: pd.DataFrame,
-    kvals: int | list[int],
+    aggregated: pd.DataFrame,
+    baseline_means: pd.Series,
+    kvals: list[int],
+    rng: np.random.Generator,
 ) -> pd.DataFrame:
     """
-    Dispatch post-aggregation baseline addition.
+    Add negative binomial baseline noise for count targets (e.g. hospitalizations).
 
     Parameters
     ----------
-    aggregated_trajectories: pd.DataFrame
-        DataFrame with aggregated trajectories
-    config: AggregationConfiguration
-        Config object with settings
+    aggregated : pd.DataFrame
+        Aggregated trajectories with column "target_total".
+    baseline_means : pd.Series
+        Baseline mean of each row's location, aligned with `aggregated`.
+    kvals : list[int]
+        Dispersion parameters; one output column per value.
+    rng : np.random.Generator
+        Random number generator.
 
     Returns
     -------
     pd.DataFrame
-        DataFrame with baseline noise added to aggregated trajectories in columns "target_baseline_k{dispersion_parameter}"
+        `aggregated` with "target_baseline_k{k}" = "target_total" + NegBin(mean=baseline, dispersion=k).
     """
-    rng = np.random.default_rng()
-    aggregated = aggregated_trajectories.copy()
-
-    if not isinstance(kvals, list):
-        kvals = [kvals]
-
     for k in kvals:
-        p_vals = k / (k + combined["baseline"])
-        baseline_sample = rng.negative_binomial(k, p_vals)
-        aggregated[f"target_baseline_k{k}"] = combined["target_total"] + baseline_sample
-
+        p_vals = k / (k + baseline_means.to_numpy())
+        aggregated[f"target_baseline_k{k}"] = aggregated["target_total"].to_numpy() + rng.negative_binomial(k, p_vals)
     return aggregated
+
+
+def _baseline_beta(
+    aggregated: pd.DataFrame,
+    baseline_means: pd.Series,
+    kvals: list[int],
+    rng: np.random.Generator,
+) -> pd.DataFrame:
+    """
+    Add beta baseline noise for proportion targets (e.g. ED visit proportions).
+
+    Stub until the ED baseline method is decided: the noise is Beta(mean=baseline, concentration=k), i.e.
+    a = baseline * k and b = (1 - baseline) * k, so baseline means must be proportions in (0, 1).
+
+    Parameters
+    ----------
+    aggregated : pd.DataFrame
+        Aggregated trajectories with column "target_total".
+    baseline_means : pd.Series
+        Baseline mean of each row's location, aligned with `aggregated`.
+    kvals : list[int]
+        Concentration parameters (larger is less noisy); one output column per value.
+    rng : np.random.Generator
+        Random number generator.
+
+    Returns
+    -------
+    pd.DataFrame
+        `aggregated` with "target_baseline_k{k}" = "target_total" + Beta(mean=baseline, concentration=k).
+    """
+    means = baseline_means.to_numpy()
+    if ((means <= 0) | (means >= 1)).any():
+        raise ValueError("Beta baseline needs baseline means in (0, 1), i.e. proportions.")
+    for k in kvals:
+        aggregated[f"target_baseline_k{k}"] = aggregated["target_total"].to_numpy() + rng.beta(
+            means * k, (1 - means) * k
+        )
+    return aggregated
+
+
+# Columns of the baseline files that may hold the trajectories' epydemix location names:
+# new epydemix names ("United_States__Alabama"), old ones ("United_States_Alabama"), and metrocast populations.
+BASELINE_LOCATION_COLUMNS = ["location_name_epydemix", "location_name_epydemix_deprecated", "epydemix_population"]
 
 
 def dispatch_baseline(
@@ -430,43 +470,58 @@ def dispatch_baseline(
     config: AggregationConfiguration,
 ) -> pd.DataFrame:
     """
-    Dispatch post-aggregation baseline addition.
+    Add post-aggregation baseline noise to the aggregated trajectories.
+
+    Baseline means per location are read from `config.baseline.observed_means` in the package data directory.
+    Noise is drawn with `config.random_seed`, so outputs are reproducible when it is set.
 
     Parameters
     ----------
-    aggregated_trajectories: pd.DataFrame
-        DataFrame with aggregated trajectories in column "target_total"
-    config: AggregationConfiguration
-        Config object with settings
+    aggregated_trajectories : pd.DataFrame
+        Aggregated trajectories with columns "location" and "target_total".
+    config : AggregationConfiguration
+        Config object with settings.
 
     Returns
     -------
     pd.DataFrame
-        DataFrame with baseline noise added to aggregated trajectories in columns "target_baseline_k{config.baseline.dispersion_values}"
-    """
-    try:
-        filename = os.path.join(
-            os.path.dirname(sys.modules[__name__].__file__), f"../data/{config.baseline.observed_means}"
-        )
-        baselines_avg = pd.read_csv(filename)
-    except Exception as e:
-        print(os.getcwd())
-        raise ValueError(
-            f"Baseline file {config.baseline.observed_means} not found: {e}\n\
-            Tried to read location {filename}"
-        )
+        Copy of `aggregated_trajectories` with a "target_baseline_k{k}" column for each value in
+        `config.baseline.dispersion_values`.
 
-    traj_loc_fmt = (
-        "location_name_epydemix"
-        if aggregated_trajectories.location.str.contains("__").any()
-        else "location_name_epydemix_deprecated"
+    Raises
+    ------
+    ValueError
+        If the baseline file can't be read, or has no baseline for some trajectory location.
+    """
+    filename = os.path.join(
+        os.path.dirname(sys.modules[__name__].__file__), f"../data/{config.baseline.observed_means}"
     )
-    combined = aggregated_trajectories.merge(baselines_avg, how="inner", left_on="location", right_on=traj_loc_fmt)[
-        ["location", "baseline", "target_total"]
-    ]
+    try:
+        baselines_avg = pd.read_csv(filename, comment="#")
+    except Exception as e:
+        raise ValueError(f"Baseline file {config.baseline.observed_means} not found at {filename}: {e}")
+
+    # Use the location column that covers every trajectory location
+    locations = set(aggregated_trajectories["location"])
+    candidates = [c for c in BASELINE_LOCATION_COLUMNS if c in baselines_avg.columns]
+    location_col = next((c for c in candidates if locations <= set(baselines_avg[c])), None)
+    if location_col is None:
+        best = max(candidates, key=lambda c: len(locations & set(baselines_avg[c])), default=None)
+        missing = sorted(locations - set(baselines_avg[best])) if best else sorted(locations)
+        raise ValueError(f"No baseline in {config.baseline.observed_means} for locations: {missing}")
+
+    # Map instead of merge so means stay aligned with the trajectory rows
+    baseline_means = aggregated_trajectories["location"].map(baselines_avg.set_index(location_col)["baseline"])
+
+    aggregated = aggregated_trajectories.copy()
+    kvals = config.baseline.dispersion_values
+    kvals = kvals if isinstance(kvals, list) else [kvals]
+    rng = np.random.default_rng(config.random_seed)
 
     match config.baseline.method:
         case BaselineStrategyEnum.negative_binomial:
-            return _baseline_negative_binomial(aggregated_trajectories, combined, config.baseline.dispersion_values)
+            return _baseline_negative_binomial(aggregated, baseline_means, kvals, rng)
+        case BaselineStrategyEnum.beta:
+            return _baseline_beta(aggregated, baseline_means, kvals, rng)
         case _:
             raise NotImplementedError(f"Invalid baseline method: {config.baseline.method}")
