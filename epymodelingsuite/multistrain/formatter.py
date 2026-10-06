@@ -265,54 +265,65 @@ def create_submission(
         Observed `date`, `location`, `target` (see `read_surveillance`) for the rate-trend baseline.
         Required when the profile has `pmf`.
     trajectory_samples : FlusightTrajectorySamples | None
-        If given, add up to `trajectory_samples.n_samples` trajectories per location from `value_col` as the 'sample'
-        output type. Trajectories missing any horizon are never selected. Unseeded unless `trajectory_samples.seed` is set.
+        If given, add up to `trajectory_samples.n_samples` trajectories per location from `value_col` as the
+        'sample' output type. Trajectories missing any horizon are never selected. Unseeded unless
+        `trajectory_samples.seed` is set.
 
     Returns
     -------
     pd.DataFrame
         Submission with the 8 hubverse columns, sorted by location, target, horizon, output type and id.
     """
-    p = SUBMISSION_PROFILES[profile]
+    profile_spec = SUBMISSION_PROFILES[profile]
     df = trajectories_df.copy()
     df["date"] = pd.to_datetime(df["date"])
     reference_date_dt = pd.to_datetime(reference_date)
 
     results = []
     sample_tables = []
-    for pop in df["location"].unique():
-        location = p["location"](pop)
-        pop_data = df[df["location"] == pop]
+    # `population` is the epydemix name in the trajectories' `location` column (e.g. "United_States__Massachusetts"),
+    # `location` is the hub location id written to the submission (e.g. "25")
+    populations = df["location"].unique()
+    for population in populations:
+        location = profile_spec["location"](population)
+        # All sample_ids and dates of this population
+        population_trajectories = df[df["location"] == population]
         if trajectory_samples is not None:
             sample_tables.append(
                 _build_location_trajectory_samples(
-                    pop_data, reference_date, p, pop, location, value_col, trajectory_samples
+                    population_trajectories,
+                    reference_date,
+                    profile_spec,
+                    population,
+                    location,
+                    value_col,
+                    trajectory_samples,
                 )
             )
 
-        for horizon in p["horizons"]:
+        for horizon in profile_spec["horizons"]:
             target_end_date = reference_date_dt + pd.Timedelta(weeks=horizon)
-            target_data = pop_data[pop_data["date"] == target_end_date][value_col]
+            target_data = population_trajectories[population_trajectories["date"] == target_end_date][value_col]
 
             if len(target_data) == 0:
                 continue
 
-            for q in p["quantiles"]:
+            for q in profile_spec["quantiles"]:
                 results.append(
                     {
                         "reference_date": reference_date,
                         "horizon": horizon,
                         "target_end_date": target_end_date.strftime("%Y-%m-%d"),
                         "location": location,
-                        "target": p["target"],
+                        "target": profile_spec["target"],
                         "output_type": "quantile",
                         "output_type_id": str(q),
-                        "value": round(target_data.quantile(q), p["decimals"]),
+                        "value": round(target_data.quantile(q), profile_spec["decimals"]),
                     }
                 )
     submission = pd.concat([pd.DataFrame(results), *sample_tables], ignore_index=True)
 
-    if p["pmf"]:
+    if profile_spec["pmf"]:
         if surveillance_df is None:
             raise ValueError(f"Profile '{profile}' needs surveillance data for the rate-trend baseline.")
         categories_df = compute_rate_trend_categories(
@@ -331,10 +342,10 @@ def create_submission(
 
 
 def _build_location_trajectory_samples(  # noqa: PLR0913
-    pop_data: pd.DataFrame,
+    population_trajectories: pd.DataFrame,
     reference_date: str,
-    p: dict,
-    pop: str,
+    profile_spec: dict,
+    population: str,
     location: str,
     value_col: str,
     trajectory_samples: FlusightTrajectorySamples,
@@ -342,12 +353,18 @@ def _build_location_trajectory_samples(  # noqa: PLR0913
     """
     Build the hub 'sample' rows of one location from its aggregated trajectories.
 
+    `population` is the epydemix name (used for the sample id prefix, e.g. "MA00"), `location` the hub location
+    id written to the rows (e.g. "25"), and `population_trajectories` that population's rows of the aggregated
+    trajectories (all sample_ids and dates).
+
     Multistrain counterpart of the per-location body of `build_flusight_trajectory_samples`: reshapes the
     long trajectories into a (sample_id x horizon) array, then selects and formats them with the shared
     `select_trajectory_indices` and `trajectories_to_sample_rows`.
     """
-    target_dates = [pd.to_datetime(reference_date) + pd.Timedelta(weeks=h) for h in p["horizons"]]
-    values = pop_data.pivot(index="sample_id", columns="date", values=value_col).reindex(columns=target_dates)
+    target_dates = [pd.to_datetime(reference_date) + pd.Timedelta(weeks=h) for h in profile_spec["horizons"]]
+    values = population_trajectories.pivot(index="sample_id", columns="date", values=value_col).reindex(
+        columns=target_dates
+    )
     values = values.to_numpy(dtype=float)
     selected = values[
         select_trajectory_indices(
@@ -356,10 +373,13 @@ def _build_location_trajectory_samples(  # noqa: PLR0913
     ]
     if len(selected) < trajectory_samples.n_samples:
         print(
-            f"  WARNING: only {len(selected)} complete trajectories for {location} (requested {trajectory_samples.n_samples})."
+            f"  WARNING: only {len(selected)} complete trajectories for {location} "
+            f"(requested {trajectory_samples.n_samples})."
         )
-    prefix = p["sample_prefix"](pop) if p["sample_prefix"] else None
-    rows = trajectories_to_sample_rows(selected, p["horizons"], reference_date, location, p["target"], prefix)
+    prefix = profile_spec["sample_prefix"](population) if profile_spec["sample_prefix"] else None
+    rows = trajectories_to_sample_rows(
+        selected, profile_spec["horizons"], reference_date, location, profile_spec["target"], prefix
+    )
     # Match the quantile rows: the given reference_date and 'YYYY-MM-DD' target dates
     rows["reference_date"] = reference_date
     rows["target_end_date"] = [d.strftime("%Y-%m-%d") for d in rows["target_end_date"]]
