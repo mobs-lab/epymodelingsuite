@@ -15,6 +15,8 @@ from ..schema.plot import PlotConfiguration
 
 logger = logging.getLogger(__name__)
 
+MULTISTRAIN_COLORS = ["blue", "darkorange", "darkred", "aqua", "olive"]
+
 
 def pull_single_strain_trajectories(config: PlotConfiguration) -> pd.DataFrame:
     """
@@ -127,7 +129,7 @@ def make_fit_start_labels(
 def plot_multistrain_quantiles(
     locations: list[str],
     reference_date: date,
-    multistrain_quantiles: pd.DataFrame,
+    multistrain_quantiles: dict[str, pd.DataFrame],
     single_strain_quantiles: pd.DataFrame | None,
     surveillance_fit: pd.DataFrame | None,
     surveillance_recent: pd.DataFrame | None,
@@ -138,6 +140,7 @@ def plot_multistrain_quantiles(
 ) -> (Figure, np.ndarray[Axes]):
     """
     Plot multistrain (and optionally single-strain) quantile ribbons against surveillance, one panel per location.
+    Each labelled entry of `multistrain_quantiles` is drawn in its own color.
 
     All data frames are keyed by a `location` column holding hub location ids (the submission profile's
     location transform), which is also used as the panel title.
@@ -151,7 +154,6 @@ def plot_multistrain_quantiles(
         ax = axes[idx]
 
         # Get data for this location
-        agg_pop = multistrain_quantiles[multistrain_quantiles["location"] == location]
         if surveillance_fit is not None:
             surv_fit_pop = surveillance_fit[surveillance_fit["location"] == location]
         if surveillance_recent is not None:
@@ -159,25 +161,20 @@ def plot_multistrain_quantiles(
         if single_strain_quantiles is not None:
             single_pop = single_strain_quantiles[single_strain_quantiles["location"] == location]
 
-        # Plot multistrain (blue)
-        ax.fill_between(
-            agg_pop["date"], agg_pop["q025"], agg_pop["q975"], alpha=0.15, color="blue", label="Multistrain 95% PI"
-        )
-        ax.fill_between(
-            agg_pop["date"], agg_pop["q250"], agg_pop["q750"], alpha=0.3, color="blue", label="Multistrain 50% PI"
-        )
-        ax.plot(agg_pop["date"], agg_pop["q500"], "b-", linewidth=1.5, label="Multistrain median")
-
-        # Plot single strain (green)
-        if single_strain_quantiles is not None:
+        # Plot multistrain, one color per label
+        for agg_idx, (agg_label, agg_quantiles) in enumerate(multistrain_quantiles.items()):
+            agg_pop = agg_quantiles[agg_quantiles["location"] == location]
+            color = MULTISTRAIN_COLORS[agg_idx % len(MULTISTRAIN_COLORS)]
             ax.fill_between(
-                single_pop["date"],
-                single_pop["q025"],
-                single_pop["q975"],
-                alpha=0.15,
-                color="green",
-                label="Single strain 95% PI",
+                agg_pop["date"], agg_pop["q025"], agg_pop["q975"], alpha=0.15, color=color, label=f"{agg_label} 95% PI"
             )
+            ax.fill_between(
+                agg_pop["date"], agg_pop["q250"], agg_pop["q750"], alpha=0.3, color=color, label=f"{agg_label} 50% PI"
+            )
+            ax.plot(agg_pop["date"], agg_pop["q500"], color=color, linewidth=1.5)
+
+        # Plot single strain (green), 50% PI only to limit clutter
+        if single_strain_quantiles is not None:
             ax.fill_between(
                 single_pop["date"],
                 single_pop["q250"],
@@ -234,7 +231,7 @@ def plot_multistrain_quantiles(
 
         # Only show legend for first subplot
         if idx == 0:
-            ax.legend(fontsize=8, loc="upper right")
+            ax.legend(fontsize=7)
         # Hide any unused subplots
         for idx in range(len(locations), len(axes)):
             axes[idx].set_visible(False)

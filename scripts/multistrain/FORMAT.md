@@ -100,7 +100,7 @@ uv run $REPO/scripts/multistrain/submission.py --config 202616_hosp_submission.y
 
 # 3. Aggregated parquet -> comparison plots (optional)
 uv run $REPO/scripts/multistrain/plot.py --config 202616_hosp_plot.yaml \
-    --aggregated outputs/202616_hosp/trajectories_aggregated_202616_hosp.parquet --output outputs/202616_hosp/plots
+    --aggregated outputs/ --output outputs/202616_hosp/plots
 ```
 
 ### Config examples
@@ -135,14 +135,21 @@ submission:
     location_column: location_code    # column holding hub location ids (FIPS here)
 ```
 
-Plot (`plot:` root, see `epymodelingsuite/schema/plot.py`). `surveillance` and `single_strain` are optional:
+Plot (`plot:` root, see `epymodelingsuite/schema/plot.py`). `surveillance` and `single_strain` are optional.
+Each label under `aggregated` is read from `--aggregated` joined with its `trajectory_file`, and all labels are overlaid in one plot:
 
 ```yaml
 plot:
   submission_week: 202616
   profile: flusight_hosp               # panels are labelled with this profile's location ids
   aggregated:
-    target_column: target_total
+    multistrain:
+      trajectory_file: 202616_hosp/trajectories_aggregated_202616_hosp.parquet
+      target_column: target_total
+    multistrain_baseline:
+      trajectory_file: 202616_hosp/trajectories_aggregated_202616_hosp.parquet
+      target_column: target_baseline_k10
+  subplots_per_row: 4                  # default 4
   surveillance:
     directory: ../flu-forecast-epydemix/common-data/surveillance
     fit_fname: flu_hosp_25_202616_prelim.csv

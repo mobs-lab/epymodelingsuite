@@ -7,12 +7,13 @@
 # ///
 """
 Script to create multistrain comparison plots from aggregated trajectories.
-Takes a file path to a configuration, a file path to aggregated trajectories, and optionally, a directory path for outputs.
+Takes a file path to a configuration, a base path for aggregated trajectories, and optionally, a directory path for outputs.
+Each labelled entry under `aggregated` is read from `--aggregated` joined with its `trajectory_file`, and all are plotted together.
 All other options specified via yaml file.
 
 Usage:
     uv run plot.py --config plot.yml \
-    --aggregated trajectories_aggregated.parquet --output ./multistrain
+    --aggregated outputs/ --output ./multistrain
 """
 
 import argparse
@@ -58,7 +59,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--config", type=str, required=True, help="Path to plot config yaml")
-    parser.add_argument("--aggregated", type=str, required=True, help="Path to aggregated trajectories")
+    parser.add_argument("--aggregated", type=str, required=True, help="Base path for aggregated trajectories")
     parser.add_argument(
         "--output",
         type=str,
@@ -81,9 +82,12 @@ def main():
         print("\nLoading surveillance ...")
         surv_fit, surv_recent = read_surveillance(config.surveillance)
 
-    print(f"\nLoading aggregated trajectories from {args.aggregated} ...")
-    aggregated = read_aggregated(args.aggregated, config.aggregated)
-    print(aggregated.tail())
+    aggregated = {}
+    for label, agg_config in config.aggregated.items():
+        path = Path(args.aggregated) / agg_config.trajectory_file
+        print(f"\nLoading '{label}' aggregated trajectories from {path} ...")
+        aggregated[label] = read_aggregated(str(path), agg_config)
+        print(aggregated[label].tail())
 
     if config.single_strain is None:
         single_strain = None
@@ -101,13 +105,16 @@ def main():
 
     print("\nGenerating plots ...")
     to_location = SUBMISSION_PROFILES[config.profile]["location"]
-    agg_quantiles = _quantiles(
-        aggregated,
-        config.aggregated.target_column,
-        config.aggregated.date_column,
-        config.aggregated.location_column,
-        to_location,
-    )
+    agg_quantiles = {
+        label: _quantiles(
+            df,
+            config.aggregated[label].target_column,
+            config.aggregated[label].date_column,
+            config.aggregated[label].location_column,
+            to_location,
+        )
+        for label, df in aggregated.items()
+    }
     single_quantiles = None
     if single_strain is not None:
         single_quantiles = _quantiles(
@@ -118,7 +125,8 @@ def main():
             to_location,
         )
     # US first, then the rest alphabetically
-    locations = sorted(agg_quantiles["location"].unique(), key=lambda loc: (loc != "US", loc))
+    all_locations = set().union(*(q["location"] for q in agg_quantiles.values()))
+    locations = sorted(all_locations, key=lambda loc: (loc != "US", loc))
     print(f"  Plotting {len(locations)} locations")
 
     plotting_windows = make_plotting_windows(config)
@@ -128,8 +136,10 @@ def main():
         plot_start_date = pd.Timestamp(plotting_window[0])
         plot_end_date = pd.Timestamp(plotting_window[1])
         include_single = "" if config.single_strain is None else " vs Single Strain"
-        plot_title = f"{config.submission_week} Multistrain {config.aggregated.target_column}{include_single}"
-        plot_fname = f"{plot_focus.lower()}-{config.submission_week}-{config.aggregated.target_column}-multistrain{include_single.lower().replace(' ', '_')}.pdf"
+        plot_title = f"{config.submission_week} {' '.join(config.aggregated)}{include_single}"
+        plot_fname = (
+            f"{plot_focus.lower()}-{config.submission_week}-multistrain{include_single.lower().replace(' ', '_')}.pdf"
+        )
 
         # With out-of-sample data, in-sample points stop at the reference date
         surv_fit_filter = _window(surv_fit, plot_start_date, reference_dt if surv_recent is not None else plot_end_date)
@@ -138,7 +148,9 @@ def main():
         plot_multistrain_quantiles(
             locations=locations,
             reference_date=reference_dt,
-            multistrain_quantiles=_window(agg_quantiles, plot_start_date, plot_end_date),
+            multistrain_quantiles={
+                label: _window(q, plot_start_date, plot_end_date) for label, q in agg_quantiles.items()
+            },
             single_strain_quantiles=_window(single_quantiles, plot_start_date, plot_end_date),
             surveillance_fit=surv_fit_filter,
             surveillance_recent=surv_recent_filter,
@@ -147,6 +159,7 @@ def main():
             },
             plot_title=plot_title,
             save_path=f"{plots_path}/{plot_fname}",
+            subplots_per_row=config.subplots_per_row,
         )
 
 

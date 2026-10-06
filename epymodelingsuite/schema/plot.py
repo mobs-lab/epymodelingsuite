@@ -35,12 +35,20 @@ class SingleStrainConfig(BaseModel):
     )
 
 
+class PlotTrajectoriesConfig(AggregatedTrajectoriesConfig):
+    """
+    Specifications for one set of aggregated trajectories to plot.
+    """
+
+    trajectory_file: str = Field("", description="Path relative to the `--aggregated` script argument.")
+
+
 class FitStartConfig(BaseModel):
     """
     Configuration for marking the beginning of a strain's fitting window.
     """
 
-    label: str = Field(description="Label for strain.")
+    label: str = Field(description="Label for strain(s).")
     week: str | int = Field(description="Epiweek in CDC format, i.e. 'YYYYww'")
 
     @field_validator("week")
@@ -64,10 +72,13 @@ class PlotConfiguration(BaseModel):
     surveillance: SurveillanceConfig | None = Field(
         None, description="Specification for surveillance file. Expected to be either on GitHub or local."
     )
-    aggregated: AggregatedTrajectoriesConfig = Field(description="Specifications for aggregated trajectories.")
+    aggregated: dict[str, PlotTrajectoriesConfig] = Field(
+        min_length=1, description="Aggregated trajectories by label. All are plotted together."
+    )
     single_strain: SingleStrainConfig | None = Field(
         None, description="Source experiment specification for single-strain comparison."
     )
+    subplots_per_row: int = Field(4, description="Number of subplots to place in each row.")
     season_start_week: str | int = Field(description="Epiweek in CDC format, i.e. 'YYYYww'")
     season_end_week: str | int = Field(description="Epiweek in CDC format, i.e. 'YYYYww'")
     focus_start_week: str | int = Field(description="Epiweek in CDC format, i.e. 'YYYYww'")
