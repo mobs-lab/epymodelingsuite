@@ -497,7 +497,7 @@ def dispatch_baseline(
         os.path.dirname(sys.modules[__name__].__file__), f"../data/{config.baseline.observed_means}"
     )
     try:
-        baselines_avg = pd.read_csv(filename, comment="#")
+        baselines_avg = pd.read_csv(filename)
     except Exception as e:
         raise ValueError(f"Baseline file {config.baseline.observed_means} not found at {filename}: {e}")
 

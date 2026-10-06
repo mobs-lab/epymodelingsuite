@@ -45,7 +45,7 @@ def test_baseline_is_reproducible_with_seed():
 
 
 def test_baseline_missing_location_raises():
-    # Missouri is not in the ED baseline file
+    # Missouri (US-MO) is excluded from the ED baseline file due to missing data in surveillance
     df = _trajectories(["United_States", "United_States__Missouri"])
     with pytest.raises(ValueError, match="United_States__Missouri"):
         dispatch_baseline(df, _config("baselines_ed_2025.csv", method="beta"))

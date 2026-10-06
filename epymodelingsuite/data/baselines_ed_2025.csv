@@ -1,4 +1,3 @@
-# Missouri (US-MO) is excluded due to missing data in surveillance
 location_name,baseline,location_name_epydemix,location_name_epydemix_deprecated,location_abbreviation,location_code,ISO,population_size
 Alabama,0.0020916666666666,United_States__Alabama,United_States_Alabama,AL,01,US-AL,5108468
 Alaska,0.0023083333333333,United_States__Alaska,United_States_Alaska,AK,02,US-AK,733406
