@@ -383,6 +383,25 @@ def _build_location_trajectory_samples(  # noqa: PLR0913
     pd.DataFrame
         One row per selected trajectory and horizon with the 8 hubverse columns, `output_type` "sample".
         `target_end_date` is a 'YYYY-MM-DD' string, matching the quantile rows.
+
+    Examples
+    --------
+    For `flusight_hosp` and Massachusetts, each selected trajectory becomes one row per horizon (-1..3)
+    sharing an `output_type_id` (`MA00`, `MA01`, ...). Values are rounded/clipped by target in
+    `trajectories_to_sample_rows`:
+
+    ```
+    reference_date  horizon target_end_date location           target output_type output_type_id   value
+        2026-04-25       -1      2026-04-18       25  wk inc flu hosp      sample           MA00  1729.0
+        2026-04-25        0      2026-04-25       25  wk inc flu hosp      sample           MA00   385.0
+        2026-04-25        1      2026-05-02       25  wk inc flu hosp      sample           MA00  1842.0
+        2026-04-25        2      2026-05-09       25  wk inc flu hosp      sample           MA00   182.0
+        2026-04-25        3      2026-05-16       25  wk inc flu hosp      sample           MA00  1238.0
+        2026-04-25       -1      2026-04-18       25  wk inc flu hosp      sample           MA01   404.0
+        ...
+    ```
+
+    For `metrocast` and `bphc_ed`, ids restart at "1", "2", ... per location and horizons are those of the profile.
     """
     target_dates = [pd.to_datetime(reference_date) + pd.Timedelta(weeks=h) for h in profile_spec["horizons"]]
     values = population_trajectories.pivot(index="sample_id", columns="date", values=value_col).reindex(
