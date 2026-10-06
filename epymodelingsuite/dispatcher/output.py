@@ -25,6 +25,7 @@ from ..schema.output import (
     ObservedValuesConfig,
     OutputConfig,
     OutputObject,
+    get_flusight_categorical_horizons,
     get_metrocast_quantiles,
 )
 from ..telemetry import ExecutionTelemetry
@@ -395,6 +396,7 @@ def make_rate_trends_flusightforecast(
     proj_values: np.ndarray,
     observed: pd.DataFrame,
     population: float,
+    rate_population_scale: int = 100000,
 ) -> pd.DataFrame:
     """
     Create FluSight rate-trend forecasts from projection trajectories.
@@ -410,7 +412,9 @@ def make_rate_trends_flusightforecast(
     observed : pd.DataFrame
         Observed surveillance data with columns: date, value
     population : float
-        Population size for calculating rates per 100k
+        Population size for calculating rates
+    rate_population_scale: int
+        Denominator for normalizing rates (default 100k)
 
     Returns
     -------
@@ -419,9 +423,8 @@ def make_rate_trends_flusightforecast(
     """
     from collections import Counter
 
-    # Horizons required for rate-trend outputs, denominator for rates (i.e. /100k pop)
-    flusight_horizons = range(4)  # horizons 0-3
-    rate_population_scale = 100000
+    # Horizons required for rate-trend outputs
+    horizons = get_flusight_categorical_horizons()
 
     # Date of observation for comparison (equivalent to horizon -1)
     obs_date = reference_date - timedelta(weeks=1)
@@ -446,7 +449,7 @@ def make_rate_trends_flusightforecast(
 
     # Build list of rows
     rows = []
-    for horizon in flusight_horizons:
+    for horizon in horizons:
         # Target date for forecast
         target_date = reference_date + timedelta(weeks=horizon)
         print(f"target_date: {target_date}")

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import numpy as np
-import pytest
 from epydemix.calibration import rmse
 
 from epymodelingsuite.utils.distance import wrmse

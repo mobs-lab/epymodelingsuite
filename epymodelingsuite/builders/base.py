@@ -67,6 +67,7 @@ def load_iso_population(
     -------
         epydemix Population object
     """
+
     age_group_mapping = {group: _parse_age_group(group) for group in age_groups}
     population = load_epydemix_population(
         population_name=convert_location_name_format(location_name, "epydemix_population"),
