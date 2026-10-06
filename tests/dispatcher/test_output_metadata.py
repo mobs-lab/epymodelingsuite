@@ -14,7 +14,7 @@ from epymodelingsuite.dispatcher.output import (
     generate_simulation_outputs,
     make_prop_ed_flusightforecast,
 )
-from epymodelingsuite.schema.output import FlusightPropED, OutputConfig
+from epymodelingsuite.schema.output import FlusightForecastOutput, FlusightPropED, OutputConfig
 
 
 @pytest.mark.parametrize("workflow", ["simulation", "calibration"])
@@ -155,15 +155,19 @@ def test_forecast_metadata_order_and_values(forecast: str, *, metrocast: bool, r
         {"date": dates, "quantile": 0.5, "hospitalizations": [10.1, 20.2, 30.3, 40.4]}, index=[9, 3, 9, 3]
     )
     if forecast == "prop_ed":
+        # Keep ED inputs within the proportion target's bounds so this test
+        # isolates metadata preservation from the shared value normalization.
+        frame["hospitalizations"] /= 1000
         frame["population"] = "United_States_California"
     if reverse_columns:
         # The forecast schema must use column names, not positions in the incoming frame.
         frame = frame[list(reversed(frame.columns))]
     original = frame.copy()
+    config = FlusightForecastOutput(reference_date=reference_date, metrocast=metrocast)
     with warnings.catch_warnings():
         warnings.simplefilter("error", pd.errors.PerformanceWarning)
         if forecast == "hospitalizations":
-            actual = format_quantiles_flusightforecast(frame, reference_date, metrocast=metrocast)
+            actual = format_quantiles_flusightforecast(frame, reference_date, horizons=config.horizons)
         else:
             actual, factors = make_prop_ed_flusightforecast(
                 pd.DataFrame(),
@@ -171,7 +175,7 @@ def test_forecast_metadata_order_and_values(forecast: str, *, metrocast: bool, r
                 {},
                 projection_quantiles=frame,
                 reference_date=reference_date,
-                metrocast=metrocast,
+                horizons=config.horizons,
             )
             assert factors.empty
     # Input horizons are -2, -1, 0, 1; FluSight keeps -1 onward, while Metrocast starts at 0.
@@ -186,7 +190,7 @@ def test_forecast_metadata_order_and_values(forecast: str, *, metrocast: bool, r
             "output_type_id": 0.5,
             "value": pd.array([10, 20, 30, 40][start:], dtype="Int64")
             if forecast == "hospitalizations"
-            else [10.1, 20.2, 30.3, 40.4][start:],
+            else [0.0101, 0.0202, 0.0303, 0.0404][start:],
         },
         index=frame.index[start:],
     )

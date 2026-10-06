@@ -698,6 +698,7 @@ dependencies = [
     { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "pandas", version = "3.0.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "psutil" },
+    { name = "pyarrow" },
     { name = "pydantic" },
     { name = "pyyaml" },
     { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
@@ -722,11 +723,6 @@ dev = [
     { name = "sphinx-pyproject" },
 ]
 
-[package.dev-dependencies]
-dev = [
-    { name = "pyarrow" },
-]
-
 [package.metadata]
 requires-dist = [
     { name = "autodoc-pydantic", marker = "extra == 'dev'" },
@@ -739,6 +735,7 @@ requires-dist = [
     { name = "numpy" },
     { name = "pandas" },
     { name = "psutil" },
+    { name = "pyarrow", specifier = ">=21.0.0" },
     { name = "pydantic" },
     { name = "pytest", marker = "extra == 'dev'" },
     { name = "pytest-cov", marker = "extra == 'dev'" },
@@ -752,9 +749,6 @@ requires-dist = [
     { name = "sphinx-pyproject", marker = "extra == 'dev'" },
 ]
 provides-extras = ["dev"]
-
-[package.metadata.requires-dev]
-dev = [{ name = "pyarrow", specifier = ">=21.0.0" }]
 
 [[package]]
 name = "evalidate"

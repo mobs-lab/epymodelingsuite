@@ -23,6 +23,7 @@ dependencies = [
     "psutil",
     "sodapy",
     "epiweeks",
+    "pyarrow>=21.0.0",
 ]
 
 readme = "README.md"
@@ -107,8 +108,3 @@ markers = [
     "nightly: tests that take longer than 'slow' tests, including statistical validation tests (run nightly or manually)",
 ]
 addopts = "-m 'not nightly'"
-
-[dependency-groups]
-dev = [
-    "pyarrow>=21.0.0",
-]
