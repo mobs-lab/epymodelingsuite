@@ -377,6 +377,14 @@ class TestProjectionFallbackBehavior:
             start_date_reference=date(2024, 2, 1),
         )
 
+    def test_projection_uses_requested_generation(self, projection_builder_output):
+        """Test that generation_number is passed as run_projections' generation argument."""
+        run_calibration_with_projection(projection_builder_output)
+
+        call_kwargs = projection_builder_output.calibrator.run_projections.call_args.kwargs
+        assert call_kwargs["generation"] == 1
+        assert "generation" not in call_kwargs["parameters"]
+
     def test_calibration_error_raises_runtime_error(self, projection_builder_output):
         """Test that RuntimeError is raised when calibration fails in projection workflow."""
         projection_builder_output.calibrator.calibrate.side_effect = Exception("Calibration failed")

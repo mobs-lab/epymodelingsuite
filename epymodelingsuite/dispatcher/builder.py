@@ -319,6 +319,9 @@ def build_sampling(
     simulation_args = []
     final_models = []
     for model in models:
+        vax_state = (
+            get_data_in_location(earliest_vax, model.population.name, "location") if earliest_vax is not None else None
+        )
         for varset in sampled_vars:
             m = copy.deepcopy(model)
 
@@ -348,7 +351,7 @@ def build_sampling(
 
             # Vaccination (if start_date is sampled)
             if basemodel.vaccination and sampled_start_timespan:
-                reaggregated_vax = reaggregate_vaccines(earliest_vax, timespan.start_date)
+                reaggregated_vax = reaggregate_vaccines(vax_state, timespan.start_date)
                 add_vaccination_schedules_from_config(
                     m, basemodel.transitions, basemodel.vaccination, timespan, use_schedule=reaggregated_vax
                 )
@@ -533,11 +536,24 @@ def build_calibration(
         # Parameters and compartments can be None in calibration config
         priors = {}
         if calibration.parameters:
-            priors.update({k: distribution_to_scipy(v.prior) for k, v in calibration.parameters.items()})
+            priors.update(
+                {
+                    k: distribution_to_scipy(v.prior, context=f"calibration parameter '{k}'")
+                    for k, v in calibration.parameters.items()
+                }
+            )
         if calibration.compartments:
-            priors.update({k: distribution_to_scipy(v.prior) for k, v in calibration.compartments.items()})
+            priors.update(
+                {
+                    k: distribution_to_scipy(v.prior, context=f"calibration compartment '{k}'")
+                    for k, v in calibration.compartments.items()
+                }
+            )
         if sampled_start_timespan:
-            priors["start_date"] = distribution_to_scipy(calibration.start_date.prior)
+            priors["start_date"] = distribution_to_scipy(
+                calibration.start_date.prior,
+                context="calibration start_date",
+            )
 
         fixed_parameters = {k: v for k, v in model.parameters.items() if v is not None}
         if calibration.fitting_window.end_date:
@@ -553,6 +569,7 @@ def build_calibration(
             parameters=fixed_parameters,
             observed_data=observed_data[calibration.comparison[0].observed_value_column].values,
             distance_function=dist_func_date_alignment_wrapper(dist_func),
+            rng=basemodel.random_seed,
         )
 
         calibrators.append(abc_sampler)
