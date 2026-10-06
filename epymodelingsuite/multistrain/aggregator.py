@@ -392,7 +392,7 @@ def dispatch_strain_aggregator(
 
 
 def _baseline_negative_binomial(
-    aggregated: pd.DataFrame,
+    aggregated_trajectories: pd.DataFrame,
     baseline_means: pd.Series,
     kvals: list[int],
     rng: np.random.Generator,
@@ -402,10 +402,10 @@ def _baseline_negative_binomial(
 
     Parameters
     ----------
-    aggregated : pd.DataFrame
+    aggregated_trajectories : pd.DataFrame
         Aggregated trajectories with column "target_total".
     baseline_means : pd.Series
-        Baseline mean of each row's location, aligned with `aggregated`.
+        Baseline mean of each row's location, aligned with `aggregated_trajectories`.
     kvals : list[int]
         Dispersion parameters; one output column per value.
     rng : np.random.Generator
@@ -414,16 +414,19 @@ def _baseline_negative_binomial(
     Returns
     -------
     pd.DataFrame
-        `aggregated` with "target_baseline_k{k}" = "target_total" + NegBin(mean=baseline, dispersion=k).
+        Copy of `aggregated_trajectories` with
+        "target_baseline_k{k}" = "target_total" + NegBin(mean=baseline, dispersion=k).
     """
+    aggregated_trajectories = aggregated_trajectories.copy()
     for k in kvals:
         p_vals = k / (k + baseline_means.to_numpy())
-        aggregated[f"target_baseline_k{k}"] = aggregated["target_total"].to_numpy() + rng.negative_binomial(k, p_vals)
-    return aggregated
+        noise = rng.negative_binomial(k, p_vals)
+        aggregated_trajectories[f"target_baseline_k{k}"] = aggregated_trajectories["target_total"].to_numpy() + noise
+    return aggregated_trajectories
 
 
 def _baseline_beta(
-    aggregated: pd.DataFrame,
+    aggregated_trajectories: pd.DataFrame,
     baseline_means: pd.Series,
     kvals: list[int],
     rng: np.random.Generator,
@@ -431,33 +434,14 @@ def _baseline_beta(
     """
     Add beta baseline noise for proportion targets (e.g. ED visit proportions).
 
-    Stub until the ED baseline method is decided: the noise is Beta(mean=baseline, concentration=k), i.e.
-    a = baseline * k and b = (1 - baseline) * k, so baseline means must be proportions in (0, 1).
+    Stub: the ED baseline method is not decided yet. Same signature as `_baseline_negative_binomial`.
 
-    Parameters
-    ----------
-    aggregated : pd.DataFrame
-        Aggregated trajectories with column "target_total".
-    baseline_means : pd.Series
-        Baseline mean of each row's location, aligned with `aggregated`.
-    kvals : list[int]
-        Concentration parameters (larger is less noisy); one output column per value.
-    rng : np.random.Generator
-        Random number generator.
-
-    Returns
-    -------
-    pd.DataFrame
-        `aggregated` with "target_baseline_k{k}" = "target_total" + Beta(mean=baseline, concentration=k).
+    Raises
+    ------
+    NotImplementedError
+        Always.
     """
-    means = baseline_means.to_numpy()
-    if ((means <= 0) | (means >= 1)).any():
-        raise ValueError("Beta baseline needs baseline means in (0, 1), i.e. proportions.")
-    for k in kvals:
-        aggregated[f"target_baseline_k{k}"] = aggregated["target_total"].to_numpy() + rng.beta(
-            means * k, (1 - means) * k
-        )
-    return aggregated
+    raise NotImplementedError("Beta baseline for proportion targets is not implemented yet.")
 
 
 # Columns of the baseline files that may hold the trajectories' epydemix location names:
@@ -513,15 +497,14 @@ def dispatch_baseline(
     # Map instead of merge so means stay aligned with the trajectory rows
     baseline_means = aggregated_trajectories["location"].map(baselines_avg.set_index(location_col)["baseline"])
 
-    aggregated = aggregated_trajectories.copy()
     kvals = config.baseline.dispersion_values
     kvals = kvals if isinstance(kvals, list) else [kvals]
     rng = np.random.default_rng(config.random_seed)
 
     match config.baseline.method:
         case BaselineStrategyEnum.negative_binomial:
-            return _baseline_negative_binomial(aggregated, baseline_means, kvals, rng)
+            return _baseline_negative_binomial(aggregated_trajectories, baseline_means, kvals, rng)
         case BaselineStrategyEnum.beta:
-            return _baseline_beta(aggregated, baseline_means, kvals, rng)
+            return _baseline_beta(aggregated_trajectories, baseline_means, kvals, rng)
         case _:
             raise NotImplementedError(f"Invalid baseline method: {config.baseline.method}")

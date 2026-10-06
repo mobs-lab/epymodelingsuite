@@ -48,18 +48,27 @@ def test_baseline_missing_location_raises():
     # Missouri (US-MO) is excluded from the ED baseline file due to missing data in surveillance
     df = _trajectories(["United_States", "United_States__Missouri"])
     with pytest.raises(ValueError, match="United_States__Missouri"):
-        dispatch_baseline(df, _config("baselines_ed_2025.csv", method="beta"))
-
-
-def test_beta_baseline_for_ed_proportions():
-    df = _trajectories(["United_States", "United_States__Alabama"])
-    out = dispatch_baseline(df, _config("baselines_ed_2025.csv", method="beta"))
-
-    assert out["target_baseline_k5"].between(0, 1).all()
-    assert out.loc[out.location == "United_States", "target_baseline_k50"].mean() == pytest.approx(0.0013, rel=0.3)
+        dispatch_baseline(df, _config("baselines_ed_2025.csv"))
 
 
 def test_metrocast_baseline_locations():
     df = _trajectories(["metrocast_location_athens"])
     out = dispatch_baseline(df, _config("baselines_metro_2025.csv"))
     assert out["target_baseline_k5"].notna().all()
+
+
+@pytest.mark.parametrize("k", [5, 50])
+def test_negative_binomial_baseline_moments(k):
+    # NegBin(mean=mu, dispersion=k): variance mu + mu^2 / k. US hosp baseline mu = 889.08
+    mu = 889.0833333333334
+    out = dispatch_baseline(_trajectories(["United_States"], n_samples=20000), _config("baselines_hosp_2025.csv"))
+    noise = out[f"target_baseline_k{k}"] - out["target_total"]
+
+    assert noise.mean() == pytest.approx(mu, rel=0.05)
+    assert noise.var() == pytest.approx(mu + mu**2 / k, rel=0.1)
+
+
+def test_beta_baseline_is_a_stub():
+    df = _trajectories(["United_States"])
+    with pytest.raises(NotImplementedError):
+        dispatch_baseline(df, _config("baselines_ed_2025.csv", method="beta"))

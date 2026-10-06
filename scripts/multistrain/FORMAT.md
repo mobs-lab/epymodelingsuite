@@ -22,7 +22,7 @@ One row per (`sample_id`, `location`, `date`).
 | `date` | datetime64[us] | Week end date (Saturday) |
 | `target_<strain>` | float64 | Strain value. One column per strain. May be NaN before the strain's fitting window starts |
 | `target_total` | float64 | Sum over strains (NaN treated as 0) |
-| `target_baseline_k<k>` | float64 | Only when the config has a `baseline`: `target_total` plus baseline noise with mean from `baseline.observed_means` and dispersion/concentration `k` (`negative_binomial` for counts, `beta` for proportions, a stub). Drawn with `random_seed`. One column per `k` |
+| `target_baseline_k<k>` | float64 | Only when the config has a `baseline`: `target_total` plus baseline noise with mean from `baseline.observed_means` and dispersion/concentration `k` (`negative_binomial` for counts; `beta` for proportions is a stub that raises `NotImplementedError`). Drawn with `random_seed`. One column per `k` |
 | `reference_date` | datetime64[us] | Saturday of the submission epiweek. Same for every row |
 | `horizon` | int64 | `(date - reference_date)` in weeks. Negative before `reference_date`, `0` at it |
 | `epiweek` | string | CDC epiweek of `date`, `YYYYww` |
