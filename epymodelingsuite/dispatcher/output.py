@@ -327,7 +327,9 @@ def compare_thresholds_flusightforecast(
     raise ValueError(msg)
 
 
-def categorize_rate_change_flusightforecast(rate_change: float, count_change: float, horizon: int) -> str:
+def categorize_rate_change_flusightforecast(
+    rate_change: float, count_change: float, horizon: int, rate_population_scale: int
+) -> str:
     """
     Categorize the simulated rate-change using the appropriate thresholds for the horizon.
 
@@ -485,7 +487,7 @@ def make_rate_trends_flusightforecast(
         # Counter containing the categorization for each projection trajectory
         trajectory_categories = Counter(
             [
-                categorize_rate_change_flusightforecast(rate_change, count_change, horizon)
+                categorize_rate_change_flusightforecast(rate_change, count_change, horizon, rate_population_scale)
                 for rate_change, count_change in zip(rate_changes, count_changes, strict=True)
             ]
         )
