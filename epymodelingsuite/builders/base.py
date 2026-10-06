@@ -1,10 +1,9 @@
 """Core model building functions for EpiModel instances."""
 
-import ast
 import logging
+from functools import partial
 
 import numpy as np
-import scipy
 from epydemix.model import EpiModel
 from epydemix.population import Population
 from epydemix.utils import convert_to_2Darray
@@ -12,7 +11,7 @@ from epydemix.utils import convert_to_2Darray
 from ..schema.basemodel import Compartment, Parameter, Transition
 from ..schema.basemodel import Population as PopulationConfig
 from ..utils import convert_location_name_format, load_epydemix_population
-from ..utils.expression_eval import RetrieveName, SafeEvalVisitor, safe_eval
+from ..utils.expression_eval import resolve_model_name, safe_eval
 from ..utils.location import (
     METROCAST_PREFIX,
     get_metrocast_population_data,
@@ -347,18 +346,9 @@ def calculate_parameters_from_config(
         parameter_dict = {}
         logger.info(f"Calculating parameter {name} using expression: {expr}")
         try:
-            # Parse the expression into a tree
-            tree = ast.parse(expr, mode="eval")
-
-            # Substitute retrieved parameter values or contact matrix eigenvalue into the tree
-            RetrieveName(model, compartment_init).visit(tree)
-
-            # Validate the expression
-            SafeEvalVisitor().visit(tree)
-
-            # Evaluate the expression
-            code = compile(tree, filename="<calc_eval>", mode="eval")
-            parameter_dict[name] = eval(code, {"__builtins__": None, "np": np, "scipy": scipy}, {})
+            value = safe_eval(expr, partial(resolve_model_name, model, compartment_init))
+            # Age-varying results use the same 2D shape as configured age_varying parameters
+            parameter_dict[name] = convert_to_2Darray(value) if np.ndim(value) == 1 else value
             logger.info(f"Calculated parameter {name}: {parameter_dict[name]}")
         except Exception as e:
             raise ValueError(f"Error calculating parameter {name}: {e}")
@@ -546,4 +536,4 @@ def calculate_compartment_initial_conditions(
         for default_idx, compartment_id in enumerate(default_compartment_ids):
             initial_conditions_dict[compartment_id] = per_default + (leftover > default_idx)
 
-    return initial_conditions_dict if initial_conditions_dict else None
+    return initial_conditions_dict or None
