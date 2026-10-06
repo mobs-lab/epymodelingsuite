@@ -181,6 +181,11 @@ class RetrieveName(ast.NodeTransformer):
         self.compartment_init = compartment_init
 
     def visit_Name(self, node):
+        # Preserve allowed module names (np, scipy) so that e.g. ``np.exp(...)``
+        # survives substitution. Returning None here would drop the node from the
+        # tree (NodeTransformer semantics) and corrupt the enclosing Attribute/Call.
+        if node.id in _allowed_modules:
+            return node
         if node.id not in _allowed_modules:
             # Eigenvalue of contact matrix
             if node.id == "eigenvalue":
