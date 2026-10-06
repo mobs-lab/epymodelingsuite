@@ -53,6 +53,24 @@ class TestFlusightPropEDValidation:
             )
 
 
+class TestFlusightForecastHorizons:
+    """Test resolution and validation of configured forecast horizons."""
+
+    @pytest.mark.parametrize("metrocast", [False, True])
+    @pytest.mark.parametrize("horizons", [None, [0, 2, 4]])
+    def test_defaults_and_explicit_horizons(self, metrocast, horizons):
+        """Explicit offsets override either hub's default forecast weeks."""
+        config = FlusightForecastOutput(reference_date=date(2026, 10, 10), metrocast=metrocast, horizons=horizons)
+        expected = horizons if horizons is not None else ([0, 1, 2, 3] if metrocast else [-1, 0, 1, 2, 3])
+        assert config.horizons == expected
+
+    @pytest.mark.parametrize("horizons", [[], [0, 0, 1]])
+    def test_empty_or_duplicate_horizons_rejected(self, horizons):
+        """Reject configurations that cannot describe distinct forecast weeks."""
+        with pytest.raises(ValueError, match="horizons"):
+            FlusightForecastOutput(reference_date=date(2026, 10, 10), horizons=horizons)
+
+
 class TestOutputConfigurationSurveillanceValidation:
     """Test OutputConfiguration surveillance reference validation."""
 

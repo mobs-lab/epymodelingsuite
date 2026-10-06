@@ -1,29 +1,37 @@
 """Output generation functions for formatting and saving results."""
 
 import copy
-import io
 import logging
 from collections import defaultdict
+from collections.abc import Sequence
 from datetime import date, timedelta
 
 import numpy as np
 import pandas as pd
 from epydemix.calibration import CalibrationResults
 
+from ..output.hub_format import normalize_target_values
+from ..output.tabular import (
+    dataframe_to_gzipped_csv as dataframe_to_gzipped_csv,
+)
+from ..output.tabular import (
+    format_hub_objects,
+    format_tabular_object,
+)
+from ..output.trajectory_samples import build_flusight_trajectory_samples
 from ..schema.dispatcher import CalibrationOutput, SimulationOutput
 from ..schema.output import (
     FlusightPropED,
     ObservedValuesConfig,
     OutputConfig,
     OutputObject,
-    TabularOutputTypeEnum,
-    get_metrocast_horizons,
     get_metrocast_quantiles,
 )
 from ..telemetry import ExecutionTelemetry
 from ..utils.location import (
     convert_location_name_format,
     get_flusight_population,
+    get_hub_location_id,
     parse_population_name,
 )
 from ..visualization.generators import (
@@ -35,30 +43,6 @@ from ..visualization.generators import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-def get_hub_location_id(population_name: str) -> str:
-    """
-    Convert population name to location ID for hub CSV outputs.
-
-    For ISO locations, returns FIPS code (e.g., "06" for California).
-    For metrocast locations, returns metrocast_location_id (e.g., "denver").
-
-    Parameters
-    ----------
-    population_name : str
-        Population name in epydemix format (e.g., "United_States_California" or
-        "metrocast_location_denver").
-
-    Returns
-    -------
-    str
-        Location ID appropriate for hub CSV output format.
-    """
-    location_name, location_type = parse_population_name(population_name)
-    if location_type == "metrocast_location":
-        return location_name
-    return convert_location_name_format(population_name, "FIPS")
 
 
 def get_plot_location_label(population_name: str) -> str:
@@ -86,6 +70,11 @@ def get_plot_location_label(population_name: str) -> str:
 
 
 # ===== Output Generator Helper Functions =====
+
+
+def add_metadata_columns(df: pd.DataFrame, **metadata: object) -> pd.DataFrame:
+    """Add metadata as leading columns in one batch, preserving the index and rejecting duplicate columns."""
+    return pd.concat([pd.DataFrame(metadata, index=df.index), df], axis=1, verify_integrity=True)
 
 
 def filter_failed_projections(calibration_results: CalibrationResults) -> CalibrationResults:
@@ -232,7 +221,7 @@ def format_quantiles_flusightforecast(
     quantiles_df: pd.DataFrame,
     reference_date: date,
     target: str = "wk inc flu hosp",
-    metrocast: bool = False,
+    horizons: Sequence[int] = range(-1, 4),
 ) -> pd.DataFrame:
     """
     Create FluSight forecast formatted quantile outputs for a single model. Rate-trends are handled separately.
@@ -245,8 +234,9 @@ def format_quantiles_flusightforecast(
         Reference date for calculating forecast horizons
     target : str
         Target name for the submission file (default: "wk inc flu hosp")
-    metrocast : bool
-        Use horizons for metrocast (0-3) instead of standard FluSight horizons (-1 to 3)
+    horizons : sequence of int, optional
+        Forecast week offsets to include. Defaults to -1 through 3. The
+        dispatcher passes the horizons resolved by the output configuration.
 
     Returns
     -------
@@ -255,29 +245,28 @@ def format_quantiles_flusightforecast(
     """
     formatted = copy.deepcopy(quantiles_df)
 
-    # Horizons required for quantile outputs (metrocast excludes horizon -1)
-    horizons = get_metrocast_horizons() if metrocast else range(-1, 4)
-
     # Create horizon column and filter for appropriate horizons
-    formatted.insert(
-        0,
-        "horizon",
-        (formatted.date - pd.to_datetime(reference_date)).apply(lambda x: x / np.timedelta64(1, "W")).astype(int),
+    formatted = add_metadata_columns(
+        formatted,
+        horizon=(formatted.date - pd.to_datetime(reference_date))
+        .apply(lambda x: x / np.timedelta64(1, "W"))
+        .astype(int),
     )
     formatted = formatted[formatted.horizon.isin(horizons)]
 
     # Name and format remaining fields
     # FRAGILE: the name 'hospitalizations' is user-supplied in the modelset as the column to look for in the surveillance data.
-    # Use nullable integer dtype to handle potential NaN values
-    formatted.hospitalizations = formatted.hospitalizations.round().astype("Int64")
+    formatted.hospitalizations = normalize_target_values(formatted.hospitalizations, target)
+    if target == "wk inc flu hosp":
+        # Preserve the existing nullable count dtype for CSV/DataFrame output.
+        formatted.hospitalizations = formatted.hospitalizations.astype("Int64")
     formatted.rename(
         columns={"date": "target_end_date", "hospitalizations": "value", "quantile": "output_type_id"}, inplace=True
     )
-    formatted.insert(2, "output_type", "quantile")
-    formatted.insert(2, "target", target)
+    formatted = add_metadata_columns(formatted, target=target, output_type="quantile")
     formatted.target_end_date = formatted.target_end_date.apply(lambda x: x.date())
 
-    return formatted
+    return formatted[["horizon", "target_end_date", "target", "output_type", "output_type_id", "value"]]
 
 
 def compare_thresholds_flusightforecast(
@@ -624,6 +613,7 @@ def prop_ed_surveillance_window(
     # Format and return
     prop_ed = pd.concat(prop_ed_list)
     prop_ed.target = target
+    prop_ed.value = normalize_target_values(prop_ed.value, target)
     rescaling_factors = pd.DataFrame.from_dict(r_dict, orient="columns")
     return prop_ed, rescaling_factors
 
@@ -711,8 +701,7 @@ def prop_ed_calibration_window(
     # Format and return
     prop_ed = pd.concat(prop_ed_list)
     prop_ed.target = target
-    prop_ed.value = prop_ed.value.apply(lambda x: max(x, 0))
-    prop_ed.value = prop_ed.value.apply(lambda x: min(x, 1))
+    prop_ed.value = normalize_target_values(prop_ed.value, target)
     rescaling_factors = pd.DataFrame.from_dict(r_dict, orient="columns")
     return prop_ed, rescaling_factors
 
@@ -724,7 +713,7 @@ def make_prop_ed_flusightforecast(
     calibration_quantiles: pd.DataFrame | None = None,
     projection_quantiles: pd.DataFrame | None = None,
     reference_date: date | None = None,
-    metrocast: bool = False,
+    horizons: Sequence[int] = range(-1, 4),
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Create FluSight prop ed forecasts from hosp forecast and surveillance data.
@@ -743,8 +732,9 @@ def make_prop_ed_flusightforecast(
         Quantiles from the projection phase (if config.strategy is 'transition')
     reference_date: date | None
         Reference date for calculating horizons (required if pred_hosp is empty)
-    metrocast: bool
-        Use horizons for metrocast (0-3)
+    horizons : sequence of int, optional
+        Forecast week offsets to include for transition outputs. Window outputs
+        inherit the hospitalization table's horizons. Defaults to -1 through 3.
 
     Returns
     -------
@@ -797,9 +787,6 @@ def make_prop_ed_flusightforecast(
             # Format the transition quantiles into FluSight format
             formatted = copy.deepcopy(projection_quantiles)
 
-            # Horizons required for quantile outputs
-            horizons = get_metrocast_horizons() if metrocast else range(-1, 4)
-
             # Get the reference date from parameter or pred_hosp
             if reference_date is None:
                 if not pred_hosp.empty and "reference_date" in pred_hosp.columns:
@@ -811,10 +798,9 @@ def make_prop_ed_flusightforecast(
                     raise ValueError(msg)
 
             # Create horizon column and filter for appropriate horizons
-            formatted.insert(
-                0,
-                "horizon",
-                (formatted.date - pd.to_datetime(reference_date))
+            formatted = add_metadata_columns(
+                formatted,
+                horizon=(formatted.date - pd.to_datetime(reference_date))
                 .apply(lambda x: x / np.timedelta64(1, "W"))
                 .astype(int),
             )
@@ -825,14 +811,18 @@ def make_prop_ed_flusightforecast(
                 columns={"date": "target_end_date", config.transition_name: "value", "quantile": "output_type_id"},
                 inplace=True,
             )
-            formatted.insert(2, "output_type", "quantile")
-            formatted.insert(2, "target", config.target)
+            formatted.value = normalize_target_values(formatted.value, config.target)
             formatted.target_end_date = formatted.target_end_date.apply(lambda x: x.date() if hasattr(x, "date") else x)
 
             # Add location and reference_date columns
-            formatted.insert(0, "reference_date", reference_date)
             # Convert population to location ID (FIPS for ISO, metrocast_location_id for metrocast)
-            formatted.insert(0, "location", formatted.population.apply(get_hub_location_id))
+            formatted = add_metadata_columns(
+                formatted,
+                location=formatted.population.apply(get_hub_location_id),
+                reference_date=reference_date,
+                target=config.target,
+                output_type="quantile",
+            )
 
             # Select only the columns we need for FluSight format
             formatted = formatted[
@@ -869,62 +859,6 @@ def format_quantiles_covid19forecast(quantiles_df: pd.DataFrame) -> pd.DataFrame
     formatted = copy.deepcopy(quantiles_df)
     # TODO
     return pd.DataFrame()
-
-
-def format_tabular_object(df: pd.DataFrame, name: str, output_type: TabularOutputTypeEnum) -> OutputObject:
-    """
-    Create an OutputObject containing tabular data as the requested type.
-
-    Parameters
-    ----------
-    df: pd.DataFrame
-        DataFrame containing tabular data.
-    name: str
-        Name for identifying tabular data.
-    output_type: TabularOutputTypeEnum
-        Requested output type, e.g. CSVBytes or DataFrame.
-
-    Returns
-    -------
-    OutputObject
-        Object containing tabular data as requested type.
-    """
-    match output_type:
-        case TabularOutputTypeEnum.CSVBytes:
-            return OutputObject(
-                output_type=output_type,
-                name=f"{name}.csv.gz",
-                data=dataframe_to_gzipped_csv(df, header=True, index=False),
-            )
-        case TabularOutputTypeEnum.DataFrame:
-            return OutputObject(output_type=output_type, name=name, data=df)
-        case TabularOutputTypeEnum.Parquet:
-            msg = "Parquet output not yet implemented."
-            logger.warning(msg)
-        case _:
-            msg = f"Requested undefined tabular object format {output_format}."
-            logger.warning(msg)
-
-
-def dataframe_to_gzipped_csv(df: pd.DataFrame, **csv_kwargs) -> bytes:
-    """
-    Convert a DataFrame to gzip-compressed CSV bytes.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        The DataFrame to convert
-    **csv_kwargs
-        Additional keyword arguments to pass to DataFrame.to_csv()
-
-    Returns
-    -------
-    bytes
-        Gzip-compressed CSV data as bytes
-    """
-    buffer = io.BytesIO()
-    df.to_csv(buffer, date_format="%Y-%m-%d", compression="gzip", **csv_kwargs)
-    return buffer.getvalue()
 
 
 # ===== Output Generator Registry and Functions =====
@@ -989,9 +923,12 @@ def generate_simulation_outputs(
                         warnings.add(
                             f"OUTPUT GENERATOR: Exception occured selecting compartment quantiles, returning all compartments: {e}"
                         )
-                quanc_df.insert(0, "primary_id", simulation.primary_id)
-                quanc_df.insert(1, "seed", simulation.seed)
-                quanc_df.insert(2, "population", simulation.population)
+                quanc_df = add_metadata_columns(
+                    quanc_df,
+                    primary_id=simulation.primary_id,
+                    seed=simulation.seed,
+                    population=simulation.population,
+                )
                 quantiles_compartments_list.append(quanc_df)
 
             # Transitions
@@ -1008,9 +945,12 @@ def generate_simulation_outputs(
                         warnings.add(
                             f"OUTPUT GENERATOR: Exception occured selecting transition quantiles, returning all transitions: {e}"
                         )
-                quant_df.insert(0, "primary_id", simulation.primary_id)
-                quant_df.insert(1, "seed", simulation.seed)
-                quant_df.insert(2, "population", simulation.population)
+                quant_df = add_metadata_columns(
+                    quant_df,
+                    primary_id=simulation.primary_id,
+                    seed=simulation.seed,
+                    population=simulation.population,
+                )
                 quantiles_transitions_list.append(quant_df)
 
     quantiles_compartments = (
@@ -1035,11 +975,14 @@ def generate_simulation_outputs(
                             warnings.add(
                                 f"OUTPUT GENERATOR: Exception occured selecting compartment trajectories, returning all compartments: {e}"
                             )
-                    trajc_df.insert(0, "primary_id", simulation.primary_id)
-                    trajc_df.insert(1, "sim_id", i)
-                    trajc_df.insert(2, "date", traj.dates)
-                    trajc_df.insert(3, "seed", simulation.seed)
-                    trajc_df.insert(4, "population", simulation.population)
+                    trajc_df = add_metadata_columns(
+                        trajc_df,
+                        primary_id=simulation.primary_id,
+                        sim_id=i,
+                        date=traj.dates,
+                        seed=simulation.seed,
+                        population=simulation.population,
+                    )
                     trajectories_compartments_list.append(trajc_df)
 
                 # Transitions
@@ -1052,11 +995,14 @@ def generate_simulation_outputs(
                             warnings.add(
                                 f"OUTPUT GENERATOR: Exception occured selecting transition trajectories, returning all transitions: {e}"
                             )
-                    trajt_df.insert(0, "primary_id", simulation.primary_id)
-                    trajt_df.insert(1, "sim_id", i)
-                    trajt_df.insert(2, "date", traj.dates)
-                    trajt_df.insert(3, "seed", simulation.seed)
-                    trajt_df.insert(4, "population", simulation.population)
+                    trajt_df = add_metadata_columns(
+                        trajt_df,
+                        primary_id=simulation.primary_id,
+                        sim_id=i,
+                        date=traj.dates,
+                        seed=simulation.seed,
+                        population=simulation.population,
+                    )
                     trajectories_transitions_list.append(trajt_df)
 
     trajectories_compartments = (
@@ -1137,8 +1083,7 @@ def generate_simulation_outputs(
     if not hub_format_output.empty:
         # will want to build filename to be something better, like to fit hub standards
         hf_name = "output_hub_formatted"
-        hf_objects = [format_tabular_object(hub_format_output, hf_name, _type) for _type in output.tabular_output_types]
-        out_dict[hf_name] = hf_objects
+        out_dict[hf_name] = format_hub_objects(hub_format_output, hf_name, output.tabular_output_types)
     if not model_meta.empty:
         mm_name = "model_metadata"
         mm_objects = [format_tabular_object(model_meta, mm_name, _type) for _type in output.tabular_output_types]
@@ -1203,10 +1148,13 @@ def generate_calibration_outputs(
                                 variables=["data"],
                                 ignore_nan=True,
                             )
-                            quancal_df.insert(0, "primary_id", calibration.primary_id)
-                            quancal_df.insert(1, "seed", calibration.seed)
-                            quancal_df.insert(2, "population", calibration.population)
-                            quancal_df.insert(3, "generation", generation)
+                            quancal_df = add_metadata_columns(
+                                quancal_df,
+                                primary_id=calibration.primary_id,
+                                seed=calibration.seed,
+                                population=calibration.population,
+                                generation=generation,
+                            )
                             quantiles_calibration_list.append(quancal_df)
                         except Exception as e:
                             warnings.add(
@@ -1222,9 +1170,12 @@ def generate_calibration_outputs(
                             variables=["data"],
                             ignore_nan=True,
                         )
-                        quancal_df.insert(0, "primary_id", calibration.primary_id)
-                        quancal_df.insert(1, "seed", calibration.seed)
-                        quancal_df.insert(2, "population", calibration.population)
+                        quancal_df = add_metadata_columns(
+                            quancal_df,
+                            primary_id=calibration.primary_id,
+                            seed=calibration.seed,
+                            population=calibration.population,
+                        )
                         quantiles_calibration_list.append(quancal_df)
                     except Exception as e:
                         warnings.add(
@@ -1268,9 +1219,12 @@ def generate_calibration_outputs(
                         # Use all compartments, filter out transitions
                         quanc_df = quan_df.copy()
                         quanc_df.drop(columns=transition_columns, inplace=True)
-                    quanc_df.insert(0, "primary_id", calibration.primary_id)
-                    quanc_df.insert(1, "seed", calibration.seed)
-                    quanc_df.insert(2, "population", calibration.population)
+                    quanc_df = add_metadata_columns(
+                        quanc_df,
+                        primary_id=calibration.primary_id,
+                        seed=calibration.seed,
+                        population=calibration.population,
+                    )
                     quantiles_projection_compartments_list.append(quanc_df)
 
                 # Transitions
@@ -1296,9 +1250,12 @@ def generate_calibration_outputs(
                         columns_to_select = ["date", "quantile"]
                         columns_to_select.extend(transition_columns)
                         quant_df = quan_df[columns_to_select].copy()
-                    quant_df.insert(0, "primary_id", calibration.primary_id)
-                    quant_df.insert(1, "seed", calibration.seed)
-                    quant_df.insert(2, "population", calibration.population)
+                    quant_df = add_metadata_columns(
+                        quant_df,
+                        primary_id=calibration.primary_id,
+                        seed=calibration.seed,
+                        population=calibration.population,
+                    )
                     quantiles_projection_transitions_list.append(quant_df)
             except Exception as e:
                 warnings.add(
@@ -1338,7 +1295,7 @@ def generate_calibration_outputs(
                 for name, values in traj.items():
                     columns.append(pd.Series(values[i], name=name))
                 traj_df = pd.concat(columns, axis=1)
-                traj_df.insert(0, "sim_id", i)
+                traj_df = add_metadata_columns(traj_df, sim_id=i)
                 trajectories_list.append(traj_df)
 
             trajectories = pd.concat(trajectories_list, ignore_index=True) if trajectories_list else pd.DataFrame()
@@ -1362,9 +1319,13 @@ def generate_calibration_outputs(
                 else:
                     # Use all compartments, filter out transitions
                     traj_c.drop(columns=transition_columns, inplace=True)
-                traj_c.insert(0, "primary_id", calibration.primary_id)
-                traj_c.insert(2, "seed", calibration.seed)
-                traj_c.insert(3, "population", calibration.population)
+                traj_c = add_metadata_columns(
+                    traj_c.drop(columns="sim_id"),
+                    primary_id=calibration.primary_id,
+                    sim_id=traj_c["sim_id"],
+                    seed=calibration.seed,
+                    population=calibration.population,
+                )
                 trajectories_projection_compartments_list.append(traj_c)
 
             # Transitions
@@ -1389,9 +1350,13 @@ def generate_calibration_outputs(
                     columns_to_select = ["sim_id", "date"]
                     columns_to_select.extend(transition_columns)
                     traj_t = traj_t[columns_to_select].copy()
-                traj_t.insert(0, "primary_id", calibration.primary_id)
-                traj_t.insert(2, "seed", calibration.seed)
-                traj_t.insert(3, "population", calibration.population)
+                traj_t = add_metadata_columns(
+                    traj_t.drop(columns="sim_id"),
+                    primary_id=calibration.primary_id,
+                    sim_id=traj_t["sim_id"],
+                    seed=calibration.seed,
+                    population=calibration.population,
+                )
                 trajectories_projection_transitions_list.append(traj_t)
 
     trajectories_projection_compartments = (
@@ -1425,7 +1390,7 @@ def generate_calibration_outputs(
                 for g in output.posteriors.generations:
                     try:
                         post = calibration.results.get_posterior_distribution(generation=g).copy()
-                        post.insert(0, "generation", g)
+                        post = add_metadata_columns(post, generation=g)
                         post_df_list.append(post)
                     except Exception:
                         warnings.add(
@@ -1438,9 +1403,12 @@ def generate_calibration_outputs(
                 raise ValueError(msg)
             # Record identifiers and add to list
             if not post_df.empty:
-                post_df.insert(0, "primary_id", calibration.primary_id)
-                post_df.insert(1, "seed", calibration.seed)
-                post_df.insert(2, "population", calibration.population)
+                post_df = add_metadata_columns(
+                    post_df,
+                    primary_id=calibration.primary_id,
+                    seed=calibration.seed,
+                    population=calibration.population,
+                )
                 posteriors_list.append(post_df)
 
     posteriors = pd.concat(posteriors_list, ignore_index=True) if posteriors_list else pd.DataFrame()
@@ -1458,8 +1426,11 @@ def generate_calibration_outputs(
         else:
             flusight_quantiles = output.flusight_format.quantiles
 
-        # Quantile forecasts (hospitalizations)
-        if output.flusight_format.hospitalizations:
+        # Window ED needs hospitalization forecasts internally even for ED-only output.
+        hosp_forecast_list = []
+        if output.flusight_format.hospitalizations or (
+            output.flusight_format.prop_ed and output.flusight_format.prop_ed.strategy != "transition"
+        ):
             logger.info("  - Generating FluSight quantile forecasts (hospitalizations)")
             for calibration in calibrations:
                 try:
@@ -1480,12 +1451,22 @@ def generate_calibration_outputs(
                 quanf_df = format_quantiles_flusightforecast(
                     quanf_df,
                     output.flusight_format.reference_date,
-                    target=output.flusight_format.hospitalizations.target,
-                    metrocast=output.flusight_format.metrocast,
+                    target=(
+                        output.flusight_format.hospitalizations.target
+                        if output.flusight_format.hospitalizations
+                        else "wk inc flu hosp"
+                    ),
+                    horizons=output.flusight_format.horizons,
                 )
-                quanf_df.insert(0, "reference_date", output.flusight_format.reference_date)
-                quanf_df.insert(0, "location", get_hub_location_id(calibration.population))
-                hub_format_output_list.append(quanf_df)
+                quanf_df = add_metadata_columns(
+                    quanf_df,
+                    location=get_hub_location_id(calibration.population),
+                    reference_date=output.flusight_format.reference_date,
+                )
+                hosp_forecast_list.append(quanf_df)
+
+        if output.flusight_format.hospitalizations:
+            hub_format_output_list.extend(hosp_forecast_list)
 
         # Prop ED forecasts
         if output.flusight_format.prop_ed:
@@ -1508,9 +1489,12 @@ def generate_calibration_outputs(
                             variables=["data"],
                             ignore_nan=True,
                         )
-                        quancalflu_df.insert(0, "primary_id", calibration.primary_id)
-                        quancalflu_df.insert(1, "seed", calibration.seed)
-                        quancalflu_df.insert(2, "population", calibration.population)
+                        quancalflu_df = add_metadata_columns(
+                            quancalflu_df,
+                            primary_id=calibration.primary_id,
+                            seed=calibration.seed,
+                            population=calibration.population,
+                        )
                         quantiles_calibration_flusight_list.append(quancalflu_df)
                     except Exception as e:
                         warnings.add(
@@ -1531,9 +1515,12 @@ def generate_calibration_outputs(
                             variables=[transition_name],
                             ignore_nan=True,
                         )
-                        quanproj_df.insert(0, "primary_id", calibration.primary_id)
-                        quanproj_df.insert(1, "seed", calibration.seed)
-                        quanproj_df.insert(2, "population", calibration.population)
+                        quanproj_df = add_metadata_columns(
+                            quanproj_df,
+                            primary_id=calibration.primary_id,
+                            seed=calibration.seed,
+                            population=calibration.population,
+                        )
                         quantiles_projection_flusight_list.append(quanproj_df)
                     except Exception as e:
                         warnings.add(
@@ -1548,7 +1535,7 @@ def generate_calibration_outputs(
                 pd.concat(quantiles_projection_flusight_list) if quantiles_projection_flusight_list else None
             )
             hosp_forecast = (
-                pd.concat(hub_format_output_list, ignore_index=True) if hub_format_output_list else pd.DataFrame()
+                pd.concat(hosp_forecast_list, ignore_index=True) if hosp_forecast_list else pd.DataFrame()
             )
             try:
                 prop_ed_df, rescaling_factors = make_prop_ed_flusightforecast(
@@ -1558,7 +1545,7 @@ def generate_calibration_outputs(
                     quantiles_calibration_flusight,
                     quantiles_projection_flusight,
                     output.flusight_format.reference_date,
-                    metrocast=output.flusight_format.metrocast,
+                    horizons=output.flusight_format.horizons,
                 )
                 hub_format_output_list.append(prop_ed_df)
             except (ValueError, AssertionError, KeyError, IndexError) as e:
@@ -1614,10 +1601,13 @@ def generate_calibration_outputs(
                         observed=surv,
                         population=get_flusight_population(calibration.population),
                     )
-                    trends_df.insert(0, "target", "wk flu hosp rate change")
-                    trends_df.insert(0, "output_type", "pmf")
-                    trends_df.insert(0, "reference_date", output.flusight_format.reference_date)
-                    trends_df.insert(0, "location", get_hub_location_id(calibration.population))
+                    trends_df = add_metadata_columns(
+                        trends_df,
+                        location=get_hub_location_id(calibration.population),
+                        reference_date=output.flusight_format.reference_date,
+                        output_type="pmf",
+                        target="wk flu hosp rate change",
+                    )
                     hub_format_output_list.append(trends_df)
                 except (ValueError, IndexError, KeyError) as e:
                     warnings.add(
@@ -1625,6 +1615,22 @@ def generate_calibration_outputs(
                         f"(primary_id={calibration.primary_id}): {e}"
                     )
                     continue
+
+        # Trajectory samples
+        if output.flusight_format.samples:
+            logger.info("  - Generating FluSight trajectory samples")
+            sample_rows, sample_warnings = build_flusight_trajectory_samples(
+                calibrations,
+                output.flusight_format,
+                rescaling_factors if output.flusight_format.prop_ed else pd.DataFrame(),
+            )
+            if output.flusight_format.metrocast:
+                # Metrocast 2026-27 accepts samples only. Quantiles above still
+                # supply the rescaling factors needed by window-based ED samples.
+                hub_format_output_list = sample_rows
+            else:
+                hub_format_output_list.extend(sample_rows)
+            warnings.update(sample_warnings)
 
         hub_format_output = (
             pd.concat(hub_format_output_list, ignore_index=True) if hub_format_output_list else pd.DataFrame()
@@ -1778,8 +1784,7 @@ def generate_calibration_outputs(
     if not hub_format_output.empty:
         # will want to build filename to be something better, like to fit hub standards
         hf_name = "output_hub_formatted"
-        hf_objects = [format_tabular_object(hub_format_output, hf_name, _type) for _type in output.tabular_output_types]
-        out_dict[hf_name] = hf_objects
+        out_dict[hf_name] = format_hub_objects(hub_format_output, hf_name, output.tabular_output_types)
     if not model_meta.empty:
         mm_name = "model_metadata"
         mm_objects = [format_tabular_object(model_meta, mm_name, _type) for _type in output.tabular_output_types]

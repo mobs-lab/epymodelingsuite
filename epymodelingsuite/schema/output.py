@@ -5,6 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from ..output.trajectory_samples import SAMPLE_SELECTORS
 from .common import Meta
 
 logger = logging.getLogger(__name__)
@@ -283,6 +284,43 @@ class FlusightHospitalizations(BaseModel):
     )
 
 
+class FlusightTrajectorySamples(BaseModel):
+    """Specifications for trajectory sample outputs ('sample' output type)."""
+
+    n_samples: int = Field(
+        100,
+        gt=0,
+        description="Samples per location and target. If fewer complete trajectories exist, all are submitted.",
+    )
+    method: str = Field("random", description="Sample selection method, a key of SAMPLE_SELECTORS.")
+    seed: int | None = Field(None, description="Seed for sample selection. Defaults to each model's seed.")
+
+    @field_validator("method")
+    @classmethod
+    def validate_method(cls, v: str) -> str:
+        """Validate the trajectory selection method.
+
+        Parameters
+        ----------
+        v : str
+            Requested key in ``SAMPLE_SELECTORS``.
+
+        Returns
+        -------
+        str
+            The unchanged method name if it is registered.
+
+        Raises
+        ------
+        ValueError
+            If the method is not registered.
+        """
+        if v not in SAMPLE_SELECTORS:
+            msg = f"Unknown sample selection method '{v}'. Available: {sorted(SAMPLE_SELECTORS)}"
+            raise ValueError(msg)
+        return v
+
+
 class FlusightForecastOutput(BaseModel):
     """Specifications for outputs in flusight forecast hub format."""
 
@@ -306,7 +344,38 @@ class FlusightForecastOutput(BaseModel):
         description="Desired quantiles for hospitalizations and prop_ed expressed as floats.",
         validate_default=True,
     )
+    samples: FlusightTrajectorySamples | None = Field(
+        None,
+        description="Add trajectory samples for the enabled hospitalization and prop_ed targets. Metrocast emits samples only when enabled. Omit to disable.",
+    )
     metrocast: bool | None = Field(False, description="Treat outputs as metrocast.")
+    horizons: list[int] | None = Field(
+        None,
+        min_length=1,
+        description="Week offsets for hospitalization/ED quantiles and samples. Omit for FluSight -1..3 or Metrocast 0..3. Rate trends use their own required horizons.",
+    )
+
+    @model_validator(mode="after")
+    def resolve_horizons(self) -> "FlusightForecastOutput":
+        """Resolve default forecast horizons and reject duplicate offsets.
+
+        Returns
+        -------
+        FlusightForecastOutput
+            Configuration with explicit horizons preserved, or hub defaults
+            filled in when horizons are omitted or None.
+
+        Raises
+        ------
+        ValueError
+            If horizons contain duplicate offsets.
+        """
+        if self.horizons is None:
+            self.horizons = list(get_metrocast_horizons() if self.metrocast else range(-1, 4))
+        if len(set(self.horizons)) != len(self.horizons):
+            msg = "horizons must not contain duplicates."
+            raise ValueError(msg)
+        return self
 
 
 class QuantilesOutput(BaseModel):
