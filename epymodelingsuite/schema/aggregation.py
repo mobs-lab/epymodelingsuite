@@ -1,7 +1,7 @@
 import logging
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from .common import Meta
 
@@ -59,7 +59,7 @@ class BaselineStrategyEnum(str, Enum):
     """
 
     negative_binomial = "negative_binomial"  # counts, e.g. hospitalizations
-    beta = "beta"  # proportions in (0, 1), e.g. ED visits; stub
+    beta = "beta"  # proportions in (0, 1), e.g. ED visits
 
 
 class SamplingConfiguration(BaseModel):
@@ -73,10 +73,27 @@ class BaselineConfiguration(BaseModel):
     """Configuration for adding post-hoc baseline noise."""
 
     method: BaselineStrategyEnum = Field(description="Strategy for post-aggregation baseline addition.")
-    observed_means: str = Field(description="Filename to look for in data module containing baseline averages.")
-    dispersion_values: int | list[int] = Field(
-        description="Value(s) to use for parameter modifying dispersion/variance of baseline noise."
+    observed_means: str = Field(
+        description=(
+            "Filename to look for in data module containing baseline averages "
+            "(and, for the beta method, a 'variance' column)."
+        )
     )
+    dispersion_values: int | list[int] | None = Field(
+        None,
+        description=(
+            "Value(s) to use for parameter modifying dispersion/variance of baseline noise. "
+            "Required for negative_binomial; unused for beta, which takes the variance from the baseline file."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def check_dispersion_values(self):
+        if self.method == BaselineStrategyEnum.negative_binomial and self.dispersion_values is None:
+            raise ValueError("baseline.dispersion_values is required for the negative_binomial method.")
+        if self.method == BaselineStrategyEnum.beta and self.dispersion_values is not None:
+            logger.warning("baseline.dispersion_values is ignored for the beta method.")
+        return self
 
 
 class AggregationConfiguration(BaseModel):

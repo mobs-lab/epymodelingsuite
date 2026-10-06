@@ -1,12 +1,21 @@
+import os
+
 import numpy as np
 import pandas as pd
 import pytest
 
+import epymodelingsuite
+
 from epymodelingsuite.multistrain.aggregator import dispatch_baseline
-from epymodelingsuite.schema.aggregation import AggregationConfiguration
+from epymodelingsuite.schema.aggregation import AggregationConfiguration, BaselineConfiguration
+
+DATA_DIR = os.path.join(os.path.dirname(epymodelingsuite.__file__), "data")
 
 
 def _config(observed_means: str, method: str = "negative_binomial", seed: int | None = 1) -> AggregationConfiguration:
+    baseline = {"method": method, "observed_means": observed_means}
+    if method == "negative_binomial":
+        baseline["dispersion_values"] = [5, 50]
     return AggregationConfiguration(
         bucket="gs://unused",
         random_seed=seed,
@@ -14,7 +23,7 @@ def _config(observed_means: str, method: str = "negative_binomial", seed: int | 
         sources=[],
         sampling={"method": "random", "n_samples": 1},
         aggregate_method="sum",
-        baseline={"method": method, "observed_means": observed_means, "dispersion_values": [5, 50]},
+        baseline=baseline,
     )
 
 
@@ -68,7 +77,41 @@ def test_negative_binomial_baseline_moments(k):
     assert noise.var() == pytest.approx(mu + mu**2 / k, rel=0.1)
 
 
-def test_beta_baseline_is_a_stub():
+def test_negative_binomial_requires_dispersion_values():
+    with pytest.raises(ValueError, match="dispersion_values"):
+        BaselineConfiguration(method="negative_binomial", observed_means="baselines_hosp_2025.csv")
+
+
+def test_beta_baseline_moments():
+    df = _trajectories(["United_States", "United_States__Alaska"], n_samples=20000)
+    out = dispatch_baseline(df, _config("baselines_ed_2026.csv", method="beta"))
+
+    assert out.index.equals(df.index)
+    assert not any(c.startswith("target_baseline_k") for c in out.columns)
+    noise = out["target_baseline"] - out["target_total"]
+    assert ((noise > 0) & (noise < 1)).all()
+
+    expected = pd.read_csv(f"{DATA_DIR}/baselines_ed_2026.csv").set_index("location_name_epydemix")
+    for loc, group in noise.groupby(out["location"]):
+        assert group.mean() == pytest.approx(expected.loc[loc, "baseline"], rel=0.02)
+        assert group.var() == pytest.approx(expected.loc[loc, "variance"], rel=0.1)
+
+
+def test_beta_baseline_is_reproducible_with_seed():
     df = _trajectories(["United_States"])
-    with pytest.raises(NotImplementedError):
+    a = dispatch_baseline(df, _config("baselines_ed_2026.csv", method="beta", seed=7))
+    b = dispatch_baseline(df, _config("baselines_ed_2026.csv", method="beta", seed=7))
+    pd.testing.assert_frame_equal(a, b)
+
+
+def test_beta_baseline_needs_variance_column():
+    df = _trajectories(["United_States"])
+    with pytest.raises(ValueError, match="variance"):
         dispatch_baseline(df, _config("baselines_ed_2025.csv", method="beta"))
+
+
+def test_beta_baseline_rejects_impossible_variance():
+    # Hospitalization counts are not proportions in (0, 1)
+    df = _trajectories(["United_States"])
+    with pytest.raises(ValueError, match="United_States"):
+        dispatch_baseline(df, _config("baselines_hosp_2026.csv", method="beta"))

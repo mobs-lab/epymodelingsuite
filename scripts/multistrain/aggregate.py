@@ -104,9 +104,12 @@ def main():
 
         aggregated_df = dispatch_baseline(aggregated_df, aggregation)
 
-        print(
-            f"  Added {aggregation.baseline.method} baseline noise with dispersion/variance modifiers {aggregation.baseline.dispersion_values}:\n{aggregated_df.tail()}"
-        )
+        if aggregation.baseline.method == "beta":
+            print(f"  Added beta baseline noise with per-location variances:\n{aggregated_df.tail()}")
+        else:
+            print(
+                f"  Added {aggregation.baseline.method} baseline noise with dispersion/variance modifiers {aggregation.baseline.dispersion_values}:\n{aggregated_df.tail()}"
+            )
 
     # Add formatting columns
     ref_date = pd.Timestamp(Week.fromstring(str(aggregation.submission_week)).enddate()).as_unit("us")

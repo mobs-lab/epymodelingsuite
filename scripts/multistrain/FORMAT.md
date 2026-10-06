@@ -22,14 +22,15 @@ One row per (`sample_id`, `location`, `date`).
 | `date` | datetime64[us] | Week end date (Saturday) |
 | `target_<strain>` | float64 | Strain value. One column per strain. May be NaN before the strain's fitting window starts |
 | `target_total` | float64 | Sum over strains (NaN treated as 0) |
-| `target_baseline_k<k>` | float64 | Only when the config has a `baseline`: `target_total` plus baseline noise with mean from `baseline.observed_means` and dispersion/concentration `k` (`negative_binomial` for counts; `beta` for proportions is a stub that raises `NotImplementedError`). Drawn with `random_seed`. One column per `k` |
+| `target_baseline_k<k>` | float64 | Only when the config has a `negative_binomial` `baseline` (counts): `target_total` plus NegBin noise with mean from `baseline.observed_means` and dispersion `k`. Drawn with `random_seed`. One column per `k` in `dispersion_values` |
+| `target_baseline` | float64 | Only when the config has a `beta` `baseline` (proportions): `target_total` plus Beta noise with mean and variance from the `baseline` and `variance` columns of `baseline.observed_means`. Drawn with `random_seed` |
 | `reference_date` | datetime64[us] | Saturday of the submission epiweek. Same for every row |
 | `horizon` | int64 | `(date - reference_date)` in weeks. Negative before `reference_date`, `0` at it |
 | `epiweek` | string | CDC epiweek of `date`, `YYYYww` |
 
 The file covers the whole trajectory, not only the forecast horizons. Filter on `horizon` when you need the forecast weeks.
 
-Column order is: `sample_id`, the `sim_id_<strain>` columns, `location`, `date`, the `target_<strain>` columns, `target_total`, the `target_baseline_k<k>` columns (if any), `reference_date`, `horizon`, `epiweek`.
+Column order is: `sample_id`, the `sim_id_<strain>` columns, `location`, `date`, the `target_<strain>` columns, `target_total`, the `target_baseline_k<k>` or `target_baseline` columns (if any), `reference_date`, `horizon`, `epiweek`.
 
 ### Strain labels
 
