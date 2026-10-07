@@ -1,11 +1,16 @@
 """Tests for data fetching utilities."""
 
+from datetime import date
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
 
-from epymodelingsuite.utils.data import fetch_hhs_hospitalizations
+from epymodelingsuite.utils.data import (
+    fetch_hhs_hospitalizations,
+    fetch_latest_hhs_week_end,
+    fetch_latest_nssp_week_end,
+)
 
 
 @pytest.fixture
@@ -378,3 +383,23 @@ class TestFetchHHSHospitalizations:
         """Test that invalid data_type raises ValueError."""
         with pytest.raises(ValueError, match="Invalid data_type"):
             fetch_hhs_hospitalizations(data_type="invalid")
+
+
+class TestLatestWeekEnd:
+    """Test suite for the latest-week checks."""
+
+    @patch("epymodelingsuite.utils.data.Socrata")
+    def test_queries_max_date_only(self, mock_socrata_class: MagicMock) -> None:
+        mock_client = MagicMock()
+        mock_client.get.return_value = [{"latest": "2026-10-03T00:00:00.000"}]
+        mock_socrata_class.return_value = mock_client
+
+        assert fetch_latest_nssp_week_end() == date(2026, 10, 3)
+        mock_client.get.assert_called_with("rdmq-nq56", select="max(week_end) AS latest", where="county='All'")
+
+        assert fetch_latest_hhs_week_end("preliminary") == date(2026, 10, 3)
+        mock_client.get.assert_called_with("mpgq-jmmr", select="max(weekendingdate) AS latest", where=None)
+
+    def test_invalid_hhs_data_type(self) -> None:
+        with pytest.raises(ValueError, match="Invalid data_type"):
+            fetch_latest_hhs_week_end("bogus")
