@@ -1,9 +1,11 @@
-"""File layout of hubverse (FluSight) submissions: column types, combining and reading."""
+"""File layout of hubverse (FluSight) submissions: column types, filtering, combining, reading and writing."""
 
 from pathlib import Path
 
 import pandas as pd
 import pyarrow as pa
+
+from epymodelingsuite.utils.location import convert_location_name_format
 
 HUB_COLUMNS = [
     "reference_date",
@@ -106,6 +108,40 @@ def combine_submissions(tables: list[pd.DataFrame]) -> pd.DataFrame:
     )
 
 
+def exclude_locations(df: pd.DataFrame, locations: list[str]) -> pd.DataFrame:
+    """
+    Drop locations from a hub table.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Hub table containing all ``HUB_COLUMNS``, with FluSight (zero-padded FIPS or ``US``) locations.
+    locations : list[str]
+        Locations to drop, in any format accepted by ``convert_location_name_format``
+        (e.g. ``"MA"``, ``"25"``, ``"Massachusetts"``, ``"US-MA"``).
+
+    Returns
+    -------
+    pd.DataFrame
+        Table with hub dtypes, without the given locations, with a fresh integer index.
+
+    Raises
+    ------
+    ValueError
+        If a location is not recognized or not present in the table.
+    """
+    table = cast_hub_dtypes(df)
+    try:
+        excluded = {convert_location_name_format(loc, "FIPS", location_type="iso"): loc for loc in locations}
+    except AssertionError as e:
+        raise ValueError(str(e)) from e
+    missing = [excluded[code] for code in excluded if code not in set(table["location"])]
+    if missing:
+        msg = f"Locations not found in table: {missing}"
+        raise ValueError(msg)
+    return table[~table["location"].isin(excluded)].reset_index(drop=True)
+
+
 def read_hub_table(path: str | Path) -> pd.DataFrame:
     """Read a hub table from Parquet or CSV.
 
@@ -126,3 +162,21 @@ def read_hub_table(path: str | Path) -> pd.DataFrame:
     if path.suffix.lower() in {".parquet", ".pq"}:
         return pd.read_parquet(path)
     return pd.read_csv(path, dtype={"location": str, "output_type_id": str})
+
+
+def write_hub_table(df: pd.DataFrame, path: str | Path) -> None:
+    """Write a hub table to Parquet or CSV.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Table to write, without its index.
+    path : str or pathlib.Path
+        Output file. A ``.parquet`` or ``.pq`` suffix selects the Parquet writer
+        (case-insensitive); other suffixes write CSV.
+    """
+    path = Path(path)
+    if path.suffix.lower() in {".parquet", ".pq"}:
+        df.to_parquet(path, index=False)
+    else:
+        df.to_csv(path, index=False)
