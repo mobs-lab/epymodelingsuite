@@ -109,3 +109,35 @@ class TestCombineSubmissions:
         # A distinct DataFrame with the same forecast keys must still count as an overlap.
         with pytest.raises(ValueError, match="more than one table"):
             hub_files.combine_submissions([hosp, hosp.copy()])
+
+
+class TestExcludeLocations:
+    """Tests for dropping locations from a hub table."""
+
+    @staticmethod
+    def _table() -> pd.DataFrame:
+        rows = [
+            trajectories_to_sample_rows(np.ones((1, 5)), HORIZONS, date(2026, 10, 10), fips, "wk inc flu hosp", abbr)
+            for fips, abbr in [("06", "CA"), ("25", "MA"), ("US", "US")]
+        ]
+        return pd.concat(rows, ignore_index=True)
+
+    def test_drops_locations_given_in_any_format(self):
+        """Test that abbreviation, name, ISO and FIPS all resolve to the zero-padded hub location."""
+        assert hub_files.exclude_locations(self._table(), ["CA", "Massachusetts"]).location.unique().tolist() == ["US"]
+        assert hub_files.exclude_locations(self._table(), ["US-CA", "06"]).location.unique().tolist() == ["25", "US"]
+
+    @pytest.mark.parametrize(("locations", "match"), [(["XX"], "does not match"), (["NY"], "not found.*NY")])
+    def test_unknown_or_absent_location_raises(self, locations, match):
+        """Test that a typo or a location missing from the table raises instead of silently dropping nothing."""
+        with pytest.raises(ValueError, match=match):
+            hub_files.exclude_locations(self._table(), locations)
+
+
+@pytest.mark.parametrize("suffix", [".csv", ".parquet"])
+def test_write_then_read_hub_table_round_trips(tmp_path, suffix):
+    """Test that a written hub table reads back with the same values and string IDs."""
+    table = hub_files.cast_hub_dtypes(_quantile_rows())
+    path = tmp_path / f"submission{suffix}"
+    hub_files.write_hub_table(table, path)
+    pd.testing.assert_frame_equal(hub_files.cast_hub_dtypes(hub_files.read_hub_table(path)), table)
