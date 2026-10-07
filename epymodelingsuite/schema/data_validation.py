@@ -6,23 +6,33 @@ calibration before running computationally expensive calibration jobs.
 
 import logging
 from pathlib import Path
+from typing import Annotated, get_args, get_origin
 
 import pandas as pd
 from pydantic import BaseModel
 
 from ..builders.utils import get_data_in_location
 from .calibration import CalibrationConfig
+from .common import InputFile
 
 logger = logging.getLogger(__name__)
+
+
+def _is_input_file(annotation: object) -> bool:
+    # Optional fields keep the Annotated marker inside the union.
+    if get_origin(annotation) is Annotated and any(isinstance(m, InputFile) for m in get_args(annotation)[1:]):
+        return True
+    return any(_is_input_file(arg) for arg in get_args(annotation))
 
 
 def _collect_data_paths(node: object) -> set[str]:
     if isinstance(node, BaseModel):
         # model_fields skips computed fields, so user scripts are not executed.
         paths = set()
-        for name in type(node).model_fields:
+        for name, field in type(node).model_fields.items():
             value = getattr(node, name)
-            if name.endswith("_path") and isinstance(value, str):
+            marked = any(isinstance(m, InputFile) for m in field.metadata) or _is_input_file(field.annotation)
+            if marked and isinstance(value, str):
                 paths.add(value)
             else:
                 paths |= _collect_data_paths(value)
@@ -36,7 +46,7 @@ def _collect_data_paths(node: object) -> set[str]:
 
 def find_missing_data_files(*configs: BaseModel | None) -> list[str]:
     """
-    List files referenced by ``*_path`` config fields that do not exist.
+    List input files referenced by ``InputFilePath`` config fields that do not exist.
 
     Covers every config type (basemodel, sampling, calibration, output), so a
     mistyped data path fails validation instead of the builder at runtime.

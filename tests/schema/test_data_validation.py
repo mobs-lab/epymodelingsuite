@@ -9,6 +9,7 @@ import pytest
 import yaml
 from pydantic import BaseModel, computed_field
 
+from epymodelingsuite.schema.common import InputFilePath
 from epymodelingsuite.schema.data_validation import (
     find_missing_data_files,
     validate_calibration_data,
@@ -449,25 +450,29 @@ class TestFindMissingDataFiles:
         assert find_missing_data_files(self._calibration_config(tmp_path, present), None) == []
         assert find_missing_data_files(self._calibration_config(tmp_path, missing)) == [str(missing)]
 
-    def test_walks_dicts_and_lists_without_computed_fields(self, tmp_path):
-        """Dict and list values are walked, and computed fields are never evaluated."""
+    def test_checks_only_marked_fields(self, tmp_path):
+        """Marked fields are walked through dicts, lists and optionals; names do not matter."""
 
         class Source(BaseModel):
-            data_path: str
+            data_path: InputFilePath
+            output_path: str  # not an input file, so never checked
 
         class Config(BaseModel):
             sources: dict[str, Source]
             extra: list[Source]
-            optional_path: str | None = None
+            optional_file: InputFilePath | None = None
+            unset_file: InputFilePath | None = None
 
             @computed_field
             @property
             def user_function(self) -> str:
                 raise AssertionError("computed fields must not run")
 
+        source = Source(data_path=str(tmp_path / "a.csv"), output_path=str(tmp_path / "out.csv"))
         config = Config(
-            sources={"a": Source(data_path=str(tmp_path / "a.csv"))},
-            extra=[Source(data_path=str(tmp_path / "b.csv"))],
+            sources={"a": source},
+            extra=[Source(data_path=str(tmp_path / "b.csv"), output_path=str(tmp_path / "out.csv"))],
+            optional_file=str(tmp_path / "c.csv"),
         )
 
-        assert find_missing_data_files(config) == [str(tmp_path / "a.csv"), str(tmp_path / "b.csv")]
+        assert find_missing_data_files(config) == [str(tmp_path / f"{n}.csv") for n in "abc"]
