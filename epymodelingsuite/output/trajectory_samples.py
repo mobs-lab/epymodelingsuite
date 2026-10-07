@@ -111,7 +111,7 @@ def trajectories_to_sample_rows(  # noqa: PLR0913
         and ``ILI ED visits pct`` are clipped to [0, 100]. Values for other
         targets are unchanged. No units are converted.
     id_prefix : str or None
-        Prefix of `output_type_id`; samples are numbered `<prefix>00`, `<prefix>01`, ...
+        Prefix of `output_type_id`; samples are numbered `<prefix>_00`, `<prefix>_01`, ...
         None uses Metrocast's sample indexes ``"1"``, ``"2"``, ... per location and target.
 
     Returns
@@ -121,7 +121,7 @@ def trajectories_to_sample_rows(  # noqa: PLR0913
     """
     values = normalize_target_values(values, target)
     n_samples, n_horizons = values.shape
-    sample_ids = [str(i + 1) if id_prefix is None else f"{id_prefix}{i:02d}" for i in range(n_samples)]
+    sample_ids = [str(i + 1) if id_prefix is None else f"{id_prefix}_{i:02d}" for i in range(n_samples)]
     ref = pd.Timestamp(reference_date)
     return pd.DataFrame(
         {
@@ -265,13 +265,14 @@ def build_flusight_trajectory_samples(
         # selection is unseeded.
         seed = cfg.seed if cfg.seed is not None else calibration.seed
         # Metrocast indexes restart at 1 for each location/target. State abbreviations
-        # cannot distinguish metros in the same state; FluSight keeps its existing IDs.
-        id_prefix = (
+        # cannot distinguish metros in the same state. FluSight requires IDs unique to one
+        # location and target, so its prefixes add a hosp/ed tag (MA_hosp_00, MA_ed_00).
+        abbreviation = (
             None if flusight_format.metrocast else convert_location_name_format(calibration.population, "abbreviation")
         )
         ref = flusight_format.reference_date
 
-        # Collect (target, selected values with shape (samples, horizons)).
+        # Collect (target, sample ID tag, selected values with shape (samples, horizons)).
         # Keep values unrounded until row formatting so window ED can use the original counts.
         per_target = []
         try:
@@ -283,17 +284,17 @@ def build_flusight_trajectory_samples(
                 hosp = _build_horizon_matrix(traj["date"], traj["hospitalizations"], ref, horizons)
                 hosp = hosp[select_trajectory_indices(hosp, cfg.n_samples, cfg.method, seed)]
             if flusight_format.hospitalizations:
-                per_target.append((flusight_format.hospitalizations.target, hosp))
+                per_target.append((flusight_format.hospitalizations.target, "hosp", hosp))
             if prop_ed and prop_ed.strategy == "transition":
                 # Transition ED uses its own configured projection variable and
                 # selects its trajectories separately from the hospitalization target.
                 ed = _build_horizon_matrix(traj["date"], traj[prop_ed.transition_name], ref, horizons)
                 ed = ed[select_trajectory_indices(ed, cfg.n_samples, cfg.method, seed)]
-                per_target.append((prop_ed.target, ed))
+                per_target.append((prop_ed.target, "ed", ed))
             elif prop_ed and location in factors:
                 # Scale the selected, unrounded hospitalization values. Preserving
-                # their row order keeps hospitalization and ED sample IDs paired.
-                per_target.append((prop_ed.target, hosp * factors[location]))
+                # their row order pairs hospitalization and ED samples by ID number (MA_hosp_00, MA_ed_00).
+                per_target.append((prop_ed.target, "ed", hosp * factors[location]))
             elif prop_ed:
                 # Missing factors skip ED only; any requested hospitalization rows remain.
                 warns.append(f"OUTPUT GENERATOR: no prop ED rescaling factor for {location}; skipping ED samples.")
@@ -302,7 +303,7 @@ def build_flusight_trajectory_samples(
             warns.append(f"OUTPUT GENERATOR: failed to create samples for {location}: {e}")
             continue
 
-        for target, values in per_target:
+        for target, tag, values in per_target:
             # Rescaling can introduce NaNs even in complete selected trajectories.
             values = values[~np.isnan(values).any(axis=1)]
             # Submit the available complete trajectories without duplicating them
@@ -314,6 +315,7 @@ def build_flusight_trajectory_samples(
                 )
             # Expand each trajectory into one row per horizon, adding dates and IDs.
             # Formatting applies the target's rounding/clipping rules independently of the hub.
+            id_prefix = None if abbreviation is None else f"{abbreviation}_{tag}"
             rows.append(trajectories_to_sample_rows(values, horizons, ref, location, target, id_prefix))
 
     # The caller combines these tables with other forecast types and serializes them.

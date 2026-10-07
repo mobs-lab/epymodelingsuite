@@ -75,8 +75,8 @@ def test_submission_profile(profile):
 
 
 SAMPLE_IDS = {
-    "flusight_hosp": {"US": "US00", "25": "MA00"},
-    "flusight_ed": {"US": "US00", "25": "MA00"},
+    "flusight_hosp": {"US": "US_hosp_00", "25": "MA_hosp_00"},
+    "flusight_ed": {"US": "US_ed_00", "25": "MA_ed_00"},
     "metrocast": {"boston": "1", "denver": "1"},
     "bphc_ed": {"boston-all": "1"},
 }

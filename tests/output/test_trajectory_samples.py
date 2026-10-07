@@ -128,13 +128,13 @@ class TestTrajectoriesToSampleRows:
     def test_ids_horizons_and_dates(self):
         """Test sample ids, horizons and target end dates of the rows."""
         rows = ts.trajectories_to_sample_rows(
-            np.ones((3, 5)), HORIZONS, date(2026, 10, 10), "25", "wk inc flu hosp", "MA"
+            np.ones((3, 5)), HORIZONS, date(2026, 10, 10), "25", "wk inc flu hosp", "MA_hosp"
         )
         # Three trajectories create 15 rows, with one sample ID shared across five horizons.
         assert len(rows) == 15
-        assert rows.output_type_id.unique().tolist() == ["MA00", "MA01", "MA02"]
+        assert rows.output_type_id.unique().tolist() == ["MA_hosp_00", "MA_hosp_01", "MA_hosp_02"]
         assert rows.groupby("output_type_id").horizon.apply(list).map(lambda h: h == HORIZONS).all()
-        first = rows[rows.output_type_id == "MA00"]
+        first = rows[rows.output_type_id == "MA_hosp_00"]
         # Horizon -1 is the Saturday before the reference date; subsequent horizons advance weekly.
         assert first.target_end_date.tolist() == [date(2026, 10, 3) + pd.Timedelta(weeks=i) for i in range(5)]
         assert set(rows.output_type) == {"sample"}
@@ -187,7 +187,7 @@ class TestBuildFlusightTrajectorySamples:
         assert warns == []
         assert set(df.target) == {"wk inc flu hosp"}
         assert df.groupby("location").output_type_id.nunique().to_dict() == {"25": 100, "US": 100}
-        assert df[df.location == "25"].output_type_id.str.startswith("MA").all()
+        assert df[df.location == "25"].output_type_id.str.startswith("MA_hosp_").all()
         assert df.groupby("output_type_id").horizon.apply(sorted).map(lambda h: h == [-1, 0, 1, 2, 3]).all()
         assert (df.value % 1 == 0).all()
         assert (df.value >= 0).all()
@@ -198,7 +198,7 @@ class TestBuildFlusightTrajectorySamples:
         rows, _ = ts.build_flusight_trajectory_samples(
             [_calibration("United_States", traj)], _flusight(), pd.DataFrame()
         )
-        sample = _concat(rows).query("output_type_id == 'US00'").sort_values("horizon").value.to_numpy()
+        sample = _concat(rows).query("output_type_id == 'US_hosp_00'").sort_values("horizon").value.to_numpy()
         candidates = np.rint(np.stack(traj["hospitalizations"])[:, 3:8])  # horizons -1..3
         # All five values must match one source trajectory after count rounding.
         # Matching each horizon to an arbitrary source row would allow mixed trajectories.
@@ -274,7 +274,7 @@ class TestBuildFlusightTrajectorySamples:
         assert set(df.target) == {"wk inc flu prop ed visits"}
         assert df.output_type_id.nunique() == 100
         assert df.value.between(0, 1).all()
-        sample = df.query("output_type_id == 'US00'").sort_values("horizon").value.to_numpy()
+        sample = df.query("output_type_id == 'US_ed_00'").sort_values("horizon").value.to_numpy()
         # Range checks alone are insufficient: the values must match a whole ED projection path.
         assert np.isclose(np.stack(traj["ed_prop"])[:, 3:8], sample).all(axis=1).any()
 
@@ -303,11 +303,15 @@ class TestBuildFlusightTrajectorySamples:
             [_calibration("United_States", traj, seed=seed)], flusight, factors
         )
         df = _concat(rows)
-        hosp = df[df.target == "wk inc flu hosp"].set_index(["output_type_id", "horizon"]).value
-        ed = df[df.target == "wk inc flu prop ed visits"].set_index(["output_type_id", "horizon"]).value
+        hosp = df[df.target == "wk inc flu hosp"]
+        ed = df[df.target == "wk inc flu prop ed visits"]
 
         assert warns == []
-        # Pair rows by sample ID and horizon. Undo ED scaling before rounding to
+        # FluSight requires each sample ID to belong to one target, so hosp and ED IDs must differ.
+        assert set(hosp.output_type_id).isdisjoint(ed.output_type_id)
+        hosp = hosp.assign(n=hosp.output_type_id.str.removeprefix("US_hosp_")).set_index(["n", "horizon"]).value
+        ed = ed.assign(n=ed.output_type_id.str.removeprefix("US_ed_")).set_index(["n", "horizon"]).value
+        # Pair rows by sample ID number and horizon. Undo ED scaling before rounding to
         # compare with the submitted integer counts: ED uses unrounded hosp values.
         assert hosp.index.equals(ed.index)
         assert np.allclose(hosp, np.rint(ed / 2e-4))
@@ -502,9 +506,9 @@ def test_ed_model_parquet_output_is_submission_ready(metrocast, horizons):
     table = pq.read_table(io.BytesIO(hub.data))
     # Check the actual file schema produced through the dispatcher and shared writer.
     assert [f.type for f in table.schema] == [
-        "string",
+        "date32[day]",
         "int32",
-        "string",
+        "date32[day]",
         "string",
         "string",
         "string",

@@ -16,11 +16,11 @@ from epymodelingsuite.schema.output import TabularOutputTypeEnum
 
 HORIZONS = [-1, 0, 1, 2, 3]
 
-# Schema of the FluSight 2026-27 example submission (auxiliary-data/2026-10-10-example-submission.parquet)
+# Parquet column types the FluSight hub validator (hubValidations col_types) accepts
 FLUSIGHT_EXAMPLE_SCHEMA = {
-    "reference_date": pa.string(),
+    "reference_date": pa.date32(),
     "horizon": pa.int32(),
-    "target_end_date": pa.string(),
+    "target_end_date": pa.date32(),
     "location": pa.string(),
     "target": pa.string(),
     "output_type": pa.string(),
@@ -63,7 +63,7 @@ def test_hub_parquet_matches_flusight_example_schema():
     df = table.to_pandas()
     # The first two rows are quantiles; casting must preserve their probability levels as strings.
     assert df.output_type_id.tolist()[:2] == ["0.025", "0.5"]
-    assert df.reference_date.unique().tolist() == ["2026-10-10"]
+    assert df.reference_date.unique().tolist() == [date(2026, 10, 10)]
     assert df.location.unique().tolist() == ["25"]
 
 
@@ -87,9 +87,11 @@ class TestCombineSubmissions:
         # The two targets also use separate ranges: counts for hosp, proportions for ED.
         hosp_values = np.arange(10, 20, dtype=float).reshape(2, 5)
         ed_values = np.arange(1, 11, dtype=float).reshape(2, 5) / 100
-        hosp = trajectories_to_sample_rows(hosp_values, HORIZONS, date(2026, 10, 10), "25", "wk inc flu hosp", "MA")
+        hosp = trajectories_to_sample_rows(
+            hosp_values, HORIZONS, date(2026, 10, 10), "25", "wk inc flu hosp", "MA_hosp"
+        )
         ed = trajectories_to_sample_rows(
-            ed_values, HORIZONS, date(2026, 10, 10), "25", "wk inc flu prop ed visits", "MA"
+            ed_values, HORIZONS, date(2026, 10, 10), "25", "wk inc flu prop ed visits", "MA_ed"
         )
         combined = hub_files.combine_submissions([hosp, ed])
         assert len(combined) == 20

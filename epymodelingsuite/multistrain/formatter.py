@@ -198,8 +198,8 @@ def _strip_metrocast_prefix(population: str) -> str:
 
 # Everything that differs between hub submission files. `location` maps an epydemix population name to the
 # hub location id. `pmf` adds the FluSight rate-trend target, which needs surveillance for the baseline.
-# `sample_prefix` maps the population to the prefix of sample ids (`MA00`, ...); None numbers them 1, 2, ...
-# per location, as Metrocast does.
+# `sample_prefix` maps the population to the prefix of sample ids (`MA_hosp_00`, ...); FluSight needs ids unique
+# per location and target, hence the target tag. None numbers them 1, 2, ... per location, as Metrocast does.
 SUBMISSION_PROFILES = {
     "flusight_hosp": {
         "location": _epydemix_to_fips,
@@ -208,7 +208,7 @@ SUBMISSION_PROFILES = {
         "horizons": list(get_flusight_horizons()),
         "quantiles": get_flusight_quantiles(),
         "pmf": True,
-        "sample_prefix": _epydemix_to_abbreviation,
+        "sample_prefix": lambda population: f"{_epydemix_to_abbreviation(population)}_hosp",
     },
     "flusight_ed": {
         "location": _epydemix_to_fips,
@@ -217,7 +217,7 @@ SUBMISSION_PROFILES = {
         "horizons": list(get_flusight_horizons()),
         "quantiles": get_flusight_quantiles(),
         "pmf": False,
-        "sample_prefix": _epydemix_to_abbreviation,
+        "sample_prefix": lambda population: f"{_epydemix_to_abbreviation(population)}_ed",
     },
     "metrocast": {
         "location": _strip_metrocast_prefix,
@@ -370,7 +370,7 @@ def _build_location_trajectory_samples(  # noqa: PLR0913
         Entry of `SUBMISSION_PROFILES`. Uses its `horizons`, `target` and `sample_prefix`.
     population : str
         Epydemix population name (e.g. "United_States__Massachusetts"). Only used to build the sample id
-        prefix via `profile_spec["sample_prefix"]` (e.g. "MA" -> "MA00", "MA01", ...).
+        prefix via `profile_spec["sample_prefix"]` (e.g. "MA_hosp" -> "MA_hosp_00", "MA_hosp_01", ...).
     location : str
         Hub location id written to the rows (e.g. "25").
     value_col : str
@@ -387,17 +387,17 @@ def _build_location_trajectory_samples(  # noqa: PLR0913
     Examples
     --------
     For `flusight_hosp` and Massachusetts, each selected trajectory becomes one row per horizon (-1..3)
-    sharing an `output_type_id` (`MA00`, `MA01`, ...). Values are rounded/clipped by target in
+    sharing an `output_type_id` (`MA_hosp_00`, `MA_hosp_01`, ...). Values are rounded/clipped by target in
     `trajectories_to_sample_rows`:
 
     ```
     reference_date  horizon target_end_date location           target output_type output_type_id   value
-        2026-04-25       -1      2026-04-18       25  wk inc flu hosp      sample           MA00  1729.0
-        2026-04-25        0      2026-04-25       25  wk inc flu hosp      sample           MA00   385.0
-        2026-04-25        1      2026-05-02       25  wk inc flu hosp      sample           MA00  1842.0
-        2026-04-25        2      2026-05-09       25  wk inc flu hosp      sample           MA00   182.0
-        2026-04-25        3      2026-05-16       25  wk inc flu hosp      sample           MA00  1238.0
-        2026-04-25       -1      2026-04-18       25  wk inc flu hosp      sample           MA01   404.0
+        2026-04-25       -1      2026-04-18       25  wk inc flu hosp      sample     MA_hosp_00  1729.0
+        2026-04-25        0      2026-04-25       25  wk inc flu hosp      sample     MA_hosp_00   385.0
+        2026-04-25        1      2026-05-02       25  wk inc flu hosp      sample     MA_hosp_00  1842.0
+        2026-04-25        2      2026-05-09       25  wk inc flu hosp      sample     MA_hosp_00   182.0
+        2026-04-25        3      2026-05-16       25  wk inc flu hosp      sample     MA_hosp_00  1238.0
+        2026-04-25       -1      2026-04-18       25  wk inc flu hosp      sample     MA_hosp_01   404.0
         ...
     ```
 

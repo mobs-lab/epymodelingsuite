@@ -151,7 +151,9 @@ def validate_model_output(df: pd.DataFrame, tasks: dict) -> list[str]:  # noqa: 
         return errors
 
     if tbl["reference_date"].nunique() != 1:  # noqa: PD101
-        errors.append(f"`reference_date` must have a single value, got {sorted(tbl['reference_date'].unique(), key=str)}.")
+        errors.append(
+            f"`reference_date` must have a single value, got {sorted(tbl['reference_date'].unique(), key=str)}."
+        )
 
     # Assign each row to the model task (target + output type) it belongs to
     model_tasks = [mt for rnd in tasks["rounds"] for mt in rnd["model_tasks"]]
@@ -207,6 +209,19 @@ def validate_model_output(df: pd.DataFrame, tasks: dict) -> list[str]:  # noqa: 
             lacking = len(combos.merge(have, how="left", indicator=True).query("_merge == 'left_only'"))
             if lacking:
                 errors.append(f"{target}: {lacking} task id combinations lack required output type `{output_type}`.")
+
+    # Sample ids are checked per target above; when targets are part of each sample's
+    # compound task, one id must also not be reused across targets
+    compound_sets = [
+        mt["output_type"]["sample"]["output_type_id_params"].get("compound_taskid_set", TASK_ID_COLUMNS)
+        for mt in model_tasks
+        if "sample" in mt["output_type"]
+    ]
+    if compound_sets and all("target" in c for c in compound_sets):
+        n_targets = tbl[tbl["output_type"] == "sample"].groupby("output_type_id")["target"].nunique()
+        shared = n_targets.index[n_targets > 1]
+        if len(shared):
+            errors.append(f"{len(shared)} sample ids are shared across targets, e.g. {list(shared[:3])}.")
 
     # target_end_date = reference_date + horizon weeks
     dated = tbl[tbl["horizon"].notna() & tbl["target_end_date"].notna()]
