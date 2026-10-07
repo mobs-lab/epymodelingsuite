@@ -5,7 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from .common import Meta
+from .common import InputFilePath, Meta
 
 logger = logging.getLogger(__name__)
 
@@ -253,13 +253,13 @@ class Parameter(BaseModel):
 class Vaccination(BaseModel):
     """Vaccination configuration, such as data paths."""
 
-    scenario_data_path: str | None = Field(
+    scenario_data_path: InputFilePath | None = Field(
         None,
         description="Path to SMH vaccination scenario data file with a single 'Coverage' column (one scenario). "
         "For files with several scenario columns, preprocess them with smh_data_to_epydemix() and use "
         "preprocessed_vaccination_data_path with 'scenario' instead.",
     )
-    preprocessed_vaccination_data_path: str | None = Field(
+    preprocessed_vaccination_data_path: InputFilePath | None = Field(
         None, description="Path to preprocessed vaccination coverage data file."
     )
     scenario: str | None = Field(

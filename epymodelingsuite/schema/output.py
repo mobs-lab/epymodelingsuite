@@ -6,7 +6,7 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from ..output.trajectory_samples import SAMPLE_SELECTORS
-from .common import Meta
+from .common import InputFilePath, Meta
 
 logger = logging.getLogger(__name__)
 
@@ -153,7 +153,7 @@ def get_quantile_ribbon_default() -> list[float]:
 class ObservedValuesConfig(BaseModel):
     """Specifications for selecting observed values."""
 
-    data_path: str = Field(description="Path to observed data CSV file")
+    data_path: InputFilePath = Field(description="Path to observed data CSV file")
     value_column: str = Field(description="Name of column containing observed values in observed data CSV")
     date_column: str = Field(description="Name of column containing target dates in observed data CSV")
     location_column: str = Field(description="Name of column containing location in observed data CSV")

@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validat
 
 from ..utils import parse_timedelta, validate_iso3166
 from ..utils.location import validate_location_by_type
-from .common import DateParameter, Distribution, Meta
+from .common import DateParameter, Distribution, InputFilePath, Meta
 
 logger = logging.getLogger(__name__)
 
@@ -220,7 +220,7 @@ class UserDefinedFunction(BaseModel):
         - location: str location/population name
     """
 
-    user_script_path: str = Field(description="Path to script containing user-defined functions.")
+    user_script_path: InputFilePath = Field(description="Path to script containing user-defined functions.")
     user_function_name: str = Field(description="Name of function to import from the supplied script.")
 
     @computed_field
@@ -311,7 +311,7 @@ class CalibrationConfiguration(BaseModel):
 
     # Sampler options, passed directly when initializing ABCSampler
     distance_function: str | UserDefinedFunction = Field("rmse", description="Distance function for comparing data")
-    observed_data_path: str = Field(description="Path to observed data CSV file")
+    observed_data_path: InputFilePath = Field(description="Path to observed data CSV file")
     comparison: list[ComparisonSpec] = Field(description="Specifications for data comparison")
 
     # What we calibrate for
