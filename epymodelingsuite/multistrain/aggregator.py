@@ -428,20 +428,39 @@ def _baseline_negative_binomial(
 def _baseline_beta(
     aggregated_trajectories: pd.DataFrame,
     baseline_means: pd.Series,
-    kvals: list[int],
+    baseline_variances: pd.Series,
     rng: np.random.Generator,
 ) -> pd.DataFrame:
     """
     Add beta baseline noise for proportion targets (e.g. ED visit proportions).
 
-    Stub: the ED baseline method is not decided yet. Same signature as `_baseline_negative_binomial`.
+    The beta distribution is parameterized by mean m and variance v, giving concentration
+    c = m(1 - m) / v - 1 and shape parameters a = m c, b = (1 - m) c.
 
-    Raises
-    ------
-    NotImplementedError
-        Always.
+    Parameters
+    ----------
+    aggregated_trajectories : pd.DataFrame
+        Aggregated trajectories with column "target_total".
+    baseline_means : pd.Series
+        Baseline mean of each row's location, in (0, 1), aligned with `aggregated_trajectories`.
+    baseline_variances : pd.Series
+        Baseline variance of each row's location, in (0, m(1 - m)), aligned with `aggregated_trajectories`.
+    rng : np.random.Generator
+        Random number generator.
+
+    Returns
+    -------
+    pd.DataFrame
+        Copy of `aggregated_trajectories` with
+        "target_baseline" = "target_total" + Beta(mean=baseline, variance=variance).
     """
-    raise NotImplementedError("Beta baseline for proportion targets is not implemented yet.")
+    aggregated_trajectories = aggregated_trajectories.copy()
+    m = baseline_means.to_numpy()
+    v = baseline_variances.to_numpy()
+    concentration = m * (1 - m) / v - 1
+    noise = rng.beta(m * concentration, (1 - m) * concentration)
+    aggregated_trajectories["target_baseline"] = aggregated_trajectories["target_total"].to_numpy() + noise
+    return aggregated_trajectories
 
 
 # Columns of the baseline files that may hold the trajectories' epydemix location names:
@@ -457,6 +476,7 @@ def dispatch_baseline(
     Add post-aggregation baseline noise to the aggregated trajectories.
 
     Baseline means per location are read from `config.baseline.observed_means` in the package data directory.
+    The beta method also reads per-location variances from that file's "variance" column.
     Noise is drawn with `config.random_seed`, so outputs are reproducible when it is set.
 
     Parameters
@@ -469,13 +489,14 @@ def dispatch_baseline(
     Returns
     -------
     pd.DataFrame
-        Copy of `aggregated_trajectories` with a "target_baseline_k{k}" column for each value in
-        `config.baseline.dispersion_values`.
+        Copy of `aggregated_trajectories` with, for negative_binomial, a "target_baseline_k{k}" column for each
+        value in `config.baseline.dispersion_values`, or, for beta, a single "target_baseline" column.
 
     Raises
     ------
     ValueError
-        If the baseline file can't be read, or has no baseline for some trajectory location.
+        If the baseline file can't be read, has no baseline for some trajectory location, or (for beta)
+        has no "variance" column or a mean/variance pair that no beta distribution has.
     """
     filename = os.path.join(
         os.path.dirname(sys.modules[__name__].__file__), f"../data/{config.baseline.observed_means}"
@@ -495,16 +516,30 @@ def dispatch_baseline(
         raise ValueError(f"No baseline in {config.baseline.observed_means} for locations: {missing}")
 
     # Map instead of merge so means stay aligned with the trajectory rows
-    baseline_means = aggregated_trajectories["location"].map(baselines_avg.set_index(location_col)["baseline"])
-
-    kvals = config.baseline.dispersion_values
-    kvals = kvals if isinstance(kvals, list) else [kvals]
+    baselines_avg = baselines_avg.set_index(location_col)
+    baseline_means = aggregated_trajectories["location"].map(baselines_avg["baseline"])
     rng = np.random.default_rng(config.random_seed)
 
     match config.baseline.method:
         case BaselineStrategyEnum.negative_binomial:
+            kvals = config.baseline.dispersion_values
+            kvals = kvals if isinstance(kvals, list) else [kvals]
             return _baseline_negative_binomial(aggregated_trajectories, baseline_means, kvals, rng)
         case BaselineStrategyEnum.beta:
-            return _baseline_beta(aggregated_trajectories, baseline_means, kvals, rng)
+            if "variance" not in baselines_avg.columns:
+                raise ValueError(
+                    f"Beta baseline needs a 'variance' column in {config.baseline.observed_means}, "
+                    f"found: {list(baselines_avg.columns)}"
+                )
+            used = baselines_avg.loc[sorted(locations)]
+            m, v = used["baseline"], used["variance"]
+            invalid = used.index[~((m > 0) & (m < 1) & (v > 0) & (v < m * (1 - m)))]
+            if len(invalid):
+                raise ValueError(
+                    f"No beta distribution for the baseline mean/variance in {config.baseline.observed_means} "
+                    f"(need 0 < mean < 1 and 0 < variance < mean * (1 - mean)) for locations: {sorted(invalid)}"
+                )
+            baseline_variances = aggregated_trajectories["location"].map(baselines_avg["variance"])
+            return _baseline_beta(aggregated_trajectories, baseline_means, baseline_variances, rng)
         case _:
             raise NotImplementedError(f"Invalid baseline method: {config.baseline.method}")
