@@ -1,10 +1,20 @@
 """Utility functions for fetching external data sources."""
 
+import datetime
+
 import epiweeks
 import pandas as pd
 from sodapy import Socrata
 
 from epymodelingsuite.utils.location import get_flusight_locations
+
+HHS_DATASET_IDS = {
+    "default": "ua7e-t2fy",  # Non-preliminary data
+    "preliminary": "mpgq-jmmr",  # Preliminary data
+}
+NSSP_DATASET_ID = "rdmq-nq56"  # There is only one version of the dataset
+# State-level NSSP rows only; the dataset also has county rows.
+NSSP_STATE_WHERE = "county='All'"
 
 
 def fetch_hhs_hospitalizations(
@@ -99,17 +109,11 @@ def fetch_hhs_hospitalizations(
         aggregates. Territories (AS, GU, MP, PR, VI) and HHS regions are excluded from the output.
 
     """
-    # Map data_type to dataset IDs
-    dataset_ids = {
-        "default": "ua7e-t2fy",  # Non-preliminary data
-        "preliminary": "mpgq-jmmr",  # Preliminary data
-    }
-
-    if data_type not in dataset_ids:
+    if data_type not in HHS_DATASET_IDS:
         msg = f"Invalid data_type: {data_type}. Must be 'default' or 'preliminary'"
         raise ValueError(msg)
 
-    dataset_id = dataset_ids[data_type]
+    dataset_id = HHS_DATASET_IDS[data_type]
 
     # Initialize Socrata client
     client = Socrata("data.cdc.gov", None)
@@ -251,15 +255,14 @@ def fetch_nssp_edvisits(
         aggregates. Territories (AS, GU, MP, PR, VI) and HSAs are excluded from the output.
 
     """
-    # There is only one version of the dataset
-    dataset_id = "rdmq-nq56"
+    dataset_id = NSSP_DATASET_ID
 
     # Initialize Socrata client
     client = Socrata("data.cdc.gov", None)
 
     # Build query
     # Filter for state-level data (county='All') in the API call, because the data is granular than hospitalization data. If we don't add filtering clause here, recent data points would not be included since hitting the 100,000 limit.
-    base_where = "county='All'"
+    base_where = NSSP_STATE_WHERE
     if query_start_date:
         where_clause = f"{base_where} AND week_end >= '{query_start_date}'"
         results = client.get(dataset_id, where=where_clause, limit=100000)
@@ -315,3 +318,46 @@ def fetch_nssp_edvisits(
         data.to_csv(save_path, index=False)
 
     return data
+
+
+def _fetch_latest_week_end(dataset_id: str, column: str, where: str | None = None) -> datetime.date:
+    client = Socrata("data.cdc.gov", None)
+    (row,) = client.get(dataset_id, select=f"max({column}) AS latest", where=where)
+    return pd.Timestamp(row["latest"]).date()
+
+
+def fetch_latest_hhs_week_end(data_type: str = "default") -> datetime.date:
+    """
+    Return the latest ``target_end_date`` that `fetch_hhs_hospitalizations` would return, without downloading it.
+
+    A single aggregate query, so callers can check whether a new week is published before the full fetch. A
+    matching date does not mean the week is complete (reporting may still be partial).
+
+    Parameters
+    ----------
+    data_type : str, optional
+        "default" or "preliminary", as in `fetch_hhs_hospitalizations`.
+
+    Returns
+    -------
+    datetime.date
+        Week-ending date (Saturday) of the latest published week.
+    """
+    if data_type not in HHS_DATASET_IDS:
+        msg = f"Invalid data_type: {data_type}. Must be 'default' or 'preliminary'"
+        raise ValueError(msg)
+    return _fetch_latest_week_end(HHS_DATASET_IDS[data_type], "weekendingdate")
+
+
+def fetch_latest_nssp_week_end() -> datetime.date:
+    """
+    Return the latest ``target_end_date`` that `fetch_nssp_edvisits` would return, without downloading it.
+
+    A single aggregate query, so callers can check whether a new week is published before the full fetch.
+
+    Returns
+    -------
+    datetime.date
+        Week-ending date (Saturday) of the latest published week.
+    """
+    return _fetch_latest_week_end(NSSP_DATASET_ID, "week_end", NSSP_STATE_WHERE)
