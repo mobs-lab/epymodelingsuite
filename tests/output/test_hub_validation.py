@@ -23,8 +23,15 @@ def tasks() -> dict:
 
 @pytest.fixture
 def example() -> pd.DataFrame:
-    """FluSight 2026-27 example submission (passes the hub's validation)."""
-    return pd.read_parquet(FIXTURES / "2026-10-10-example-submission.parquet")
+    """FluSight 2026-27 example submission, with sample ids made unique per target.
+
+    The published example reuses each sample id for hosp and ED, which the hub's validator
+    rejects (spl_mt_unique), so ED ids get an ``ed_`` prefix to make a valid baseline.
+    """
+    df = pd.read_parquet(FIXTURES / "2026-10-10-example-submission.parquet")
+    ed = _is(df, "wk inc flu prop ed visits", "sample")
+    df.loc[ed, "output_type_id"] = "ed_" + df.loc[ed, "output_type_id"]
+    return df
 
 
 def _errors(df, tasks) -> str:
@@ -219,6 +226,14 @@ def test_sample_id_spanning_locations(example, tasks):
         s & (df.location == second), "output_type_id"
     ].str.replace(r"^\D+", "US", regex=True)
     assert "span more than one" in _errors(df, tasks)
+
+
+def test_sample_id_shared_across_targets(example, tasks):
+    """Test that a sample id used for both hosp and ED is reported, as the hub's spl_mt_unique check does."""
+    df = example.copy()
+    ed = _is(df, "wk inc flu prop ed visits", "sample")
+    df.loc[ed, "output_type_id"] = df.loc[ed, "output_type_id"].str.removeprefix("ed_")
+    assert "shared across targets" in _errors(df, tasks)
 
 
 def test_samples_with_different_horizons(example, tasks):

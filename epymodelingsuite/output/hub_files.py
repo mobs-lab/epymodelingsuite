@@ -18,12 +18,12 @@ HUB_COLUMNS = [
     "value",
 ]
 
-# Column types of the FluSight example submission parquet (auxiliary-data/2026-10-10-example-submission.parquet)
+# Column types the FluSight hub validator (hubValidations col_types) requires of parquet submissions
 HUB_SCHEMA = pa.schema(
     [
-        ("reference_date", pa.string()),
+        ("reference_date", pa.date32()),
         ("horizon", pa.int32()),
-        ("target_end_date", pa.string()),
+        ("target_end_date", pa.date32()),
         ("location", pa.string()),
         ("target", pa.string()),
         ("output_type", pa.string()),
@@ -35,7 +35,7 @@ HUB_SCHEMA = pa.schema(
 
 def cast_hub_dtypes(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Cast a hub table to the column types of the FluSight example submission parquet.
+    Cast a hub table to the column types the FluSight hub validator requires.
 
     Parameters
     ----------
@@ -46,9 +46,9 @@ def cast_hub_dtypes(df: pd.DataFrame) -> pd.DataFrame:
     Returns
     -------
     pd.DataFrame
-        New table in hub column order with Arrow-backed dtypes: dates and IDs
-        as strings, horizon as nullable int32, and value as float64. Dates use
-        ``YYYY-MM-DD`` format. Extra columns are omitted; the input is unchanged.
+        New table in hub column order with Arrow-backed dtypes: dates as date32,
+        IDs as strings, horizon as nullable int32, and value as float64. CSV output
+        writes dates as ``YYYY-MM-DD``. Extra columns are omitted; the input is unchanged.
 
     Raises
     ------
@@ -64,7 +64,7 @@ def cast_hub_dtypes(df: pd.DataFrame) -> pd.DataFrame:
     """
     out = df[HUB_COLUMNS].copy()
     for col in ["reference_date", "target_end_date"]:
-        out[col] = pd.to_datetime(out[col]).dt.strftime("%Y-%m-%d").astype("string")
+        out[col] = pd.to_datetime(out[col]).dt.date
     out["horizon"] = out["horizon"].astype("Int32")
     for col in ["location", "target", "output_type", "output_type_id"]:
         out[col] = out[col].astype("string")
