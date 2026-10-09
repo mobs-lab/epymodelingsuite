@@ -1,6 +1,7 @@
 """Tests for visualization generators module."""
 
 from datetime import date
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -9,7 +10,7 @@ import pytest
 from epymodelingsuite.schema.calibration import CalibrationStrategy
 from epymodelingsuite.schema.dispatcher import CalibrationOutput
 from epymodelingsuite.schema.output import ObservedValuesConfig, PlotsConfig, QuantilesPlotConfig
-from epymodelingsuite.visualization.generators import generate_single_quantile_plots
+from epymodelingsuite.visualization.generators import generate_single_quantile_plots, get_locations_to_plot
 from epymodelingsuite.visualization.preparation import (
     _check_incomplete_generations,
     _clip_surveillance,
@@ -646,3 +647,38 @@ class TestClipToHorizon:
         assert len(proj) == original_len
         assert result is not None
         assert len(result) < original_len
+
+
+class TestLocationsToPlot:
+    """ISO locations in `single` must match epydemix population names."""
+
+    def test_iso_list_is_accepted_by_quantiles_schema(self):
+        """An ISO code in quantiles.single passes validation."""
+        assert QuantilesPlotConfig(single=["US-CA"]).single == ["US-CA"]
+
+    @pytest.mark.parametrize("location", ["denver", "metrocast_location_denver"])
+    def test_metrocast_location_is_accepted_by_quantiles_schema(self, location):
+        """A metrocast location ID, with or without prefix, passes validation."""
+        assert QuantilesPlotConfig(single=[location]).single == [location]
+
+    def test_metrocast_location_matches_population_name(self):
+        """A metrocast location ID matches its prefixed population name."""
+        calibrations = [
+            SimpleNamespace(population="metrocast_location_denver"),
+            SimpleNamespace(population="metrocast_location_mesa"),
+        ]
+        assert get_locations_to_plot(calibrations, ["denver"]) == {"metrocast_location_denver"}
+
+    def test_invalid_location_rejected_by_quantiles_schema(self):
+        """An unknown code in quantiles.single fails validation."""
+        with pytest.raises(ValueError, match="Invalid ISO 3166"):
+            QuantilesPlotConfig(single=["XX-INVALID"])
+
+    @pytest.mark.parametrize("requested", ["US-CA", "United_States__California", "United_States_California"])
+    def test_matches_epydemix_population_names(self, requested):
+        """ISO, current and deprecated names all match the epydemix population name."""
+        calibrations = [
+            SimpleNamespace(population="United_States__California"),
+            SimpleNamespace(population="United_States"),
+        ]
+        assert get_locations_to_plot(calibrations, [requested]) == {"United_States__California"}

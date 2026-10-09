@@ -6,6 +6,8 @@ from typing import Any
 from pydantic import BaseModel, Field, ValidationInfo, field_validator, model_validator
 
 from ..output.trajectory_samples import SAMPLE_SELECTORS
+from ..utils import validate_iso3166
+from ..utils.location import METROCAST_PREFIX, get_metrocast_locations
 from .common import InputFilePath, Meta
 
 logger = logging.getLogger(__name__)
@@ -693,11 +695,14 @@ class QuantilesPlotConfig(BaseModel):
     @field_validator("single")
     @classmethod
     def validate_single_plot_locations(cls, v: list[str]):
-        """Validate each population name in the list."""
+        """Validate each location as an ISO 3166 code or a metrocast location ID (optionally prefixed)."""
         if isinstance(v, bool):
             return v
-        validated_populations = [validate_iso3166(population) for population in v]
-        return validated_populations
+        metrocast_ids = set(get_metrocast_locations()["metrocast_location_id"])
+        return [
+            population if population.removeprefix(METROCAST_PREFIX) in metrocast_ids else validate_iso3166(population)
+            for population in v
+        ]
 
 
 class CategoricalPlotConfig(BaseModel):
