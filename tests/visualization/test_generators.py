@@ -656,6 +656,19 @@ class TestLocationsToPlot:
         """An ISO code in quantiles.single passes validation."""
         assert QuantilesPlotConfig(single=["US-CA"]).single == ["US-CA"]
 
+    @pytest.mark.parametrize("location", ["denver", "metrocast_location_denver"])
+    def test_metrocast_location_is_accepted_by_quantiles_schema(self, location):
+        """A metrocast location ID, with or without prefix, passes validation."""
+        assert QuantilesPlotConfig(single=[location]).single == [location]
+
+    def test_metrocast_location_matches_population_name(self):
+        """A metrocast location ID matches its prefixed population name."""
+        calibrations = [
+            SimpleNamespace(population="metrocast_location_denver"),
+            SimpleNamespace(population="metrocast_location_mesa"),
+        ]
+        assert get_locations_to_plot(calibrations, ["denver"]) == {"metrocast_location_denver"}
+
     def test_invalid_location_rejected_by_quantiles_schema(self):
         """An unknown code in quantiles.single fails validation."""
         with pytest.raises(ValueError, match="Invalid ISO 3166"):
