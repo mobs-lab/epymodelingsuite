@@ -459,7 +459,7 @@ def test_unknown_sample_method_rejected():
 
 @pytest.mark.parametrize("horizons", [None, [0, 2, 4]])
 @pytest.mark.parametrize("metrocast", [False, True])
-def test_ed_model_parquet_output_is_submission_ready(metrocast, horizons):
+def test_ed_model_parquet_output_is_submission_ready(monkeypatch, metrocast, horizons):
     """ED model output preserves FluSight formats and emits only samples for Metrocast."""
     traj = _trajectories(300)
     population = "metrocast_location_denver" if metrocast else "United_States"
@@ -472,12 +472,15 @@ def test_ed_model_parquet_output_is_submission_ready(metrocast, horizons):
     # Provide quantiles over the same nine weeks as the trajectories; the submission
     # should retain the hub's horizons. Metrocast must exclude quantile rows even
     # though they are available; its 2026-27 specification accepts samples only.
-    calibration.results.get_projection_quantiles.return_value = pd.DataFrame(
+    projection_quantiles = pd.DataFrame(
         {
             "date": np.tile(DATES, len(quantiles)),
             "quantile": np.repeat(quantiles, len(DATES)),
             "ed_prop": np.tile(np.linspace(0.01, 0.02, len(DATES)), len(quantiles)),
         }
+    )
+    monkeypatch.setattr(
+        "epymodelingsuite.dispatcher.output.get_projection_quantiles", lambda *_, **__: projection_quantiles
     )
     config = OutputConfig(
         output=OutputConfiguration(
