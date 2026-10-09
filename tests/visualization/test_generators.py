@@ -9,15 +9,15 @@ import pytest
 from epymodelingsuite.schema.calibration import CalibrationStrategy
 from epymodelingsuite.schema.dispatcher import CalibrationOutput
 from epymodelingsuite.schema.output import ObservedValuesConfig, PlotsConfig, QuantilesPlotConfig
-from epymodelingsuite.visualization.generators import (
+from epymodelingsuite.visualization.generators import generate_single_quantile_plots
+from epymodelingsuite.visualization.preparation import (
     _check_incomplete_generations,
     _clip_surveillance,
     _clip_to_horizon,
-    _clip_to_surveillance_start,
+    _clip_to_start,
     _format_plot_notes,
-    _prepare_surveillance_for_location,
     _rename_value_column,
-    generate_single_quantile_plots,
+    _select_surveillance,
 )
 
 
@@ -93,13 +93,13 @@ class TestSurveillanceDataFiltering:
     @pytest.fixture
     def plots_config_with_surveillance(self):
         """Create a PlotsConfig with surveillance data enabled."""
-        quantiles_config = QuantilesPlotConfig(
+        plot_config = QuantilesPlotConfig(
             single=True,  # Enable single plots
         )
 
         return PlotsConfig(
             reference_date=date(2024, 1, 15),
-            quantiles=quantiles_config,
+            quantiles=plot_config,
         )
 
     def test_surveillance_filtered_to_timespan_start(
@@ -108,8 +108,8 @@ class TestSurveillanceDataFiltering:
         """Test that surveillance data is filtered to start from projection timespan start in filtered plot."""
         out_dict = {}
 
-        # Mock plot_calibration_projection to capture the surveillance data passed to it
-        with patch("epymodelingsuite.visualization.generators.plot_calibration_projection") as mock_plot:
+        # Mock plot_quantile_panel to capture the surveillance data passed to it
+        with patch("epymodelingsuite.visualization.generators.plot_quantile_panel") as mock_plot:
             mock_plot.return_value = (MagicMock(), MagicMock())
 
             generate_single_quantile_plots(
@@ -119,8 +119,8 @@ class TestSurveillanceDataFiltering:
                 surveillance_sources=surveillance_sources,
             )
 
-            # Verify plot_calibration_projection was called twice (filtered and full)
-            assert mock_plot.call_count == 2
+            # All four panels (filtered, full, and the side-by-side pair) share the same drawing function.
+            assert mock_plot.call_count == 4
 
             # Extract the surveillance data passed to both plot calls
             first_call_kwargs = mock_plot.call_args_list[0].kwargs
@@ -165,7 +165,7 @@ class TestSurveillanceDataFiltering:
 
         out_dict = {}
 
-        with patch("epymodelingsuite.visualization.generators.plot_calibration_projection") as mock_plot:
+        with patch("epymodelingsuite.visualization.generators.plot_quantile_panel") as mock_plot:
             mock_plot.return_value = (MagicMock(), MagicMock())
 
             generate_single_quantile_plots(
@@ -175,35 +175,16 @@ class TestSurveillanceDataFiltering:
                 surveillance_sources=surveillance_sources,
             )
 
-            # Verify plot was called twice (filtered and full)
-            assert mock_plot.call_count == 2
-
-            # Extract surveillance data from both calls
-            first_call_kwargs = mock_plot.call_args_list[0].kwargs
-            second_call_kwargs = mock_plot.call_args_list[1].kwargs
-
-            df_surv_filtered = first_call_kwargs["df_surveillance"]
-            df_surv_full = second_call_kwargs["df_surveillance"]
-
-            # When no calibration/projection quantiles, filtered surveillance should still be loaded
-            # and filtered to 8 points before reference_date (2024-01-15) plus all after
-            assert df_surv_filtered is not None
-            dates_filtered = pd.to_datetime(df_surv_filtered["date"]).dt.date
-            before_ref = dates_filtered[dates_filtered <= date(2024, 1, 15)]
-            after_ref = dates_filtered[dates_filtered > date(2024, 1, 15)]
-            assert len(before_ref) == 8
-            assert len(after_ref) > 0
-            max_date_filtered = dates_filtered.max()
-            assert max_date_filtered == date(2024, 2, 15)
-
-            # Full surveillance should show all data (no filtering)
-            assert df_surv_full is not None
-            assert len(df_surv_full) == 77  # All dates from 2023-12-01 to 2024-02-15
+            mock_plot.assert_not_called()
+            assert out_dict == {}
 
     def test_surveillance_filtering_falls_back_to_calibration_quantiles(
         self, calibration_quantiles, plots_config_with_surveillance, surveillance_sources
     ):
         """Test that surveillance falls back to calibration quantiles when no projection quantiles available."""
+        for variant_config in plots_config_with_surveillance.quantiles.outputs:
+            variant_config.show_calibration = True
+
         # Create calibration output with only calibration quantiles (no projection)
         calibration = MagicMock(spec=CalibrationOutput)
         calibration.population = "US-CA"
@@ -213,7 +194,7 @@ class TestSurveillanceDataFiltering:
 
         out_dict = {}
 
-        with patch("epymodelingsuite.visualization.generators.plot_calibration_projection") as mock_plot:
+        with patch("epymodelingsuite.visualization.generators.plot_quantile_panel") as mock_plot:
             mock_plot.return_value = (MagicMock(), MagicMock())
 
             generate_single_quantile_plots(
@@ -223,8 +204,8 @@ class TestSurveillanceDataFiltering:
                 surveillance_sources=surveillance_sources,
             )
 
-            # Verify plot was called twice (filtered and full)
-            assert mock_plot.call_count == 2
+            # All four panels use the same drawing function.
+            assert mock_plot.call_count == 4
 
             # Extract surveillance data from both calls
             first_call_kwargs = mock_plot.call_args_list[0].kwargs
@@ -254,7 +235,7 @@ class TestSurveillanceDataFiltering:
 
         out_dict = {}
 
-        with patch("epymodelingsuite.visualization.generators.plot_calibration_projection") as mock_plot:
+        with patch("epymodelingsuite.visualization.generators.plot_quantile_panel") as mock_plot:
             mock_plot.return_value = (MagicMock(), MagicMock())
 
             generate_single_quantile_plots(
@@ -264,8 +245,8 @@ class TestSurveillanceDataFiltering:
                 surveillance_sources=surveillance_sources,
             )
 
-            # Verify plot was called twice (filtered and full)
-            assert mock_plot.call_count == 2
+            # All four panels use the same drawing function.
+            assert mock_plot.call_count == 4
 
             # Extract surveillance data from both calls
             first_call_kwargs = mock_plot.call_args_list[0].kwargs
@@ -279,23 +260,20 @@ class TestSurveillanceDataFiltering:
             assert df_surv_full is None
 
 
-class TestPrepareSurveillanceForLocation:
-    """Test _prepare_surveillance_for_location helper function."""
+class TestSelectSurveillance:
+    """Test _select_surveillance helper function."""
 
     def test_handles_duplicate_value_column(self):
-        """Test that preparing surveillance data avoids duplicate 'value' columns."""
-        # Create surveillance data with both 'value' and 'original_value' columns
-        # This simulates real-world data where both columns exist
+        """Selecting surveillance data avoids duplicate 'value' columns."""
+        # Source data has both 'value' and 'original_value'; the config selects 'original_value'
         surveillance_df = pd.DataFrame(
             {
                 "date": pd.date_range("2024-01-01", periods=5, freq="D"),
                 "location_iso": ["US-AL"] * 5,
-                "value": [100.0, 200.0, 300.0, 400.0, 500.0],  # Existing 'value' column
-                "original_value": [0.01, 0.02, 0.03, 0.04, 0.05],  # Column we want to rename to 'value'
+                "value": [100.0, 200.0, 300.0, 400.0, 500.0],
+                "original_value": [0.01, 0.02, 0.03, 0.04, 0.05],
             }
         )
-
-        # Configure to use 'original_value' as the value column
         config = ObservedValuesConfig(
             data_path="dummy.csv",
             date_column="date",
@@ -304,32 +282,29 @@ class TestPrepareSurveillanceForLocation:
             location_format="ISO",
         )
 
-        # Call the function
-        df_surv_full, df_surv_filtered, _ = _prepare_surveillance_for_location(
-            surveillance=surveillance_df,
-            location="US-AL",
-            proj_quant=None,
-            cal_quant=None,
-            surveillance_config=config,
+        selected = _select_surveillance(surveillance_df, "US-AL", config)
+
+        assert list(selected.columns) == ["date", "value"]
+        assert isinstance(selected["value"], pd.Series)
+        assert selected["value"].tolist() == [0.01, 0.02, 0.03, 0.04, 0.05]
+
+    def test_returns_none_for_missing_location(self):
+        """A location with no rows returns None."""
+        surveillance_df = pd.DataFrame({"date": ["2024-01-01"], "location": ["US-AL"], "obs": [1.0]})
+        config = ObservedValuesConfig(
+            data_path="dummy.csv", date_column="date", value_column="obs", location_column="location"
         )
+        assert _select_surveillance(surveillance_df, "US-TX", config) is None
 
-        # Verify df_surv_full has exactly 2 columns: date and value
-        assert df_surv_full is not None
-        assert len(df_surv_full.columns) == 2
-        assert list(df_surv_full.columns) == ["date", "value"]
-
-        # Verify df['value'] returns a Series, not a DataFrame
-        assert isinstance(df_surv_full["value"], pd.Series)
-
-        # Verify the values are from 'original_value', not the pre-existing 'value' column
-        assert df_surv_full["value"].iloc[0] == 0.01
-        assert df_surv_full["value"].iloc[4] == 0.05
-
-        # Same checks for filtered surveillance
-        assert df_surv_filtered is not None
-        assert len(df_surv_filtered.columns) == 2
-        assert list(df_surv_filtered.columns) == ["date", "value"]
-        assert isinstance(df_surv_filtered["value"], pd.Series)
+    def test_sorted_by_date(self):
+        """Rows are sorted by date."""
+        surveillance_df = pd.DataFrame(
+            {"date": ["2024-01-15", "2024-01-01", "2024-01-08"], "location": ["US-AL"] * 3, "obs": [3.0, 1.0, 2.0]}
+        )
+        config = ObservedValuesConfig(
+            data_path="dummy.csv", date_column="date", value_column="obs", location_column="location"
+        )
+        assert _select_surveillance(surveillance_df, "US-AL", config)["value"].tolist() == [1.0, 2.0, 3.0]
 
 
 class TestRenameValueColumn:
@@ -519,8 +494,8 @@ class TestFormatPlotNotes:
         assert footnote == "* Note one; Note two"
 
 
-class TestClipToSurveillanceStart:
-    """Tests for _clip_to_surveillance_start helper."""
+class TestClipToStart:
+    """Tests for _clip_to_start helper."""
 
     @pytest.fixture
     def df(self):
@@ -533,36 +508,21 @@ class TestClipToSurveillanceStart:
             }
         )
 
-    def test_clips_df_to_earliest_surveillance_date(self, df):
-        """Rows before the earliest surveillance date are removed."""
-        surv = pd.DataFrame({"date": pd.date_range("2024-01-05", periods=3, freq="D"), "value": [1, 2, 3]})
-        result = _clip_to_surveillance_start(df, surv)
-        assert result is not None
+    def test_clips_df_to_start(self, df):
+        """Rows before the start date are removed."""
+        result = _clip_to_start(df, date(2024, 1, 5))
         assert len(result) == 6  # Jan 5–10
         assert pd.to_datetime(result["date"]).dt.date.min() == date(2024, 1, 5)
 
-    def test_returns_df_unchanged_when_surv_is_none(self, df):
-        """When surv is None, df is returned as-is."""
-        result = _clip_to_surveillance_start(df, None)
-        assert result is not None
-        assert len(result) == 10
-
-    def test_returns_df_unchanged_when_surv_is_empty(self, df):
-        """When surv is an empty DataFrame, df is returned as-is."""
-        empty_surv = pd.DataFrame({"date": pd.Series(dtype="datetime64[ns]"), "value": pd.Series(dtype="float64")})
-        result = _clip_to_surveillance_start(df, empty_surv)
-        assert result is not None
-        assert len(result) == 10
-
     def test_returns_none_when_df_is_none(self):
-        """When df is None, None is returned."""
-        surv = pd.DataFrame({"date": ["2024-01-05"], "value": [1]})
-        assert _clip_to_surveillance_start(None, surv) is None
+        """None stays None."""
+        assert _clip_to_start(None, date(2024, 1, 5)) is None
 
-    def test_returns_none_when_all_rows_clipped(self, df):
-        """When surveillance starts after all df dates, None is returned."""
-        surv = pd.DataFrame({"date": ["2024-02-01"], "value": [1]})
-        assert _clip_to_surveillance_start(df, surv) is None
+    def test_returns_empty_when_all_rows_clipped(self, df):
+        """The result is empty, not None (which means "not drawn")."""
+        result = _clip_to_start(df, date(2024, 2, 1))
+        assert result is not None
+        assert result.empty
 
 
 class TestClipSurveillance:

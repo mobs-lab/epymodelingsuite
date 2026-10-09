@@ -38,9 +38,8 @@ from ..utils.location import (
 from ..visualization.generators import (
     generate_categorical_plots,
     generate_posterior_grid_plot,
-    generate_quantile_grid_plot,
+    generate_quantile_plots,
     generate_single_location_posterior_plots,
-    generate_single_quantile_plots,
 )
 
 logger = logging.getLogger(__name__)
@@ -1817,8 +1816,7 @@ def generate_calibration_outputs(
         if output.options and output.options.surveillance:
             surveillance_sources = output.options.surveillance
 
-        generate_single_quantile_plots(calibrations, plots_config, out_dict, surveillance_sources)
-        generate_quantile_grid_plot(calibrations, plots_config, out_dict, surveillance_sources)
+        generate_quantile_plots(calibrations, plots_config, out_dict, surveillance_sources)
         logger.info("  - Generating posterior plots")
         generate_single_location_posterior_plots(calibrations, plots_config, out_dict, start_date_reference)
         generate_posterior_grid_plot(calibrations, plots_config, out_dict, start_date_reference)

@@ -3,7 +3,7 @@ from datetime import date
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, ValidationInfo, field_validator, model_validator
 
 from ..output.trajectory_samples import SAMPLE_SELECTORS
 from .common import InputFilePath, Meta
@@ -480,15 +480,16 @@ class SideBySidePanelConfig(BaseModel):
     """Configuration for a single panel in side-by-side plot."""
 
     surveillance_points: int | None = Field(
-        None, description="Number of most recent surveillance points to display. None = all points."
+        None,
+        description="Number of most recent surveillance points on or before reference_date to display; all points after reference_date are kept. None = inherit from the output. If this panel sets surveillance_points or surveillance_start_date, neither is inherited.",
     )
     surveillance_start_date: str | None = Field(
         None,
-        description="Filter surveillance to show only points >= this date (YYYY-MM-DD). Overrides surveillance_points if both set.",
+        description="Filter surveillance to show only points >= this date (YYYY-MM-DD). Overrides surveillance_points if both set. None = inherit from the output.",
     )
     xlabel_interval: str | None = Field(
         None,
-        description="X-axis label interval as pandas offset string (e.g., 'W-SAT', '2W-SAT', 'MS'). None = auto (matplotlib default).",
+        description="X-axis label interval as pandas offset string (e.g., 'W-SAT', '2W-SAT', 'MS'). None = inherit from the output.",
     )
 
 
@@ -507,19 +508,21 @@ class QuantilesOutputConfig(BaseModel):
         description="Name of surveillance source from surveillance dict. If None and surveillance dict has one entry, use that entry.",
     )
 
-    # Filter settings (only for FILTERED and FULL types)
+    # Filter settings (for SIDE_BY_SIDE, these are the defaults for both panels)
     surveillance_points: int | None = Field(
         None,
-        description="Number of most recent surveillance points to display. None = all points. Not used for SIDE_BY_SIDE.",
+        description="Number of most recent surveillance points on or before reference_date to display; all points after reference_date are kept. None = no limit (full) or start at the first projection date (filtered).",
     )
     surveillance_start_date: str | None = Field(
         None,
-        description="Filter surveillance to show only points >= this date (YYYY-MM-DD). Overrides surveillance_points if both set. Not used for SIDE_BY_SIDE.",
+        description="Filter surveillance to show only points >= this date (YYYY-MM-DD). Overrides surveillance_points if both set.",
     )
-    horizon_max: int | None = Field(None, description="Override base horizon_max. None = use base config value.")
+    horizon_max: int | None = Field(
+        None, description="Override base horizon_max (shorter or longer). None = use base config value."
+    )
     xlabel_interval: str | None = Field(
         None,
-        description="X-axis label interval as pandas offset string (e.g., 'W-SAT', '2W-SAT', 'MS'). None = auto. For SIDE_BY_SIDE, use panel configs instead.",
+        description="X-axis label interval as pandas offset string (e.g., 'W-SAT', '2W-SAT', 'MS'). None = auto.",
     )
 
     # Panel settings (only for SIDE_BY_SIDE type)
@@ -538,8 +541,10 @@ class QuantilesOutputConfig(BaseModel):
 class QuantilesGridConfig(BaseModel):
     """Configuration for quantiles grid plot."""
 
-    enabled: bool = Field(False, description="Create grid plot.")
-    panels_per_row: int = Field(4, description="Number of panels per row in grid.")
+    enabled: bool = Field(True, description="Create grid plot.")
+    panels_per_row: int = Field(
+        4, ge=1, description="Number of panels per row in grid. Must be even when side_by_side is enabled."
+    )
 
 
 class QuantilesCalibrationConfig(BaseModel):
@@ -561,9 +566,9 @@ class QuantilesPlotConfig(BaseModel):
         False,
         description="Create single plot per location (default disabled). Set true for all locations, or provide list of specific locations.",
     )
-    grid: QuantilesGridConfig | bool = Field(
+    grid: QuantilesGridConfig = Field(
         default_factory=QuantilesGridConfig,
-        description="Grid plot with all locations (default enabled). Set true to use default options, or set options in subfields.",
+        description="Grid plot with all locations (default enabled). Set false or enabled: false to disable, true for defaults, or set options in subfields.",
     )
 
     # Output configuration
@@ -594,7 +599,7 @@ class QuantilesPlotConfig(BaseModel):
                 spacing=0.3,
             ),
         ],
-        description="List of output configurations to generate.",
+        description="Plot variants to generate. Each type may appear at most once to keep output filenames unique.",
     )
 
     # Shared settings
@@ -604,17 +609,17 @@ class QuantilesPlotConfig(BaseModel):
         validate_default=True,
     )
     horizon_max: int | None = Field(
-        3, description="Base maximum forecast horizon (weeks ahead). Can be overridden per output."
+        3, description="Base maximum forecast horizon (weeks ahead). None = no limit. Can be overridden per output."
     )
 
     # Shared styling (data source and colors)
-    calibration: QuantilesCalibrationConfig | bool = Field(
+    calibration: QuantilesCalibrationConfig = Field(
         default_factory=QuantilesCalibrationConfig,
-        description="Calibration period quantile ribbons (default enabled). Set true to use default options, or set options in subfields.",
+        description="Calibration ribbon styling. Use outputs[].show_calibration to show or hide the ribbons.",
     )
-    projection: QuantilesProjectionConfig | bool = Field(
+    projection: QuantilesProjectionConfig = Field(
         default_factory=QuantilesProjectionConfig,
-        description="Projection period quantile ribbons (default enabled). Set true to use default options, or set options in subfields.",
+        description="Projection ribbon styling. Use outputs[].show_projection to show or hide the ribbons.",
     )
 
     value_column: str = Field(
@@ -630,28 +635,49 @@ class QuantilesPlotConfig(BaseModel):
         description="Super title for grid plots. If None, no super title is shown.",
     )
 
-    @field_validator("grid")
+    @field_validator("grid", mode="before")
     @classmethod
-    def validate_grid(cls, v: QuantilesGridConfig | bool) -> QuantilesGridConfig | bool:
-        """If passed True, use default factory."""
-        if v is True:
-            return QuantilesGridConfig()
+    def validate_grid(cls, v: Any) -> Any:
+        """Normalize both boolean forms before validating the grid options."""
+        if isinstance(v, bool):
+            return {"enabled": v}
         return v
 
-    @field_validator("calibration")
+    @field_validator("outputs")
     @classmethod
-    def validate_calibration(cls, v: QuantilesCalibrationConfig | bool) -> QuantilesCalibrationConfig | bool:
-        """If passed True, use default factory."""
-        if v is True:
-            return QuantilesCalibrationConfig()
-        return v
+    def validate_unique_variants(cls, variant_configs: list[QuantilesOutputConfig]) -> list[QuantilesOutputConfig]:
+        """Each type identifies one output file; duplicates would overwrite it."""
+        seen = set()
+        for variant_config in variant_configs:
+            if variant_config.type in seen:
+                msg = f"plots.quantiles.outputs contains duplicate type '{variant_config.type.value}'; each type must be unique."
+                raise ValueError(msg)
+            seen.add(variant_config.type)
+        return variant_configs
 
-    @field_validator("projection")
+    @model_validator(mode="after")
+    def validate_grid_layout(self):
+        """Side-by-side grids need complete full/filtered pairs in every row."""
+        if (
+            self.grid.enabled
+            and any(variant.type == QuantilesOutputTypeEnum.SIDE_BY_SIDE for variant in self.outputs)
+            and self.grid.panels_per_row % 2
+        ):
+            msg = "plots.quantiles.grid.panels_per_row must be an even number >= 2 when side_by_side is enabled."
+            raise ValueError(msg)
+        return self
+
+    @field_validator("calibration", "projection", mode="before")
     @classmethod
-    def validate_projection(cls, v: QuantilesProjectionConfig | bool) -> QuantilesProjectionConfig | bool:
-        """If passed True, use default factory."""
-        if v is True:
-            return QuantilesProjectionConfig()
+    def reject_bool_styling(cls, v: Any, info: ValidationInfo) -> Any:
+        """Reject the old bool form; these sections only hold colors now."""
+        if isinstance(v, bool):
+            msg = (
+                f"plots.quantiles.{info.field_name} no longer accepts true/false. "
+                f"For true, remove the key or use {{}}. "
+                f"For false, set outputs[].show_{info.field_name}: false."
+            )
+            raise ValueError(msg)  # noqa: TRY004
         return v
 
     @field_validator("quantiles")
@@ -824,10 +850,10 @@ class OutputConfiguration(BaseModel):
 
             # Check plots.quantiles.outputs
             if self.plots and self.plots.quantiles:
-                for i, output in enumerate(self.plots.quantiles.outputs):
-                    if output.surveillance_source:
+                for i, variant_config in enumerate(self.plots.quantiles.outputs):
+                    if variant_config.surveillance_source:
                         errors.append(
-                            f"plots.quantiles.outputs[{i}].surveillance_source='{output.surveillance_source}' "
+                            f"plots.quantiles.outputs[{i}].surveillance_source='{variant_config.surveillance_source}' "
                             "but no surveillance sources defined in output.options.surveillance"
                         )
 
@@ -873,10 +899,10 @@ class OutputConfiguration(BaseModel):
 
         # Check plots.quantiles.outputs
         if self.plots and self.plots.quantiles:
-            for i, output in enumerate(self.plots.quantiles.outputs):
-                if output.surveillance_source and output.surveillance_source not in available_sources:
+            for i, variant_config in enumerate(self.plots.quantiles.outputs):
+                if variant_config.surveillance_source and variant_config.surveillance_source not in available_sources:
                     errors.append(
-                        f"plots.quantiles.outputs[{i}].surveillance_source='{output.surveillance_source}' "
+                        f"plots.quantiles.outputs[{i}].surveillance_source='{variant_config.surveillance_source}' "
                         f"not found in surveillance sources: {available_sources}"
                     )
 
