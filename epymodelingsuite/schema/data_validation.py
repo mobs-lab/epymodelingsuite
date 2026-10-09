@@ -5,13 +5,67 @@ calibration before running computationally expensive calibration jobs.
 """
 
 import logging
+from pathlib import Path
+from typing import Annotated, get_args, get_origin
 
 import pandas as pd
+from pydantic import BaseModel
 
 from ..builders.utils import get_data_in_location
 from .calibration import CalibrationConfig
+from .common import InputFile
 
 logger = logging.getLogger(__name__)
+
+
+def _is_input_file(annotation: object) -> bool:
+    # Optional fields keep the Annotated marker inside the union.
+    if get_origin(annotation) is Annotated and any(isinstance(m, InputFile) for m in get_args(annotation)[1:]):
+        return True
+    return any(_is_input_file(arg) for arg in get_args(annotation))
+
+
+def _collect_data_paths(node: object) -> set[str]:
+    if isinstance(node, BaseModel):
+        # model_fields skips computed fields, so user scripts are not executed.
+        paths = set()
+        for name, field in type(node).model_fields.items():
+            value = getattr(node, name)
+            marked = any(isinstance(m, InputFile) for m in field.metadata) or _is_input_file(field.annotation)
+            if marked and isinstance(value, str):
+                paths.add(value)
+            else:
+                paths |= _collect_data_paths(value)
+        return paths
+    if isinstance(node, dict):
+        node = list(node.values())
+    if isinstance(node, (list, tuple)):
+        return set().union(*map(_collect_data_paths, node))
+    return set()
+
+
+def find_missing_data_files(*configs: BaseModel | None) -> list[str]:
+    """
+    List input files referenced by ``InputFilePath`` config fields that do not exist.
+
+    Covers every config type (basemodel, sampling, calibration, output), so a
+    mistyped data path fails validation instead of the builder at runtime.
+    Run it where the configs' paths resolve, e.g. with the forecast repo
+    mounted at the path the configs use.
+
+    Parameters
+    ----------
+    *configs : BaseModel | None
+        Loaded config models. ``None`` is skipped, for an absent output config.
+
+    Returns
+    -------
+    list[str]
+        Sorted paths, as written in the configs, that do not exist.
+        Example: ['/data/forecast/common-data/vaccine_scenarios_2627_b.csv']
+    """
+    paths = set().union(*(_collect_data_paths(c) for c in configs if c is not None))
+    return sorted(p for p in paths if not Path(p).exists())
 
 
 def validate_calibration_data(

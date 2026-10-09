@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 
 from epymodelingsuite.schema.output import QuantilesOutputConfig, QuantilesPlotConfig
-from epymodelingsuite.visualization.generators import (
+from epymodelingsuite.visualization.preparation import (
     LocationPlotData,
     ResolvedPanelSettings,
     prepare_panel_plot_data,
@@ -192,8 +192,8 @@ def settings_for(view: str, **overrides) -> ResolvedPanelSettings:
 def prepared(location_data, view, **overrides) -> dict:
     panel = prepare_panel_plot_data(location_data, settings_for(view, **overrides), REFERENCE_DATE)
     return {
-        "calibration": date_range_of(panel.calibration),
-        "projection": date_range_of(panel.projection),
+        "calibration": date_range_of(panel.calibration_quantiles),
+        "projection": date_range_of(panel.projection_quantiles),
         "surveillance": date_range_of(panel.surveillance),
     }
 

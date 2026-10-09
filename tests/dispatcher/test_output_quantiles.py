@@ -13,7 +13,7 @@ from epydemix.model.simulation_results import SimulationResults
 from epymodelingsuite.dispatcher.output import generate_calibration_outputs, generate_simulation_outputs
 from epymodelingsuite.schema.dispatcher import CalibrationOutput, SimulationOutput
 from epymodelingsuite.schema.output import OutputConfig, PlotsConfig
-from epymodelingsuite.visualization.generators import _compute_fitting_window, _fetch_quantiles_for_location
+from epymodelingsuite.visualization.preparation import _compute_fitting_window, _fetch_quantiles_for_location
 
 
 def calibration():

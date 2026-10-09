@@ -2,9 +2,17 @@
 
 import datetime
 from enum import Enum
-from typing import Any
+from typing import Annotated, Any
 
 from pydantic import BaseModel, Field, model_validator
+
+
+class InputFile:
+    """Marks a config field as a path to an input file that must exist."""
+
+
+InputFilePath = Annotated[str, InputFile()]
+"""Path to an input file, checked by ``find_missing_data_files``."""
 
 
 class Distribution(BaseModel):

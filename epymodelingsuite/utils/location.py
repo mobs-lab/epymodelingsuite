@@ -471,3 +471,27 @@ def resolve_population_names(population_names: list[str | dict[str, str]]) -> li
             except ValueError:
                 resolved.append((validate_metrocast_location(population), "metrocast_location"))
     return resolved
+
+
+def get_hub_location_id(population_name: str) -> str:
+    """
+    Convert population name to location ID for hub CSV outputs.
+
+    For ISO locations, returns FIPS code (e.g., "06" for California).
+    For metrocast locations, returns metrocast_location_id (e.g., "denver").
+
+    Parameters
+    ----------
+    population_name : str
+        Population name in epydemix format (e.g., "United_States_California" or
+        "metrocast_location_denver").
+
+    Returns
+    -------
+    str
+        Location ID appropriate for hub CSV output format.
+    """
+    location_name, location_type = parse_population_name(population_name)
+    if location_type == "metrocast_location":
+        return location_name
+    return convert_location_name_format(population_name, "FIPS")

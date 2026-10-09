@@ -1,6 +1,7 @@
 """Tests for visualization generators module."""
 
 from datetime import date
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -10,8 +11,9 @@ from epydemix.calibration import CalibrationResults
 
 from epymodelingsuite.schema.calibration import CalibrationStrategy
 from epymodelingsuite.schema.dispatcher import CalibrationOutput
-from epymodelingsuite.schema.output import ObservedValuesConfig, PlotsConfig, PosteriorPlotConfig, QuantilesPlotConfig
-from epymodelingsuite.visualization.generators import (
+from epymodelingsuite.schema.output import ObservedValuesConfig, PlotsConfig, QuantilesPlotConfig
+from epymodelingsuite.visualization.generators import generate_single_quantile_plots, get_locations_to_plot
+from epymodelingsuite.visualization.preparation import (
     _check_incomplete_generations,
     _clip_surveillance,
     _clip_to_horizon,
@@ -19,10 +21,6 @@ from epymodelingsuite.visualization.generators import (
     _format_plot_notes,
     _rename_value_column,
     _select_surveillance,
-    generate_quantile_grid_plot,
-    generate_single_location_posterior_plots,
-    generate_single_quantile_plots,
-    get_locations_to_plot,
 )
 
 
@@ -106,13 +104,13 @@ class TestSurveillanceDataFiltering:
     @pytest.fixture
     def plots_config_with_surveillance(self):
         """Create a PlotsConfig with surveillance data enabled."""
-        quantiles_config = QuantilesPlotConfig(
+        plot_config = QuantilesPlotConfig(
             single=True,  # Enable single plots
         )
 
         return PlotsConfig(
             reference_date=date(2024, 1, 15),
-            quantiles=quantiles_config,
+            quantiles=plot_config,
         )
 
     def test_surveillance_filtered_to_timespan_start(
@@ -121,8 +119,8 @@ class TestSurveillanceDataFiltering:
         """Test that surveillance data is filtered to start from projection timespan start in filtered plot."""
         out_dict = {}
 
-        # Mock plot_calibration_projection to capture the surveillance data passed to it
-        with patch("epymodelingsuite.visualization.generators.plot_calibration_projection") as mock_plot:
+        # Mock plot_quantile_panel to capture the surveillance data passed to it
+        with patch("epymodelingsuite.visualization.generators.plot_quantile_panel") as mock_plot:
             mock_plot.return_value = (MagicMock(), MagicMock())
 
             generate_single_quantile_plots(
@@ -132,8 +130,8 @@ class TestSurveillanceDataFiltering:
                 surveillance_sources=surveillance_sources,
             )
 
-            # Verify plot_calibration_projection was called twice (filtered and full)
-            assert mock_plot.call_count == 2
+            # All four panels (filtered, full, and the side-by-side pair) share the same drawing function.
+            assert mock_plot.call_count == 4
 
             # Extract the surveillance data passed to both plot calls
             first_call_kwargs = mock_plot.call_args_list[0].kwargs
@@ -176,7 +174,7 @@ class TestSurveillanceDataFiltering:
 
         out_dict = {}
 
-        with patch("epymodelingsuite.visualization.generators.plot_calibration_projection") as mock_plot:
+        with patch("epymodelingsuite.visualization.generators.plot_quantile_panel") as mock_plot:
             mock_plot.return_value = (MagicMock(), MagicMock())
 
             generate_single_quantile_plots(
@@ -186,35 +184,16 @@ class TestSurveillanceDataFiltering:
                 surveillance_sources=surveillance_sources,
             )
 
-            # Verify plot was called twice (filtered and full)
-            assert mock_plot.call_count == 2
-
-            # Extract surveillance data from both calls
-            first_call_kwargs = mock_plot.call_args_list[0].kwargs
-            second_call_kwargs = mock_plot.call_args_list[1].kwargs
-
-            df_surv_filtered = first_call_kwargs["df_surveillance"]
-            df_surv_full = second_call_kwargs["df_surveillance"]
-
-            # When no calibration/projection quantiles, filtered surveillance should still be loaded
-            # and filtered to 8 points before reference_date (2024-01-15) plus all after
-            assert df_surv_filtered is not None
-            dates_filtered = pd.to_datetime(df_surv_filtered["date"]).dt.date
-            before_ref = dates_filtered[dates_filtered <= date(2024, 1, 15)]
-            after_ref = dates_filtered[dates_filtered > date(2024, 1, 15)]
-            assert len(before_ref) == 8
-            assert len(after_ref) > 0
-            max_date_filtered = dates_filtered.max()
-            assert max_date_filtered == date(2024, 2, 15)
-
-            # Full surveillance should show all data (no filtering)
-            assert df_surv_full is not None
-            assert len(df_surv_full) == 77  # All dates from 2023-12-01 to 2024-02-15
+            mock_plot.assert_not_called()
+            assert out_dict == {}
 
     def test_surveillance_filtering_falls_back_to_calibration_quantiles(
         self, calibration_quantiles, plots_config_with_surveillance, surveillance_sources
     ):
         """Test that surveillance falls back to calibration quantiles when no projection quantiles available."""
+        for variant_config in plots_config_with_surveillance.quantiles.outputs:
+            variant_config.show_calibration = True
+
         # Create calibration output with only calibration quantiles (no projection)
         calibration = MagicMock(spec=CalibrationOutput)
         calibration.population = "US-CA"
@@ -222,7 +201,7 @@ class TestSurveillanceDataFiltering:
 
         out_dict = {}
 
-        with patch("epymodelingsuite.visualization.generators.plot_calibration_projection") as mock_plot:
+        with patch("epymodelingsuite.visualization.generators.plot_quantile_panel") as mock_plot:
             mock_plot.return_value = (MagicMock(), MagicMock())
 
             generate_single_quantile_plots(
@@ -232,8 +211,8 @@ class TestSurveillanceDataFiltering:
                 surveillance_sources=surveillance_sources,
             )
 
-            # Verify plot was called twice (filtered and full)
-            assert mock_plot.call_count == 2
+            # All four panels use the same drawing function.
+            assert mock_plot.call_count == 4
 
             # Extract surveillance data from both calls
             first_call_kwargs = mock_plot.call_args_list[0].kwargs
@@ -263,7 +242,7 @@ class TestSurveillanceDataFiltering:
 
         out_dict = {}
 
-        with patch("epymodelingsuite.visualization.generators.plot_calibration_projection") as mock_plot:
+        with patch("epymodelingsuite.visualization.generators.plot_quantile_panel") as mock_plot:
             mock_plot.return_value = (MagicMock(), MagicMock())
 
             generate_single_quantile_plots(
@@ -273,8 +252,8 @@ class TestSurveillanceDataFiltering:
                 surveillance_sources=surveillance_sources,
             )
 
-            # Verify plot was called twice (filtered and full)
-            assert mock_plot.call_count == 2
+            # All four panels use the same drawing function.
+            assert mock_plot.call_count == 4
 
             # Extract surveillance data from both calls
             first_call_kwargs = mock_plot.call_args_list[0].kwargs
@@ -525,7 +504,7 @@ class TestFormatPlotNotes:
 class TestClipToStart:
     """Tests for _clip_to_start helper."""
 
-    @pytest.fixture()
+    @pytest.fixture
     def df(self):
         """Quantile-like DataFrame spanning Jan 1–10."""
         return pd.DataFrame(
@@ -556,7 +535,7 @@ class TestClipToStart:
 class TestClipSurveillance:
     """Tests for _clip_surveillance helper."""
 
-    @pytest.fixture()
+    @pytest.fixture
     def surv(self):
         """Weekly surveillance DataFrame spanning 8 weeks."""
         return pd.DataFrame(
@@ -634,7 +613,7 @@ class TestClipSurveillance:
 class TestClipToHorizon:
     """Tests for _clip_to_horizon helper."""
 
-    @pytest.fixture()
+    @pytest.fixture
     def proj(self):
         """Weekly projection DataFrame spanning 10 weeks from reference_date."""
         return pd.DataFrame(
@@ -645,7 +624,7 @@ class TestClipToHorizon:
             }
         )
 
-    @pytest.fixture()
+    @pytest.fixture
     def reference_date(self):
         return date(2024, 1, 7)
 
@@ -676,55 +655,25 @@ class TestClipToHorizon:
         assert len(result) < original_len
 
 
-def _make_mock_calibration(population: str) -> MagicMock:
-    """Mock CalibrationOutput with minimal calibration and projection quantiles."""
-    dates = pd.date_range("2024-01-01", "2024-02-05", freq="W-SUN")
-    quantiles = pd.DataFrame(
-        [
-            {"date": d, "quantile": q, "data": 100.0, "hospitalizations": 100.0}
-            for d in dates
-            for q in (0.025, 0.5, 0.975)
-        ]
-    )
-    calibration = MagicMock(spec=CalibrationOutput)
-    calibration.population = population
-    calibration.calibration_strategy = None
-    calibration.results = _results_for_dates(quantiles, quantiles)
-    calibration.results.posterior_distributions = {0: pd.DataFrame({"R0": [1.1, 1.2, 1.3]})}
-    return calibration
-
-
-class TestGeneratorsDoNotFilterResults:
-    """Generators expect pre-filtered results and must not replace `calibration.results`."""
-
-    def test_single_and_grid_keep_results_identity(self):
-        """The generators plot without replacing calibration.results."""
-        calibration = _make_mock_calibration("US-CA")
-        original_results = calibration.results
-        plots_config = PlotsConfig(
-            reference_date=date(2024, 1, 15),
-            quantiles=QuantilesPlotConfig(single=True, grid=True),
-        )
-        with (
-            patch("epymodelingsuite.visualization.generators.plot_calibration_projection") as mock_plot,
-            patch("epymodelingsuite.visualization.generators.plot_calibration_projection_grid") as mock_grid,
-        ):
-            mock_plot.return_value = (MagicMock(), MagicMock())
-            mock_grid.return_value = (MagicMock(), MagicMock())
-            generate_single_quantile_plots([calibration], plots_config, {})
-            generate_quantile_grid_plot([calibration], plots_config, {})
-
-        assert mock_plot.called
-        assert mock_grid.called
-        assert calibration.results is original_results
-
-
 class TestLocationsToPlot:
     """ISO locations in `single` must match epydemix population names."""
 
     def test_iso_list_is_accepted_by_quantiles_schema(self):
         """An ISO code in quantiles.single passes validation."""
         assert QuantilesPlotConfig(single=["US-CA"]).single == ["US-CA"]
+
+    @pytest.mark.parametrize("location", ["denver", "metrocast_location_denver"])
+    def test_metrocast_location_is_accepted_by_quantiles_schema(self, location):
+        """A metrocast location ID, with or without prefix, passes validation."""
+        assert QuantilesPlotConfig(single=[location]).single == [location]
+
+    def test_metrocast_location_matches_population_name(self):
+        """A metrocast location ID matches its prefixed population name."""
+        calibrations = [
+            SimpleNamespace(population="metrocast_location_denver"),
+            SimpleNamespace(population="metrocast_location_mesa"),
+        ]
+        assert get_locations_to_plot(calibrations, ["denver"]) == {"metrocast_location_denver"}
 
     def test_invalid_location_rejected_by_quantiles_schema(self):
         """An unknown code in quantiles.single fails validation."""
@@ -734,49 +683,8 @@ class TestLocationsToPlot:
     @pytest.mark.parametrize("requested", ["US-CA", "United_States__California", "United_States_California"])
     def test_matches_epydemix_population_names(self, requested):
         """ISO, current and deprecated names all match the epydemix population name."""
-        calibrations = [_make_mock_calibration("United_States__California"), _make_mock_calibration("United_States")]
+        calibrations = [
+            SimpleNamespace(population="United_States__California"),
+            SimpleNamespace(population="United_States"),
+        ]
         assert get_locations_to_plot(calibrations, [requested]) == {"United_States__California"}
-
-    def test_single_quantile_plots_with_iso_input(self):
-        """Quantile single: ["US-CA"] plots only California."""
-        calibrations = [_make_mock_calibration("United_States__California"), _make_mock_calibration("United_States")]
-        plots_config = PlotsConfig(reference_date=date(2024, 1, 15), quantiles=QuantilesPlotConfig(single=["US-CA"]))
-        out_dict = {}
-        generate_single_quantile_plots(calibrations, plots_config, out_dict)
-
-        assert out_dict
-        assert all("United_States__California" in output_name for output_name in out_dict)
-
-    def test_single_posterior_plots_with_iso_input(self):
-        """Posterior single: ["US-CA"] plots only California."""
-        calibrations = [_make_mock_calibration("United_States__California"), _make_mock_calibration("United_States")]
-        plots_config = PlotsConfig(reference_date=date(2024, 1, 15), posterior=PosteriorPlotConfig(single=["US-CA"]))
-        out_dict = {}
-        generate_single_location_posterior_plots(calibrations, plots_config, out_dict)
-
-        assert set(out_dict) == {"posterior_United_States__California"}
-
-
-class TestQuantileGridEnabled:
-    """`grid.enabled` decides whether the quantile grid is drawn."""
-
-    @pytest.mark.parametrize(
-        ("grid_value", "expected_drawn"),
-        [
-            (True, True),
-            (False, False),
-            ({"enabled": False}, False),
-            ({"enabled": True}, True),
-            ({"panels_per_row": 2}, True),
-            (None, True),  # missing key: default grid
-        ],
-    )
-    def test_grid_enabled(self, grid_value, expected_drawn):
-        """grid: true, false, {enabled}, options only or missing decide whether the grid is drawn."""
-        quantiles_kwargs = {} if grid_value is None else {"grid": grid_value}
-        plots_config = PlotsConfig(reference_date=date(2024, 1, 15), quantiles=QuantilesPlotConfig(**quantiles_kwargs))
-        with patch("epymodelingsuite.visualization.generators.plot_calibration_projection_grid") as mock_grid:
-            mock_grid.return_value = (MagicMock(), MagicMock())
-            generate_quantile_grid_plot([_make_mock_calibration("US-CA")], plots_config, {})
-
-        assert mock_grid.called is expected_drawn

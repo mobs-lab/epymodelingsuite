@@ -1,1 +1,1 @@
-"""Output processing helpers."""
+"""Output formatting: hub submission files, trajectory samples and quantiles."""

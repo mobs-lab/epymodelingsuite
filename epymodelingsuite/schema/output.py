@@ -5,8 +5,10 @@ from typing import Any
 
 from pydantic import BaseModel, Field, ValidationInfo, field_validator, model_validator
 
+from ..output.trajectory_samples import SAMPLE_SELECTORS
 from ..utils import validate_iso3166
-from .common import Meta
+from ..utils.location import METROCAST_PREFIX, get_metrocast_locations
+from .common import InputFilePath, Meta
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +101,24 @@ def get_flusight_quantiles() -> list[float]:
     ]
 
 
+def get_flusight_horizons() -> range:
+    """
+    Return the forecast horizons for FluSight submissions.
+
+    Metrocast uses horizons 0-3, while standard FluSight uses -1 to 3.
+    """
+    return range(-1, 4)
+
+
+def get_flusight_categorical_horizons() -> range:
+    """
+    Return the forecast horizons for FluSight categorical target submissions.
+
+    FluSight categorical and Metrocast use horizons 0-3, while standard FluSight uses -1 to 3.
+    """
+    return range(4)
+
+
 def get_metrocast_quantiles() -> list[float]:
     """
     Return a list containing the quantiles needed for FluSight metrocast submissions.
@@ -135,7 +155,7 @@ def get_quantile_ribbon_default() -> list[float]:
 class ObservedValuesConfig(BaseModel):
     """Specifications for selecting observed values."""
 
-    data_path: str = Field(description="Path to observed data CSV file")
+    data_path: InputFilePath = Field(description="Path to observed data CSV file")
     value_column: str = Field(description="Name of column containing observed values in observed data CSV")
     date_column: str = Field(description="Name of column containing target dates in observed data CSV")
     location_column: str = Field(description="Name of column containing location in observed data CSV")
@@ -284,6 +304,43 @@ class FlusightHospitalizations(BaseModel):
     )
 
 
+class FlusightTrajectorySamples(BaseModel):
+    """Specifications for trajectory sample outputs ('sample' output type)."""
+
+    n_samples: int = Field(
+        100,
+        gt=0,
+        description="Samples per location and target. If fewer complete trajectories exist, all are submitted.",
+    )
+    method: str = Field("random", description="Sample selection method, a key of SAMPLE_SELECTORS.")
+    seed: int | None = Field(None, description="Seed for sample selection. Defaults to each model's seed.")
+
+    @field_validator("method")
+    @classmethod
+    def validate_method(cls, v: str) -> str:
+        """Validate the trajectory selection method.
+
+        Parameters
+        ----------
+        v : str
+            Requested key in ``SAMPLE_SELECTORS``.
+
+        Returns
+        -------
+        str
+            The unchanged method name if it is registered.
+
+        Raises
+        ------
+        ValueError
+            If the method is not registered.
+        """
+        if v not in SAMPLE_SELECTORS:
+            msg = f"Unknown sample selection method '{v}'. Available: {sorted(SAMPLE_SELECTORS)}"
+            raise ValueError(msg)
+        return v
+
+
 class FlusightForecastOutput(BaseModel):
     """Specifications for outputs in flusight forecast hub format."""
 
@@ -307,7 +364,38 @@ class FlusightForecastOutput(BaseModel):
         description="Desired quantiles for hospitalizations and prop_ed expressed as floats.",
         validate_default=True,
     )
+    samples: FlusightTrajectorySamples | None = Field(
+        None,
+        description="Add trajectory samples for the enabled hospitalization and prop_ed targets. Metrocast emits samples only when enabled. Omit to disable.",
+    )
     metrocast: bool | None = Field(False, description="Treat outputs as metrocast.")
+    horizons: list[int] | None = Field(
+        None,
+        min_length=1,
+        description="Week offsets for hospitalization/ED quantiles and samples. Omit for FluSight -1..3 or Metrocast 0..3. Rate trends use their own required horizons.",
+    )
+
+    @model_validator(mode="after")
+    def resolve_horizons(self) -> "FlusightForecastOutput":
+        """Resolve default forecast horizons and reject duplicate offsets.
+
+        Returns
+        -------
+        FlusightForecastOutput
+            Configuration with explicit horizons preserved, or hub defaults
+            filled in when horizons are omitted or None.
+
+        Raises
+        ------
+        ValueError
+            If horizons contain duplicate offsets.
+        """
+        if self.horizons is None:
+            self.horizons = list(get_metrocast_horizons() if self.metrocast else range(-1, 4))
+        if len(set(self.horizons)) != len(self.horizons):
+            msg = "horizons must not contain duplicates."
+            raise ValueError(msg)
+        return self
 
 
 class QuantilesOutput(BaseModel):
@@ -456,7 +544,9 @@ class QuantilesGridConfig(BaseModel):
     """Configuration for quantiles grid plot."""
 
     enabled: bool = Field(True, description="Create grid plot.")
-    panels_per_row: int = Field(4, description="Number of panels per row in grid.")
+    panels_per_row: int = Field(
+        4, ge=1, description="Number of panels per row in grid. Must be even when side_by_side is enabled."
+    )
 
 
 class QuantilesCalibrationConfig(BaseModel):
@@ -478,9 +568,9 @@ class QuantilesPlotConfig(BaseModel):
         False,
         description="Create single plot per location (default disabled). Set true for all locations, or provide list of specific locations.",
     )
-    grid: QuantilesGridConfig | bool = Field(
+    grid: QuantilesGridConfig = Field(
         default_factory=QuantilesGridConfig,
-        description="Grid plot with all locations (default enabled). Set true to use default options, false or {enabled: false} to disable, or set options in subfields.",
+        description="Grid plot with all locations (default enabled). Set false or enabled: false to disable, true for defaults, or set options in subfields.",
     )
 
     # Output configuration
@@ -511,7 +601,7 @@ class QuantilesPlotConfig(BaseModel):
                 spacing=0.3,
             ),
         ],
-        description="List of output configurations to generate.",
+        description="Plot variants to generate. Each type may appear at most once to keep output filenames unique.",
     )
 
     # Shared settings
@@ -547,13 +637,37 @@ class QuantilesPlotConfig(BaseModel):
         description="Super title for grid plots. If None, no super title is shown.",
     )
 
-    @field_validator("grid")
+    @field_validator("grid", mode="before")
     @classmethod
-    def validate_grid(cls, v: QuantilesGridConfig | bool) -> QuantilesGridConfig | bool:
-        """If passed True, enable the grid with default options."""
-        if v is True:
-            return QuantilesGridConfig(enabled=True)
+    def validate_grid(cls, v: Any) -> Any:
+        """Normalize both boolean forms before validating the grid options."""
+        if isinstance(v, bool):
+            return {"enabled": v}
         return v
+
+    @field_validator("outputs")
+    @classmethod
+    def validate_unique_variants(cls, variant_configs: list[QuantilesOutputConfig]) -> list[QuantilesOutputConfig]:
+        """Each type identifies one output file; duplicates would overwrite it."""
+        seen = set()
+        for variant_config in variant_configs:
+            if variant_config.type in seen:
+                msg = f"plots.quantiles.outputs contains duplicate type '{variant_config.type.value}'; each type must be unique."
+                raise ValueError(msg)
+            seen.add(variant_config.type)
+        return variant_configs
+
+    @model_validator(mode="after")
+    def validate_grid_layout(self):
+        """Side-by-side grids need complete full/filtered pairs in every row."""
+        if (
+            self.grid.enabled
+            and any(variant.type == QuantilesOutputTypeEnum.SIDE_BY_SIDE for variant in self.outputs)
+            and self.grid.panels_per_row % 2
+        ):
+            msg = "plots.quantiles.grid.panels_per_row must be an even number >= 2 when side_by_side is enabled."
+            raise ValueError(msg)
+        return self
 
     @field_validator("calibration", "projection", mode="before")
     @classmethod
@@ -581,11 +695,14 @@ class QuantilesPlotConfig(BaseModel):
     @field_validator("single")
     @classmethod
     def validate_single_plot_locations(cls, v: list[str]):
-        """Validate each population name in the list."""
+        """Validate each location as an ISO 3166 code or a metrocast location ID (optionally prefixed)."""
         if isinstance(v, bool):
             return v
-        validated_populations = [validate_iso3166(population) for population in v]
-        return validated_populations
+        metrocast_ids = set(get_metrocast_locations()["metrocast_location_id"])
+        return [
+            population if population.removeprefix(METROCAST_PREFIX) in metrocast_ids else validate_iso3166(population)
+            for population in v
+        ]
 
 
 class CategoricalPlotConfig(BaseModel):
@@ -738,10 +855,10 @@ class OutputConfiguration(BaseModel):
 
             # Check plots.quantiles.outputs
             if self.plots and self.plots.quantiles:
-                for i, output in enumerate(self.plots.quantiles.outputs):
-                    if output.surveillance_source:
+                for i, variant_config in enumerate(self.plots.quantiles.outputs):
+                    if variant_config.surveillance_source:
                         errors.append(
-                            f"plots.quantiles.outputs[{i}].surveillance_source='{output.surveillance_source}' "
+                            f"plots.quantiles.outputs[{i}].surveillance_source='{variant_config.surveillance_source}' "
                             "but no surveillance sources defined in output.options.surveillance"
                         )
 
@@ -787,10 +904,10 @@ class OutputConfiguration(BaseModel):
 
         # Check plots.quantiles.outputs
         if self.plots and self.plots.quantiles:
-            for i, output in enumerate(self.plots.quantiles.outputs):
-                if output.surveillance_source and output.surveillance_source not in available_sources:
+            for i, variant_config in enumerate(self.plots.quantiles.outputs):
+                if variant_config.surveillance_source and variant_config.surveillance_source not in available_sources:
                     errors.append(
-                        f"plots.quantiles.outputs[{i}].surveillance_source='{output.surveillance_source}' "
+                        f"plots.quantiles.outputs[{i}].surveillance_source='{variant_config.surveillance_source}' "
                         f"not found in surveillance sources: {available_sources}"
                     )
 
