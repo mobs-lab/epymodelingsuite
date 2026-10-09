@@ -83,7 +83,9 @@ def get_simulation_quantiles(
     NaNs are excluded using the existing output policy. Upstream stack and
     quantile validation errors propagate to the output generator.
     """
-    available = getattr(results.trajectories[0], kind) if results.trajectories else {}
-    variables = selection if isinstance(selection, list) and all(v in available for v in selection) else None
+    available_variables = getattr(results.trajectories[0], kind) if results.trajectories else {}
+    variables = None  # All variables
+    if isinstance(selection, list) and all(name in available_variables for name in selection):
+        variables = selection
     trajectories = getattr(results, f"get_stacked_{kind}")(variables=variables)
     return compute_quantiles(trajectories, results.dates, quantiles, ignore_nan=True)

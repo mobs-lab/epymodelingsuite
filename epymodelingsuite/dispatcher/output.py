@@ -36,7 +36,7 @@ from ..utils.location import (
     get_hub_location_id,
     parse_population_name,
 )
-from ..utils.quantiles import compute_quantiles, get_calibration_quantiles, get_projection_quantiles
+from ..utils.quantiles import get_calibration_quantiles, get_projection_quantiles
 from ..visualization.generators import (
     generate_categorical_plots,
     generate_posterior_grid_plot,
@@ -1131,7 +1131,6 @@ def generate_calibration_outputs(
         Logical output names mapped to configured DataFrame, bytes or figure objects; an internal sink may stage them
         instead.
 
-
     Notes
     -----
     Failed projections are filtered in place.
@@ -1703,8 +1702,8 @@ def generate_calibration_outputs(
                 selected = calibration.results.get_selected_trajectories()
                 dates = np.asarray(selected[0].get("date", [])) if selected else None
                 if dates is not None and len(dates) > 0:
-                    meta_dict["fitting_start"].append(str(sorted(dates)[0].date()))
-                    meta_dict["fitting_end"].append(str(sorted(dates)[-1].date()))
+                    meta_dict["fitting_start"].append(str(min(dates).date()))
+                    meta_dict["fitting_end"].append(str(max(dates).date()))
                 else:
                     meta_dict["fitting_start"].append(None)
                     meta_dict["fitting_end"].append(None)
@@ -1718,8 +1717,8 @@ def generate_calibration_outputs(
                 projections = calibration.results.projections.get("baseline", [])
                 dates = np.asarray(projections[0].get("date", [])) if projections else None
                 if dates is not None and len(dates) > 0:
-                    meta_dict["start_date"].append(str(sorted(dates)[0].date()))
-                    meta_dict["end_date"].append(str(sorted(dates)[-1].date()))
+                    meta_dict["start_date"].append(str(min(dates).date()))
+                    meta_dict["end_date"].append(str(max(dates).date()))
                 else:
                     meta_dict["start_date"].append(None)
                     meta_dict["end_date"].append(None)

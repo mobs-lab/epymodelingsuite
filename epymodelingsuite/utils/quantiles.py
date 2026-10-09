@@ -45,6 +45,7 @@ def compute_quantiles(
     """
     if dates is None:
         dates = np.arange(list(trajectories.values())[0].shape[1])  # noqa: RUF015 -- preserve epydemix's IndexError
+    # Quantile-major rows: every date for the first level, then every date for the next level.
     data = {
         "date": [d for _ in quantiles for d in dates],
         "quantile": [q for q in quantiles for _ in dates],
@@ -64,7 +65,8 @@ def compute_quantiles(
                     "Quantiles at these time points may be unreliable due to small sample size.",
                     stacklevel=2,
                 )
-        if values.dtype.kind == "f" and values.dtype.itemsize < np.dtype(np.float64).itemsize:
+        is_low_precision_float = values.dtype.kind == "f" and values.dtype.itemsize < np.dtype(np.float64).itemsize
+        if is_low_precision_float:
             # ponytail: NumPy's scalar and vector q interpolate low-precision floats
             # differently; retain scalar calls until NumPy gives identical results.
             data[name] = [value for q in quantiles for value in quantile_func(values, q, axis=0)]
