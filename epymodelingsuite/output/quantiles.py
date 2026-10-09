@@ -30,21 +30,27 @@ def select_projection_quantile_variables(projections: list[dict], config: Quanti
     """
     if not projections:
         return None
-    numeric_names = [
+    projected_variables = [
         name for name, values in projections[0].items() if np.issubdtype(np.asarray(values).dtype, np.number)
     ]
-    selections = (config.compartments, config.transitions)
-    if any(
-        isinstance(selected, list) and any(name not in numeric_names for name in selected) for selected in selections
-    ):
-        return None
-    return [
+    listed_variables = [
         name
-        for name in numeric_names
-        if (config.compartments is True and "_to_" not in name)
-        or (config.transitions is True and "_to_" in name)
-        or any(isinstance(selected, list) and name in selected for selected in selections)
-    ] or ["date"]  # An empty variables list means "all variables" in epydemix.
+        for selection in (config.compartments, config.transitions)
+        if isinstance(selection, list)
+        for name in selection
+    ]
+    if any(name not in projected_variables for name in listed_variables):
+        return None  # Keep the existing all-column fallback.
+
+    requested = set(listed_variables)
+    if config.compartments is True:
+        # All compartments
+        requested.update(name for name in projected_variables if "_to_" not in name)
+    if config.transitions is True:
+        # All transitions
+        requested.update(name for name in projected_variables if "_to_" in name)
+    selected_variables = [name for name in projected_variables if name in requested]  # Keep projection order.
+    return selected_variables or ["date"]  # An empty list means "all variables" in epydemix.
 
 
 def get_simulation_quantiles(
