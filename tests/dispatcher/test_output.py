@@ -9,11 +9,18 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from epymodelingsuite.dispatcher.output import filter_failed_projections, generate_calibration_outputs
+from epymodelingsuite.dispatcher.output import (
+    filter_failed_projections,
+    generate_calibration_outputs,
+    make_prop_ed_flusightforecast,
+)
 from epymodelingsuite.schema.output import (
     CategoricalPlotConfig,
     FigureOutputTypeEnum,
+    FlusightForecastOutput,
+    FlusightPropED,
     ModelMetaOutput,
+    ObservedValuesConfig,
     OutputConfig,
     OutputConfiguration,
     PlotsConfig,
@@ -792,26 +799,43 @@ class TestFormatQuantilesFlusightforecast:
         return pd.DataFrame(data), reference_date
 
     def test_standard_flusight_includes_horizon_minus_one(self, sample_quantiles_df):
-        """Test that standard FluSight (metrocast=False) includes horizon -1."""
+        """Test that default FluSight horizons include the preceding week."""
         from epymodelingsuite.dispatcher.output import format_quantiles_flusightforecast
 
         df, reference_date = sample_quantiles_df
-        result = format_quantiles_flusightforecast(df, reference_date, metrocast=False)
+        result = format_quantiles_flusightforecast(df, reference_date)
 
         horizons = result["horizon"].unique()
         assert -1 in horizons
         assert set(horizons) == {-1, 0, 1, 2, 3}
 
     def test_metrocast_excludes_horizon_minus_one(self, sample_quantiles_df):
-        """Test that metrocast=True excludes horizon -1."""
+        """Test that configured Metrocast horizons exclude the preceding week."""
         from epymodelingsuite.dispatcher.output import format_quantiles_flusightforecast
 
         df, reference_date = sample_quantiles_df
-        result = format_quantiles_flusightforecast(df, reference_date, metrocast=True)
+        config = FlusightForecastOutput(reference_date=reference_date, metrocast=True)
+        result = format_quantiles_flusightforecast(df, reference_date, horizons=config.horizons)
 
         horizons = result["horizon"].unique()
         assert -1 not in horizons
         assert set(horizons) == {0, 1, 2, 3}
+
+    def test_hospitalization_values_are_non_negative_nullable_integers(self, sample_quantiles_df):
+        """Quantiles use the sample rounding/clipping rules while preserving their nullable count dtype."""
+        from epymodelingsuite.dispatcher.output import format_quantiles_flusightforecast
+
+        df, reference_date = sample_quantiles_df
+        df = df.copy()
+        # Cover negative clipping, both directions of ties-to-even rounding,
+        # and a missing count that must survive the nullable integer conversion.
+        df.loc[:4, "hospitalizations"] = [-2.0, 10.5, 11.5, 1.6, np.nan]
+        original = df.copy(deep=True)
+        result = format_quantiles_flusightforecast(df, reference_date)
+        pd.testing.assert_series_equal(
+            result.value.iloc[:5], pd.Series([0, 10, 12, 2, pd.NA], dtype="Int64", name="value")
+        )
+        pd.testing.assert_frame_equal(df, original)
 
     def test_output_has_correct_columns(self, sample_quantiles_df):
         """Test that output DataFrame has correct FluSight columns."""
@@ -861,3 +885,81 @@ class TestFormatQuantilesFlusightforecast:
         result = format_quantiles_flusightforecast(df, reference_date)
 
         assert (result["value"] == 101).all()
+
+
+class TestPropEDValueNormalization:
+    """Check shared target formatting through every ED quantile strategy."""
+
+    @pytest.mark.parametrize("strategy", ["transition", "surveillance_window", "calibration_window"])
+    @pytest.mark.parametrize(
+        "target,expected",
+        [("wk inc flu prop ed visits", [0, 1, 1]), ("Flu ED visits pct", [0, 2.5, 100])],
+    )
+    def test_all_strategies_apply_target_bounds(self, strategy, target, expected, monkeypatch):
+        """Each strategy clips its final values by target without clipping the fitted factor."""
+        reference_date = date(2026, 10, 10)
+        dates = pd.date_range(reference_date, periods=3, freq="7D")
+        pred_hosp = pd.DataFrame(
+            {"location": "25", "target": "wk inc flu hosp", "output_type": "quantile", "value": [-200, 250, 12000]}
+        )
+        original_hosp = pred_hosp.copy(deep=True)
+        projection_quantiles = pd.DataFrame(
+            {
+                "population": "United_States__Massachusetts",
+                "date": dates,
+                "quantile": 0.5,
+                "ed_prop": [-2.0, 2.5, 120.0],
+            }
+        )
+        original_projection = projection_quantiles.copy(deep=True)
+        calibration_quantiles = pd.DataFrame(
+            {"population": "United_States__Massachusetts", "date": dates, "quantile": 0.5, "data": [10, 20, 30]}
+        )
+        # Both window strategies fit factor 0.01 from aligned observations. The
+        # rescaled forecast then matches the transition values [-2, 2.5, 120].
+        surveillance_tables = {
+            "ed.csv": pd.DataFrame({"location": "25", "date": dates, "value": [0.1, 0.2, 0.3]}),
+            "hosp.csv": pd.DataFrame({"location": "25", "date": dates, "value": [10, 20, 30]}),
+        }
+        monkeypatch.setattr(
+            "epymodelingsuite.dispatcher.output.read_surveillance_from_config",
+            lambda config: surveillance_tables[config.data_path].copy(deep=True),
+        )
+        surveillance = {
+            name: ObservedValuesConfig(
+                data_path=f"{name}.csv",
+                value_column="value",
+                date_column="date",
+                location_column="location",
+                location_format="FIPS",
+            )
+            for name in ["ed", "hosp"]
+        }
+        if strategy == "transition":
+            extra = {"transition_name": "ed_prop"}
+        elif strategy == "surveillance_window":
+            extra = {
+                "ed_source": "ed",
+                "hosp_source": "hosp",
+                "fit_start": reference_date,
+                "fit_end": date(2026, 10, 31),
+            }
+        else:
+            extra = {"ed_source": "ed", "num_fit_weeks": 3}
+
+        rows, factors = make_prop_ed_flusightforecast(
+            pred_hosp,
+            FlusightPropED(target=target, strategy=strategy, **extra),
+            surveillance,
+            calibration_quantiles=calibration_quantiles,
+            projection_quantiles=projection_quantiles,
+            reference_date=reference_date,
+        )
+        np.testing.assert_allclose(rows.value, expected)
+        assert set(rows.target) == {target}
+        if strategy != "transition":
+            # Formatting the forecasts must not alter the conversion factor
+            # subsequently reused to generate trajectory samples.
+            assert factors.rescaling_factor.tolist() == pytest.approx([0.01])
+        pd.testing.assert_frame_equal(pred_hosp, original_hosp)
+        pd.testing.assert_frame_equal(projection_quantiles, original_projection)

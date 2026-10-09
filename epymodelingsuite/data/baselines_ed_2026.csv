@@ -1,0 +1,52 @@
+location_name,baseline,variance,location_name_epydemix,location_name_epydemix_deprecated,location_abbreviation,location_code,ISO,population_size
+Alabama,0.0011888888888888889,5.28611111111111e-07,United_States__Alabama,United_States_Alabama,AL,01,US-AL,5108468
+Alaska,0.003944444444444445,3.3627777777777782e-06,United_States__Alaska,United_States_Alaska,AK,02,US-AK,733406
+Arizona,0.0008555555555555556,7.277777777777778e-08,United_States__Arizona,United_States_Arizona,AZ,04,US-AZ,7431344
+Arkansas,0.0006555555555555555,7.277777777777778e-08,United_States__Arkansas,United_States_Arkansas,AR,05,US-AR,3067732
+California,0.0013555555555555554,8.777777777777783e-08,United_States__California,United_States_California,CA,06,US-CA,38965193
+Colorado,0.0004111111111111111,1.8611111111111108e-08,United_States__Colorado,United_States_Colorado,CO,08,US-CO,5877610
+Connecticut,0.0002777777777777778,1.4444444444444442e-08,United_States__Connecticut,United_States_Connecticut,CT,09,US-CT,3617176
+Delaware,0.0005666666666666666,1.45e-07,United_States__Delaware,United_States_Delaware,DE,10,US-DE,1031890
+District of Columbia,0.0007222222222222222,8.944444444444445e-08,United_States__District_of_Columbia,United_States_District_of_Columbia,DC,11,US-DC,678972
+Florida,0.0022,1.7749999999999994e-07,United_States__Florida,United_States_Florida,FL,12,US-FL,22610726
+Georgia,0.0006666666666666666,8.250000000000002e-08,United_States__Georgia,United_States_Georgia,GA,13,US-GA,11029227
+Hawaii,0.004211111111111112,1.8611111111111113e-06,United_States__Hawaii,United_States_Hawaii,HI,15,US-HI,1435138
+Idaho,0.001011111111111111,5.36111111111111e-08,United_States__Idaho,United_States_Idaho,ID,16,US-ID,1964726
+Illinois,0.00043333333333333337,2e-08,United_States__Illinois,United_States_Illinois,IL,17,US-IL,12549689
+Indiana,0.00036666666666666667,1.75e-08,United_States__Indiana,United_States_Indiana,IN,18,US-IN,6862199
+Kansas,0.0003888888888888889,5.3611111111111124e-08,United_States__Kansas,United_States_Kansas,KS,20,US-KS,2940546
+Kentucky,0.0005222222222222222,2.4444444444444447e-08,United_States__Kentucky,United_States_Kentucky,KY,21,US-KY,4526154
+Louisiana,0.0008444444444444444,8.027777777777777e-08,United_States__Louisiana,United_States_Louisiana,LA,22,US-LA,4573749
+Maine,0.0005333333333333333,3.0000000000000004e-08,United_States__Maine,United_States_Maine,ME,23,US-ME,1395722
+Maryland,0.0005555555555555556,3.277777777777776e-08,United_States__Maryland,United_States_Maryland,MD,24,US-MD,6180253
+Massachusetts,0.00039999999999999996,3e-08,United_States__Massachusetts,United_States_Massachusetts,MA,25,US-MA,7001399
+Michigan,0.00037777777777777777,2.1944444444444445e-08,United_States__Michigan,United_States_Michigan,MI,26,US-MI,10037261
+Minnesota,0.00036666666666666667,1.7499999999999995e-08,United_States__Minnesota,United_States_Minnesota,MN,27,US-MN,5737915
+Mississippi,0.0012444444444444445,3.502777777777777e-07,United_States__Mississippi,United_States_Mississippi,MS,28,US-MS,2939690
+Missouri,0.0005222222222222222,1.694444444444443e-08,United_States__Missouri,United_States_Missouri,MO,29,US-MO,6196156
+Montana,0.0004333333333333333,1.0750000000000003e-07,United_States__Montana,United_States_Montana,MT,30,US-MT,1132812
+Nebraska,0.0002888888888888889,2.8611111111111108e-08,United_States__Nebraska,United_States_Nebraska,NE,31,US-NE,1978379
+Nevada,0.0014555555555555556,1.477777777777778e-07,United_States__Nevada,United_States_Nevada,NV,32,US-NV,3194176
+New Hampshire,0.0005777777777777778,6.444444444444443e-08,United_States__New_Hampshire,United_States_New_Hampshire,NH,33,US-NH,1402054
+New Jersey,0.0007222222222222222,7.194444444444439e-08,United_States__New_Jersey,United_States_New_Jersey,NJ,34,US-NJ,9290841
+New Mexico,0.0005555555555555556,4.027777777777779e-08,United_States__New_Mexico,United_States_New_Mexico,NM,35,US-NM,2114371
+New York,0.00039999999999999996,7.500000000000001e-09,United_States__New_York,United_States_New_York,NY,36,US-NY,19571216
+North Carolina,0.0032555555555555554,7.052777777777777e-07,United_States__North_Carolina,United_States_North_Carolina,NC,37,US-NC,10835491
+North Dakota,0.0003444444444444444,1.2777777777777777e-07,United_States__North_Dakota,United_States_North_Dakota,ND,38,US-ND,783926
+Ohio,0.00017777777777777779,6.9444444444444435e-09,United_States__Ohio,United_States_Ohio,OH,39,US-OH,11785935
+Oklahoma,0.0005111111111111111,2.3611111111111103e-08,United_States__Oklahoma,United_States_Oklahoma,OK,40,US-OK,4053824
+Oregon,0.000488888888888889,5.861111111111112e-08,United_States__Oregon,United_States_Oregon,OR,41,US-OR,4233358
+Pennsylvania,0.00046666666666666666,1.499999999999999e-08,United_States__Pennsylvania,United_States_Pennsylvania,PA,42,US-PA,12961683
+Rhode Island,0.00047777777777777776,3.9444444444444456e-08,United_States__Rhode_Island,United_States_Rhode_Island,RI,44,US-RI,1095962
+South Carolina,0.0005,3.2500000000000006e-08,United_States__South_Carolina,United_States_South_Carolina,SC,45,US-SC,5373555
+South Dakota,0.0002666666666666667,2.5000000000000005e-08,United_States__South_Dakota,United_States_South_Dakota,SD,46,US-SD,919318
+Tennessee,0.0012111111111111112,7.111111111111116e-08,United_States__Tennessee,United_States_Tennessee,TN,47,US-TN,7126489
+Texas,0.0015888888888888888,3.2111111111111103e-07,United_States__Texas,United_States_Texas,TX,48,US-TX,30503301
+United States,0.000988888888888889,7.111111111111107e-08,United_States,United_States,US,US,US,338120586
+Utah,0.0006444444444444444,1.027777777777778e-08,United_States__Utah,United_States_Utah,UT,49,US-UT,3417734
+Vermont,0.0003444444444444444,5.277777777777777e-08,United_States__Vermont,United_States_Vermont,VT,50,US-VT,647464
+Virginia,0.0007777777777777778,1.4444444444444442e-08,United_States__Virginia,United_States_Virginia,VA,51,US-VA,8715698
+Washington,0.001311111111111111,3.5361111111111104e-07,United_States__Washington,United_States_Washington,WA,53,US-WA,7812880
+West Virginia,0.00039999999999999996,2.75e-08,United_States__West_Virginia,United_States_West_Virginia,WV,54,US-WV,1770071
+Wisconsin,0.0003333333333333333,2.5000000000000005e-08,United_States__Wisconsin,United_States_Wisconsin,WI,55,US-WI,5910955
+Wyoming,0.0033555555555555556,8.72777777777778e-07,United_States__Wyoming,United_States_Wyoming,WY,56,US-WY,584057

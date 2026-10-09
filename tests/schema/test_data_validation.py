@@ -1,12 +1,17 @@
 """Tests for data validation module."""
 
 from datetime import date
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
+import yaml
+from pydantic import BaseModel, computed_field
 
+from epymodelingsuite.schema.common import InputFilePath
 from epymodelingsuite.schema.data_validation import (
+    find_missing_data_files,
     validate_calibration_data,
     validate_calibration_data_for_config_set,
 )
@@ -420,3 +425,54 @@ class TestValidateCalibrationDataForConfigSet:
 
         assert success is False
         assert "notaplace" in error
+
+
+class TestFindMissingDataFiles:
+    """Tests for find_missing_data_files function."""
+
+    FIXTURES_DIR = Path(__file__).resolve().parents[1] / "fixtures"
+
+    def _calibration_config(self, tmp_path, observed_data_path):
+        from epymodelingsuite.config_loader import load_calibration_config_from_file
+
+        raw = yaml.safe_load((self.FIXTURES_DIR / "minimal_modelset_calibration.yaml").read_text())
+        raw["modelset"]["calibration"]["observed_data_path"] = str(observed_data_path)
+        config_path = tmp_path / "calibration.yaml"
+        config_path.write_text(yaml.dump(raw))
+        return load_calibration_config_from_file(str(config_path))
+
+    def test_reports_missing_nested_path_fields(self, tmp_path):
+        """Path fields nested in a real config are found; None configs are skipped."""
+        present = tmp_path / "observed.csv"
+        present.write_text("x")
+        missing = tmp_path / "missing.csv"
+
+        assert find_missing_data_files(self._calibration_config(tmp_path, present), None) == []
+        assert find_missing_data_files(self._calibration_config(tmp_path, missing)) == [str(missing)]
+
+    def test_checks_only_marked_fields(self, tmp_path):
+        """Marked fields are walked through dicts, lists and optionals; names do not matter."""
+
+        class Source(BaseModel):
+            data_path: InputFilePath
+            output_path: str  # not an input file, so never checked
+
+        class Config(BaseModel):
+            sources: dict[str, Source]
+            extra: list[Source]
+            optional_file: InputFilePath | None = None
+            unset_file: InputFilePath | None = None
+
+            @computed_field
+            @property
+            def user_function(self) -> str:
+                raise AssertionError("computed fields must not run")
+
+        source = Source(data_path=str(tmp_path / "a.csv"), output_path=str(tmp_path / "out.csv"))
+        config = Config(
+            sources={"a": source},
+            extra=[Source(data_path=str(tmp_path / "b.csv"), output_path=str(tmp_path / "out.csv"))],
+            optional_file=str(tmp_path / "c.csv"),
+        )
+
+        assert find_missing_data_files(config) == [str(tmp_path / f"{n}.csv") for n in "abc"]

@@ -5,7 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from .common import Meta
+from .common import InputFilePath, Meta
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,9 @@ class Timespan(BaseModel):
     @classmethod
     def check_delta_t(cls, v: float) -> float:
         """Ensure delta_t > 0 and return as float"""
-        assert v > 0, f"Provided delta_t={v} must be greater than 0."
+        if not (v > 0):
+            msg = f"Provided delta_t={v} must be greater than 0."
+            raise ValueError(msg)
         return float(v)
 
 
@@ -115,12 +117,14 @@ class Compartment(BaseModel):
     def enforce_nonnegative_init(cls, v: float | list[float | int], info: Any) -> float | int | list[float | int]:
         """Enforce that compartment initialization is non-negative"""
         if isinstance(v, (float, int)):
-            assert v >= 0, f"Negative compartment initialization {v} received for compartment {info.data.get('id')}"
+            if not (v >= 0):
+                msg = f"Negative compartment initialization {v} received for compartment {info.data.get('id')}"
+                raise ValueError(msg)
         elif isinstance(v, list):
             for i, val in enumerate(v):
-                assert val >= 0, (
-                    f"Negative compartment initialization {val} at age group {i} for compartment {info.data.get('id')}"
-                )
+                if not (val >= 0):
+                    msg = f"Negative compartment initialization {val} at age group {i} for compartment {info.data.get('id')}"
+                    raise ValueError(msg)
         return v
 
 
@@ -154,25 +158,45 @@ class Transition(BaseModel):
     def check_fields_for_type(self: "Transition") -> "Transition":
         """Enforce required fields for each transition type."""
         if self.type == "spontaneous":
-            assert self.rate is not None, "Spontaneous transition must have 'rate'."
-            assert self.mediator is None, "Spontaneous transition cannot have 'mediator'."
-            assert self.mediators is None, "Spontaneous transition cannot have 'mediators'."
+            if self.rate is None:
+                msg = "Spontaneous transition must have 'rate'."
+                raise ValueError(msg)
+            if self.mediator is not None:
+                msg = "Spontaneous transition cannot have 'mediator'."
+                raise ValueError(msg)
+            if self.mediators is not None:
+                msg = "Spontaneous transition cannot have 'mediators'."
+                raise ValueError(msg)
         elif self.type == "mediated":
-            assert self.rate is not None, "Mediated (single) transition must have 'rate'."
-            assert self.mediator is not None, "Mediated (single) transition must have 'mediator'."
-            assert self.mediators is None, "Mediated (single) transition cannot have multiple 'mediators'."
+            if self.rate is None:
+                msg = "Mediated (single) transition must have 'rate'."
+                raise ValueError(msg)
+            if self.mediator is None:
+                msg = "Mediated (single) transition must have 'mediator'."
+                raise ValueError(msg)
+            if self.mediators is not None:
+                msg = "Mediated (single) transition cannot have multiple 'mediators'."
+                raise ValueError(msg)
         elif self.type == "multi_mediated":
-            assert self.mediators is not None, "Multiple mediated transition must specify 'mediators'."
-            assert self.rate is None, (
-                "Multiple mediated transition must specify rates within 'mediators', but 'rate' field provided."
-            )
-            assert self.mediator is None, (
-                "Multiple mediated transition must use 'mediators', but 'mediator' field provided."
-            )
+            if self.mediators is None:
+                msg = "Multiple mediated transition must specify 'mediators'."
+                raise ValueError(msg)
+            if self.rate is not None:
+                msg = "Multiple mediated transition must specify rates within 'mediators', but 'rate' field provided."
+                raise ValueError(msg)
+            if self.mediator is not None:
+                msg = "Multiple mediated transition must use 'mediators', but 'mediator' field provided."
+                raise ValueError(msg)
         elif self.type == "vaccination":
-            assert self.rate is None, "Vaccination transition cannot have 'rate'."
-            assert self.mediator is None, "Vaccination transition cannot have 'mediator'."
-            assert self.mediators is None, "Vaccination transition cannot have 'mediators'."
+            if self.rate is not None:
+                msg = "Vaccination transition cannot have 'rate'."
+                raise ValueError(msg)
+            if self.mediator is not None:
+                msg = "Vaccination transition cannot have 'mediator'."
+                raise ValueError(msg)
+            if self.mediators is not None:
+                msg = "Vaccination transition cannot have 'mediators'."
+                raise ValueError(msg)
         return self
 
 
@@ -196,36 +220,46 @@ class Parameter(BaseModel):
     def check_param_fields(self: "Parameter") -> "Parameter":
         """Ensure required fields exist for each parameter type."""
         if self.type == "scalar":
-            assert self.value is not None, "Constant or expression (scalar) parameter requires 'value'."
-            assert self.values is None, "Scalar parameter requires a single 'value', but provided 'values' array."
+            if self.value is None:
+                msg = "Constant or expression (scalar) parameter requires 'value'."
+                raise ValueError(msg)
+            if self.values is not None:
+                msg = "Scalar parameter requires a single 'value', but provided 'values' array."
+                raise ValueError(msg)
         elif self.type == "age_varying":
-            assert self.values is not None, "Age varying parameter requires 'values'."
-            assert self.value is None, "Age varying parameter requires 'values' array, but provided single 'value'."
+            if self.values is None:
+                msg = "Age varying parameter requires 'values'."
+                raise ValueError(msg)
+            if self.value is not None:
+                msg = "Age varying parameter requires 'values' array, but provided single 'value'."
+                raise ValueError(msg)
         elif self.type in ["sampled", "calibrated"]:
-            assert self.value is None, (
-                "Sampled or calibrated parameter provided extraneous 'value' field, sampling/calibration specs should be provided in modelset."
-            )
-            assert self.values is None, (
-                "Sampled or calibrated parameter provided extraneous 'values' field, sampling/calibration specs should be provided in modelset."
-            )
+            if self.value is not None:
+                msg = "Sampled or calibrated parameter provided extraneous 'value' field, sampling/calibration specs should be provided in modelset."
+                raise ValueError(msg)
+            if self.values is not None:
+                msg = "Sampled or calibrated parameter provided extraneous 'values' field, sampling/calibration specs should be provided in modelset."
+                raise ValueError(msg)
         elif self.type == "calculated":
-            assert self.value is not None, "Calculated parameter requires expression in 'value' field."
-            assert self.values is None, (
-                "Calculated parameter requires expression in 'value' field, but 'values' provided instead."
-            )
+            if self.value is None:
+                msg = "Calculated parameter requires expression in 'value' field."
+                raise ValueError(msg)
+            if self.values is not None:
+                msg = "Calculated parameter requires expression in 'value' field, but 'values' provided instead."
+                raise ValueError(msg)
         return self
 
 
 class Vaccination(BaseModel):
     """Vaccination configuration, such as data paths."""
 
-    scenario_data_path: str | None = Field(
+    scenario_data_path: InputFilePath | None = Field(
         None,
         description="Path to SMH vaccination scenario data file with a single 'Coverage' column (one scenario). "
         "For files with several scenario columns, preprocess them with smh_data_to_epydemix() and use "
         "preprocessed_vaccination_data_path with 'scenario' instead.",
     )
-    preprocessed_vaccination_data_path: str | None = Field(
+    preprocessed_vaccination_data_path: InputFilePath | None = Field(
         None, description="Path to preprocessed vaccination coverage data file."
     )
     scenario: str | None = Field(
@@ -239,25 +273,25 @@ class Vaccination(BaseModel):
     @model_validator(mode="after")
     def check_vax_fields(self: "Vaccination") -> "Vaccination":
         """Ensure vaccination configuration is consistent."""
-        assert self.origin_compartment in self.eligible_compartments, (
-            "Origin compartment must be in eligible compartments."
-        )
+        if self.origin_compartment not in self.eligible_compartments:
+            msg = "Origin compartment must be in eligible compartments."
+            raise ValueError(msg)
         if self.scenario_data_path is None:
-            assert self.preprocessed_vaccination_data_path is not None, (
-                "Must provide one of scenario_data_path or preprocessed_vaccination_data_path."
-            )
+            if self.preprocessed_vaccination_data_path is None:
+                msg = "Must provide one of scenario_data_path or preprocessed_vaccination_data_path."
+                raise ValueError(msg)
         else:
-            assert self.preprocessed_vaccination_data_path is None, (
-                "Cannot use both scenario_data_path and preprocessed_vaccination_data_path."
-            )
+            if self.preprocessed_vaccination_data_path is not None:
+                msg = "Cannot use both scenario_data_path and preprocessed_vaccination_data_path."
+                raise ValueError(msg)
         if self.preprocessed_vaccination_data_path is None:
-            assert self.scenario_data_path is not None, (
-                "Must provide one of scenario_data_path or preprocessed_vaccination_data_path."
-            )
+            if self.scenario_data_path is None:
+                msg = "Must provide one of scenario_data_path or preprocessed_vaccination_data_path."
+                raise ValueError(msg)
         else:
-            assert self.scenario_data_path is None, (
-                "Cannot use both scenario_data_path and preprocessed_vaccination_data_path."
-            )
+            if self.scenario_data_path is not None:
+                msg = "Cannot use both scenario_data_path and preprocessed_vaccination_data_path."
+                raise ValueError(msg)
         return self
 
 
@@ -329,8 +363,12 @@ class Intervention(BaseModel):
         """Ensure intervention configuration is consistent."""
         # Apply only to parameter interventions, or apply to all except parameter interventions
         if self.type == "parameter":
-            assert self.target_parameter, "Parameter intervention is missing 'target_parameter'."
-            assert self.start_date and self.end_date, "Parameter intervention must have 'start_date' and 'end_date'."
+            if not self.target_parameter:
+                msg = "Parameter intervention is missing 'target_parameter'."
+                raise ValueError(msg)
+            if not (self.start_date and self.end_date):
+                msg = "Parameter intervention must have 'start_date' and 'end_date'."
+                raise ValueError(msg)
             if (self.scaling_factor is None) == (self.override_value is None):
                 msg = "Parameter intervention must have exactly one of 'scaling_factor' or 'override_value'."
                 raise ValueError(msg)
@@ -343,23 +381,25 @@ class Intervention(BaseModel):
                 raise ValueError(msg)
         # Apply only to contact matrix interventions, or apply to all except contact matrix interventions
         if self.type == "contact_matrix":
-            assert self.contact_matrix_layer, (
-                "Contact matrix intervention must specify 'contact_matrix_layer' to apply intervention to."
-            )
+            if not self.contact_matrix_layer:
+                msg = "Contact matrix intervention must specify 'contact_matrix_layer' to apply intervention to."
+                raise ValueError(msg)
         else:
-            assert not self.contact_matrix_layer, f"'{self.type}' intervention cannot use 'contact_matrix_layer'."
+            if self.contact_matrix_layer:
+                msg = f"'{self.type}' intervention cannot use 'contact_matrix_layer'."
+                raise ValueError(msg)
         # Apply only to school closure intervention, or apply to all except school closure intervention
         if self.type == "school_closure":
-            assert not self.start_date and not self.end_date, (
-                "'school_closure' intervention cannot use 'start_date' or 'end_date'."
-            )
+            if self.start_date or self.end_date:
+                msg = "'school_closure' intervention cannot use 'start_date' or 'end_date'."
+                raise ValueError(msg)
         else:
-            assert self.start_date and self.end_date, (
-                f"'{self.type}' intervention must have 'start_date' and 'end_date'."
-            )
-            assert self.start_date <= self.end_date, (
-                f"Start date for {self.type} intervention (given {self.start_date}) cannot be later than end date (given {self.end_date})."
-            )
+            if not (self.start_date and self.end_date):
+                msg = f"'{self.type}' intervention must have 'start_date' and 'end_date'."
+                raise ValueError(msg)
+            if not (self.start_date <= self.end_date):
+                msg = f"Start date for {self.type} intervention (given {self.start_date}) cannot be later than end date (given {self.end_date})."
+                raise ValueError(msg)
         return self
 
 
@@ -393,12 +433,16 @@ class BaseEpiModel(BaseModel):
 
         # Validate each transition
         for t in self.transitions:
-            assert t.source in compartment_ids, f"Transition.source='{t.source}' is not a valid Compartment.id"
-            assert t.target in compartment_ids, f"Transition.target='{t.target}' is not a valid Compartment.id"
+            if t.source not in compartment_ids:
+                msg = f"Transition.source='{t.source}' is not a valid Compartment.id"
+                raise ValueError(msg)
+            if t.target not in compartment_ids:
+                msg = f"Transition.target='{t.target}' is not a valid Compartment.id"
+                raise ValueError(msg)
             if t.type == "mediated":
-                assert t.mediator in compartment_ids, (
-                    f"Transition.mediator='{t.mediator}' is not a valid Compartment.id"
-                )
+                if t.mediator not in compartment_ids:
+                    msg = f"Transition.mediator='{t.mediator}' is not a valid Compartment.id"
+                    raise ValueError(msg)
         return self
 
     @model_validator(mode="after")
@@ -406,25 +450,25 @@ class BaseEpiModel(BaseModel):
         """Ensure that vaccination specs are provided if a vaccination transition is declared, and vice versa."""
         for t in self.transitions:
             if t.type == "vaccination":
-                assert self.vaccination is not None, (
-                    "Vaccination transition declared but missing vaccination configuration."
-                )
-                assert t.source == self.vaccination.origin_compartment, (
-                    "Vaccination transition source must be vaccination origin compartment."
-                )
+                if self.vaccination is None:
+                    msg = "Vaccination transition declared but missing vaccination configuration."
+                    raise ValueError(msg)
+                if t.source != self.vaccination.origin_compartment:
+                    msg = "Vaccination transition source must be vaccination origin compartment."
+                    raise ValueError(msg)
         if self.vaccination is not None:
-            assert "vaccination" in [t.type for t in self.transitions], (
-                "Vaccination configuration supplied but no vaccination transition declared."
-            )
+            if "vaccination" not in [t.type for t in self.transitions]:
+                msg = "Vaccination configuration supplied but no vaccination transition declared."
+                raise ValueError(msg)
         return self
 
     @model_validator(mode="after")
     def check_seasonality_refs(self: "BaseEpiModel") -> "BaseEpiModel":
         """Ensure that seasonality target parameter exists"""
         if self.seasonality:
-            assert self.seasonality.target_parameter in self.parameters.keys(), (
-                f"Seasonality target {self.seasonality.target_parameter} missing from model parameters."
-            )
+            if self.seasonality.target_parameter not in self.parameters:
+                msg = f"Seasonality target {self.seasonality.target_parameter} missing from model parameters."
+                raise ValueError(msg)
         return self
 
     @model_validator(mode="after")
@@ -433,7 +477,9 @@ class BaseEpiModel(BaseModel):
         if self.interventions:
             targets = [i.target_parameter for i in self.interventions if i.target_parameter]
             for target in targets:
-                assert target in self.parameters.keys(), f"Intervention target {target} missing from model parameters."
+                if target not in self.parameters:
+                    msg = f"Intervention target {target} missing from model parameters."
+                    raise ValueError(msg)
         return self
 
     @model_validator(mode="after")
@@ -442,13 +488,15 @@ class BaseEpiModel(BaseModel):
         n_age_groups = len(self.population.age_groups)
         for p in self.parameters.values():
             if p.type == "age_varying":
-                assert len(p.values) == n_age_groups, "Age varying parameters must match population age structure."
+                if len(p.values) != n_age_groups:
+                    msg = "Age varying parameters must match population age structure."
+                    raise ValueError(msg)
         for c in self.compartments:
             if isinstance(c.init, list):
-                assert len(c.init) == n_age_groups, (
-                    f"Age varying initialization for compartment '{c.id}' has {len(c.init)} values "
+                if len(c.init) != n_age_groups:
+                    msg = f"Age varying initialization for compartment '{c.id}' has {len(c.init)} values "
                     f"but population has {n_age_groups} age groups."
-                )
+                    raise ValueError(msg)
         return self
 
     @model_validator(mode="after")
@@ -456,7 +504,9 @@ class BaseEpiModel(BaseModel):
         """If compartment initialization is provided, require at least one default compartment."""
         inits = [c.init for c in self.compartments if c.init]
         if inits:
-            assert inits.count("default") > 0, "Compartment initialization requires at least one default compartment."
+            if "default" not in inits:
+                msg = "Compartment initialization requires at least one default compartment."
+                raise ValueError(msg)
         return self
 
     @model_validator(mode="after")
