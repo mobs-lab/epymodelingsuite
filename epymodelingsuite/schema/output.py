@@ -6,6 +6,7 @@ from typing import Any
 from pydantic import BaseModel, Field, ValidationInfo, field_validator, model_validator
 
 from ..output.trajectory_samples import SAMPLE_SELECTORS
+from ..utils import validate_iso3166
 from .common import InputFilePath, Meta
 
 logger = logging.getLogger(__name__)
