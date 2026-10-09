@@ -67,7 +67,7 @@ def compute_quantiles(
                 )
         is_low_precision_float = values.dtype.kind == "f" and values.dtype.itemsize < np.dtype(np.float64).itemsize
         if is_low_precision_float:
-            # ponytail: NumPy's scalar and vector q interpolate low-precision floats
+            # NumPy's scalar and vector q interpolate low-precision floats
             # differently; retain scalar calls until NumPy gives identical results.
             data[name] = [value for q in quantiles for value in quantile_func(values, q, axis=0)]
         else:

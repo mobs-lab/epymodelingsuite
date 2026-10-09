@@ -83,9 +83,19 @@ def get_simulation_quantiles(
     NaNs are excluded using the existing output policy. Upstream stack and
     quantile validation errors propagate to the output generator.
     """
-    available_variables = getattr(results.trajectories[0], kind) if results.trajectories else {}
-    variables = None  # All variables
+    first_trajectory = results.trajectories[0] if results.trajectories else None
+    if first_trajectory is None:
+        available_variables = {}
+    elif kind == "compartments":
+        available_variables = first_trajectory.compartments
+    else:
+        available_variables = first_trajectory.transitions
+    variables = None  # epydemix stacks all variables when variables is None.
     if isinstance(selection, list) and all(name in available_variables for name in selection):
         variables = selection
-    trajectories = getattr(results, f"get_stacked_{kind}")(variables=variables)
+    # Stack draws into one (draws, dates) array per variable.
+    if kind == "compartments":
+        trajectories = results.get_stacked_compartments(variables=variables)
+    else:
+        trajectories = results.get_stacked_transitions(variables=variables)
     return compute_quantiles(trajectories, results.dates, quantiles, ignore_nan=True)
