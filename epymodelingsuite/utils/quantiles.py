@@ -58,10 +58,10 @@ def compute_quantiles(
             msg = f"Variable '{name}' must have shape (draws, dates), got {values.shape}."
             raise ValueError(msg)
         if ignore_nan:
-            max_nan_prop = np.max(np.isnan(values).mean(axis=0))
-            if max_nan_prop > 0.5:  # noqa: PLR2004 -- epydemix's warning threshold
+            max_nan_fraction = np.max(np.isnan(values).mean(axis=0))
+            if max_nan_fraction > 0.5:  # noqa: PLR2004 -- epydemix's warning threshold
                 warnings.warn(
-                    f"Variable '{name}' has time points with up to {max_nan_prop:.1%} NaN values. "
+                    f"Variable '{name}' has time points with up to {max_nan_fraction:.1%} NaN values. "
                     "Quantiles at these time points may be unreliable due to small sample size.",
                     stacklevel=2,
                 )

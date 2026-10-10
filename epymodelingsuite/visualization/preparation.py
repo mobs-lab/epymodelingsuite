@@ -607,23 +607,24 @@ def _compute_fitting_window(
     tuple[date or None, date or None]
         (start, end) of the fitting window, or (None, None) if dates are unavailable.
     """
-    if cal_quant is not None and "date" in cal_quant.columns:
+    if cal_quant is not None:
+        if "date" not in cal_quant.columns:
+            return None, None
         dates = pd.to_datetime(cal_quant["date"]).dt.date
         return dates.min(), dates.max()
-    if cal_quant is None:
-        try:
-            cal_trajs = calibration.results.get_selected_trajectories()
-            cal_dates = cal_trajs[0].get("date") if cal_trajs else None
-            if cal_dates is not None and len(cal_dates) > 0:
-                dates = pd.to_datetime(cal_dates).date
-                return dates.min(), dates.max()
-        except (ValueError, AttributeError, TypeError, IndexError) as e:
-            logger.warning(
-                "Failed to read fitting window dates for %s: %s",
-                calibration.population,
-                e,
-            )
 
+    try:
+        cal_trajs = calibration.results.get_selected_trajectories()
+        cal_dates = cal_trajs[0].get("date") if cal_trajs else None
+        if cal_dates is not None and len(cal_dates) > 0:
+            dates = pd.to_datetime(cal_dates).date
+            return dates.min(), dates.max()
+    except (ValueError, AttributeError, TypeError, IndexError) as e:
+        logger.warning(
+            "Failed to read fitting window dates for %s: %s",
+            calibration.population,
+            e,
+        )
     return None, None
 
 

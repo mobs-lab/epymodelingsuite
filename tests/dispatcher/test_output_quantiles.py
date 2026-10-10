@@ -151,8 +151,11 @@ def test_hub_uses_batched_projection_quantiles():
     assert hub.horizon.unique().tolist() == [-1, 0, 1, 2, 3]
 
 
-@pytest.mark.parametrize("selected", [["I", "S"], ["missing"], True])
-def test_simulation_selection_and_fallback(selected):
+@pytest.mark.parametrize(
+    ("selected", "stacked_variables"),
+    [(["I", "S"], ["I", "S"]), (["missing"], None), (True, None)],
+)
+def test_simulation_selection_and_fallback(selected, stacked_variables):
     """Check simulation variable selection before stacking and exact tables for selected/all/missing names."""
     dates = pd.date_range("2024-01-06", periods=3, freq="W-SAT")
     trajectories = [
@@ -177,12 +180,11 @@ def test_simulation_selection_and_fallback(selected):
     )
     with patch.object(results, "get_stacked_compartments", wraps=results.get_stacked_compartments) as stack:
         output = generate_simulation_outputs(simulations=[item], output_config=config)
-    variables = selected if selected == ["I", "S"] else None
-    assert stack.call_args_list[0].kwargs == {"variables": variables}
+    assert stack.call_args_list[0].kwargs == {"variables": stacked_variables}
     for kind in ["compartments", "transitions"]:
         expected = getattr(results, f"get_quantiles_{kind}")(quantiles=[0.25, 0.75], ignore_nan=True)
-        if kind == "compartments" and variables:
-            expected = expected[["date", "quantile", *variables]]
+        if kind == "compartments" and stacked_variables:
+            expected = expected[["date", "quantile", *stacked_variables]]
         expected.insert(0, "primary_id", 8)
         expected.insert(1, "seed", None)
         expected.insert(2, "population", item.population)
