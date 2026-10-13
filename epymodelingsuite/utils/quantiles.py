@@ -1,4 +1,7 @@
-"""Batched quantiles with epydemix's output layout and interpolation defaults."""
+"""Batched quantiles with epydemix's output layout and interpolation defaults.
+
+Temporary until epydemix supports batched quantiles (#281).
+"""
 
 import warnings
 from collections.abc import Sequence
