@@ -179,10 +179,7 @@ def run_once(args):
         patch.object(
             generators, "figure_to_output_object", measured("figure_format", generators.figure_to_output_object)
         ),
-        patch.object(
-            output, "generate_single_quantile_plots", measured("single_plots", output.generate_single_quantile_plots)
-        ),
-        patch.object(output, "generate_quantile_grid_plot", measured("grid_plots", output.generate_quantile_grid_plot)),
+        patch.object(output, "generate_quantile_plots", measured("quantile_plots", output.generate_quantile_plots)),
     ):
         before = time.perf_counter()
         outputs = output.generate_calibration_outputs(calibrations=calibrations, output_config=config)
