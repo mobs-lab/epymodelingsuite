@@ -1,6 +1,7 @@
 import pandas as pd
+import pyarrow.parquet as pq
 
-from ..output.dashboard_trajectories import validate_dashboard_trajectories
+from ..output.dashboard_trajectories import read_dashboard_trajectories
 from ..output.trajectory_samples import select_trajectory_indices, trajectories_to_sample_rows
 from ..schema.output import (
     FlusightTrajectorySamples,
@@ -463,7 +464,7 @@ def _pmf_rows(pmf_df: pd.DataFrame, reference_date: str) -> pd.DataFrame:
 def read_aggregated(path: str, config) -> pd.DataFrame:
     """Read long-form dashboard Parquet or legacy wide trajectories for submission/plotting."""
     try:
-        aggregated = pd.read_parquet(path)
+        schema = pq.read_schema(path)
     except Exception as e1:
         try:
             aggregated = pd.read_csv(path)
@@ -471,18 +472,22 @@ def read_aggregated(path: str, config) -> pd.DataFrame:
             raise ValueError(
                 f"Failed to read {path} as either parquet or csv:\nParquet error:\n{e1}\nCSV error:\n{e2}"
             ) from e2
+    else:
+        if "series" in schema.names or "value" in schema.names:
+            aggregated = read_dashboard_trajectories(path)
+        else:
+            aggregated = pd.read_parquet(path)
     if "series" in aggregated or "value" in aggregated:
+        if "schema_version" not in aggregated.attrs:
+            raise ValueError("Dashboard trajectories require versioned Parquet; long CSV is not supported.")
         if "target" not in aggregated:
             raise ValueError("Dashboard trajectories require a target column.")
         if config.target is not None:
             aggregated = aggregated.loc[aggregated.target.eq(config.target)]
         elif aggregated.target.nunique() > 1:
             raise ValueError("Dashboard file contains multiple targets; set aggregated.target explicitly.")
-        labels = aggregated["series"].dropna().unique().tolist() if "series" in aggregated else []
-        strains = [s for s in labels if isinstance(s, str) and s != "total" and not s.startswith("baseline")]
-        errors = validate_dashboard_trajectories(aggregated, strains)
-        if errors:
-            raise ValueError("Invalid dashboard trajectories: " + "; ".join(errors))
+        if aggregated.empty:
+            raise ValueError("Selected dashboard target has no rows.")
         series = config.target_column.removeprefix("target_")
         aggregated = aggregated.loc[aggregated.series.eq(series), ["date", "location", "value", "sample_id"]].rename(
             columns={"date": config.date_column, "location": config.location_column, "value": config.target_column}

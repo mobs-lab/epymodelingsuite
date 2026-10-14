@@ -1,6 +1,7 @@
 """Long dashboard contracts shared by direct and aggregated output."""
 
 import io
+import json
 
 import numpy as np
 import pandas as pd
@@ -12,7 +13,9 @@ from epymodelingsuite.output.dashboard_trajectories import (
     DASHBOARD_TRAJECTORY_SCHEMA,
     dashboard_trajectories_from_wide,
     format_dashboard_trajectories,
+    read_dashboard_trajectories,
     validate_dashboard_trajectories,
+    write_dashboard_trajectories,
 )
 
 REFERENCE = "2026-10-10"
@@ -208,3 +211,103 @@ def test_all_nan_values_are_valid():
     frame = dashboard_trajectories_from_wide(_source(), ["single"], REFERENCE, TARGET)
     frame["value"] = pd.Series(pa.array([np.nan] * len(frame)), dtype=pd.ArrowDtype(pa.float64()))
     assert validate_dashboard_trajectories(frame, ["single"]) == []
+
+
+@pytest.mark.parametrize(
+    "sources",
+    [
+        None,
+        [{"target": TARGET, "strain": "single", "experiment": "local-test"}],
+        [
+            {
+                "target": TARGET,
+                "strain": "single",
+                "experiment": "202640/hosp",
+                "run_id": "20261007-182529-061e374e",
+                "trajectory_file": "gs://bucket/202640/hosp/20261007-182529-061e374e/outputs/20261013/data.csv.gz",
+            }
+        ],
+    ],
+)
+def test_versioned_parquet_roundtrip(tmp_path, sources):
+    frame = dashboard_trajectories_from_wide(_source(), ["single"], REFERENCE, TARGET)
+    path = tmp_path / "dashboard.parquet"
+    write_dashboard_trajectories(frame, path, sources=sources)
+    schema = pq.read_schema(path)
+    assert schema.metadata[b"schema_version"] == b"1"
+    assert schema.names == DASHBOARD_TRAJECTORY_SCHEMA.names
+    result = read_dashboard_trajectories(path)
+    pd.testing.assert_frame_equal(result, frame)
+    assert result.attrs["schema_version"] == "1"
+    assert result.attrs.get("sources") == sources
+    if sources is None:
+        assert b"sources" not in schema.metadata
+    else:
+        assert json.loads(schema.metadata[b"sources"]) == sources
+    copy = tmp_path / "copy.parquet"
+    write_dashboard_trajectories(result, copy)
+    assert read_dashboard_trajectories(copy).attrs == result.attrs
+
+
+@pytest.mark.parametrize("version", [None, b"999"])
+def test_reader_rejects_missing_or_unknown_version(tmp_path, version):
+    frame = dashboard_trajectories_from_wide(_source(), ["single"], REFERENCE, TARGET)
+    table = pa.Table.from_pandas(frame)
+    metadata = dict(table.schema.metadata or {})
+    if version is not None:
+        metadata[b"schema_version"] = version
+    path = tmp_path / "dashboard.parquet"
+    pq.write_table(table.replace_schema_metadata(metadata), path)
+    with pytest.raises(ValueError, match="schema_version"):
+        read_dashboard_trajectories(path)
+
+
+@pytest.mark.parametrize(
+    "sources",
+    [
+        {},
+        [None],
+        [{"target": TARGET}],
+        [{"target": TARGET, "strain": "single", "run_id": "latest"}],
+        [{"target": TARGET, "strain": "single", "run_id": "any"}],
+        [{"target": TARGET, "strain": "single", "experiment": " "}],
+        [{"target": TARGET, "strain": "single", "run_id": None}],
+        [{"target": TARGET, "strain": "single", "extra": "ignored?"}],
+        [{"target": TARGET, "strain": "total"}],
+        [{"target": TARGET, "strain": "h1"}],
+        [{"target": TARGET, "strain": "single"}] * 2,
+    ],
+)
+def test_invalid_sources_rejected_before_write_and_after_read(tmp_path, sources):
+    frame = dashboard_trajectories_from_wide(_source(), ["single"], REFERENCE, TARGET)
+    path = tmp_path / "dashboard.parquet"
+    with pytest.raises(ValueError, match="[Ss]ource"):
+        write_dashboard_trajectories(frame, path, sources=sources)
+    assert not path.exists()
+    write_dashboard_trajectories(frame, path)
+    table = pq.read_table(path)
+    metadata = {**table.schema.metadata, b"sources": json.dumps(sources).encode()}
+    pq.write_table(table.replace_schema_metadata(metadata), path)
+    with pytest.raises(ValueError, match="[Ss]ource"):
+        read_dashboard_trajectories(path)
+
+
+def test_invalid_file_data_does_not_overwrite_existing_file(tmp_path):
+    frame = _formatted()
+    path = tmp_path / "dashboard.parquet"
+    write_dashboard_trajectories(frame, path)
+    before = path.read_bytes()
+    frame.loc[frame.series.eq("total"), "value"] = 999.0
+    with pytest.raises(ValueError, match="sum of available"):
+        write_dashboard_trajectories(frame, path)
+    assert path.read_bytes() == before
+
+
+def test_reader_rejects_malformed_sources_json(tmp_path):
+    path = tmp_path / "dashboard.parquet"
+    write_dashboard_trajectories(_formatted(), path)
+    table = pq.read_table(path)
+    table = table.replace_schema_metadata({**table.schema.metadata, b"sources": b"not JSON"})
+    pq.write_table(table, path)
+    with pytest.raises(ValueError, match="sources JSON"):
+        read_dashboard_trajectories(path)

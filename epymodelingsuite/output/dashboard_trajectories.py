@@ -1,5 +1,6 @@
 """Shared long-form dashboard trajectory schema, formatting and validation."""
 
+import json
 import re
 from collections.abc import Sequence
 from datetime import date
@@ -7,8 +8,10 @@ from datetime import date
 import numpy as np
 import pandas as pd
 import pyarrow as pa
+import pyarrow.parquet as pq
 from epiweeks import Week
 
+DASHBOARD_TRAJECTORY_SCHEMA_VERSION = "1"
 DASHBOARD_TRAJECTORY_SCHEMA = pa.schema(
     [
         pa.field("sample_id", pa.int64(), nullable=False),
@@ -24,6 +27,76 @@ DASHBOARD_TRAJECTORY_SCHEMA = pa.schema(
     ]
 )
 KEY = ["sample_id", "location", "date", "target"]
+
+
+def _validate_file_data(df: pd.DataFrame) -> None:
+    """Infer strain labels separately for each target when reading/writing files."""
+    groups = df.groupby("target", dropna=False) if "target" in df and not df.empty else [(None, df)]
+    for _, rows in groups:
+        labels = rows.series.dropna().unique() if "series" in rows else []
+        strains = [s for s in labels if isinstance(s, str) and s != "total" and not s.startswith("baseline")]
+        errors = validate_dashboard_trajectories(rows, strains)
+        if errors:
+            raise ValueError("Invalid dashboard trajectories: " + "; ".join(errors))
+
+
+def _validate_sources(sources: object, df: pd.DataFrame) -> None:
+    if not isinstance(sources, list):
+        raise ValueError("Dashboard sources must be a list.")
+    seen = set()
+    pairs = set(df[["target", "series"]].drop_duplicates().itertuples(index=False, name=None))
+    for source in sources:
+        if not isinstance(source, dict) or not {"target", "strain"}.issubset(source):
+            raise ValueError("Each dashboard source requires target and strain.")
+        if set(source) - {"target", "strain", "experiment", "run_id", "trajectory_file"} or any(
+            not isinstance(value, str) or not value.strip() for value in source.values()
+        ):
+            raise ValueError("Dashboard source fields must be known, non-blank strings; omit unavailable fields.")
+        pair = (source["target"], source["strain"])
+        if pair in seen or pair not in pairs or source["strain"] == "total" or source["strain"].startswith("baseline"):
+            raise ValueError("Dashboard sources must uniquely identify existing target/strain pairs.")
+        if source.get("run_id") in {"latest", "any", "*", "unknown"}:
+            raise ValueError("Dashboard source run_id must be resolved; omit it when unknown.")
+        seen.add(pair)
+
+
+def write_dashboard_trajectories(df: pd.DataFrame, path, *, sources: list[dict[str, str]] | None = None) -> None:
+    """Validate and write versioned Parquet, optionally with source provenance.
+
+    Sources identify target/strain and may include experiment, resolved run_id,
+    and trajectory_file. No environment variables or cloud access are required.
+    When omitted, preserve sources loaded by read_dashboard_trajectories.
+    """
+    _validate_file_data(df)
+    if sources is None:
+        sources = df.attrs.get("sources")
+    metadata = {b"schema_version": DASHBOARD_TRAJECTORY_SCHEMA_VERSION.encode()}
+    if sources is not None:
+        _validate_sources(sources, df)
+        metadata[b"sources"] = json.dumps(sources, ensure_ascii=False).encode()
+    table = pa.Table.from_pandas(df, schema=DASHBOARD_TRAJECTORY_SCHEMA, preserve_index=False, safe=True)
+    # Use Arrow metadata explicitly: DataFrame.attrs alone is not the file contract.
+    table = table.replace_schema_metadata({**(table.schema.metadata or {}), **metadata})
+    pq.write_table(table, path)
+
+
+def read_dashboard_trajectories(path) -> pd.DataFrame:
+    """Read/validate canonical long Parquet; expose file metadata in DataFrame.attrs."""
+    table = pq.read_table(path)
+    metadata = table.schema.metadata or {}
+    if metadata.get(b"schema_version") != DASHBOARD_TRAJECTORY_SCHEMA_VERSION.encode():
+        raise ValueError(f"Missing or unsupported dashboard schema_version: {metadata.get(b'schema_version')!r}.")
+    df = table.to_pandas(types_mapper=pd.ArrowDtype)
+    _validate_file_data(df)
+    df.attrs = {"schema_version": DASHBOARD_TRAJECTORY_SCHEMA_VERSION}
+    if b"sources" in metadata:
+        try:
+            sources = json.loads(metadata[b"sources"])
+        except (ValueError, UnicodeError) as exc:
+            raise ValueError("Invalid dashboard sources JSON.") from exc
+        _validate_sources(sources, df)
+        df.attrs["sources"] = sources
+    return df
 
 
 def _check_labels(strains: Sequence[str], baselines: Sequence[str]) -> None:

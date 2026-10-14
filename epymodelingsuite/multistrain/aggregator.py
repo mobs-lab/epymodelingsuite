@@ -101,7 +101,7 @@ def pull_single_strain_submission(source_location: str, fname: str) -> pd.DataFr
 
 def pull_trajectory_projections(
     config: AggregationConfiguration, tempdir: TemporaryDirectory
-) -> dict[str, pd.DataFrame]:
+) -> tuple[dict[str, pd.DataFrame], list[dict[str, str]]]:
     """
     Pull trajectory projection files from Google Cloud Storage.
     Requires cloud authorization and gcloud.
@@ -117,10 +117,11 @@ def pull_trajectory_projections(
 
     Returns
     -------
-    dict[str, pd.DataFrame]
-        trajectories: {subtype: DataFrame}
+    tuple[dict[str, pd.DataFrame], list[dict[str, str]]]
+        Trajectories by strain, and provenance with resolved input paths/run IDs.
     """
     trajectories = {}
+    sources = []
 
     for source in config.sources:
         # Download trajectory projections (not runner artifacts)
@@ -130,7 +131,10 @@ def pull_trajectory_projections(
             )
             if output.returncode == 0:
                 assert type(output.stdout) is str
-                run_id = output.stdout.split("/")[-2]
+                runs = [path.rstrip("/").rsplit("/", 1)[-1] for path in output.stdout.splitlines() if path.strip()]
+                if not runs:
+                    raise ValueError(f"No runs found for experiment: {source.experiment}")
+                run_id = sorted(runs)[-1]
             else:
                 raise ValueError(
                     f"Failed to find runs for experiment: {source.experiment}\n\
@@ -142,30 +146,47 @@ def pull_trajectory_projections(
             run_id = "*"
         else:
             run_id = source.run_id
-        source_location = f"{config.bucket}/{source.experiment}/{run_id}/outputs/*/{source.trajectory_file}"
+        prefix = f"{config.bucket.rstrip('/')}/{source.experiment.strip('/')}/"
+        pattern = f"{prefix}{run_id}/outputs/*/{source.trajectory_file}"
+        matches = subprocess.run(["gcloud", "storage", "ls", pattern], capture_output=True, text=True)
+        if matches.returncode:
+            raise ValueError(f"Failed to resolve trajectory file: {pattern}\n{matches.stderr}")
+        paths = [path.strip() for path in matches.stdout.splitlines() if path.strip()]
+        if len(paths) != 1:
+            raise ValueError(f"Expected exactly one trajectory file for {pattern}; found {len(paths)}.")
+        source_location = paths[0]
+        if not source_location.startswith(prefix):
+            raise ValueError(f"Unexpected trajectory path: {source_location}")
+        resolved_run_id = source_location.removeprefix(prefix).split("/", 1)[0]
         target_location = f"{tempdir}/{source.strain}_{source.trajectory_file}"
 
-        command = f"gcloud storage cp -r {source_location} {target_location}"
-        exit_code = os.system(command)
+        result = subprocess.run(
+            ["gcloud", "storage", "cp", source_location, target_location], capture_output=True, text=True
+        )
+        exit_code = result.returncode
 
         if exit_code == 0:
             logger.info(f"Downloaded: {source.strain}")
             # Load the downloaded data
             trajectories[source.strain] = pd.read_csv(target_location, parse_dates=[source.date_column])
+            sources.append(
+                {
+                    "target": config.target,
+                    "strain": source.strain,
+                    "experiment": source.experiment,
+                    "run_id": resolved_run_id,
+                    "trajectory_file": source_location,
+                }
+            )
         else:
-            prepend_err = ""
-            if source.run_id == "any":
-                prepend_err = "Warning: setting source.run_id to 'any' will\
-                fail if more than one matching trajectory file exists.\n"
-                logger.warning(prepend_err)
             raise ValueError(
-                f"{prepend_err}Failed to download: {source.experiment}\n\
+                f"Failed to download: {source.experiment}\n\
                     Exit code: {exit_code}\n\
                     Source: {source_location}\n\
-                    Target: {target_location}"
+                    Target: {target_location}\n{result.stderr}"
             )
 
-    return trajectories
+    return trajectories, sources
 
 
 def merge_strain_trajectories(

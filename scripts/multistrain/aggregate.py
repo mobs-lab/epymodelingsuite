@@ -28,7 +28,10 @@ from epymodelingsuite.multistrain.aggregator import (
     merge_strain_trajectories,
     pull_trajectory_projections,
 )
-from epymodelingsuite.output.dashboard_trajectories import dashboard_trajectories_from_wide
+from epymodelingsuite.output.dashboard_trajectories import (
+    dashboard_trajectories_from_wide,
+    write_dashboard_trajectories,
+)
 
 
 def main():
@@ -69,9 +72,8 @@ def main():
 
     # Work inside temp directory for pulling from bucket
     # Make dict of strain: trajectory df
-    strains = {}
     with tempfile.TemporaryDirectory() as tempdir:
-        strains.update(pull_trajectory_projections(aggregation, tempdir))
+        strains, sources = pull_trajectory_projections(aggregation, tempdir)
 
     print("  Obtained trajectories for strains:")
     for strain, traj_df in strains.items():
@@ -123,7 +125,7 @@ def main():
     # Deriving it from sources[0].experiment instead gives useless names, because
     # the leading path segment is the epiweek for flu and "test" for bphc.
     fname = f"{args.output}/dashboard_trajectories_{Path(args.config).stem}.parquet"
-    aggregated_df.to_parquet(fname, index=False)
+    write_dashboard_trajectories(aggregated_df, fname, sources=sources)
     print(f"  Saved aggregated trajectories at {fname}")
 
 

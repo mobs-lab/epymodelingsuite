@@ -1,10 +1,14 @@
 """Long dashboard files feed existing submission and plot calculations."""
 
 import pandas as pd
+import pyarrow.parquet as pq
 import pytest
 
 from epymodelingsuite.multistrain.formatter import compute_quantiles, create_submission, read_aggregated
-from epymodelingsuite.output.dashboard_trajectories import dashboard_trajectories_from_wide
+from epymodelingsuite.output.dashboard_trajectories import (
+    dashboard_trajectories_from_wide,
+    write_dashboard_trajectories,
+)
 from epymodelingsuite.schema.output import FlusightTrajectorySamples
 from epymodelingsuite.schema.submission import AggregatedTrajectoriesConfig
 
@@ -35,7 +39,7 @@ def test_long_and_wide_produce_same_submissions_and_quantiles(tmp_path, series):
     wide = _wide()
     long = dashboard_trajectories_from_wide(wide, ["single"], "2026-10-10", TARGET)
     path = tmp_path / "long.parquet"
-    long.to_parquet(path, index=False)
+    write_dashboard_trajectories(long, path)
     actual = read_aggregated(str(path), AggregatedTrajectoriesConfig(target_column=series))
     wide_column = series if series.startswith("target_") else "target_" + series
     expected = wide[["date", "location", wide_column, "sample_id"]].rename(columns={wide_column: series})
@@ -57,7 +61,7 @@ def test_multiple_targets_require_explicit_selection(tmp_path):
     hosp = ed.copy()
     hosp["target"] = "wk inc flu hosp"
     path = tmp_path / "multiple.parquet"
-    pd.concat([ed, hosp], ignore_index=True).to_parquet(path, index=False)
+    write_dashboard_trajectories(pd.concat([ed, hosp], ignore_index=True), path)
     with pytest.raises(ValueError, match="multiple targets"):
         read_aggregated(str(path), AggregatedTrajectoriesConfig(target_column="total"))
     result = read_aggregated(str(path), AggregatedTrajectoriesConfig(target=TARGET, target_column="total"))
@@ -69,10 +73,10 @@ def test_multiple_targets_require_explicit_selection(tmp_path):
 def test_unknown_series_and_corrupt_long_data_fail(tmp_path):
     long = dashboard_trajectories_from_wide(_wide(), ["single"], "2026-10-10", TARGET)
     path = tmp_path / "long.parquet"
-    long.to_parquet(path, index=False)
+    write_dashboard_trajectories(long, path)
     with pytest.raises(ValueError, match="not found"):
         read_aggregated(str(path), AggregatedTrajectoriesConfig(target_column="h1"))
-    long.iloc[1:].to_parquet(path, index=False)
+    pq.write_table(pq.read_table(path).slice(1), path)
     with pytest.raises(ValueError, match="all series"):
         read_aggregated(str(path), AggregatedTrajectoriesConfig(target_column="total"))
 

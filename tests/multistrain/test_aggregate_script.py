@@ -1,5 +1,6 @@
 """Check the aggregate CLI's serialized dates for single and multiple strains."""
 
+import json
 import runpy
 import sys
 from pathlib import Path
@@ -57,7 +58,11 @@ def test_aggregate_dates_are_microseconds(tmp_path, monkeypatch, unit, labels):
             }
         )
     )
-    monkeypatch.setattr(aggregator, "pull_trajectory_projections", lambda *_: trajectories)
+    sources = [
+        {"target": "wk inc flu hosp", "strain": label, "experiment": "example", "run_id": "20261007-182529-061e374e"}
+        for label in labels
+    ]
+    monkeypatch.setattr(aggregator, "pull_trajectory_projections", lambda *_: (trajectories, sources))
     monkeypatch.setattr(sys, "argv", ["aggregate.py", "--config", str(config), "--output", str(tmp_path)])
     if unit == "invalid":
         with pytest.raises(ValueError, match="non-negative"):
@@ -70,6 +75,8 @@ def test_aggregate_dates_are_microseconds(tmp_path, monkeypatch, unit, labels):
 
     path = tmp_path / "dashboard_trajectories_example.parquet"
     schema = pq.read_schema(path)
+    assert schema.metadata[b"schema_version"] == b"1"
+    assert json.loads(schema.metadata[b"sources"]) == sources
     assert schema.field("date").type == pa.timestamp("us")
     assert schema.field("reference_date").type == pa.timestamp("us")
     assert [f.type for f in schema] == [f.type for f in DASHBOARD_TRAJECTORY_SCHEMA]

@@ -68,6 +68,25 @@ Example (weekly metadata omitted):
 | 0 | 42 | United_States | 2026-10-10 | wk inc flu hosp | single | 120 |
 | 0 | null | United_States | 2026-10-10 | wk inc flu hosp | total | 120 |
 
+### File metadata
+
+Parquet key/value metadata carries `schema_version` (required, currently the UTF-8 string `"1"`)
+and `sources` (optional, a UTF-8 JSON array). These are not additional table columns.
+Each source identifies a `target`/`strain` pair and may include `experiment`, `run_id`, and
+`trajectory_file`. Omit unavailable fields; local producers need no experiment or run ID.
+Source entries must refer to strain rows, with at most one entry per target/strain pair.
+
+```json
+[{"target": "wk inc flu hosp", "strain": "single", "experiment": "202640/hosp",
+  "run_id": "20261007-182529-061e374e",
+  "trajectory_file": "gs://bucket/202640/hosp/20261007-182529-061e374e/outputs/20261013/trajectories.csv.gz"}]
+```
+
+Aggregation records the resolved run ID and exact input URI, including the output directory.
+`latest`, `any`, `*`, and `unknown` are not valid provenance run IDs. A source pattern must
+match exactly one input file; ambiguous matches fail before downloading.
+Callers supply provenance explicitly; the shared output functions do not inspect cloud environment variables.
+
 ### Shared schema, formatter and validator
 
 `epymodelingsuite.output.dashboard_trajectories` provides:
@@ -76,6 +95,13 @@ Example (weekly metadata omitted):
 - `format_dashboard_trajectories(df, strains, reference_date)`: accepts long rows, recomputes weekly metadata, safely casts types and validates. Does not sample or aggregate. Returns a new Arrow-backed DataFrame; invalid data raises `ValueError` before writing.
 - `dashboard_trajectories_from_wide(df, strains, reference_date, target)`: adapter for existing aggregate results/legacy files; preserves strain values (including NaN) and source IDs, then calls the shared formatter.
 - `validate_dashboard_trajectories(df, strains)`: returns errors, or an empty list on success, without changing the input. Accepts string/large_string as equivalent logical strings.
+- `write_dashboard_trajectories(df, path, sources=None)`: validates data and optional provenance, and writes versioned Parquet. If `sources` is omitted, preserves `df.attrs["sources"]` when present.
+- `read_dashboard_trajectories(path)`: validates the version, data, and provenance and returns long rows. File metadata is available in `df.attrs["schema_version"]` and optional `df.attrs["sources"]`.
+
+Use the shared writer rather than `DataFrame.to_parquet` to include required file metadata.
+The reader rejects missing/unsupported versions. To migrate a previous unversioned long file,
+load it with `pd.read_parquet` and save it with `write_dashboard_trajectories`; this validates its
+contents before writing. The row validator alone does not validate file metadata.
 
 Validation checks exact columns/order/types, required values, unique keys, complete series per key, non-negative IDs, contiguous sample IDs, and stable source IDs within each target/location/sample/strain. Dates must be Saturdays at midnight with a single reference date per target and matching horizon/epiweek. Non-missing values must be finite and non-negative. Totals must match the sum of available strains (rtol `1e-10`, atol `1e-12`), including NaN exactly when all strains are NaN. Baseline series must be missing exactly where total is missing, and otherwise be at least total; beta and negative-binomial baseline series cannot be mixed within a target.
 
@@ -84,16 +110,16 @@ Validation checks exact columns/order/types, required values, unique keys, compl
 A future direct single-strain output producer can supply long rows to `format_dashboard_trajectories`, without invoking aggregation. Dispatcher integration is not yet implemented. Hub submission schema/validation remain separate.
 
 ```python
-import pandas as pd
 from epymodelingsuite.output.dashboard_trajectories import (
     format_dashboard_trajectories,
-    validate_dashboard_trajectories,
+    read_dashboard_trajectories,
+    write_dashboard_trajectories,
 )
 
 # rows contains sample_id, sim_id, location, date, target, series, value.
 dashboard = format_dashboard_trajectories(rows, ["single"], "2026-10-10")
-dashboard.to_parquet("dashboard.parquet", index=False)
-errors = validate_dashboard_trajectories(pd.read_parquet("dashboard.parquet"), ["single"])
+write_dashboard_trajectories(dashboard, "dashboard.parquet")  # No cloud metadata needed.
+dashboard = read_dashboard_trajectories("dashboard.parquet")
 ```
 
 ### Location vocabulary
