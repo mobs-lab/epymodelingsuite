@@ -26,7 +26,7 @@ DASHBOARD_TRAJECTORY_SCHEMA = pa.schema(
         pa.field("epiweek", pa.string(), nullable=False),
     ]
 )
-KEY = ["sample_id", "location", "date", "target"]
+TRAJECTORY_INDEX = ["sample_id", "location", "date", "target"]
 
 
 def _validate_file_data(df: pd.DataFrame) -> None:
@@ -156,9 +156,9 @@ def validate_dashboard_trajectories(df: pd.DataFrame, strains: Sequence[str]) ->
     expected_series = [*strains, "total", *baselines]
     if set(labels) != set(expected_series):
         return [f"series must contain exactly {expected_series}; got {labels}."]
-    if df.duplicated([*KEY, "series"]).any():
+    if df.duplicated([*TRAJECTORY_INDEX, "series"]).any():
         return ["Duplicate (sample_id, location, date, target, series) rows."]
-    if not df.groupby(KEY).size().eq(len(expected_series)).all():
+    if not df.groupby(TRAJECTORY_INDEX).size().eq(len(expected_series)).all():
         return ["Every sample/location/date/target must contain all series, including missing strain values."]
     strain_rows = df.series.isin(strains)
     if df.loc[strain_rows, "sim_id"].isna().any():
@@ -191,7 +191,7 @@ def validate_dashboard_trajectories(df: pd.DataFrame, strains: Sequence[str]) ->
     values = df.value.to_numpy(dtype=float, na_value=np.nan)
     if np.isinf(values).any() or (values < 0).any():
         errors.append("Non-missing value must be finite and non-negative.")
-    wide = df.pivot(index=KEY, columns="series", values="value")
+    wide = df.pivot(index=TRAJECTORY_INDEX, columns="series", values="value")
     total = wide["total"].to_numpy(dtype=float, na_value=np.nan)
     expected = wide[list(strains)].sum(axis=1, skipna=True, min_count=1).to_numpy(dtype=float, na_value=np.nan)
     if not np.allclose(total, expected, rtol=1e-10, atol=1e-12, equal_nan=True):
