@@ -30,7 +30,12 @@ TRAJECTORY_INDEX = ["sample_id", "location", "date", "target"]
 
 
 def _validate_file_data(df: pd.DataFrame) -> None:
-    """Infer strain labels separately for each target when reading/writing files."""
+    """Validate a long-form trajectory DataFrame when reading/writing files.
+
+    Validate each target separately. Infer strain labels from the non-null string
+    values in its series column, excluding total and all baseline-prefixed labels.
+    These excluded labels represent derived series, not source strains.
+    """
     groups = df.groupby("target", dropna=False) if "target" in df and not df.empty else [(None, df)]
     for _, rows in groups:
         labels = rows.series.dropna().unique() if "series" in rows else []
