@@ -5,7 +5,6 @@ import pandas as pd
 import pytest
 
 import epymodelingsuite
-
 from epymodelingsuite.multistrain.aggregator import dispatch_baseline
 from epymodelingsuite.schema.aggregation import AggregationConfiguration, BaselineConfiguration
 
@@ -20,6 +19,7 @@ def _config(observed_means: str, method: str = "negative_binomial", seed: int | 
         bucket="gs://unused",
         random_seed=seed,
         submission_week=202616,
+        target="wk inc flu hosp",
         sources=[],
         sampling={"method": "random", "n_samples": 1},
         aggregate_method="sum",
@@ -115,3 +115,14 @@ def test_beta_baseline_rejects_impossible_variance():
     df = _trajectories(["United_States"])
     with pytest.raises(ValueError, match="United_States"):
         dispatch_baseline(df, _config("baselines_hosp_2026.csv", method="beta"))
+
+
+@pytest.mark.parametrize(
+    ("method", "filename"), [("negative_binomial", "baselines_hosp_2025.csv"), ("beta", "baselines_ed_2026.csv")]
+)
+def test_baseline_preserves_missing_total(method, filename):
+    frame = pd.DataFrame({"location": ["United_States"] * 3, "target_total": [np.nan, 0.0, 1.0]})
+    result = dispatch_baseline(frame, _config(filename, method=method))
+    for column in result.filter(like="target_baseline"):
+        assert result[column].isna().tolist() == [True, False, False]
+        assert (result.loc[1:, column] >= frame.loc[1:, "target_total"]).all()

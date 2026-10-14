@@ -2,56 +2,109 @@
 
 Two kinds of files come out of the multistrain pipeline:
 
-1. **Aggregated parquet**: per-sample trajectories summed across strains. This is the file sent to the dashboard.
+1. **Dashboard parquet**: long-form strain trajectories, totals and optional baselines. This is the file sent to the dashboard.
 2. **Submission CSV**: hubverse quantile (and for hosp, PMF) forecasts built from the aggregated parquet.
 
-Both are produced only by the scripts in this directory (commands at the end). If you get a file with a different layout, it was not built by these scripts.
+The scripts in this directory produce these files (commands at the end).
+The dashboard trajectory contract is shared output infrastructure in `epymodelingsuite/output/dashboard_trajectories.py`; it does not require aggregation or sampling.
 
-## 1. Aggregated parquet (dashboard file)
+## 1. Dashboard trajectories (long-form Parquet)
 
-**Filename:** `trajectories_aggregated_<config stem>.parquet`, where `<config stem>` is the aggregation config filename without `.yaml`.
-For example, `202616_hosp_aug_smc_wrmse.yaml` → `trajectories_aggregated_202616_hosp_aug_smc_wrmse.parquet`.
+**Filename:** `dashboard_trajectories_<config stem>.parquet` for `aggregate.py` output.
+Single-strain and multistrain dashboard files use the same fixed ten columns.
+One row per (`sample_id`, `location`, `date`, `target`, `series`).
 
-One row per (`sample_id`, `location`, `date`).
-
-| column | dtype | description |
+| column | Parquet type | description |
 |---|---|---|
-| `sample_id` | int64 | Aggregated sample index, `0 .. n_samples-1` |
-| `sim_id_<strain>` | int64 | Trajectory of `<strain>` used for this sample. One column per strain |
-| `location` | string | epydemix population name, see below |
-| `date` | datetime64[us] | Week end date (Saturday) |
-| `target_<strain>` | float64 | Strain value. One column per strain. May be NaN before the strain's fitting window starts |
-| `target_total` | float64 | Sum over strains (NaN treated as 0) |
-| `target_baseline_k<k>` | float64 | Only when the config has a `negative_binomial` `baseline` (counts): `target_total` plus NegBin noise with mean from `baseline.observed_means` and dispersion `k`. Drawn with `random_seed`. One column per `k` in `dispersion_values` |
-| `target_baseline` | float64 | Only when the config has a `beta` `baseline` (proportions): `target_total` plus Beta noise with mean and variance from the `baseline` and `variance` columns of `baseline.observed_means`. Drawn with `random_seed` |
-| `reference_date` | datetime64[us] | Saturday of the submission epiweek. Same for every row |
-| `horizon` | int64 | `(date - reference_date)` in weeks. Negative before `reference_date`, `0` at it |
+| `sample_id` | int64 | Sample index, `0 .. n_samples-1` per target |
+| `sim_id` | int64, nullable | Original trajectory ID on strain rows; null on total/baseline rows |
+| `location` | string | epydemix population name, not hub location ID |
+| `date` | timestamp[us] | Week end date, Saturday at midnight, no timezone |
+| `target` | string | Original hub target name (table below), not the internal model variable |
+| `series` | string | Strain label, `total`, `baseline`, or `baseline_k<k>` |
+| `value` | float64, nullable | Value of this series; missingness follows the rules below |
+| `reference_date` | timestamp[us] | Forecast reference Saturday, constant within each target |
+| `horizon` | int64 | `(date - reference_date)` in weeks; negative before the reference date |
 | `epiweek` | string | CDC epiweek of `date`, `YYYYww` |
 
-The file covers the whole trajectory, not only the forecast horizons. Filter on `horizon` when you need the forecast weeks.
+The file covers the whole trajectory. Filter on `horizon` for forecast weeks and on `series == "total"` for the sum.
+All series must have a row for every sample/location/date/target, including strain rows whose value is NaN.
+No target-specific values are stored in column names.
 
-Column order is: `sample_id`, the `sim_id_<strain>` columns, `location`, `date`, the `target_<strain>` columns, `target_total`, the `target_baseline_k<k>` or `target_baseline` columns (if any), `reference_date`, `horizon`, `epiweek`.
+### Target names
 
-### Strain labels
+Use the original hub vocabulary. Set `aggregation.target` explicitly; it is required for new aggregation configs.
+`sources[].target_column` still identifies the internal input variable, such as `hospitalizations` or `ed_prop`.
 
-Strain labels come from `sources[].strain` in the aggregation config. They are fixed per pathogen:
+| profile | target |
+|---|---|
+| FluSight hosp | `wk inc flu hosp` |
+| FluSight ED | `wk inc flu prop ed visits` |
+| Metrocast | `Flu ED visits pct` |
+| BPHC ED | `wk inc ed signal` |
 
-| pathogen | labels | strain columns |
+The validator requires a non-empty target name but does not hard-code a hub's changing task vocabulary.
+Use one target per aggregation run. Multiple targets may be combined in a dashboard file; their IDs, series and values are checked separately.
+Values retain the source variable's units; formatting does not rescale them.
+
+### Series and provenance
+
+| run | strain series | derived series |
 |---|---|---|
-| flu (hosp, ED, metrocast) | `h1`, `h3`, `b` | `sim_id_h1`, `sim_id_h3`, `sim_id_b`, `target_h1`, `target_h3`, `target_b` |
-| BPHC | `a`, `b` | `sim_id_a`, `sim_id_b`, `target_a`, `target_b` |
+| Single strain | `single` | `total` |
+| Flu multistrain | `h1`, `h3`, `b` | `total` |
+| BPHC multistrain | `a`, `b` | `total` |
+
+Strain labels come from `sources[].strain`. Custom labels are allowed except reserved total/baseline names; `single` must be used alone.
+`total` sums the available strain values, ignoring NaN. If all strains are NaN, `total` is also NaN (`sum(skipna=True, min_count=1)`). A real zero remains zero, even when the other strains are NaN. Baseline series preserve exactly the missing values of `total`. For a single-strain run, retain both `single` and `total` rows, including missing values. Rows are not dropped; plotting may hide missing values or display them as zero without changing the saved data.
+Baseline configurations add `baseline` (beta) or `baseline_k<k>` (negative binomial), with the same meaning as the previous `target_baseline*` columns. Omit `baseline` in the aggregation config to omit these rows.
+
+The original simulation ID is on each strain row. To recover the contributors to a total/baseline row, select the strain rows with the same sample/location/date/target. No synthetic simulation ID is assigned to sums.
+
+Example (weekly metadata omitted):
+
+| sample_id | sim_id | location | date | target | series | value |
+|---|---|---|---|---|---|---|
+| 0 | 42 | United_States | 2026-10-10 | wk inc flu hosp | single | 120 |
+| 0 | null | United_States | 2026-10-10 | wk inc flu hosp | total | 120 |
+
+### Shared schema, formatter and validator
+
+`epymodelingsuite.output.dashboard_trajectories` provides:
+
+- `DASHBOARD_TRAJECTORY_SCHEMA`: fixed Arrow column order and types above. Conditional null rules are checked by the validator.
+- `format_dashboard_trajectories(df, strains, reference_date)`: accepts long rows, recomputes weekly metadata, safely casts types and validates. Does not sample or aggregate. Returns a new Arrow-backed DataFrame; invalid data raises `ValueError` before writing.
+- `dashboard_trajectories_from_wide(df, strains, reference_date, target)`: adapter for existing aggregate results/legacy files; preserves strain values (including NaN) and source IDs, then calls the shared formatter.
+- `validate_dashboard_trajectories(df, strains)`: returns errors, or an empty list on success, without changing the input. Accepts string/large_string as equivalent logical strings.
+
+Validation checks exact columns/order/types, required values, unique keys, complete series per key, non-negative IDs, contiguous sample IDs, and stable source IDs within each target/location/sample/strain. Dates must be Saturdays at midnight with a single reference date per target and matching horizon/epiweek. Non-missing values must be finite and non-negative. Totals must match the sum of available strains (rtol `1e-10`, atol `1e-12`), including NaN exactly when all strains are NaN. Baseline series must be missing exactly where total is missing, and otherwise be at least total; beta and negative-binomial baseline series cannot be mixed within a target.
+
+`aggregate.py` uses the adapter and writes only long-form dashboard output. Submission and plot readers also accept legacy wide files. Existing `target_column: target_total` selects `series: total`; `target_column: target_baseline_k10` selects `series: baseline_k10`. The shorter `target_column: total` is also accepted for long files. If a file contains multiple targets, set `aggregated.target` to the original hub name to avoid mixing them.
+
+A future direct single-strain output producer can supply long rows to `format_dashboard_trajectories`, without invoking aggregation. Dispatcher integration is not yet implemented. Hub submission schema/validation remain separate.
+
+```python
+import pandas as pd
+from epymodelingsuite.output.dashboard_trajectories import (
+    format_dashboard_trajectories,
+    validate_dashboard_trajectories,
+)
+
+# rows contains sample_id, sim_id, location, date, target, series, value.
+dashboard = format_dashboard_trajectories(rows, ["single"], "2026-10-10")
+dashboard.to_parquet("dashboard.parquet", index=False)
+errors = validate_dashboard_trajectories(pd.read_parquet("dashboard.parquet"), ["single"])
+```
 
 ### Location vocabulary
 
-`location` is the epydemix population name that comes out of the model run:
-
 | target | examples |
 |---|---|
-| FluSight (hosp, ED) | `United_States`, `United_States_Massachusetts` (older runs) or `United_States__Massachusetts` (epydemix ≥ 1.2) |
+| FluSight (hosp, ED) | `United_States`, `United_States_Massachusetts` (older runs) or `United_States__Massachusetts` |
 | Metrocast | `metrocast_location_boston`, `metrocast_location_denver` |
 | BPHC | `metrocast_location_boston-all` |
 
-Submission files convert these to hub location ids (next section).
+Submission files convert these to hub location IDs.
 
 ## 2. Submission CSV
 
@@ -98,7 +151,7 @@ uv run $REPO/scripts/multistrain/aggregate.py --config 202616_hosp.yaml --output
 
 # 2. Aggregated parquet -> submission CSV
 uv run $REPO/scripts/multistrain/submission.py --config 202616_hosp_submission.yaml \
-    --aggregated outputs/202616_hosp/trajectories_aggregated_202616_hosp.parquet --output submissions/202616
+    --aggregated outputs/202616_hosp/dashboard_trajectories_202616_hosp.parquet --output submissions/202616
 
 # 3. Aggregated parquet -> comparison plots (optional)
 uv run $REPO/scripts/multistrain/plot.py --config 202616_hosp_plot.yaml \
@@ -113,6 +166,7 @@ Aggregation (`aggregation:` root, see `epymodelingsuite/schema/aggregation.py`):
 aggregation:
   bucket: gs://gs_mobs_jessica/pipeline/flu
   submission_week: 202616
+  target: wk inc flu hosp
   random_seed: 1337
   sources:
   - {strain: h1, experiment: 202616/hosp_aug_smc_wrmse_202550-202615_h1, trajectory_file: trajectories_projection_transitions.csv.gz, target_column: hospitalizations}
@@ -130,7 +184,8 @@ submission:
   profile: flusight_hosp
   model_name: MOBS-EpyStrain_Flu
   aggregated:
-    target_column: target_total
+    target: wk inc flu hosp          # required when the file has multiple targets
+    target_column: total
   surveillance:                       # flusight_hosp only
     directory: ../flu-forecast-epydemix/common-data/surveillance
     fit_fname: flu_hosp_25_202616_prelim.csv
@@ -149,10 +204,10 @@ plot:
   profile: flusight_hosp               # panels are labelled with this profile's location ids
   aggregated:
     multistrain:
-      trajectory_file: 202616_hosp/trajectories_aggregated_202616_hosp.parquet
+      trajectory_file: 202616_hosp/dashboard_trajectories_202616_hosp.parquet
       target_column: target_total
     multistrain_baseline:
-      trajectory_file: 202616_hosp/trajectories_aggregated_202616_hosp.parquet
+      trajectory_file: 202616_hosp/dashboard_trajectories_202616_hosp.parquet
       target_column: target_baseline_k10
   subplots_per_row: 4                  # default 4
   surveillance:

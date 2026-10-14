@@ -39,7 +39,13 @@ class AggregatedTrajectoriesConfig(BaseModel):
     Specifications for aggregated trajectories.
     """
 
-    target_column: str = Field(description="Name of column in trajectory file with target values.")
+    target: str | None = Field(
+        None,
+        description="Original hub target to select from dashboard data. Required when the file contains multiple targets.",
+    )
+    target_column: str = Field(
+        description="Dashboard series (e.g. total or baseline_k10), or legacy wide target column (e.g. target_total)."
+    )
     date_column: str = Field("date", description="Name of column in trajectory file with target date.")
     location_column: str = Field("location", description="Name of column in trajectory file with location/population.")
     week_column: str = Field("epiweek", description="Name of column in trajectory file with target epiweek.")

@@ -343,7 +343,7 @@ def _aggregate_sum(
     # Sum target values from all strains
     target_cols = [f"target_{source.strain}" for source in config.sources]
     agg_colname = "target_total"
-    aggregated[agg_colname] = aggregated[target_cols].fillna(0).sum(axis=1)
+    aggregated[agg_colname] = aggregated[target_cols].sum(axis=1, skipna=True, min_count=1)
 
     # Clean up columns
     output_cols = (

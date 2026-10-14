@@ -103,6 +103,9 @@ class AggregationConfiguration(BaseModel):
     bucket: str = Field(description="Path to bucket on cloud e.g. 'gs://gs_mobs_jessica/pipeline/flu'")
     random_seed: int | None = Field(None, description="Random seed for reproducibility")
     submission_week: str | int = Field(description="Epiweek of submission in CDC format, i.e. 'YYYYww'")
+    target: str = Field(
+        min_length=1, description="Original hub target name, e.g. 'wk inc flu hosp' or 'wk inc flu prop ed visits'."
+    )
     sources: list[SourceExperiment] = Field(description="Identifiers for stage C trajectory outputs to aggregate.")
     sampling: SamplingConfiguration = Field(
         description="Configuration for sampling mappings of individual trajectories across experiments."

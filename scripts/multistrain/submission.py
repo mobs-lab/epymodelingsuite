@@ -12,7 +12,7 @@ All other options specified via yaml file.
 
 Usage:
     uv run submission.py --config submission.yml \
-    --aggregated trajectories_aggregated.parquet --output ./multistrain
+    --aggregated dashboard_trajectories_example.parquet --output ./multistrain
 """
 
 import argparse

@@ -1,5 +1,6 @@
 import pandas as pd
 
+from ..output.dashboard_trajectories import validate_dashboard_trajectories
 from ..output.trajectory_samples import select_trajectory_indices, trajectories_to_sample_rows
 from ..schema.output import (
     FlusightTrajectorySamples,
@@ -460,7 +461,7 @@ def _pmf_rows(pmf_df: pd.DataFrame, reference_date: str) -> pd.DataFrame:
 
 
 def read_aggregated(path: str, config) -> pd.DataFrame:
-    """Read aggregated trajectories (parquet, or csv as fallback) and keep the columns needed downstream."""
+    """Read long-form dashboard Parquet or legacy wide trajectories for submission/plotting."""
     try:
         aggregated = pd.read_parquet(path)
     except Exception as e1:
@@ -470,6 +471,25 @@ def read_aggregated(path: str, config) -> pd.DataFrame:
             raise ValueError(
                 f"Failed to read {path} as either parquet or csv:\nParquet error:\n{e1}\nCSV error:\n{e2}"
             ) from e2
+    if "series" in aggregated or "value" in aggregated:
+        if "target" not in aggregated:
+            raise ValueError("Dashboard trajectories require a target column.")
+        if config.target is not None:
+            aggregated = aggregated.loc[aggregated.target.eq(config.target)]
+        elif aggregated.target.nunique() > 1:
+            raise ValueError("Dashboard file contains multiple targets; set aggregated.target explicitly.")
+        labels = aggregated["series"].dropna().unique().tolist() if "series" in aggregated else []
+        strains = [s for s in labels if isinstance(s, str) and s != "total" and not s.startswith("baseline")]
+        errors = validate_dashboard_trajectories(aggregated, strains)
+        if errors:
+            raise ValueError("Invalid dashboard trajectories: " + "; ".join(errors))
+        series = config.target_column.removeprefix("target_")
+        aggregated = aggregated.loc[aggregated.series.eq(series), ["date", "location", "value", "sample_id"]].rename(
+            columns={"date": config.date_column, "location": config.location_column, "value": config.target_column}
+        )
+        if aggregated.empty:
+            raise ValueError(f"Dashboard series {series!r} not found in {path}.")
+        aggregated[config.target_column] = aggregated[config.target_column].astype("float64")
     aggregated = aggregated[[config.date_column, config.location_column, config.target_column, "sample_id"]]
     return cols_to_dt(aggregated, [config.date_column])
 
