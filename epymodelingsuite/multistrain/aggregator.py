@@ -117,8 +117,14 @@ def pull_trajectory_projections(
 
     Returns
     -------
-    tuple[dict[str, pd.DataFrame], list[dict[str, str]]]
-        Trajectories by strain, and provenance with resolved input paths/run IDs.
+    trajectories : dict[str, pd.DataFrame]
+        Strain label -> downloaded trajectory table, retaining the source columns
+        specified by the config (e.g. sim_id, population, date, hospitalizations).
+    sources : list[dict[str, str]]
+        One provenance record per configured source, in config order. Keys are
+        target (hub target name), strain (same label as a trajectories key),
+        experiment (experiment path within the bucket), run_id (resolved run ID),
+        and trajectory_file (full gs:// URI of the downloaded object).
     """
     trajectories = {}
     sources = []
