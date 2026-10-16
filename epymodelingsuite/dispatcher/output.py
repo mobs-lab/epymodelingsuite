@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 from epydemix.calibration import CalibrationResults
 
+from ..calibration import get_posterior_table
 from ..output.hub_format import normalize_target_values
 from ..output.quantiles import get_simulation_quantiles, select_projection_quantile_variables
 from ..output.tabular import (
@@ -1407,7 +1408,7 @@ def generate_calibration_outputs(
             # Output last generation (default)
             if output.posteriors == True:
                 try:
-                    post_df = calibration.results.get_posterior_distribution().copy()
+                    post_df = get_posterior_table(calibration.results)
                 except Exception as e:
                     warnings.add(
                         f"OUTPUT GENERATOR: Failed to obtain posterior distribution for CalibrationOutput with "
@@ -1417,10 +1418,14 @@ def generate_calibration_outputs(
             # Output selected generations
             elif output.posteriors.generations:
                 post_df_list = []
-                for g in output.posteriors.generations:
+                generations = (
+                    sorted(calibration.results.posterior_distributions)
+                    if output.posteriors.generations == "all"
+                    else output.posteriors.generations
+                )
+                for g in generations:
                     try:
-                        post = calibration.results.get_posterior_distribution(generation=g).copy()
-                        post = add_metadata_columns(post, generation=g)
+                        post = get_posterior_table(calibration.results, generation=g)
                         post_df_list.append(post)
                     except Exception:
                         warnings.add(
@@ -1429,7 +1434,7 @@ def generate_calibration_outputs(
                 post_df = pd.concat(post_df_list, ignore_index=True) if post_df_list else pd.DataFrame()
             # Undefined behavior
             else:
-                msg = f"Received unexpected value for posteriors output config (should be bool or list of int): {output.posteriors}"
+                msg = f"Expected posteriors=true/false or generations set to 'all' or a nonempty list: {output.posteriors}"
                 raise ValueError(msg)
             # Record identifiers and add to list
             if not post_df.empty:

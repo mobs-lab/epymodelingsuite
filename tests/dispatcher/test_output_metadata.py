@@ -43,6 +43,9 @@ def test_wide_output_metadata(monkeypatch: pytest.MonkeyPatch, workflow: str, *,
     for helper in ("get_simulation_quantiles", "get_calibration_quantiles", "get_projection_quantiles"):
         monkeypatch.setattr(f"epymodelingsuite.dispatcher.output.{helper}", lambda *_, **__: quantiles)
     result.get_posterior_distribution.return_value = quantiles
+    result.posterior_distributions = {0: quantiles, 1: quantiles}
+    result.get_weights.return_value = [0.25, 0.75]
+    result.get_distances.return_value = [0.4, 0.8]
     result.get_projection_trajectories.return_value = {
         key: [value] for key, value in {"date": dates, **compartments, **transitions}.items()
     }
@@ -106,6 +109,14 @@ def test_wide_output_metadata(monkeypatch: pytest.MonkeyPatch, workflow: str, *,
                 # The mock returns the same two rows for each requested generation.
                 expected_data = pd.concat([original, original], ignore_index=True)
                 assert frame["generation"].tolist() == [0, 0, 1, 1]
+        if name == "posteriors":
+            if generations is True:
+                prefix.append("generation")
+                assert frame["generation"].tolist() == [1, 1]
+            prefix.extend(["particle_id", "weight", "distance"])
+            assert frame["particle_id"].tolist() == [0, 1] * (len(frame) // 2)
+            assert frame["weight"].tolist() == [0.25, 0.75] * (len(frame) // 2)
+            assert frame["distance"].tolist() == [0.4, 0.8] * (len(frame) // 2)
         assert list(frame.columns) == prefix + list(expected_data.columns)
         assert frame["primary_id"].tolist() == [7] * len(frame)
         assert frame["seed"].tolist() == [42] * len(frame)

@@ -8,11 +8,17 @@ import numpy as np
 import pandas as pd
 import pytest
 from epydemix.calibration import CalibrationResults
+from matplotlib.colors import to_rgba
 
 from epymodelingsuite.schema.calibration import CalibrationStrategy
 from epymodelingsuite.schema.dispatcher import CalibrationOutput
-from epymodelingsuite.schema.output import ObservedValuesConfig, PlotsConfig, QuantilesPlotConfig
-from epymodelingsuite.visualization.generators import generate_single_quantile_plots, get_locations_to_plot
+from epymodelingsuite.schema.output import ObservedValuesConfig, PlotsConfig, PosteriorPlotConfig, QuantilesPlotConfig
+from epymodelingsuite.visualization.generators import (
+    generate_posterior_grid_plot,
+    generate_single_location_posterior_plots,
+    generate_single_quantile_plots,
+    get_locations_to_plot,
+)
 from epymodelingsuite.visualization.preparation import (
     _check_incomplete_generations,
     _clip_surveillance,
@@ -35,6 +41,41 @@ def _results_for_dates(calibration_frame=None, projection_frame=None):
         dates = projection_frame["date"].unique()
         projections["baseline"] = [{"date": dates, "hospitalizations": np.full(len(dates), 100.0)}]
     return CalibrationResults(selected_trajectories=selected, projections=projections)
+
+
+@pytest.mark.parametrize(
+    ("generator", "output_key"),
+    [
+        (generate_single_location_posterior_plots, "posterior_US-CA"),
+        (generate_posterior_grid_plot, "posterior_grid"),
+    ],
+)
+def test_posterior_generators_use_weights(generator, output_key):
+    posterior = pd.DataFrame({"beta": [0.0, 2.0]}, index=[9, 4])
+    results = CalibrationResults(
+        posterior_distributions={3: posterior, 0: pd.DataFrame({"beta": [100.0, 200.0]})},
+        weights={3: [0.1, 0.9], 0: [0.5, 0.5]},
+        distances={3: [0.4, 0.8], 0: [3.0, 4.0]},
+    )
+    calibration = CalibrationOutput.model_construct(population="US-CA", results=results, calibration_strategy=None)
+    plots_config = PlotsConfig(
+        reference_date=date(2024, 1, 1), posterior=PosteriorPlotConfig(single=True, grid=True, bins=2)
+    )
+    outputs = {}
+    with patch("epymodelingsuite.visualization.generators._package_figure_outputs", return_value=[]) as package:
+        generator([calibration], plots_config, outputs)
+
+    assert output_key in outputs
+    package.assert_called_once()
+    fig = package.call_args.args[0]
+    assert len(fig.axes) == 1
+    assert fig.axes[0].get_title() == "beta"
+    assert fig._suptitle.get_text().startswith("Weighted posterior")
+    assert fig.axes[0].patches[0].get_facecolor() == to_rgba("skyblue", alpha=0.7)
+    assert fig.axes[0].get_xlim()[1] < 3.0
+    masses = [bar.get_height() * bar.get_width() for bar in fig.axes[0].patches]
+    np.testing.assert_allclose(masses, [0.1, 0.9])
+    assert list(posterior.columns) == ["beta"]
 
 
 class TestSurveillanceDataFiltering:

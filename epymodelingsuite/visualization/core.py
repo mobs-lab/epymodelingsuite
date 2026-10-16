@@ -1047,14 +1047,15 @@ def plot_posterior_histogram(  # noqa: PLR0913
     Parameters
     ----------
     df_posterior : pd.DataFrame
-        Posterior samples with column for the parameter.
-        Should be pre-filtered for a single location if needed.
+        Posterior samples with a column for the parameter and an optional
+        ``weight`` column. Filter to one calibration run and generation first.
+        Without weights, samples are treated as equally weighted.
     parameter : str
         Column name of parameter to plot.
     bins : int
         Number of histogram bins.
     color : str, optional
-        Histogram color.
+        Histogram color. Weighted samples default to sky blue.
     title : str, optional
         Plot title.
     ax : plt.Axes, optional
@@ -1063,7 +1064,8 @@ def plot_posterior_histogram(  # noqa: PLR0913
         If parameter == "start_date", samples are treated as integer day offsets
         from this reference date and converted to actual dates.
     **kwargs
-        Additional arguments passed to matplotlib hist.
+        Additional arguments passed to matplotlib hist. Explicit ``weights``
+        override the table's weight column and must match its row order.
 
     Returns
     -------
@@ -1079,7 +1081,8 @@ def plot_posterior_histogram(  # noqa: PLR0913
 
     Examples
     --------
-    >>> posterior_df = calibration.results.get_posterior_distribution()
+    >>> from epymodelingsuite.calibration import get_posterior_table
+    >>> posterior_df = get_posterior_table(calibration.results)
     >>> fig, ax = plot_posterior_histogram(
     ...     df_posterior=posterior_df,
     ...     parameter="R0",
@@ -1096,7 +1099,21 @@ def plot_posterior_histogram(  # noqa: PLR0913
         msg = f"Parameter '{parameter}' not in DataFrame columns"
         raise ValueError(msg)
 
-    data = df_posterior[parameter].copy()
+    valid = df_posterior[parameter].notna()
+    data = df_posterior.loc[valid, parameter]
+    weights = kwargs.pop("weights", df_posterior.get("weight"))
+    if weights is not None:
+        weights = np.asarray(weights, dtype=float)
+        if weights.shape != (len(df_posterior),):
+            msg = "Posterior weights must match the number of rows"
+            raise ValueError(msg)
+        if not np.isfinite(weights).all() or (weights < 0).any():
+            msg = "Posterior weights must be finite and nonnegative"
+            raise ValueError(msg)
+        weights = weights[valid.to_numpy()]
+        if weights.sum() <= 0:
+            msg = "Posterior weights must have positive mass for nonmissing values"
+            raise ValueError(msg)
 
     # Handle start_date offset -> actual datetime
     labels_as_dates = False
@@ -1118,9 +1135,11 @@ def plot_posterior_histogram(  # noqa: PLR0913
     hist_kwargs = {"bins": bins, "density": True, "alpha": 0.7, "edgecolor": "black"}
     if color is not None:
         hist_kwargs["color"] = color
+    elif weights is not None:
+        hist_kwargs["color"] = "skyblue"
     hist_kwargs.update(kwargs)
 
-    ax.hist(plotting_data.dropna(), **hist_kwargs)
+    ax.hist(plotting_data, weights=weights, **hist_kwargs)
 
     # Fix date tick labels if needed
     if labels_as_dates:
@@ -1132,7 +1151,7 @@ def plot_posterior_histogram(  # noqa: PLR0913
     if title is not None:
         ax.set_title(title)
     else:
-        ax.set_title(parameter)
+        ax.set_title(f"{parameter} (Weighted posterior)" if weights is not None else parameter)
 
     ax.set_ylabel("Density")
 
@@ -1152,7 +1171,8 @@ def plot_posterior_histogram_grid(
     Parameters
     ----------
     location_posteriors : dict[str, pd.DataFrame]
-        Mapping of location names to their posterior DataFrames.
+        Mapping of location names to posterior DataFrames. A ``weight`` column
+        in each table is used for its histograms.
     parameters : list of str
         Parameter names to plot (one per column).
     bins : int
@@ -1171,9 +1191,10 @@ def plot_posterior_histogram_grid(
 
     Examples
     --------
+    >>> from epymodelingsuite.calibration import get_posterior_table
     >>> location_posteriors = {
-    ...     "US-CA": cal_ca.results.get_posterior_distribution(),
-    ...     "US-TX": cal_tx.results.get_posterior_distribution(),
+    ...     "US-CA": get_posterior_table(cal_ca.results),
+    ...     "US-TX": get_posterior_table(cal_tx.results),
     ... }
     >>> fig, axes = plot_posterior_histogram_grid(
     ...     location_posteriors=location_posteriors,
@@ -1218,6 +1239,12 @@ def plot_posterior_histogram_grid(
                 ax.set_title(param)
             else:
                 ax.set_title("")
+
+    weighted_locations = ["weight" in df.columns for df in location_posteriors.values()]
+    if all(weighted_locations):
+        fig.suptitle("Weighted posterior distributions")
+    elif any(weighted_locations):
+        fig.suptitle("Posterior distributions (sky blue: weighted)")
 
     plt.tight_layout()
 
