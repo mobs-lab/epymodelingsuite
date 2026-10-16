@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import io
 from datetime import date
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pandas as pd
 import pytest
+from epydemix.calibration import CalibrationResults
 
+from epymodelingsuite.calibration import get_posterior_table
 from epymodelingsuite.dispatcher.output import (
     filter_failed_projections,
     generate_calibration_outputs,
@@ -381,26 +384,79 @@ class TestFilterFailedProjectionsAlignsProjectionParameters:
 class TestPosteriorExport:
     """Exporting posteriors must not mutate the DataFrames stored in CalibrationResults."""
 
-    @pytest.mark.parametrize("posteriors", [True, PosteriorsOutput(generations=[0, 1])])
+    @pytest.mark.parametrize("posteriors", [True, PosteriorsOutput(generations=[0, 1]), {"generations": "all"}])
     def test_export_leaves_results_unchanged(self, posteriors):
-        stored = {0: pd.DataFrame({"Reff": [1.1, 1.2]}), 1: pd.DataFrame({"Reff": [1.3, 1.4]})}
+        stored = {
+            1: pd.DataFrame({"Reff": [1.3, 1.4]}, index=[8, 2]),
+            0: pd.DataFrame({"Reff": [1.1, 1.2]}, index=[7, 3]),
+        }
+        weights = {0: np.array([0.5, 0.5]), 1: np.array([0.1, 0.9])}
+        distances = {0: np.array([3.0, 2.0]), 1: np.array([0.4, 0.8])}
         calibration = MagicMock()
         calibration.primary_id = 1
         calibration.seed = 42
         calibration.population = "United_States_California"
-        calibration.results.projections = {}
-        calibration.results.get_posterior_distribution.side_effect = lambda generation=1: stored[generation]
+        calibration.results = CalibrationResults(posterior_distributions=stored, weights=weights, distances=distances)
         output_config = OutputConfig(
-            output=OutputConfiguration(tabular_output_types=[TabularOutputTypeEnum.DataFrame], posteriors=posteriors)
+            output=OutputConfiguration(
+                tabular_output_types=[
+                    TabularOutputTypeEnum.DataFrame,
+                    TabularOutputTypeEnum.CSVBytes,
+                    TabularOutputTypeEnum.Parquet,
+                ],
+                posteriors=posteriors,
+            )
         )
 
         # Export twice: the second call failed with "cannot insert primary_id, already exists"
         for _ in range(2):
             outputs = generate_calibration_outputs(calibrations=[calibration], output_config=output_config)
-            assert "primary_id" in outputs["posteriors"][0].data.columns
+            table = outputs["posteriors"][0].data
+            csv_table = pd.read_csv(io.BytesIO(outputs["posteriors"][1].data), compression="gzip")
+            parquet_table = pd.read_parquet(io.BytesIO(outputs["posteriors"][2].data))
+            pd.testing.assert_frame_equal(csv_table, table)
+            pd.testing.assert_frame_equal(parquet_table, table)
+            assert "primary_id" in table.columns
+            generations = [1] if posteriors is True else [0, 1]
+            assert table["generation"].tolist() == [g for g in generations for _ in range(2)]
+            for g in generations:
+                rows = table.loc[table["generation"] == g]
+                assert rows["particle_id"].tolist() == [0, 1]
+                np.testing.assert_array_equal(rows["weight"], weights[g])
+                np.testing.assert_array_equal(rows["distance"], distances[g])
+                np.testing.assert_array_equal(rows["Reff"], stored[g]["Reff"])
 
         for df in stored.values():
             assert list(df.columns) == ["Reff"]
+        np.testing.assert_array_equal(weights[1], [0.1, 0.9])
+        np.testing.assert_array_equal(distances[1], [0.4, 0.8])
+
+    @pytest.mark.parametrize("distances", [None, [0.5], [[0.5], [0.8]]])
+    def test_invalid_distance_shape_raises(self, distances):
+        results = CalibrationResults(
+            posterior_distributions={0: pd.DataFrame({"Reff": [1.1, 1.2]})},
+            weights={0: [0.5, 0.5]},
+            distances={0: distances},
+        )
+        with pytest.raises(ValueError, match="distances must match particles"):
+            get_posterior_table(results)
+
+    def test_all_uses_each_runs_available_generations(self):
+        calibrations = []
+        for primary_id, generations in enumerate([[0], [2, 0, 1]]):
+            results = CalibrationResults(
+                posterior_distributions={g: pd.DataFrame({"Reff": [1.0 + g]}) for g in generations},
+                weights={g: [1.0] for g in generations},
+                distances={g: [3.0 - g] for g in generations},
+            )
+            calibrations.append(MagicMock(primary_id=primary_id, seed=42, population="US", results=results))
+        config = OutputConfig(
+            output=OutputConfiguration(posteriors={"generations": "all"}, tabular_output_types=["DataFrame"])
+        )
+        outputs = generate_calibration_outputs(calibrations=calibrations, output_config=config)
+        table = outputs["posteriors"][0].data
+        assert list(zip(table["primary_id"], table["generation"])) == [(0, 0), (1, 0), (1, 1), (1, 2)]
+        assert table["distance"].tolist() == [3.0, 3.0, 2.0, 1.0]
 
 
 class TestProjectionParametersLongFile:
