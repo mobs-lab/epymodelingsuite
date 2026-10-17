@@ -235,7 +235,7 @@ class TestValidateModelsetConsistency:
     def test_invalid_populations(self):
         base_config = self._create_base_config()
         sampling_config = self._create_sampling_config(population_names=["notaplace"])
-        with pytest.raises(ValueError, match="Invalid metrocast location: notaplace"):
+        with pytest.raises(ValueError, match="Invalid population: notaplace"):
             validate_cross_config_consistency(base_config, sampling_config)
 
     @pytest.mark.parametrize(

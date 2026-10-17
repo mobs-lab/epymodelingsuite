@@ -78,8 +78,12 @@ class TestCreateModelCollection:
 
     def test_rejects_invalid_population(self, base_model_config):
         """Test that unknown locations raise instead of being assumed metrocast."""
-        with pytest.raises(ValueError, match="Invalid metrocast location: notaplace"):
+        with pytest.raises(ValueError, match="Invalid population: notaplace"):
             create_model_collection(base_model_config, ["notaplace"])
+
+    def test_unavailable_iso_location_fails_during_model_construction(self, base_model_config):
+        with pytest.raises(ValueError, match="Error setting population for JP-01: No ISO location mapping for JP-01"):
+            create_model_collection(base_model_config, ["JP-01"])
 
     def test_expands_all_keyword_to_all_locations(self, base_model_config):
         """Test that 'all' in population_names expands to all locations in codebook."""
