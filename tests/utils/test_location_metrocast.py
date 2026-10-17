@@ -8,6 +8,7 @@ from epymodelingsuite.utils.location import (
     get_metrocast_population_data,
     get_parent_region,
     is_state_level_metrocast_location,
+    resolve_population_names,
     validate_iso3166,
     validate_location_by_type,
     validate_metrocast_location,
@@ -173,9 +174,8 @@ class TestValidateLocationByType:
 
     def test_invalid_iso_raises_error(self):
         """Test that invalid ISO location raises error."""
-        # ISO validation expects ISO 3166-2 format (e.g., US-XX)
         with pytest.raises(ValueError):
-            validate_location_by_type("US-ZZ", "iso")  # Invalid state code
+            validate_location_by_type("US-ZZ", "iso")
 
     def test_invalid_metrocast_raises_error(self):
         """Test that invalid metrocast location raises ValueError."""
@@ -201,10 +201,32 @@ class TestValidateISO3166:
         result = validate_iso3166("US")
         assert result == "US"
 
-    def test_valid_non_us_subdivision_returns_code(self):
-        """Test that valid non-US subdivision is returned."""
-        result = validate_iso3166("CA-ON")  # Canada - Ontario
-        assert result == "CA-ON"
+    @pytest.mark.parametrize("location", ["JP-01", "CA-ON", "GB-ENG", "JP"])
+    def test_registered_iso_code_does_not_require_codebook_membership(self, location):
+        assert validate_iso3166(location) == location
+        assert resolve_population_names([location]) == [(location, "iso")]
+
+    @pytest.mark.parametrize("location", ["portland-or", "USA", "US-", "US-NY-extra", "US-1234", "us-ny", "JP-01\n"])
+    def test_invalid_iso_format_is_rejected(self, location):
+        with pytest.raises(ValueError, match="Invalid ISO 3166 code"):
+            validate_iso3166(location)
+
+    @pytest.mark.parametrize("location", ["ZZ-99", "US-ZZ", "JP-99", "ZZ"])
+    def test_unassigned_iso_code_is_rejected(self, location):
+        with pytest.raises(ValueError, match="Invalid ISO 3166 code"):
+            validate_iso3166(location)
+        with pytest.raises(ValueError, match="Invalid population"):
+            resolve_population_names([location])
+
+    def test_resolves_portland_and_oregon_to_distinct_location_types(self):
+        assert resolve_population_names(["portland-or", "US-OR"]) == [
+            ("portland-or", "metrocast_location"),
+            ("US-OR", "iso"),
+        ]
+
+    def test_explicit_iso_type_does_not_fall_back_to_metrocast(self):
+        with pytest.raises(ValueError, match="Invalid ISO 3166 code format"):
+            resolve_population_names([{"name": "portland-or", "type": "iso"}])
 
     def test_location_without_hyphen_raises_valueerror(self):
         """Test that location without hyphen raises ValueError, not IndexError.
@@ -224,12 +246,12 @@ class TestValidateISO3166:
     def test_invalid_us_state_raises_valueerror(self):
         """Test that invalid US state code raises ValueError."""
         with pytest.raises(ValueError, match="Invalid ISO 3166 code"):
-            validate_iso3166("US-ZZ")  # ZZ is not a valid US state
+            validate_iso3166("US-ZZ")
 
     def test_invalid_country_code_raises_valueerror(self):
         """Test that invalid country code raises ValueError."""
         with pytest.raises(ValueError, match="Invalid ISO 3166 code"):
-            validate_iso3166("XX")  # XX is not a valid country
+            validate_iso3166("XX")
 
 
 class TestIsStateLevelMetrocastLocation:
