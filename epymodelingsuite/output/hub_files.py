@@ -131,10 +131,7 @@ def exclude_locations(df: pd.DataFrame, locations: list[str]) -> pd.DataFrame:
         If a location is not recognized or not present in the table.
     """
     table = cast_hub_dtypes(df)
-    try:
-        excluded = {convert_location_name_format(loc, "FIPS", location_type="iso"): loc for loc in locations}
-    except AssertionError as e:
-        raise ValueError(str(e)) from e
+    excluded = {convert_location_name_format(loc, "FIPS", location_type="iso"): loc for loc in locations}
     missing = [excluded[code] for code in excluded if code not in set(table["location"])]
     if missing:
         msg = f"Locations not found in table: {missing}"
