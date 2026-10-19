@@ -129,7 +129,7 @@ class TestExcludeLocations:
         assert hub_files.exclude_locations(self._table(), ["CA", "Massachusetts"]).location.unique().tolist() == ["US"]
         assert hub_files.exclude_locations(self._table(), ["US-CA", "06"]).location.unique().tolist() == ["25", "US"]
 
-    @pytest.mark.parametrize(("locations", "match"), [(["XX"], "does not match"), (["NY"], "not found.*NY")])
+    @pytest.mark.parametrize(("locations", "match"), [(["XX"], "No ISO location mapping"), (["NY"], "not found.*NY")])
     def test_unknown_or_absent_location_raises(self, locations, match):
         """Test that a typo or a location missing from the table raises instead of silently dropping nothing."""
         with pytest.raises(ValueError, match=match):

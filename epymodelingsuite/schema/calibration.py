@@ -1,5 +1,4 @@
 import logging
-import warnings
 from collections.abc import Callable
 from datetime import date, timedelta
 from enum import Enum
@@ -8,8 +7,8 @@ from typing import Any
 from epiweeks import Week
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
 
-from ..utils import parse_timedelta, validate_iso3166
-from ..utils.location import validate_location_by_type
+from ..utils import parse_timedelta
+from ..utils.location import resolve_population_names
 from .common import DateParameter, Distribution, InputFilePath, Meta
 
 logger = logging.getLogger(__name__)
@@ -422,38 +421,8 @@ class CalibrationModelset(BaseModel):
         - Dict format (explicit type): {"name": "denver", "type": "metrocast_location"}
         - Keywords: "all", "all-states", "all-metrocast"
         """
-        validated_populations = []
-        for population in v:
-            if isinstance(population, str):
-                # String format - keywords or auto-detect
-                if population == "all":
-                    warnings.warn(
-                        "The 'all' keyword is deprecated. Use 'all-states' instead.",
-                        DeprecationWarning,
-                        stacklevel=2,
-                    )
-                    validated_populations.append(population)
-                elif population in ("all-states", "all-metrocast"):
-                    validated_populations.append(population)
-                else:
-                    # Auto-detect: try ISO validation first
-                    try:
-                        validated_populations.append(validate_iso3166(population))
-                    except ValueError:
-                        # If not ISO, try metrocast location validation
-                        validated_populations.append(validate_location_by_type(population, "metrocast_location"))
-            elif isinstance(population, dict):
-                # Dict format - explicit type
-                name = population.get("name")
-                loc_type = population.get("type", "iso")
-                if not name:
-                    raise ValueError("population dict must have 'name' field")
-                validate_location_by_type(name, loc_type)
-                validated_populations.append(population)
-            else:
-                raise ValueError(f"Invalid population format: {population}")
-
-        return validated_populations
+        resolve_population_names(v)
+        return v
 
 
 class CalibrationConfig(BaseModel):
