@@ -61,6 +61,7 @@ class LocationTypeEnum(str, Enum):
 
     iso = "iso"
     metrocast_location = "metrocast_location"
+    custom = "custom"
 
 
 class Population(BaseModel):
@@ -72,12 +73,14 @@ class Population(BaseModel):
     )
     location_type: LocationTypeEnum = Field(
         LocationTypeEnum.iso,
-        description="Location type (iso or metrocast_location)",
+        description="Location type (iso, metrocast_location, or custom)",
     )
     contact_matrix: str | None = Field(
         None,
         description="Override contact matrix source (ISO code, e.g., US-MA)",
     )
+    locations_path: InputFilePath | None = Field(None, description="Custom location metadata CSV.")
+    population_path: InputFilePath | None = Field(None, description="Custom single-year population CSV.")
     age_groups: list[str] = Field(
         description="List of age groups in the population (e.g., ['0-4', '5-17', '18-49', '50-64', '65+'])"
     )
@@ -87,6 +90,8 @@ class Population(BaseModel):
         """Validate location using type-specific validator."""
         from ..utils.location import validate_location_by_type
 
+        if (self.locations_path is None) != (self.population_path is None):
+            raise ValueError("Custom locations require both locations_path and population_path")
         if self.name:
             validate_location_by_type(self.name, self.location_type)
         return self

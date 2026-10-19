@@ -4,7 +4,8 @@ import pandas as pd
 
 from ..schema.calibration import CalibrationConfig
 from ..utils import convert_location_name_format
-from ..utils.location import parse_population_name
+from ..utils.custom_locations import CustomLocation
+from ..utils.location import get_hub_location_id, parse_population_name
 
 
 def get_data_in_window(data: pd.DataFrame, calibration: CalibrationConfig, sort: bool = True) -> pd.DataFrame:
@@ -50,6 +51,7 @@ def get_data_in_location(
     population_name: str,
     location_key: str,
     data_location_format: str = "ISO",
+    custom_location: CustomLocation | None = None,
 ) -> pd.DataFrame:
     """
     Get data for a specific location.
@@ -75,6 +77,16 @@ def get_data_in_location(
         Filtered data for the location.
     """
     location_name, location_type = parse_population_name(population_name)
+
+    if data_location_format == "location_id":
+        target = custom_location.location_id if custom_location is not None else get_hub_location_id(population_name)
+        return data[data[location_key].astype(str) == target]
+
+    if location_type == "custom" or (custom_location is not None and population_name == custom_location.location_id):
+        target = convert_location_name_format(
+            population_name, data_location_format, location_type="custom", custom_location=custom_location
+        )
+        return data[data[location_key].astype(str) == target]
 
     if location_type == "iso":
         location_iso = convert_location_name_format(location_name, "ISO")

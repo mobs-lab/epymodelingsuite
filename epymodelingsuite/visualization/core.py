@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 
 from ..schema.output import FigureOutputTypeEnum, OutputObject
+from ..utils.custom_locations import CUSTOM_PREFIX, CustomLocation
 from ..utils.location import (
     convert_location_name_format,
     get_parent_region,
@@ -23,7 +24,7 @@ MEDIAN_QUANTILE = 0.5
 # == Helper functions ==
 
 
-def _get_location_sort_key(location: str) -> tuple[str, str]:
+def _get_location_sort_key(location: str, custom_location: CustomLocation | None = None) -> tuple[str, str]:
     """
     Get sort key for a location (state, location_name).
 
@@ -41,9 +42,11 @@ def _get_location_sort_key(location: str) -> tuple[str, str]:
     tuple[str, str]
         (state_key, location_name) for sorting.
     """
+    if custom_location is not None:
+        return (custom_location.parent_iso, custom_location.location_id)
     try:
         # Try to get parent state abbreviation
-        state_abbrev = get_parent_region(location, output_format="abbreviation")
+        state_abbrev = get_parent_region(location, output_format="abbreviation", custom_location=custom_location)
         return (state_abbrev, location)
     except (ValueError, KeyError):
         # For ISO locations or unknown, extract state code or sort last
@@ -53,7 +56,9 @@ def _get_location_sort_key(location: str) -> tuple[str, str]:
         return ("ZZZ", location)
 
 
-def sort_locations_by_state(locations: list[str] | set[str]) -> list[str]:
+def sort_locations_by_state(
+    locations: list[str] | set[str], custom_locations: dict[str, CustomLocation] | None = None
+) -> list[str]:
     """
     Sort locations by state, then alphabetically within each state.
 
@@ -67,10 +72,10 @@ def sort_locations_by_state(locations: list[str] | set[str]) -> list[str]:
     list of str
         Sorted location names.
     """
-    return sorted(locations, key=_get_location_sort_key)
+    return sorted(locations, key=lambda loc: _get_location_sort_key(loc, (custom_locations or {}).get(loc)))
 
 
-def format_location_name(location: str) -> str:
+def format_location_name(location: str, custom_location: CustomLocation | None = None) -> str:
     """
     Convert location name from epydemix format to clean readable name.
 
@@ -87,6 +92,8 @@ def format_location_name(location: str) -> str:
     str
         Clean location name (e.g., "Texas", "Greater Boston, MA").
     """
+    if custom_location is not None or location.startswith(CUSTOM_PREFIX):
+        return convert_location_name_format(location, "name_short", custom_location=custom_location)
     try:
         location_name, location_type = parse_population_name(location)
         if location_type == "metrocast_location":
@@ -276,6 +283,7 @@ def plot_quantiles_grid(  # noqa: PLR0913
     color: str = "C0",
     panels_per_row: int = 4,
     figsize: tuple[float, float] | None = None,
+    custom_locations: dict[str, CustomLocation] | None = None,
 ) -> tuple[plt.Figure, np.ndarray]:
     """
     Create grid of quantile plots for multiple locations.
@@ -345,7 +353,7 @@ def plot_quantiles_grid(  # noqa: PLR0913
             date_col=date_col,
             quantile_col=quantile_col,
             color=color,
-            title=format_location_name(location),
+            title=format_location_name(location, (custom_locations or {}).get(location)),
             ax=ax,
         )
 
@@ -775,6 +783,7 @@ def plot_quantile_panels_grid(  # noqa: PLR0913
     ylabel: str | None = None,
     xlabel_interval: str | None = None,
     suptitle: str | None = None,
+    custom_locations: dict[str, CustomLocation] | None = None,
 ) -> tuple[plt.Figure, np.ndarray]:
     """
     Draw a grid with one quantile panel per location.
@@ -869,7 +878,7 @@ def plot_quantile_panels_grid(  # noqa: PLR0913
         locations.update(location_calibration_quantiles.keys())
     if location_projection_quantiles is not None:
         locations.update(location_projection_quantiles.keys())
-    locations = sort_locations_by_state(locations)
+    locations = sort_locations_by_state(locations, custom_locations)
 
     if not locations:
         msg = "No locations provided"
@@ -909,7 +918,7 @@ def plot_quantile_panels_grid(  # noqa: PLR0913
             surveillance_size=surveillance_size,
             fitting_window_start=fitting_window_start,
             fitting_window_end=fitting_window_end,
-            title=format_location_name(location),
+            title=format_location_name(location, (custom_locations or {}).get(location)),
             ax=ax,
             xlabel_interval=xlabel_interval,
             ylabel=ylabel if c == 0 else None,
@@ -1145,6 +1154,7 @@ def plot_posterior_histogram_grid(
     bins: int = 25,
     figsize: tuple[float, float] | None = None,
     start_date_reference: str | None = None,
+    location_labels: dict[str, str] | None = None,
 ) -> tuple[plt.Figure, np.ndarray]:
     """
     Create grid of posterior histograms (rows=locations, cols=parameters).
@@ -1209,7 +1219,7 @@ def plot_posterior_histogram_grid(
 
             # Only first column keeps the location label
             if j == 0:
-                ax.set_ylabel(location)
+                ax.set_ylabel((location_labels or {}).get(location, location))
             else:
                 ax.set_ylabel("")
 

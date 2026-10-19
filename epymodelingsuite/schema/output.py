@@ -6,8 +6,7 @@ from typing import Any
 from pydantic import BaseModel, Field, ValidationInfo, field_validator, model_validator
 
 from ..output.trajectory_samples import SAMPLE_SELECTORS
-from ..utils import validate_iso3166
-from ..utils.location import METROCAST_PREFIX, get_metrocast_locations
+from ..utils.location import validate_population_names
 from .common import InputFilePath, Meta
 
 logger = logging.getLogger(__name__)
@@ -161,14 +160,22 @@ class ObservedValuesConfig(BaseModel):
     location_column: str = Field(description="Name of column containing location in observed data CSV")
     location_format: str = Field(
         default="ISO",
-        description="Format of location identifiers in observed data. Options: ISO, FIPS, abbreviation, name, epydemix_population, metrocast_location_id",
+        description="Format of location identifiers in observed data. Options: ISO, FIPS, abbreviation, name, epydemix_population, metrocast_location_id, location_id",
     )
 
     @field_validator("location_format")
     @classmethod
     def validate_location_format(cls, v: str) -> str:
         """Ensure location_format is a valid option."""
-        valid_formats = {"ISO", "FIPS", "abbreviation", "name", "epydemix_population", "metrocast_location_id"}
+        valid_formats = {
+            "ISO",
+            "FIPS",
+            "abbreviation",
+            "name",
+            "epydemix_population",
+            "metrocast_location_id",
+            "location_id",
+        }
         if v not in valid_formats:
             msg = f"location_format must be one of {valid_formats}, got '{v}'"
             raise ValueError(msg)
@@ -695,14 +702,11 @@ class QuantilesPlotConfig(BaseModel):
     @field_validator("single")
     @classmethod
     def validate_single_plot_locations(cls, v: list[str]):
-        """Validate each location as an ISO 3166 code or a metrocast location ID (optionally prefixed)."""
+        """Validate built-in references and custom ID syntax; resolve custom IDs against results at output."""
         if isinstance(v, bool):
             return v
-        metrocast_ids = set(get_metrocast_locations()["metrocast_location_id"])
-        return [
-            population if population.removeprefix(METROCAST_PREFIX) in metrocast_ids else validate_iso3166(population)
-            for population in v
-        ]
+        validate_population_names(v)
+        return v
 
 
 class CategoricalPlotConfig(BaseModel):

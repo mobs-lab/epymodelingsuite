@@ -12,6 +12,7 @@ import pandas as pd
 from pydantic import BaseModel
 
 from ..builders.utils import get_data_in_location
+from ..utils.custom_locations import CustomLocation
 from .calibration import CalibrationConfig
 from .common import InputFile
 
@@ -72,6 +73,7 @@ def validate_calibration_data(
     calibration_config: CalibrationConfig,
     population_names: list[str],
     observed_data: pd.DataFrame,
+    custom_locations: dict[str, CustomLocation] | None = None,
 ) -> tuple[list[str], list[str]]:
     """
     Validate data availability for each location in fitting window.
@@ -120,7 +122,13 @@ def validate_calibration_data(
     invalid = []
 
     for location in population_names:
-        location_data = get_data_in_location(observed_data, location, location_column, location_format)
+        custom = (custom_locations or {}).get(location)
+        if custom is not None:
+            location_data = get_data_in_location(
+                observed_data, location, location_column, location_format, custom_location=custom
+            )
+        else:
+            location_data = get_data_in_location(observed_data, location, location_column, location_format)
 
         if location_data.empty:
             logger.error(
@@ -185,6 +193,7 @@ def validate_calibration_data_for_config_set(
             load_basemodel_config_from_file,
             load_calibration_config_from_file,
         )
+        from ..utils.custom_locations import load_custom_locations
         from ..utils.location import resolve_population_names
 
         # Load configs
@@ -192,11 +201,13 @@ def validate_calibration_data_for_config_set(
         calibration_config = load_calibration_config_from_file(calibration_path)
 
         calibration = calibration_config.modelset.calibration
+        custom_populations = load_custom_locations(basemodel_config.model)
+        custom_locations = {name: population.location for name, population in custom_populations.items()}
 
         # Resolve population names (same logic as create_model_collection)
         population_names = calibration_config.modelset.population_names
         if population_names:
-            population_names = [name for name, _ in resolve_population_names(population_names)]
+            population_names = [name for name, _ in resolve_population_names(population_names, custom_locations)]
         else:
             # Use population from basemodel
             population_names = [basemodel_config.model.population.name]
@@ -221,6 +232,7 @@ def validate_calibration_data_for_config_set(
             calibration_config=calibration_config,
             population_names=population_names,
             observed_data=observed_in_window,
+            custom_locations=custom_locations,
         )
 
         if not valid_locations:

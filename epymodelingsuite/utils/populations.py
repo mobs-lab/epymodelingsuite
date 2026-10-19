@@ -6,6 +6,7 @@ import pandas as pd
 from epydemix import EpiModel
 from epydemix.population import Population
 
+from .custom_locations import CUSTOM_PREFIX, CustomLocation
 from .location import METROCAST_PREFIX, convert_location_name_format, get_metrocast_locations
 
 logger = logging.getLogger(__name__)
@@ -209,7 +210,7 @@ def get_population_codebook() -> pd.DataFrame:
     return population_codebook
 
 
-def get_total_population(epydemix_name: str) -> int:
+def get_total_population(epydemix_name: str, custom_location: CustomLocation | None = None) -> int:
     """Get total population for a given epydemix location name.
 
     Handles both ISO locations (countries/states) and metrocast locations.
@@ -232,6 +233,14 @@ def get_total_population(epydemix_name: str) -> int:
     ValueError
         If a metrocast location is not found in metrocast data
     """
+    if epydemix_name.startswith(CUSTOM_PREFIX) or custom_location is not None:
+        if custom_location is None or epydemix_name not in (
+            custom_location.population_name,
+            custom_location.location_id,
+        ):
+            raise ValueError(f"Matching custom location metadata required for {epydemix_name}")
+        return int(custom_location.total_population)
+
     # Handle metrocast locations
     if epydemix_name.startswith(METROCAST_PREFIX):
         location_name = epydemix_name[len(METROCAST_PREFIX) :]

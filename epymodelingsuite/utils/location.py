@@ -7,6 +7,8 @@ import sys
 import pandas as pd
 import pycountry
 
+from .custom_locations import CUSTOM_PREFIX, CustomLocation
+
 
 def get_location_codebook() -> pd.DataFrame:
     """Retrieve the location codebook as a Pandas DataFrame."""
@@ -24,8 +26,12 @@ def get_flusight_locations() -> pd.DataFrame:
     return flusight_locations
 
 
-def get_flusight_population(location: str) -> int:
+def get_flusight_population(location: str, custom_location: CustomLocation | None = None) -> int:
     """Retrieve the population of the specified location."""
+    if custom_location is not None:
+        if location not in (custom_location.location_id, custom_location.population_name):
+            raise ValueError(f"Custom location metadata does not match {location}")
+        return int(custom_location.total_population)
     flusight_locations = get_flusight_locations()
 
     return flusight_locations[flusight_locations.location == convert_location_name_format(location, "FIPS")][
@@ -41,6 +47,7 @@ def convert_location_name_format(
     output_format: str,
     input_format: str | None = None,
     location_type: str | None = None,
+    custom_location: CustomLocation | None = None,
 ) -> str:
     """
     Convert location name from any valid format to the specified format.
@@ -81,6 +88,26 @@ def convert_location_name_format(
     str
         The converted location name.
     """
+    if (
+        value.startswith(CUSTOM_PREFIX)
+        or location_type == "custom"
+        or (custom_location is not None and value in (custom_location.location_id, custom_location.population_name))
+    ):
+        location_id = value.removeprefix(CUSTOM_PREFIX)
+        if custom_location is not None and custom_location.location_id != location_id:
+            raise ValueError(f"Custom location metadata does not match {value}")
+        if output_format == "location_id":
+            return location_id
+        if output_format == "epydemix_population":
+            return f"{CUSTOM_PREFIX}{location_id}"
+        if custom_location is None:
+            raise ValueError(f"Custom location metadata required for {value}")
+        if output_format == "name":
+            return custom_location.location_name
+        if output_format == "name_short":
+            return custom_location.location_name_short
+        raise ValueError(f"Unsupported output format {output_format!r} for custom location {location_id}")
+
     # Auto-detect location_type if not provided
     if location_type is None:
         if value.startswith(METROCAST_PREFIX):
@@ -220,6 +247,7 @@ def get_parent_region(
     location_name: str,
     output_format: str = "ISO",
     granularity: str = "state",
+    custom_location: CustomLocation | None = None,
 ) -> str:
     """
     Get parent region for a location in specified format.
@@ -256,7 +284,16 @@ def get_parent_region(
     parsed_name, location_type = parse_population_name(location_name)
 
     # Determine if this is a metrocast location or ISO location
-    if location_type == "metrocast_location":
+    if location_type == "custom" or (
+        custom_location is not None and location_name in (custom_location.location_id, custom_location.population_name)
+    ):
+        if custom_location is None or location_name not in (
+            custom_location.location_id,
+            custom_location.population_name,
+        ):
+            raise ValueError(f"Matching custom location metadata required for {location_name}")
+        state_iso = custom_location.parent_iso
+    elif location_type == "metrocast_location":
         # Prefixed metrocast location
         metrocast_locs = get_metrocast_locations()
         location_row = metrocast_locs[metrocast_locs["metrocast_location_id"] == parsed_name]
@@ -330,10 +367,18 @@ def validate_metrocast_location(location_id: str) -> str:
     return location_id
 
 
+def validate_custom_location_id(value: str) -> str:
+    """Check an external location identifier without reading its CSV."""
+    if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]*", value):
+        raise ValueError(f"Invalid custom location ID: {value}")
+    return value
+
+
 # Registry for location validators
 LOCATION_VALIDATOR_REGISTRY = {
     "iso": validate_iso3166,
     "metrocast_location": validate_metrocast_location,
+    "custom": validate_custom_location_id,
 }
 
 
@@ -387,13 +432,42 @@ def parse_population_name(population_name: str) -> tuple[str, str]:
         - For countries/states: ("United_States_Massachusetts", "iso")
         - For metrocast: ("denver", "metrocast_location")
     """
+    if population_name.startswith(CUSTOM_PREFIX):
+        return population_name[len(CUSTOM_PREFIX) :], "custom"
     if population_name.startswith(METROCAST_PREFIX):
         location_name = population_name[len(METROCAST_PREFIX) :]
         return location_name, "metrocast_location"
     return population_name, "iso"
 
 
-def resolve_population_names(population_names: list[str | dict[str, str]]) -> list[tuple[str, str]]:
+def validate_population_names(population_names: list[str | dict[str, str]]) -> None:
+    """Validate config references; external custom IDs are resolved during building."""
+    import warnings
+
+    metrocast_ids = set(get_metrocast_locations()["metrocast_location_id"])
+    for population in population_names:
+        if isinstance(population, dict):
+            name = population.get("name")
+            if not name:
+                raise ValueError("population dict must have 'name' field")
+            validate_location_by_type(name, population.get("type", "iso"))
+        elif not isinstance(population, str):
+            raise ValueError(f"Invalid population format: {population}")
+        elif population == "all":
+            warnings.warn(
+                "The 'all' keyword is deprecated. Use 'all-states' instead.", DeprecationWarning, stacklevel=2
+            )
+        elif population in ("all-states", "all-metrocast") or population in metrocast_ids:
+            continue
+        elif re.fullmatch(r"[A-Z]{2}(?:-[A-Z0-9]+)?", population):
+            validate_iso3166(population)
+        else:
+            validate_custom_location_id(population)
+
+
+def resolve_population_names(
+    population_names: list[str | dict[str, str]], custom_locations: dict | None = None
+) -> list[tuple[str, str]]:
     """
     Expand modelset population names into validated ``(name, location_type)`` pairs.
 
@@ -417,6 +491,7 @@ def resolve_population_names(population_names: list[str | dict[str, str]]) -> li
     """
     import warnings
 
+    custom_locations = custom_locations or {}
     metrocast_ids = get_metrocast_locations()["metrocast_location_id"].tolist()
     resolved = []
     for population in population_names:
@@ -425,6 +500,8 @@ def resolve_population_names(population_names: list[str | dict[str, str]]) -> li
             if not name:
                 raise ValueError("population dict must have 'name' field")
             location_type = population.get("type", "iso")
+            if location_type == "custom" and name not in custom_locations:
+                raise ValueError(f"Unknown custom location: {name}")
             resolved.append((validate_location_by_type(name, location_type), location_type))
         elif population in ("all", "all-states"):
             if population == "all":
@@ -437,6 +514,8 @@ def resolve_population_names(population_names: list[str | dict[str, str]]) -> li
             resolved.extend(
                 (location_id, "metrocast_location") for location_id in metrocast_ids if location_id != "nyc"
             )
+        elif isinstance(population, str) and population.removeprefix(CUSTOM_PREFIX) in custom_locations:
+            resolved.append((population.removeprefix(CUSTOM_PREFIX), "custom"))
         elif population in metrocast_ids:
             resolved.append((population, "metrocast_location"))
         elif isinstance(population, str):
@@ -468,6 +547,8 @@ def get_hub_location_id(population_name: str) -> str:
         Location ID appropriate for hub CSV output format.
     """
     location_name, location_type = parse_population_name(population_name)
-    if location_type == "metrocast_location":
+    if location_type in ("metrocast_location", "custom"):
         return location_name
+    if population_name in get_metrocast_locations()["metrocast_location_id"].values:
+        return population_name
     return convert_location_name_format(population_name, "FIPS")

@@ -26,6 +26,7 @@ from ..schema.output import (
     QuantilesPlotConfig,
 )
 from ..utils import convert_location_name_format
+from ..utils.custom_locations import CustomLocation
 from .core import (
     figure_to_output_object,
     format_location_name,
@@ -111,8 +112,19 @@ def get_locations_to_plot(calibrations: list[CalibrationOutput], single_config: 
     if single_config is True:
         return {cal.population for cal in calibrations}
     if isinstance(single_config, list):
-        requested = {_to_epydemix_population_name(location) for location in single_config}
-        return {cal.population for cal in calibrations if _to_epydemix_population_name(cal.population) in requested}
+        selected = set()
+        for requested in single_config:
+            matched = {
+                cal.population
+                for cal in calibrations
+                if _to_epydemix_population_name(cal.population) == _to_epydemix_population_name(requested)
+                or (getattr(cal, "custom_location", None) is not None and requested == cal.custom_location.location_id)
+            }
+            if not matched:
+                msg = f"Requested plot location not found in results: {requested}"
+                raise ValueError(msg)
+            selected.update(matched)
+        return selected
     return set()
 
 
@@ -136,7 +148,7 @@ def _draw_quantile_panel(panel_data: PanelPlotData, ax: plt.Axes, ylabel: str | 
         fitting_window_start=panel_data.fitting_window_start,
         fitting_window_end=panel_data.fitting_window_end,
         xlabel_interval=panel_data.xlabel_interval,
-        title=format_location_name(panel_data.location) + panel_data.title_suffix,
+        title=format_location_name(panel_data.location, panel_data.custom_location) + panel_data.title_suffix,
         ylabel=ylabel,
         ax=ax,
     )
@@ -172,7 +184,10 @@ def _plot_quantiles_grid(
     plot_config: QuantilesPlotConfig,
 ) -> plt.Figure:
     """Arrange prepared panels by location; a side-by-side pair stays in the same row."""
-    locations = sort_locations_by_state(panel_data_by_location)
+    locations = sort_locations_by_state(
+        panel_data_by_location,
+        {loc: panels[0].custom_location for loc, panels in panel_data_by_location.items() if panels[0].custom_location},
+    )
     panels_per_location = len(panel_data_by_location[locations[0]])
     ncols = plot_config.grid.panels_per_row
     n_panels = len(locations) * panels_per_location
@@ -381,7 +396,9 @@ def generate_single_location_posterior_plots(
                 notes.append(note)
             title_suffix, footnote = _format_plot_notes(notes)
 
-            fig.suptitle(f"Posterior Distributions - {location}{title_suffix}", fontsize=14, y=0.995)
+            custom_location = getattr(calibration, "custom_location", None)
+            label = format_location_name(location, custom_location) if custom_location else location
+            fig.suptitle(f"Posterior Distributions - {label}{title_suffix}", fontsize=14, y=0.995)
             fig.tight_layout()
             if footnote:
                 _add_footnote(fig, footnote)
@@ -432,11 +449,14 @@ def generate_posterior_grid_plot(
 
     location_posteriors = {}
     all_params = set()
+    location_labels = {}
     location_notes: dict[str, tuple[str, str]] = {}  # loc -> (title_suffix, footnote)
 
     # Collect posterior distributions for each location
     for calibration in calibrations:
         loc = calibration.population
+        custom_location = getattr(calibration, "custom_location", None)
+        location_labels[loc] = format_location_name(loc, custom_location) if custom_location else loc
 
         # Check for incomplete generations
         notes = []
@@ -461,6 +481,7 @@ def generate_posterior_grid_plot(
             fig, axes = plot_posterior_histogram_grid(
                 location_posteriors=location_posteriors,
                 parameters=parameters,
+                location_labels=location_labels,
                 bins=plots_config.posterior.bins,
                 start_date_reference=start_date_reference,
             )
@@ -473,8 +494,8 @@ def generate_posterior_grid_plot(
                 if not ylabel:
                     continue
                 for loc, (suffix, fn) in location_notes.items():
-                    if suffix and ylabel == loc:
-                        ax_first.set_ylabel(loc + suffix)
+                    if suffix and ylabel == location_labels[loc]:
+                        ax_first.set_ylabel(location_labels[loc] + suffix)
                         grid_footnotes.add(fn)
                         break
             if grid_footnotes:
@@ -491,6 +512,7 @@ def generate_categorical_plots(
     plots_config: PlotsConfig,
     out_dict: dict[str, list[OutputObject]],
     hub_format_data: pd.DataFrame | None = None,
+    custom_locations: dict[str, CustomLocation] | None = None,
 ) -> None:
     """
     Generate categorical forecast probability plots and add to output dictionary.
@@ -547,7 +569,9 @@ def generate_categorical_plots(
 
     # Convert location codes to readable names
     df_rate_trends = df_rate_trends.copy()
-    df_rate_trends["location"] = df_rate_trends["location"].apply(format_location_name)
+    df_rate_trends["location"] = df_rate_trends["location"].apply(
+        lambda loc: format_location_name(loc, (custom_locations or {}).get(loc))
+    )
 
     # Default category labels (prettier display names)
     default_category_labels = {

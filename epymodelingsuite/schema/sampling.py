@@ -1,6 +1,6 @@
 import logging
 
-from ..utils.location import resolve_population_names
+from ..utils.location import validate_population_names
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +129,7 @@ class SamplingModelset(BaseModel):
         - Dict format (explicit type): {"name": "denver", "type": "metrocast_location"}
         - Keywords: "all", "all-states", "all-metrocast"
         """
-        resolve_population_names(v)
+        validate_population_names(v)
         return v
 
 

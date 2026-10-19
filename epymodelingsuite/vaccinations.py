@@ -5,6 +5,7 @@ from collections.abc import Callable
 import pandas as pd
 from epydemix.model import EpiModel
 
+from .utils.custom_locations import CustomLocation
 from .utils.location import (
     get_metrocast_population_data,
     get_parent_region,
@@ -874,6 +875,7 @@ def add_vaccination_schedule(
     source_comp: str,
     target_comp: str,
     vaccination_schedule: pd.DataFrame,
+    custom_location: CustomLocation | None = None,
 ) -> EpiModel:
     """
     Register and add a vaccination transition to the model using a time-varying schedule by age group.
@@ -914,7 +916,9 @@ def add_vaccination_schedule(
     from .utils import convert_location_name_format
 
     # Location handling
-    iso_location = convert_location_name_format(model.population.name, "ISO")
+    iso_location = (
+        custom_location.parent_iso if custom_location else convert_location_name_format(model.population.name, "ISO")
+    )
 
     if "location" not in vaccination_schedule.columns:
         raise ValueError(
@@ -931,7 +935,12 @@ def add_vaccination_schedule(
     age_groups_model = model.population.Nk_names
     if age_groups_model is None:
         raise ValueError("Model population must have Nk_names defined for vaccination scheduling.")
-    scaling_factors = _get_vaccination_scaling_factors(model.population.name, age_groups_model)
+    if custom_location is not None:
+        if custom_location.vaccination_scaling is None:
+            raise ValueError("Custom location vaccination scaling was not resolved during model construction.")
+        scaling_factors = dict(custom_location.vaccination_scaling)
+    else:
+        scaling_factors = _get_vaccination_scaling_factors(model.population.name, age_groups_model)
 
     for age_group, factor in scaling_factors.items():
         if factor != 1.0 and age_group in vaccination_schedule.columns:

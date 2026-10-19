@@ -25,11 +25,13 @@ from ..schema.output import (
     FlusightPropED,
     ObservedValuesConfig,
     OutputConfig,
+    OutputConfiguration,
     OutputObject,
     get_flusight_categorical_horizons,
     get_metrocast_quantiles,
 )
 from ..telemetry import ExecutionTelemetry
+from ..utils.custom_locations import CustomLocation
 from ..utils.location import (
     convert_location_name_format,
     get_flusight_population,
@@ -42,12 +44,13 @@ from ..visualization.generators import (
     generate_posterior_grid_plot,
     generate_quantile_plots,
     generate_single_location_posterior_plots,
+    get_locations_to_plot,
 )
 
 logger = logging.getLogger(__name__)
 
 
-def get_plot_location_label(population_name: str) -> str:
+def get_plot_location_label(population_name: str, custom_location: CustomLocation | None = None) -> str:
     """
     Convert population name to human-readable label for plot titles.
 
@@ -65,6 +68,8 @@ def get_plot_location_label(population_name: str) -> str:
     str
         Human-readable location label for plot titles.
     """
+    if custom_location is not None:
+        return convert_location_name_format(population_name, "name_short", custom_location=custom_location)
     location_name, location_type = parse_population_name(population_name)
     if location_type == "metrocast_location":
         return convert_location_name_format(location_name, "name_short", location_type="metrocast_location")
@@ -108,7 +113,7 @@ def filter_failed_projections(calibration_results: CalibrationResults) -> Calibr
         # There can be multiple scenarios. The default is "baseline".
         for scenario_id in calibration_results.projections:
             projections = calibration_results.projections[scenario_id]
-            if not projections:
+            if projections is None or len(projections) == 0:
                 continue
 
             # Compute mask once so we can apply it to aligned structures (projection_parameters).
@@ -178,7 +183,7 @@ def filter_failed_calibration_trajectories(calibration_results: CalibrationResul
         # Filter each generation's trajectories
         for generation in calibration_results.selected_trajectories:
             trajectories = calibration_results.selected_trajectories[generation]
-            if trajectories:
+            if trajectories is not None and len(trajectories) > 0:
                 original_count = len(trajectories)
                 # Filter out failed trajectories
                 valid_trajectories = []
@@ -881,6 +886,33 @@ def register_output_generator(kind_set):
     return deco
 
 
+def _validate_custom_output_locations(
+    results: Sequence[SimulationOutput | CalibrationOutput], output: OutputConfiguration
+) -> None:
+    """Validate saved custom metadata before formatting or rendering can hide errors."""
+    for result in results:
+        custom = getattr(result, "custom_location", None)
+        custom = custom if isinstance(custom, CustomLocation) else None
+        if result.population.startswith("custom_location_"):
+            if custom is None or custom.population_name != result.population:
+                msg = f"Missing or inconsistent custom location metadata for {result.population}"
+                raise ValueError(msg)
+        elif custom is not None:
+            msg = f"Custom location metadata does not match population {result.population}"
+            raise ValueError(msg)
+        if custom is not None and output.flusight_format and not output.flusight_format.metrocast:
+            msg = "Custom locations require flusight_format.metrocast=true; official FluSight calculations require ISO locations"
+            raise ValueError(msg)
+        if (
+            custom is not None
+            and output.flusight_format
+            and output.flusight_format.prop_ed
+            and output.flusight_format.prop_ed.strategy != "transition"
+        ):
+            msg = "Custom locations do not support ISO-only window-based prop ED rescaling; use transition output"
+            raise ValueError(msg)
+
+
 @register_output_generator({"simulations", "output_config"})
 def generate_simulation_outputs(
     *, simulations: list[SimulationOutput], output_config: OutputConfig, **_
@@ -904,6 +936,7 @@ def generate_simulation_outputs(
     """
     logger.info("OUTPUT GENERATOR: dispatched for simulation")
     output = output_config.output
+    _validate_custom_output_locations(simulations, output)
     warnings = set()
 
     # Initialize lists for efficient DataFrame concatenation (converted to DataFrames after loops)
@@ -1137,6 +1170,10 @@ def generate_calibration_outputs(
     """
     logger.info("OUTPUT GENERATOR: dispatched for calibration")
     output = output_config.output
+    _validate_custom_output_locations(calibrations, output)
+    if output.plots:
+        get_locations_to_plot(calibrations, output.plots.quantiles.single)
+        get_locations_to_plot(calibrations, output.plots.posterior.single)
     warnings = set()
 
     # Initialize structures for efficient DataFrame concatenation (converted to DataFrames after loops)
@@ -1164,7 +1201,9 @@ def generate_calibration_outputs(
                     for generation in output.quantiles.calibration:
                         try:
                             cal_trajs = calibration.results.get_selected_trajectories(generation)
-                            cal_dates = cal_trajs[0].get("date") if cal_trajs else None
+                            cal_dates = (
+                                cal_trajs[0].get("date") if cal_trajs is not None and len(cal_trajs) > 0 else None
+                            )
                             quancal_df = get_calibration_quantiles(
                                 calibration.results,
                                 quantiles=output.quantiles.selections,
@@ -1188,7 +1227,7 @@ def generate_calibration_outputs(
                 else:
                     try:
                         cal_trajs = calibration.results.get_selected_trajectories()
-                        cal_dates = cal_trajs[0].get("date") if cal_trajs else None
+                        cal_dates = cal_trajs[0].get("date") if cal_trajs is not None and len(cal_trajs) > 0 else None
                         quancal_df = get_calibration_quantiles(
                             calibration.results,
                             quantiles=output.quantiles.selections,
@@ -1213,7 +1252,7 @@ def generate_calibration_outputs(
                 continue
             try:
                 proj_sims = calibration.results.projections.get("baseline", [])
-                proj_dates = proj_sims[0].get("date") if proj_sims else None
+                proj_dates = proj_sims[0].get("date") if proj_sims is not None and len(proj_sims) > 0 else None
                 quan_df = get_projection_quantiles(
                     calibration.results,
                     quantiles=output.quantiles.selections,
@@ -1466,7 +1505,7 @@ def generate_calibration_outputs(
                 try:
                     # FRAGILE: the name 'hospitalizations' is user-supplied in the modelset as the column to look for in the surveillance data.
                     proj_sims = calibration.results.projections.get("baseline", [])
-                    proj_dates = proj_sims[0].get("date") if proj_sims else None
+                    proj_dates = proj_sims[0].get("date") if proj_sims is not None and len(proj_sims) > 0 else None
                     quanf_df = get_projection_quantiles(
                         calibration.results,
                         quantiles=flusight_quantiles,
@@ -1513,7 +1552,7 @@ def generate_calibration_outputs(
                 for calibration in calibrations:
                     try:
                         cal_trajs = calibration.results.get_selected_trajectories()
-                        cal_dates = cal_trajs[0].get("date") if cal_trajs else None
+                        cal_dates = cal_trajs[0].get("date") if cal_trajs is not None and len(cal_trajs) > 0 else None
                         quancalflu_df = get_calibration_quantiles(
                             calibration.results,
                             quantiles=flusight_quantiles,
@@ -1540,7 +1579,7 @@ def generate_calibration_outputs(
                 for calibration in calibrations:
                     try:
                         proj_sims = calibration.results.projections.get("baseline", [])
-                        proj_dates = proj_sims[0].get("date") if proj_sims else None
+                        proj_dates = proj_sims[0].get("date") if proj_sims is not None and len(proj_sims) > 0 else None
                         quanproj_df = get_projection_quantiles(
                             calibration.results,
                             quantiles=flusight_quantiles,
@@ -1613,7 +1652,11 @@ def generate_calibration_outputs(
 
                 # Filter surveillance for location
                 # Convert calibration population to surveillance data's location format
-                target_location = convert_location_name_format(calibration.population, source_config.location_format)
+                target_location = convert_location_name_format(
+                    calibration.population,
+                    source_config.location_format,
+                    custom_location=getattr(calibration, "custom_location", None),
+                )
                 surv = surveillance[surveillance[source_config.location_column] == target_location]
                 surv = surv.drop(columns=source_config.location_column).rename(
                     columns={
@@ -1630,7 +1673,9 @@ def generate_calibration_outputs(
                         proj_dates=traj["date"],
                         proj_values=traj["hospitalizations"],
                         observed=surv,
-                        population=get_flusight_population(calibration.population),
+                        population=get_flusight_population(
+                            calibration.population, custom_location=getattr(calibration, "custom_location", None)
+                        ),
                     )
                     trends_df = add_metadata_columns(
                         trends_df,
@@ -1700,7 +1745,7 @@ def generate_calibration_outputs(
             # Fitting window
             try:
                 selected = calibration.results.get_selected_trajectories()
-                dates = np.asarray(selected[0].get("date", [])) if selected else None
+                dates = np.asarray(selected[0].get("date", [])) if selected is not None and len(selected) > 0 else None
                 if dates is not None and len(dates) > 0:
                     meta_dict["fitting_start"].append(str(min(dates).date()))
                     meta_dict["fitting_end"].append(str(max(dates).date()))
@@ -1715,7 +1760,11 @@ def generate_calibration_outputs(
             # Projection window
             try:
                 projections = calibration.results.projections.get("baseline", [])
-                dates = np.asarray(projections[0].get("date", [])) if projections else None
+                dates = (
+                    np.asarray(projections[0].get("date", []))
+                    if projections is not None and len(projections) > 0
+                    else None
+                )
                 if dates is not None and len(dates) > 0:
                     meta_dict["start_date"].append(str(min(dates).date()))
                     meta_dict["end_date"].append(str(max(dates).date()))
@@ -1855,7 +1904,16 @@ def generate_calibration_outputs(
         # Generate categorical plots (requires FluSight rate-trend data)
         if plots_config.categorical:
             logger.info("  - Generating categorical plots")
-            generate_categorical_plots(plots_config, out_dict, hub_format_output)
+            generate_categorical_plots(
+                plots_config,
+                out_dict,
+                hub_format_output,
+                {
+                    cal.custom_location.location_id: cal.custom_location
+                    for cal in calibrations
+                    if getattr(cal, "custom_location", None) is not None
+                },
+            )
 
     logger.info("Output generation complete. Generated %d output types", len(out_dict))
     return out_dict

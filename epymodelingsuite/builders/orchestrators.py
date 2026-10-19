@@ -17,6 +17,7 @@ from ..schema.basemodel import BaseEpiModel, BasemodelConfig, LocationTypeEnum, 
 from ..schema.calibration import CalibrationConfig, ComparisonSpec
 from ..school_closures import make_school_closure_dict
 from ..utils import make_dummy_population
+from ..utils.custom_locations import CUSTOM_PREFIX, CustomLocation, CustomPopulation, load_custom_locations
 from ..utils.location import get_metrocast_locations, get_parent_region, resolve_population_names
 from ..vaccinations import reaggregate_vaccines, scenario_to_epydemix
 from .base import (
@@ -41,6 +42,7 @@ logger = logging.getLogger(__name__)
 def create_model_collection(
     basemodel: BaseEpiModel,
     population_names: list[str] | None,
+    custom_populations: dict[str, CustomPopulation] | None = None,
 ) -> tuple[list[EpiModel], list[str]]:
     """
     Create a collection of EpiModels with dummy population setup.
@@ -99,7 +101,7 @@ def create_model_collection(
     # Create models with populations set
     if population_names:
         # Resolve keywords and normalize to (name, type) tuples
-        resolved_locations = resolve_population_names(population_names)
+        resolved_locations = resolve_population_names(population_names, custom_locations=custom_populations)
 
         # Create models for each location
         resolved_names = []
@@ -111,11 +113,15 @@ def create_model_collection(
                 age_groups=basemodel.population.age_groups,
                 contact_matrix=basemodel.population.contact_matrix,
             )
-            set_population_from_config(m, pop_config)
+            set_population_from_config(m, pop_config, custom_population=(custom_populations or {}).get(name))
             models.append(m)
             resolved_names.append(name)
     else:
-        set_population_from_config(init_model, basemodel.population)
+        set_population_from_config(
+            init_model,
+            basemodel.population,
+            custom_population=(custom_populations or {}).get(basemodel.population.name),
+        )
         models.append(init_model)
         resolved_names = [basemodel.population.name]
 
@@ -127,6 +133,7 @@ def setup_vaccination_schedules(
     models: list[EpiModel],
     sampled_start_timespan: Timespan | None,
     population_names: list[str],
+    custom_locations: dict[str, CustomLocation] | None = None,
 ) -> tuple[list[EpiModel], dict | None]:
     """
     Set up vaccination schedules, handling start_date sampling if present.
@@ -169,7 +176,10 @@ def setup_vaccination_schedules(
     metrocast_locs = get_metrocast_locations()["metrocast_location_id"].values
     state_iso_codes = []
     for name in population_names:
-        if name in metrocast_locs:
+        custom_location = (custom_locations or {}).get(f"{CUSTOM_PREFIX}{name}")
+        if custom_location is not None:
+            state_iso_codes.append(custom_location.parent_iso)
+        elif name in metrocast_locs:
             # Metrocast location: get parent state ISO
             state_iso_codes.append(get_parent_region(name, output_format="ISO"))
         else:
@@ -182,19 +192,29 @@ def setup_vaccination_schedules(
     if sampled_start_timespan:
         if basemodel.vaccination.preprocessed_vaccination_data_path:
             earliest_vax = load_preprocessed_vaccination_schedule(basemodel.vaccination)
-            return models, earliest_vax
-        earliest_vax = scenario_to_epydemix(
-            input_filepath=basemodel.vaccination.scenario_data_path,
-            start_date=sampled_start_timespan.start_date,
-            end_date=sampled_start_timespan.end_date,
-            target_age_groups=basemodel.population.age_groups,
-            states=state_iso_codes,
-        )
+        else:
+            earliest_vax = scenario_to_epydemix(
+                input_filepath=basemodel.vaccination.scenario_data_path,
+                start_date=sampled_start_timespan.start_date,
+                end_date=sampled_start_timespan.end_date,
+                target_age_groups=basemodel.population.age_groups,
+                states=state_iso_codes,
+            )
+        for model in models:
+            location = (custom_locations or {}).get(model.population.name)
+            if location is not None and location.parent_iso not in earliest_vax["location"].unique():
+                raise ValueError(f"Location {location.parent_iso} not found in vaccination schedule data.")
         return models, earliest_vax
 
     # If start_date not sampled, add vaccination to models now
     for model in models:
-        add_vaccination_schedules_from_config(model, basemodel.transitions, basemodel.vaccination, basemodel.timespan)
+        add_vaccination_schedules_from_config(
+            model,
+            basemodel.transitions,
+            basemodel.vaccination,
+            basemodel.timespan,
+            custom_location=(custom_locations or {}).get(model.population.name),
+        )
     return models, None
 
 
@@ -203,6 +223,7 @@ def setup_interventions(
     basemodel: BaseEpiModel,
     intervention_types: list[str],
     sampled_start_timespan: Timespan | None,
+    custom_locations: dict[str, CustomLocation] | None = None,
 ) -> list[EpiModel]:
     """
     Set up interventions that depend on location but not model parameters.
@@ -251,7 +272,12 @@ def setup_interventions(
             closure_dict = make_school_closure_dict(
                 range(effective_timespan.start_date.year, effective_timespan.end_date.year + 1)
             )
-            add_school_closure_intervention_from_config(model, basemodel.interventions, closure_dict)
+            add_school_closure_intervention_from_config(
+                model,
+                basemodel.interventions,
+                closure_dict,
+                custom_location=(custom_locations or {}).get(model.population.name),
+            )
 
         # Contact matrix
         if "contact_matrix" in intervention_types:
@@ -594,6 +620,7 @@ def apply_vaccination_for_sampled_start(
     timespan: Timespan,
     earliest_vax: dict | None,
     sampled_start_timespan: Timespan | None,
+    custom_location: CustomLocation | None = None,
 ) -> None:
     """
     Apply vaccination schedules, reaggregating if start_date is sampled.
@@ -625,7 +652,12 @@ def apply_vaccination_for_sampled_start(
     # Start_date is sampled, need to reaggregate and resample
     reaggregated_vax = reaggregate_vaccines(earliest_vax, timespan.start_date)
     add_vaccination_schedules_from_config(
-        model, basemodel.transitions, basemodel.vaccination, timespan, use_schedule=reaggregated_vax
+        model,
+        basemodel.transitions,
+        basemodel.vaccination,
+        timespan,
+        use_schedule=reaggregated_vax,
+        custom_location=custom_location,
     )
 
 
@@ -731,6 +763,7 @@ def make_simulate_wrapper(
     earliest_vax: pd.DataFrame | None = None,
     post_hoc_transformation: Callable | None = None,
     rng: Generator | None = None,
+    custom_location: CustomLocation | None = None,
 ) -> Callable[[dict], dict]:
     """
     Create a simulate_wrapper function for ABCSampler calibration.
@@ -870,6 +903,7 @@ def make_simulate_wrapper(
             timespan=timespan,
             earliest_vax=earliest_vax,
             sampled_start_timespan=sampled_start_timespan,
+            custom_location=custom_location,
         )
 
         # 6. Apply seasonality (this must occur before parameter interventions to preserve parameter overrides)
@@ -1047,7 +1081,9 @@ def make_scenario_projection_simulate_wrappers(
     rng = np.random.default_rng(basemodel.random_seed)
 
     # Build a collection of EpiModels
-    models, population_names = create_model_collection(basemodel, modelset.population_names)
+    custom_populations = load_custom_locations(basemodel)
+    custom_locations = {item.location.population_name: item.location for item in custom_populations.values()}
+    models, population_names = create_model_collection(basemodel, modelset.population_names, custom_populations)
 
     # Extract intervention types
     intervention_types = []
@@ -1065,20 +1101,29 @@ def make_scenario_projection_simulate_wrappers(
         sampled_start_timespan = None
 
     # Vaccination is sensitive to location and start_date but not to model parameters.
-    models, earliest_vax = setup_vaccination_schedules(basemodel, models, sampled_start_timespan, population_names)
+    models, earliest_vax = setup_vaccination_schedules(
+        basemodel, models, sampled_start_timespan, population_names, custom_locations
+    )
 
     # These interventions are sensitive to location but not to model parameters and can be applied
     # using the earliest start_date before creating ABCSamplers.
-    models = setup_interventions(models, basemodel, intervention_types, sampled_start_timespan)
+    models = setup_interventions(models, basemodel, intervention_types, sampled_start_timespan, custom_locations)
     observed_raw = pd.read_csv(calibration.observed_data_path)
     observed_in_window = get_data_in_window(observed_raw, calibration)
     simulation_functions = []
     for model in models:
+        custom_location = custom_locations.get(model.population.name)
         # TODO: Make location column name configurable instead of hardcoded "geo_value"
         # Should be added to ComparisonSpec schema (e.g., observed_location_column)
-        observed_data = get_data_in_location(observed_in_window, model.population.name, "geo_value")
+        observed_data = get_data_in_location(
+            observed_in_window, model.population.name, "geo_value", custom_location=custom_location
+        )
         vax_state = (
-            get_data_in_location(earliest_vax, model.population.name, "location") if earliest_vax is not None else None
+            get_data_in_location(
+                earliest_vax, custom_location.parent_iso if custom_location else model.population.name, "location"
+            )
+            if earliest_vax is not None
+            else None
         )
         # Create simulate_wrapper
         simulate_wrapper = make_simulate_wrapper(
@@ -1089,6 +1134,7 @@ def make_scenario_projection_simulate_wrappers(
             sampled_start_timespan=sampled_start_timespan,
             earliest_vax=vax_state,
             rng=rng,
+            custom_location=custom_location,
         )
         simulation_functions.append(simulate_wrapper)
 

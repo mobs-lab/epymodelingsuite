@@ -7,6 +7,7 @@ from epydemix.model import EpiModel
 from epydemix.model.simulation_results import SimulationResults
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from ..utils.custom_locations import CustomLocation
 from .calibration import CalibrationStrategy
 
 
@@ -44,6 +45,7 @@ class BuilderOutput(BaseModel):
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
+    custom_location: CustomLocation | None = None
 
     primary_id: int = Field(
         description="Primary identifier of an EpiModel or ABCSampler object paired with instructions for simulation/calibration/projection."
@@ -70,6 +72,10 @@ class BuilderOutput(BaseModel):
         """
         Ensure combination of fields is valid.
         """
+        if self.custom_location is not None and self.model is not None:
+            if self.custom_location.population_name != self.model.population.name:
+                raise ValueError("Custom location metadata must match the model population")
+
         if not (self.model or self.calibrator):
             msg = "BuilderOutput must contain an EpiModel or ABCSampler."
             raise ValueError(msg)
@@ -94,6 +100,7 @@ class SimulationOutput(BaseModel):
     """Results of a call to EpiModel.run_simulations() with tracking information."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
+    custom_location: CustomLocation | None = None
 
     primary_id: int = Field(
         description="Primary identifier of an EpiModel object paired with instructions for simulation."
@@ -108,6 +115,7 @@ class CalibrationOutput(BaseModel):
     """Results of a call to ABCSampler.calibrate() or ABCSampler.run_projections() with tracking information."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
+    custom_location: CustomLocation | None = None
 
     primary_id: int = Field(
         description="Primary identifier of an ABCSampler object paired with instructions for calibration/projection."

@@ -4,6 +4,7 @@ import logging
 from functools import partial
 
 import numpy as np
+import pandas as pd
 from epydemix.model import EpiModel
 from epydemix.population import Population
 from epydemix.utils import convert_to_2Darray
@@ -11,6 +12,7 @@ from epydemix.utils import convert_to_2Darray
 from ..schema.basemodel import Compartment, Parameter, Transition
 from ..schema.basemodel import Population as PopulationConfig
 from ..utils import convert_location_name_format, load_epydemix_population
+from ..utils.custom_locations import CustomPopulation, resolve_epydemix_name
 from ..utils.expression_eval import resolve_model_name, safe_eval
 from ..utils.location import (
     METROCAST_PREFIX,
@@ -163,7 +165,32 @@ def load_metrocast_population(
     return population
 
 
-def set_population_from_config(model: EpiModel, population_config: PopulationConfig) -> EpiModel:
+def load_custom_population(
+    custom_population: CustomPopulation, age_groups: list[str], contact_matrix_override: str | None = None
+) -> Population:
+    """Build custom age counts with a parent or explicitly selected contact matrix."""
+    age_data = pd.DataFrame(
+        {
+            "age": [str(age) for age in range(84)] + ["84+"],
+            "population": custom_population.population_by_age,
+        }
+    )
+    counts = aggregate_population_by_age_groups(age_data, age_groups)
+    source = custom_population.parent_population_name
+    if contact_matrix_override:
+        source = resolve_epydemix_name(contact_matrix_override)
+    parent = load_epydemix_population(
+        source, age_group_mapping={group: _parse_age_group(group) for group in age_groups}
+    )
+    population = Population(name=custom_population.location.population_name)
+    population.add_population(Nk=np.array([counts[group] for group in age_groups], dtype=float), Nk_names=age_groups)
+    population.contact_matrices = parent.contact_matrices
+    return population
+
+
+def set_population_from_config(
+    model: EpiModel, population_config: PopulationConfig, custom_population: CustomPopulation | None = None
+) -> EpiModel:
     """
     Set the population for the EpiModel instance with location type awareness.
 
@@ -188,12 +215,18 @@ def set_population_from_config(model: EpiModel, population_config: PopulationCon
                 age_groups,
                 contact_matrix_override,
             )
-        else:  # metrocast_location
+        elif location_type == "custom":
+            if custom_population is None or custom_population.location.location_id != location_name:
+                raise ValueError(f"Matching custom population data required for {location_name}")
+            population = load_custom_population(custom_population, age_groups, contact_matrix_override)
+        elif location_type == "metrocast_location":
             population = load_metrocast_population(
                 location_name,
                 age_groups,
                 contact_matrix_override,
             )
+        else:
+            raise ValueError(f"Unsupported location type: {location_type}")
 
         model.set_population(population)
         logger.info(f"Model population set to: {location_name} (type: {location_type})")

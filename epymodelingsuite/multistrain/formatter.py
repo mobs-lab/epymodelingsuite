@@ -9,7 +9,7 @@ from ..schema.output import (
     get_metrocast_horizons,
     get_metrocast_quantiles,
 )
-from ..utils.location import convert_location_name_format
+from ..utils.location import convert_location_name_format, get_hub_location_id
 
 # fmt: off
 
@@ -192,10 +192,6 @@ def _epydemix_to_abbreviation(population: str) -> str:
     return convert_location_name_format(value=population, output_format="abbreviation", location_type="iso")
 
 
-def _strip_metrocast_prefix(population: str) -> str:
-    return population.removeprefix("metrocast_location_")
-
-
 # Everything that differs between hub submission files. `location` maps an epydemix population name to the
 # hub location id. `pmf` adds the FluSight rate-trend target, which needs surveillance for the baseline.
 # `sample_prefix` maps the population to the prefix of sample ids (`MA_hosp_00`, ...); FluSight needs ids unique
@@ -220,7 +216,7 @@ SUBMISSION_PROFILES = {
         "sample_prefix": lambda population: f"{_epydemix_to_abbreviation(population)}_ed",
     },
     "metrocast": {
-        "location": _strip_metrocast_prefix,
+        "location": get_hub_location_id,
         "target": "Flu ED visits pct",
         "decimals": 3,
         "horizons": list(get_metrocast_horizons()),
@@ -229,7 +225,7 @@ SUBMISSION_PROFILES = {
         "sample_prefix": None,
     },
     "bphc_ed": {
-        "location": _strip_metrocast_prefix,
+        "location": get_hub_location_id,
         "target": "wk inc ed signal",
         "decimals": 3,
         "horizons": list(get_flusight_horizons()),

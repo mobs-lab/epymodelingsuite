@@ -21,6 +21,7 @@ from ..schema.output import (
     QuantilesOutputTypeEnum,
     QuantilesPlotConfig,
 )
+from ..utils.custom_locations import CustomLocation
 from ..utils.quantiles import get_calibration_quantiles, get_projection_quantiles
 
 logger = logging.getLogger(__name__)
@@ -148,6 +149,7 @@ def _select_surveillance(
     surveillance: pd.DataFrame,
     location: str,
     surveillance_config: ObservedValuesConfig,
+    custom_location: CustomLocation | None = None,
 ) -> pd.DataFrame | None:
     """
     Select one location's surveillance rows as a date/value frame sorted by date.
@@ -171,6 +173,7 @@ def _select_surveillance(
         location,
         surveillance_config.location_column,
         surveillance_config.location_format,
+        custom_location=custom_location,
     )
     if location_rows.empty:
         return None
@@ -442,6 +445,7 @@ class LocationPlotData:
     fitting_window_end: date | None
     title_suffix: str
     footnote: str
+    custom_location: CustomLocation | None = None
 
 
 @dataclass(frozen=True)
@@ -463,6 +467,7 @@ class PanelPlotData:
     fitting_window_end: date | None
     title_suffix: str
     footnote: str
+    custom_location: CustomLocation | None = None
 
 
 def prepare_panel_plot_data(
@@ -549,6 +554,7 @@ def prepare_panel_plot_data(
         fitting_window_end=location_plot_data.fitting_window_end if settings.show_fitting_window_line else None,
         title_suffix=location_plot_data.title_suffix,
         footnote=location_plot_data.footnote,
+        custom_location=location_plot_data.custom_location,
     )
 
 
@@ -673,7 +679,9 @@ def _collect_location_plot_data(
     surveillance = {}
     for source_name, source in surveillance_data.items():
         try:
-            location_surveillance = _select_surveillance(source["data"], location, source["config"])
+            location_surveillance = _select_surveillance(
+                source["data"], location, source["config"], getattr(calibration, "custom_location", None)
+            )
         except Exception as e:
             logger.warning(
                 "Failed to prepare surveillance '%s' for location %s: %s", source_name, location, e, exc_info=True
@@ -691,6 +699,7 @@ def _collect_location_plot_data(
         fitting_window_end=fitting_window_end,
         title_suffix=title_suffix,
         footnote=footnote,
+        custom_location=getattr(calibration, "custom_location", None),
     )
 
 

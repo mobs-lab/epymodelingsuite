@@ -9,12 +9,14 @@ import pytest
 import yaml
 from pydantic import BaseModel, computed_field
 
+from epymodelingsuite.schema.basemodel import BasemodelConfig
 from epymodelingsuite.schema.common import InputFilePath
 from epymodelingsuite.schema.data_validation import (
     find_missing_data_files,
     validate_calibration_data,
     validate_calibration_data_for_config_set,
 )
+from tests.conftest import make_sir_config
 
 # Expected value for keywords that expand to every ISO code in the codebook
 ALL_ISO = object()
@@ -283,7 +285,7 @@ class TestValidateCalibrationDataForConfigSet:
     ):
         """Test that function returns True when all locations are valid."""
         # Setup mocks
-        mock_load_base.return_value = MagicMock()
+        mock_load_base.return_value = BasemodelConfig(model=make_sir_config())
         mock_load_base.return_value.model.population.name = "US-CA"
 
         mock_load_calib.return_value = MagicMock()
@@ -322,7 +324,7 @@ class TestValidateCalibrationDataForConfigSet:
         mock_load_base,
     ):
         """Test that function returns False when some locations are invalid."""
-        mock_load_base.return_value = MagicMock()
+        mock_load_base.return_value = BasemodelConfig(model=make_sir_config())
         mock_load_calib.return_value = MagicMock()
         mock_load_calib.return_value.modelset.population_names = ["US-CA", "US-NY"]
         mock_load_calib.return_value.modelset.calibration.observed_data_path = "data.csv"
@@ -364,7 +366,7 @@ class TestValidateCalibrationDataForConfigSet:
         mock_load_base,
     ):
         """Test that function returns False when no data in fitting window."""
-        mock_load_base.return_value = MagicMock()
+        mock_load_base.return_value = BasemodelConfig(model=make_sir_config())
         mock_load_calib.return_value = MagicMock()
         mock_load_calib.return_value.modelset.population_names = ["US-CA"]
         mock_load_calib.return_value.modelset.calibration.observed_data_path = "data.csv"
@@ -408,6 +410,7 @@ class TestValidateCalibrationDataForConfigSet:
         """Keywords and dict forms are expanded with the shared resolver (R14)."""
         from epymodelingsuite.utils.location import get_location_codebook
 
+        mock_load_base.return_value = BasemodelConfig(model=make_sir_config())
         if expected is ALL_ISO:
             expected = get_location_codebook()["ISO"].tolist()
         mock_load_calib.return_value.modelset.population_names = population_names
@@ -430,6 +433,7 @@ class TestValidateCalibrationDataForConfigSet:
     @patch("epymodelingsuite.builders.utils.get_data_in_window")
     def test_invalid_population_fails(self, mock_get_window, mock_load_calib, mock_load_base):
         """Unknown locations are rejected rather than silently validated."""
+        mock_load_base.return_value = BasemodelConfig(model=make_sir_config())
         mock_load_calib.return_value.modelset.population_names = ["notaplace"]
         mock_get_window.return_value = pd.DataFrame({"col": [1]})
 
