@@ -422,3 +422,78 @@ def parse_population_name(population_name: str) -> tuple[str, str]:
     if population_name in get_metrocast_locations()["metrocast_location_id"].values:
         return population_name, "metrocast_location"
     return population_name, "iso"
+
+
+def resolve_population_names(population_names: list[str | dict[str, str]]) -> list[tuple[str, str]]:
+    """
+    Expand modelset population names into validated ``(name, location_type)`` pairs.
+
+    Parameters
+    ----------
+    population_names : list[str | dict[str, str]]
+        Entries as accepted by the modelset schema:
+        - Keywords: "all" (deprecated), "all-states", "all-metrocast"
+        - Strings (type auto-detected): "US-MA", "denver"
+        - Dicts (explicit type): {"name": "denver", "type": "metrocast_location"}
+
+    Returns
+    -------
+    list[tuple[str, str]]
+        Resolved location names and types ("iso" or "metrocast_location").
+
+    Raises
+    ------
+    ValueError
+        If an entry is not a valid location.
+    """
+    import warnings
+
+    resolved = []
+    for population in population_names:
+        if isinstance(population, dict):
+            name = population["name"]
+            location_type = population.get("type", "iso")
+            resolved.append((validate_location_by_type(name, location_type), location_type))
+        elif population in ("all", "all-states"):
+            if population == "all":
+                warnings.warn(
+                    "The 'all' keyword is deprecated. Use 'all-states' instead.", DeprecationWarning, stacklevel=2
+                )
+            resolved.extend((iso_name, "iso") for iso_name in get_location_codebook()["ISO"].tolist())
+        elif population == "all-metrocast":
+            # All metrocast locations (including state-level, excluding NYC)
+            resolved.extend(
+                (location_id, "metrocast_location")
+                for location_id in get_metrocast_locations()["metrocast_location_id"].tolist()
+                if location_id != "nyc"
+            )
+        else:
+            try:
+                resolved.append((validate_iso3166(population), "iso"))
+            except ValueError:
+                resolved.append((validate_metrocast_location(population), "metrocast_location"))
+    return resolved
+
+
+def get_hub_location_id(population_name: str) -> str:
+    """
+    Convert population name to location ID for hub CSV outputs.
+
+    For ISO locations, returns FIPS code (e.g., "06" for California).
+    For metrocast locations, returns metrocast_location_id (e.g., "denver").
+
+    Parameters
+    ----------
+    population_name : str
+        Population name in epydemix format (e.g., "United_States_California" or
+        "metrocast_location_denver").
+
+    Returns
+    -------
+    str
+        Location ID appropriate for hub CSV output format.
+    """
+    location_name, location_type = parse_population_name(population_name)
+    if location_type == "metrocast_location":
+        return location_name
+    return convert_location_name_format(population_name, "FIPS")

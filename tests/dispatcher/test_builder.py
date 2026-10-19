@@ -360,6 +360,59 @@ class TestBuildSampling:
         assert "United_States__California" in populations
         assert "United_States__Texas" in populations
 
+    def test_sampled_start_date_vaccination_isolated_per_location(self, tmp_path):
+        """With a sampled start_date, each location is reaggregated from its own doses only."""
+        import pandas as pd
+
+        from epymodelingsuite.schema.basemodel import Vaccination
+        from epymodelingsuite.schema.common import DateParameter
+        from epymodelingsuite.schema.sampling import Sampler, SamplingConfig, SamplingConfiguration, SamplingModelset
+
+        # Preprocessed multi-location CSV (string dates): 10 doses/day in CA, 100 in TX
+        dates = pd.date_range("2024-01-01", "2024-03-31", freq="D")
+        age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
+        schedule = pd.concat(
+            [
+                pd.DataFrame({"dates": dates, "location": loc, **dict.fromkeys(age_groups, doses)})
+                for loc, doses in [("US-CA", 10), ("US-TX", 100)]
+            ],
+            ignore_index=True,
+        )
+        csv_path = tmp_path / "preprocessed.csv"
+        schedule.to_csv(csv_path, index=False)
+
+        basemodel = make_sir_config(end_date=date(2024, 3, 31), n_sims=5, random_seed=42)
+        basemodel.transitions.append(Transition(source="S", target="R", type="vaccination", rate=None))
+        basemodel.vaccination = Vaccination(
+            preprocessed_vaccination_data_path=str(csv_path), origin_compartment="S", eligible_compartments=["S"]
+        )
+        sampling_config = SamplingConfig(
+            modelset=SamplingModelset(
+                population_names=["US-CA", "US-TX"],
+                sampling=SamplingConfiguration(
+                    samplers=[Sampler(strategy="grid", parameters=["start_date"])],
+                    parameters={},
+                    start_date=DateParameter(reference_date=date(2024, 1, 1)),
+                ),
+            )
+        )
+
+        # Start Wed 2024-01-03: Jan 1-6 doses (6 days) are compressed into Jan 3-6 (4 days)
+        # Cross-config validation only allows the base population with sampling; bypass it for two locations
+        with (
+            patch(
+                "epymodelingsuite.sample_generator.generate_samples", return_value=[{"start_date": date(2024, 1, 3)}]
+            ),
+            patch("epymodelingsuite.dispatcher.builder.validate_cross_config_consistency"),
+        ):
+            result = build_sampling(basemodel_config=BasemodelConfig(model=basemodel), sampling_config=sampling_config)
+
+        for output, daily in zip(result, [10, 100], strict=True):
+            (vax,) = next(t.params for t in output.model.transitions_list if t.kind == "vaccination")
+            assert vax.shape == (89, 5)  # Jan 3 - Mar 31
+            assert (vax[:4] == daily * 6 / 4).all()
+            assert vax.sum(axis=0).tolist() == [daily * 91] * 5
+
 
 # Calibration strategy configurations for parametrized tests
 CALIBRATION_STRATEGIES = [

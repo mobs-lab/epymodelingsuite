@@ -205,10 +205,10 @@ def run_calibration_with_projection(
             parameters={
                 "projection": True,
                 "end_date": configs.projection.end_date,
-                "generation": configs.projection.generation_number,
                 "epimodel": configs.model,
             },
             iterations=configs.projection.n_trajectories,
+            generation=configs.projection.generation_number,
         )
         projection_duration = time.time() - projection_start
         logger.info("RUNNER: completed calibration and projection.")

@@ -1,15 +1,23 @@
 """Tests for data validation module."""
 
 from datetime import date
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
+import yaml
+from pydantic import BaseModel, computed_field
 
+from epymodelingsuite.schema.common import InputFilePath
 from epymodelingsuite.schema.data_validation import (
+    find_missing_data_files,
     validate_calibration_data,
     validate_calibration_data_for_config_set,
 )
+
+# Expected value for keywords that expand to every ISO code in the codebook
+ALL_ISO = object()
 
 
 class TestValidateCalibrationData:
@@ -363,45 +371,108 @@ class TestValidateCalibrationDataForConfigSet:
         assert error is not None
         assert "fitting window" in error.lower()
 
+    @pytest.mark.parametrize(
+        ("population_names", "expected"),
+        [
+            (["all"], ALL_ISO),
+            (["all-states"], ALL_ISO),
+            (["US-CA", "US-TX"], ["US-CA", "US-TX"]),
+            ([{"name": "US-CA", "type": "iso"}], ["US-CA"]),
+            ([{"name": "denver", "type": "metrocast_location"}], ["denver"]),
+        ],
+    )
     @patch("epymodelingsuite.config_loader.load_basemodel_config_from_file")
     @patch("epymodelingsuite.config_loader.load_calibration_config_from_file")
-    @patch("epymodelingsuite.utils.get_location_codebook")
     @patch("epymodelingsuite.builders.utils.get_data_in_window")
-    @patch("pandas.read_csv")
-    def test_handles_all_population(
+    def test_expands_populations_like_create_model_collection(
         self,
-        mock_read_csv,
         mock_get_window,
-        mock_codebook,
         mock_load_calib,
         mock_load_base,
+        population_names,
+        expected,
+        tmp_path,
     ):
-        """Test that 'all' population is expanded from codebook."""
-        mock_load_base.return_value = MagicMock()
-        mock_load_calib.return_value = MagicMock()
-        mock_load_calib.return_value.modelset.population_names = ["all"]
-        mock_load_calib.return_value.modelset.calibration.observed_data_path = "data.csv"
-        mock_load_calib.return_value.modelset.calibration.fitting_window.start_date = date(2024, 1, 1)
-        mock_load_calib.return_value.modelset.calibration.fitting_window.end_date = date(2024, 3, 1)
-        mock_load_calib.return_value.modelset.calibration.comparison = [MagicMock()]
-        mock_load_calib.return_value.modelset.calibration.comparison[0].observed_location_column = "location"
-        mock_load_calib.return_value.modelset.calibration.comparison[0].observed_location_format = "ISO"
-        mock_load_calib.return_value.modelset.calibration.comparison[0].observed_date_column = "date"
+        """Keywords and dict forms are expanded with the shared resolver (R14)."""
+        from epymodelingsuite.utils.location import get_location_codebook
 
-        mock_codebook.return_value = pd.DataFrame({"location_name_epydemix": ["California", "Texas", "New York"]})
-
-        mock_read_csv.return_value = pd.DataFrame({"col": [1]})
+        if expected is ALL_ISO:
+            expected = get_location_codebook()["ISO"].tolist()
+        mock_load_calib.return_value.modelset.population_names = population_names
+        observed_path = tmp_path / "data.csv"
+        observed_path.write_text("col\n1\n")
+        mock_load_calib.return_value.modelset.calibration.observed_data_path = observed_path
         mock_get_window.return_value = pd.DataFrame({"col": [1]})
 
-        with patch("epymodelingsuite.schema.data_validation.get_data_in_location") as mock_get_location:
-            mock_get_location.return_value = pd.DataFrame({"col": [1], "date": ["2024-01-01"]})
-
-            success, error = validate_calibration_data_for_config_set(
-                "basemodel.yml",
-                "calibration.yml",
-            )
+        with patch(
+            "epymodelingsuite.schema.data_validation.validate_calibration_data", return_value=(expected, [])
+        ) as mock_validate:
+            success, error = validate_calibration_data_for_config_set("basemodel.yml", "calibration.yml")
 
         assert success is True
         assert error is None
-        # Verify codebook was called to expand 'all'
-        mock_codebook.assert_called_once()
+        assert mock_validate.call_args.kwargs["population_names"] == expected
+
+    @patch("epymodelingsuite.config_loader.load_basemodel_config_from_file")
+    @patch("epymodelingsuite.config_loader.load_calibration_config_from_file")
+    @patch("epymodelingsuite.builders.utils.get_data_in_window")
+    def test_invalid_population_fails(self, mock_get_window, mock_load_calib, mock_load_base):
+        """Unknown locations are rejected rather than silently validated."""
+        mock_load_calib.return_value.modelset.population_names = ["notaplace"]
+        mock_get_window.return_value = pd.DataFrame({"col": [1]})
+
+        success, error = validate_calibration_data_for_config_set("basemodel.yml", "calibration.yml")
+
+        assert success is False
+        assert "notaplace" in error
+
+
+class TestFindMissingDataFiles:
+    """Tests for find_missing_data_files function."""
+
+    FIXTURES_DIR = Path(__file__).resolve().parents[1] / "fixtures"
+
+    def _calibration_config(self, tmp_path, observed_data_path):
+        from epymodelingsuite.config_loader import load_calibration_config_from_file
+
+        raw = yaml.safe_load((self.FIXTURES_DIR / "minimal_modelset_calibration.yaml").read_text())
+        raw["modelset"]["calibration"]["observed_data_path"] = str(observed_data_path)
+        config_path = tmp_path / "calibration.yaml"
+        config_path.write_text(yaml.dump(raw))
+        return load_calibration_config_from_file(str(config_path))
+
+    def test_reports_missing_nested_path_fields(self, tmp_path):
+        """Path fields nested in a real config are found; None configs are skipped."""
+        present = tmp_path / "observed.csv"
+        present.write_text("x")
+        missing = tmp_path / "missing.csv"
+
+        assert find_missing_data_files(self._calibration_config(tmp_path, present), None) == []
+        assert find_missing_data_files(self._calibration_config(tmp_path, missing)) == [str(missing)]
+
+    def test_checks_only_marked_fields(self, tmp_path):
+        """Marked fields are walked through dicts, lists and optionals; names do not matter."""
+
+        class Source(BaseModel):
+            data_path: InputFilePath
+            output_path: str  # not an input file, so never checked
+
+        class Config(BaseModel):
+            sources: dict[str, Source]
+            extra: list[Source]
+            optional_file: InputFilePath | None = None
+            unset_file: InputFilePath | None = None
+
+            @computed_field
+            @property
+            def user_function(self) -> str:
+                raise AssertionError("computed fields must not run")
+
+        source = Source(data_path=str(tmp_path / "a.csv"), output_path=str(tmp_path / "out.csv"))
+        config = Config(
+            sources={"a": source},
+            extra=[Source(data_path=str(tmp_path / "b.csv"), output_path=str(tmp_path / "out.csv"))],
+            optional_file=str(tmp_path / "c.csv"),
+        )
+
+        assert find_missing_data_files(config) == [str(tmp_path / f"{n}.csv") for n in "abc"]

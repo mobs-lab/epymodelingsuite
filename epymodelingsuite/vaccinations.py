@@ -51,6 +51,14 @@ def get_age_groups_from_data(data: pd.DataFrame) -> dict[str, str]:
     return age_group_map_data
 
 
+def _require_single_location(schedule: pd.DataFrame) -> None:
+    """Raise if a vaccination schedule contains more than one location."""
+    locations = schedule["location"].unique()
+    if len(locations) > 1:
+        msg = f"Vaccination schedule must contain a single location, got {list(locations)}. Filter by location first."
+        raise ValueError(msg)
+
+
 def resample_vaccination_schedule(df: pd.DataFrame, delta_t: float) -> pd.DataFrame:
     """
     Resample daily vaccination schedule to match simulation timesteps.
@@ -82,6 +90,8 @@ def resample_vaccination_schedule(df: pd.DataFrame, delta_t: float) -> pd.DataFr
     """
     import numpy as np
     from epydemix.utils import compute_simulation_dates
+
+    _require_single_location(df)
 
     # Use epydemix's date calculation for exact alignment
     # Use min/max to handle unsorted DataFrames
@@ -159,7 +169,7 @@ def _parse_age_group_bounds(group_str: str, max_age: int = 84) -> tuple[int, int
         start, end = group_str.split("-")
         return int(start), int(end)
     if "+" in group_str:
-        return int(group_str.split("+")[0]), max_age
+        return int(group_str.split("+", maxsplit=1)[0]), max_age
     msg = f"Invalid age group format: {group_str}. Expected 'start-end' or 'start+'."
     raise ValueError(msg)
 
@@ -312,9 +322,13 @@ def scenario_to_epydemix(
     required_columns = ["Week_Ending_Sat", "Geography", "Age", "Population", "Coverage"]
     missing_columns = [col for col in required_columns if col not in vaccines.columns]
     if missing_columns:
-        raise ValueError(
-            f"Input data must contain the following columns: {required_columns}. Missing columns: {missing_columns}"
-        )
+        msg = f"Input data must contain the following columns: {required_columns}. Missing columns: {missing_columns}"
+        if "Coverage" in missing_columns and any("sc_" in col for col in vaccines.columns):
+            msg += (
+                ". The file has several scenario columns; scenario_data_path takes a single-scenario file. "
+                "Preprocess it with smh_data_to_epydemix() and use preprocessed_vaccination_data_path with 'scenario'."
+            )
+        raise ValueError(msg)
 
     # Validate Coverage values are within [0, 100]
     invalid_coverage = vaccines.query("Coverage < 0 or Coverage > 100")
@@ -630,7 +644,7 @@ def reaggregate_vaccines(schedule: pd.DataFrame, actual_start_date: dt.date | pd
     ------
     ValueError
         If `actual_start_date` is earlier than the first date or later
-        than the last date in `schedule['dates']`.
+        than the last date in `schedule['dates']`, or if `schedule` contains more than one location.
 
     Example
     -------
@@ -641,6 +655,8 @@ def reaggregate_vaccines(schedule: pd.DataFrame, actual_start_date: dt.date | pd
     - Days remaining (Wed-Sat): 4
     - Redistributed: 700 / 4 = 175 doses/day for Sept 4-7
     """
+    _require_single_location(schedule)
+
     # Normalize type
     actual_start_date = pd.Timestamp(actual_start_date)
 

@@ -263,7 +263,6 @@ model:
         
   vaccination:
     scenario_data_path: "data/vaccine_scenarios_2425_cd.csv"
-    scenario: "C_D"
     origin_compartment: S
     eligible_compartments:
       - S

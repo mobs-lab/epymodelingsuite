@@ -7,10 +7,10 @@ import pandas as pd
 import pytest
 
 from epymodelingsuite.visualization.core import (
-    plot_calibration_projection,
-    plot_calibration_projection_grid,
     plot_categorical_stacked_bars,
     plot_categorical_stacked_bars_multihorizon,
+    plot_quantile_panel,
+    plot_quantile_panels_grid,
 )
 
 
@@ -283,7 +283,7 @@ class TestCategoricalStackedBars:
 
 
 class TestPlotCalibrationProjection:
-    """Tests for plot_calibration_projection function."""
+    """Tests for plot_quantile_panel function."""
 
     @pytest.fixture
     def sample_quantile_data(self):
@@ -298,7 +298,7 @@ class TestPlotCalibrationProjection:
     @pytest.mark.parametrize("xlabel_interval", ["W-SAT", "2W-SAT", "MS"])
     def test_xlabel_interval_with_valid_dates(self, sample_quantile_data, xlabel_interval):
         """Test xlabel_interval correctly converts matplotlib dates to datetime."""
-        fig, ax = plot_calibration_projection(
+        fig, ax = plot_quantile_panel(
             calibration_quantiles=sample_quantile_data,
             xlabel_interval=xlabel_interval,
         )
@@ -322,7 +322,7 @@ class TestPlotCalibrationProjection:
                 proj_rows.append({"date": date, "quantile": q, "hospitalizations": 150 + q * 50})
         proj_data = pd.DataFrame(proj_rows)
 
-        fig, ax = plot_calibration_projection(
+        fig, ax = plot_quantile_panel(
             calibration_quantiles=sample_quantile_data,
             projection_quantiles=proj_data,
             xlabel_interval="2W-SAT",
@@ -335,7 +335,7 @@ class TestPlotCalibrationProjection:
 
     def test_without_xlabel_interval(self, sample_quantile_data):
         """Test plot works without xlabel_interval (default behavior)."""
-        fig, ax = plot_calibration_projection(
+        fig, ax = plot_quantile_panel(
             calibration_quantiles=sample_quantile_data,
             xlabel_interval=None,
         )
@@ -347,7 +347,7 @@ class TestPlotCalibrationProjection:
 
     def test_ylabel_sets_axis_label(self, sample_quantile_data):
         """Test ylabel parameter sets the y-axis label."""
-        fig, ax = plot_calibration_projection(
+        fig, ax = plot_quantile_panel(
             calibration_quantiles=sample_quantile_data,
             ylabel="Hospitalizations",
         )
@@ -358,7 +358,7 @@ class TestPlotCalibrationProjection:
 
     def test_ylabel_none_no_label(self, sample_quantile_data):
         """Test ylabel=None results in no y-axis label."""
-        fig, ax = plot_calibration_projection(
+        fig, ax = plot_quantile_panel(
             calibration_quantiles=sample_quantile_data,
             ylabel=None,
         )
@@ -369,7 +369,7 @@ class TestPlotCalibrationProjection:
 
     def test_xlabel_interval_date_format(self, sample_quantile_data):
         """Test xlabel_interval uses yyyy-mm-dd date format."""
-        fig, ax = plot_calibration_projection(
+        fig, ax = plot_quantile_panel(
             calibration_quantiles=sample_quantile_data,
             xlabel_interval="W-SAT",
         )
@@ -392,7 +392,7 @@ class TestPlotCalibrationProjection:
 
 
 class TestPlotCalibrationProjectionGrid:
-    """Tests for plot_calibration_projection_grid function."""
+    """Tests for plot_quantile_panels_grid function."""
 
     @pytest.fixture
     def sample_location_quantiles(self):
@@ -409,7 +409,7 @@ class TestPlotCalibrationProjectionGrid:
 
     def test_suptitle_sets_figure_title(self, sample_location_quantiles):
         """Test suptitle parameter sets the figure suptitle."""
-        fig, axes = plot_calibration_projection_grid(
+        fig, axes = plot_quantile_panels_grid(
             location_calibration_quantiles=sample_location_quantiles,
             suptitle="Test Figure Title",
         )
@@ -421,7 +421,7 @@ class TestPlotCalibrationProjectionGrid:
 
     def test_suptitle_none_no_title(self, sample_location_quantiles):
         """Test suptitle=None results in no figure suptitle."""
-        fig, axes = plot_calibration_projection_grid(
+        fig, axes = plot_quantile_panels_grid(
             location_calibration_quantiles=sample_location_quantiles,
             suptitle=None,
         )

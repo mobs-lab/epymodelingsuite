@@ -40,6 +40,10 @@ If you installed with uv (option 1) and want to use Jupyter notebooks:
   uv run python -m ipykernel install --user --name epymodelingsuite --display-name "epymodelingsuite"
   ```
 
+## Multistrain outputs
+
+Format of the aggregated trajectories and submission files, and how to build them: [scripts/multistrain/FORMAT.md](scripts/multistrain/FORMAT.md).
+
 ## Documentation
 
 

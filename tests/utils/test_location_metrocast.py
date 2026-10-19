@@ -73,6 +73,17 @@ class TestGetMetrocastPopulationData:
         denver_data = result[result["metrocast_location_id"] == "denver"]
         assert len(denver_data) > 1  # Should have multiple age groups
 
+    def test_all_sub_state_locations_have_population(self):
+        """Test that every sub-state location in metrocast_locations.csv has age-stratified population.
+
+        State-level locations use epydemix state population, so only sub-state locations need rows here.
+        """
+        locations = get_metrocast_locations()
+        sub_state = locations.loc[locations["original_location_code"] != "All", "metrocast_location_id"]
+        with_population = set(get_metrocast_population_data()["metrocast_location_id"])
+        missing = sorted(set(sub_state) - with_population)
+        assert not missing, f"Missing age-stratified population for: {missing}"
+
 
 class TestGetParentRegion:
     """Tests for get_parent_region function."""

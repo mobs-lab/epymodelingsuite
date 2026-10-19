@@ -1,13 +1,21 @@
 """Tests for calibration schema validation."""
 
+import subprocess
+import sys
 from datetime import timedelta
+from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
+from epydemix.calibration import ABCSampler
+from pydantic import ValidationError
 
+from epymodelingsuite.config_loader import load_calibration_config_from_file
 from epymodelingsuite.schema.calibration import (
     CalibrationConfig,
     CalibrationStrategy,
     ComparisonSpec,
+    ProjectionSpec,
 )
 
 
@@ -205,7 +213,7 @@ class TestCalibrationStrategyEnum:
             name="SMC",
             options={"num_particles": 500, "num_generations": 10, "max_time": "4h"},
         )
-        assert strategy.name == "SMC"
+        assert strategy.name == "smc"
         assert strategy.options["max_time"] == timedelta(hours=4)
 
     def test_rejection_strategy_with_max_time(self):
@@ -225,6 +233,43 @@ class TestCalibrationStrategyEnum:
         )
         assert strategy.name == "top_fraction"
         assert "max_time" not in strategy.options
+
+
+class TestCalibrationStrategyName:
+    """Strategy names are normalized to the names epydemix accepts."""
+
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [
+            ("SMC", "smc"),
+            ("smc", "smc"),
+            ("Smc", "smc"),
+            ("REJECTION", "rejection"),
+            ("rejection", "rejection"),
+            ("Top_Fraction", "top_fraction"),
+            ("top_fraction", "top_fraction"),
+        ],
+    )
+    def test_name_is_case_insensitive(self, raw: str, expected: str) -> None:
+        strategy = CalibrationStrategy(name=raw)
+        assert strategy.name == expected
+        assert type(strategy.name) is str
+
+    def test_unknown_name_rejected(self) -> None:
+        with pytest.raises(ValueError, match="Input should be"):
+            CalibrationStrategy(name="mcmc")
+
+    @pytest.mark.parametrize("name", [e.value for e in CalibrationStrategy.CalibrationStrategyEnum])
+    def test_every_exposed_name_accepted_by_epydemix(self, name: str) -> None:
+        """Each enum value dispatches to the matching ABCSampler.run_<name> method."""
+        sampler = MagicMock()
+        ABCSampler.calibrate(sampler, strategy=CalibrationStrategy(name=name.upper()).name)
+        getattr(sampler, f"run_{name}").assert_called_once()
+
+    def test_tutorial_modelset_calibration_yaml_loads(self) -> None:
+        path = Path(__file__).parents[2] / "tutorials" / "data" / "basic_modelset_calibration.yml"
+        config = load_calibration_config_from_file(str(path))
+        assert config.modelset.calibration.strategy.name == "smc"
 
 
 class TestComparisonSpecLocationFormat:
@@ -367,3 +412,28 @@ class TestCalibrationModelsetPopulationNames:
         base_config["modelset"]["population_names"] = ["invalid_location_xyz"]
         with pytest.raises(ValueError):
             CalibrationConfig(**base_config)
+
+
+class TestProjectionSpecTrajectories:
+    def test_n_trajectories_required(self):
+        with pytest.raises(ValidationError, match="n_trajectories"):
+            ProjectionSpec()
+
+    @pytest.mark.parametrize("n_trajectories", [0, -1])
+    def test_n_trajectories_positive(self, n_trajectories):
+        with pytest.raises(ValidationError, match="greater than 0"):
+            ProjectionSpec(n_trajectories=n_trajectories)
+
+
+def test_schema_validation_survives_optimized_mode():
+    """Validators must not rely on assert, which `python -O` strips."""
+    code = (
+        "from pydantic import ValidationError\n"
+        "from epymodelingsuite.schema.basemodel import Timespan\n"
+        "try:\n"
+        "    Timespan(start_date='2025-01-01', end_date='2025-02-01', delta_t=-1)\n"
+        "except ValidationError:\n"
+        "    raise SystemExit(0)\n"
+        "raise SystemExit(1)\n"
+    )
+    assert subprocess.run([sys.executable, "-O", "-c", code], check=False).returncode == 0

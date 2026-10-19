@@ -6,11 +6,11 @@ from enum import Enum
 from typing import Any
 
 from epiweeks import Week
-from pydantic import BaseModel, Field, computed_field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
 
 from ..utils import parse_timedelta, validate_iso3166
 from ..utils.location import validate_location_by_type
-from .common import DateParameter, Distribution, Meta
+from .common import DateParameter, Distribution, InputFilePath, Meta
 
 logger = logging.getLogger(__name__)
 
@@ -26,16 +26,26 @@ class CalibrationStrategy(BaseModel):
     class CalibrationStrategyEnum(str, Enum):
         """Types of calibration strategies."""
 
-        SMC = "SMC"
+        # Values must match the strategy keys accepted by epydemix ABCSampler.calibrate()
+        smc = "smc"
         rejection = "rejection"
         top_fraction = "top_fraction"
 
-    name: str | CalibrationStrategyEnum = Field(
-        description="Name of calibration strategy for epydemix.calibration.abc module (e.g., 'SMC', 'rejection', 'top_fraction')",
+    model_config = ConfigDict(use_enum_values=True)
+
+    name: CalibrationStrategyEnum = Field(
+        description="Name of calibration strategy for epydemix.calibration.abc module "
+        "('smc', 'rejection', 'top_fraction'; case-insensitive)",
     )
     options: dict[str, Any] = Field(
         default_factory=dict, description="Strategy-specific arguments for calibrate() function"
     )
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def normalize_name(cls, v: object) -> object:
+        """Lowercase strategy name so that e.g. 'SMC' maps to epydemix's 'smc'."""
+        return v.lower() if isinstance(v, str) else v
 
     @field_validator("options")
     @classmethod
@@ -68,7 +78,7 @@ class CalibrationStrategy(BaseModel):
 
         Examples
         --------
-        >>> strategy = CalibrationStrategy(name="SMC", options={"max_time": "4h"})
+        >>> strategy = CalibrationStrategy(name="smc", options={"max_time": "4h"})
         >>> strategy.options["max_time"]
         datetime.timedelta(seconds=14400)
         """
@@ -84,7 +94,7 @@ class CalibrationStrategy(BaseModel):
 class ProjectionSpec(BaseModel):
     """Specification for projection after calibration."""
 
-    n_trajectories: int = Field("Number of trajectories to simulate from posterior after calibration")
+    n_trajectories: int = Field(gt=0, description="Number of trajectories to simulate from posterior after calibration")
     generation_number: int | None = Field(
         default=None, description="SMC generation number from which to draw parameter sets for projection"
     )
@@ -210,7 +220,7 @@ class UserDefinedFunction(BaseModel):
         - location: str location/population name
     """
 
-    user_script_path: str = Field(description="Path to script containing user-defined functions.")
+    user_script_path: InputFilePath = Field(description="Path to script containing user-defined functions.")
     user_function_name: str = Field(description="Name of function to import from the supplied script.")
 
     @computed_field
@@ -301,7 +311,7 @@ class CalibrationConfiguration(BaseModel):
 
     # Sampler options, passed directly when initializing ABCSampler
     distance_function: str | UserDefinedFunction = Field("rmse", description="Distance function for comparing data")
-    observed_data_path: str = Field(description="Path to observed data CSV file")
+    observed_data_path: InputFilePath = Field(description="Path to observed data CSV file")
     comparison: list[ComparisonSpec] = Field(description="Specifications for data comparison")
 
     # What we calibrate for
@@ -330,9 +340,9 @@ class CalibrationConfiguration(BaseModel):
                 msg = f"Comparison for '{comp.observed}' must specify at least one simulation transition"
                 raise ValueError(msg)
 
-        assert self.start_date or self.parameters or self.compartments, (
-            "Calibration requires at least one of start_date, parameters, or compartments"
-        )
+        if not (self.start_date or self.parameters or self.compartments):
+            msg = "Calibration requires at least one of start_date, parameters, or compartments"
+            raise ValueError(msg)
         return self
 
     @model_validator(mode="after")

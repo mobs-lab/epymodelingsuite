@@ -20,7 +20,7 @@ def test__calc_seasonality_balcan_at_t_peak_and_min():
     t_max = 120
 
     # Peak exactly at t_max -> should be 1.0
-    vals = [_calc_seasonality_balcan_at_t(t, t_max, val_min, val_max, period) for t in range(0, period + 1)]
+    vals = [_calc_seasonality_balcan_at_t(t, t_max, val_min, val_max, period) for t in range(period + 1)]
 
     # Peak date should correspond to t_max
     t_max_sim = np.argmax(vals)

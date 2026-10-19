@@ -9,7 +9,7 @@ model:
 
   timespan:
     start_date: "2025-01-01"
-    end_date: "2025-03-01"
+    end_date: "2025-05-31"
     delta_t: 1.0
 
   simulation:
@@ -51,7 +51,7 @@ model:
   parameters:
     beta:
       type: scalar
-      value: 0.3
+      value: 0.014  # R0 ~ 2 with the US-MA contact matrix (spectral radius ~14.2)
     mu:
       type: scalar
       value: 0.1

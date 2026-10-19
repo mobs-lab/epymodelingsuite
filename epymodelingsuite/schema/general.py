@@ -1,7 +1,8 @@
 import logging
 from datetime import date, timedelta
 
-from ..utils.common import parse_transition_name, strip_agegroup_suffix, to_set
+from ..utils.common import parse_transition_name, strip_agegroup_suffix
+from ..utils.location import resolve_population_names
 from .basemodel import BasemodelConfig
 from .calibration import CalibrationConfig, CalibrationConfiguration
 from .output import OutputConfig
@@ -60,28 +61,25 @@ def _ensure_compartments_valid(base_compartments: set, sampling: SamplingConfigu
         raise ValueError(err_msg)
 
 
-def _ensure_populations_valid(base_population_name: str | None, modelset_populations: set) -> None:
+def _ensure_populations_valid(modelset_populations: list[str | dict[str, str]] | None) -> None:
     """
-    Validate that modelset population names are compatible with the base model.
+    Validate that modelset population names resolve to known locations.
+
+    Uses the same expansion as ``create_model_collection()``. Modelset populations
+    override the base model population, so they need not match it.
 
     Parameters
     ----------
-    base_population_name : str or None
-        Name of the population defined in the base model.
-    modelset_populations : set
-        Population names referenced by the modelset.
+    modelset_populations : list[str | dict[str, str]] or None
+        Population names referenced by the modelset (strings, keywords, or ``{name, type}`` dicts).
 
     Raises
     ------
     ValueError
-        Raised when modelset populations do not match the base population or "all".
+        Raised when a modelset population is not a valid location.
     """
-    if not base_population_name or not modelset_populations:
-        return
-    invalid = modelset_populations - {base_population_name, "all"}
-    if invalid:
-        err_msg = f"Populations in modelset not matching base model: {sorted(invalid)}"
-        raise ValueError(err_msg)
+    if modelset_populations:
+        resolve_population_names(modelset_populations)
 
 
 def _ensure_transitions_valid(base_transitions: set, calibration: CalibrationConfiguration | None) -> None:
@@ -451,11 +449,8 @@ def validate_cross_config_consistency(
     _ensure_compartments_valid(base_compartments, sampling)
 
     # Population consistency checks
-    # - Get basemodel population name and modelset population(s)
-    # - Ensure modelset populations match basemodel population or "all"
-    base_population_name = getattr(getattr(basemodel, "population", None), "name", None)
-    modelset_populations = to_set(getattr(modelset, "population_names", None))
-    _ensure_populations_valid(base_population_name, modelset_populations)
+    # - Ensure modelset populations resolve to valid locations
+    _ensure_populations_valid(getattr(modelset, "population_names", None))
 
     # Transitions consistency checks (for calibration comparison)
     # - Get set of transitions for basemodel

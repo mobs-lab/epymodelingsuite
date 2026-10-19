@@ -1,0 +1,147 @@
+name: Tests
+
+on:
+  pull_request:
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      markers:
+        description: 'pytest -m expression'
+        type: choice
+        options:
+          - 'not nightly'
+          - 'nightly'
+          - 'slow or nightly'
+          - 'slow or not slow'
+        default: 'not nightly'
+
+permissions:
+  contents: read
+
+jobs:
+  select:
+    # issue_comment: only "/test ..." on PRs by repo members
+    if: >-
+      github.event_name != 'issue_comment' || (
+        github.event.issue.pull_request &&
+        startsWith(github.event.comment.body, '/test') &&
+        contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
+      )
+    runs-on: ubuntu-latest
+    outputs:
+      markers: ${{ steps.select.outputs.markers }}
+    steps:
+      - name: Select tests
+        id: select
+        env:
+          COMMENT: ${{ github.event.comment.body }}
+          INPUT: ${{ inputs.markers }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = issue_comment ]; then
+            read -r command arg _ <<< "$(head -n 1 <<< "$COMMENT" | tr -d '\r')"
+            [ "$command" = /test ] || exit 0
+            case "$arg" in
+              default) markers="not nightly" ;;
+              nightly) markers="nightly" ;;
+              heavy) markers="slow or nightly" ;;
+              all) markers="slow or not slow" ;;
+              *) markers="help" ;;
+            esac
+          else
+            markers="${INPUT:-not nightly}"
+          fi
+          echo "markers=$markers" >> "$GITHUB_OUTPUT"
+
+  help:
+    needs: select
+    if: needs.select.outputs.markers == 'help'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Reply with available commands
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ github.event.issue.number }}
+        run: |
+          gh pr comment "$NUMBER" --repo "$GITHUB_REPOSITORY" --body "Available commands:
+
+          | Command | Tests | What it checks |
+          |---|---|---|
+          | \`/test default\` | \`-m 'not nightly'\` | Unit and integration tests, including end-to-end calibration runs |
+          | \`/test nightly\` | \`-m nightly\` | Statistical checks that ABC recovers known parameters from synthetic data |
+          | \`/test heavy\` | \`-m 'slow or nightly'\` | End-to-end calibration runs and the statistical checks |
+          | \`/test all\` | all tests | Everything |
+
+          The default tests run automatically on every push. Use \`/test default\` to rerun them."
+
+  test:
+    needs: select
+    if: needs.select.outputs.markers != '' && needs.select.outputs.markers != 'help'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'issue_comment' && format('refs/pull/{0}/head', github.event.issue.number) || '' }}
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.12'
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --locked --extra dev
+
+      - name: Run tests
+        id: pytest
+        run: |
+          set -o pipefail
+          uv run pytest -n auto -p no:sugar -rfE --cov=epymodelingsuite --cov-report=term-missing -m "$MARKERS" | tee pytest.log
+        env:
+          MARKERS: ${{ needs.select.outputs.markers }}
+
+      - name: Write report
+        if: always() && steps.pytest.outcome != 'skipped'
+        env:
+          MARKERS: ${{ needs.select.outputs.markers }}
+          OUTCOME: ${{ steps.pytest.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          icon=$([ "$OUTCOME" = success ] && echo ✅ || echo ❌)
+          result=$(grep -E '^=+ .* in [0-9.]+s' pytest.log | tail -n 1 | sed -E 's/^=+ //; s/ =+$//')
+          # ponytail: first 10 failures only, the run log has the rest
+          failed=$(grep -E '^(FAILED|ERROR) ' pytest.log | sed -E 's/^(FAILED|ERROR) ([^ ]+).*/- `\2`/' | head -n 10)
+          total=$(uv run coverage report --format=total 2>/dev/null || echo "?")
+          {
+            echo "### Tests"
+            echo
+            echo "$icon \`$MARKERS\`: ${result:-no result}"
+            if [ -n "$failed" ]; then printf '\n%s\n' "$failed"; fi
+            echo
+            echo "### Coverage"
+            echo
+            echo "**${total}%** total · [Run log]($RUN_URL)"
+          } > report.md
+          {
+            cat report.md
+            echo
+            echo "<details><summary>Coverage by file</summary>"
+            echo
+            uv run coverage report --format=markdown --sort=cover 2>/dev/null || true
+            echo
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Comment on PR
+        if: always() && steps.pytest.outcome != 'skipped' && github.event_name != 'workflow_dispatch'
+        # Fork PRs get a read-only token and cannot comment
+        continue-on-error: true
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: tests-${{ needs.select.outputs.markers }}
+          number: ${{ github.event.pull_request.number || github.event.issue.number }}
+          path: report.md

@@ -8,6 +8,7 @@ import pytest
 from epymodelingsuite.schema.basemodel import (
     BaseEpiModel,
     Compartment,
+    Intervention,
     Parameter,
     Population,
     Simulation,
@@ -188,3 +189,58 @@ class TestDeltaTValidation:
         """Test that delta_t defaults to 1.0 when omitted."""
         t = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 1, 31))
         assert t.delta_t == 1.0
+
+
+class TestInterventionValueValidation:
+    """Zero is a valid scaling_factor/override_value; exactly one must be given for parameter interventions."""
+
+    @staticmethod
+    def _parameter_intervention(**kwargs):
+        return Intervention(
+            type="parameter",
+            target_parameter="beta",
+            start_date=date(2024, 1, 1),
+            end_date=date(2024, 2, 1),
+            **kwargs,
+        )
+
+    @pytest.mark.parametrize("kwargs", [{"scaling_factor": 0}, {"override_value": 0}])
+    def test_zero_is_accepted(self, kwargs):
+        intervention = self._parameter_intervention(**kwargs)
+        for name, value in kwargs.items():
+            assert getattr(intervention, name) == value
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [{}, {"scaling_factor": 0, "override_value": 0}, {"scaling_factor": 0.5, "override_value": 1.0}],
+    )
+    def test_neither_or_both_rejected(self, kwargs):
+        with pytest.raises(ValueError, match="exactly one"):
+            self._parameter_intervention(**kwargs)
+
+    def test_explicit_null_scaling_factor_is_a_validation_error(self):
+        with pytest.raises(ValueError, match="must specify 'scaling_factor'"):
+            Intervention(type="school_closure", scaling_factor=None)
+
+    @pytest.mark.parametrize("value", [-1, float("nan")])
+    def test_invalid_scaling_factor_rejected(self, value):
+        with pytest.raises(ValueError, match="greater than or equal to 0"):
+            self._parameter_intervention(scaling_factor=value)
+
+    def test_zero_override_rejected_for_non_parameter(self):
+        with pytest.raises(ValueError, match="cannot use 'override_value'"):
+            Intervention(type="school_closure", scaling_factor=0.5, override_value=0)
+
+    def test_zero_scaling_factor_accepted_for_school_closure(self):
+        assert Intervention(type="school_closure", scaling_factor=0).scaling_factor == 0
+
+    def test_missing_scaling_factor_rejected(self):
+        with pytest.raises(ValueError, match="must specify 'scaling_factor'"):
+            Intervention(type="school_closure")
+        with pytest.raises(ValueError, match="must specify 'scaling_factor'"):
+            Intervention(
+                type="contact_matrix",
+                contact_matrix_layer="work",
+                start_date=date(2024, 1, 1),
+                end_date=date(2024, 2, 1),
+            )
