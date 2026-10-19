@@ -5,7 +5,8 @@ import logging
 
 from epydemix import EpiModel
 
-from .utils.custom_locations import CustomLocation
+from .utils.location import resolve_location
+from .utils.resolved_location import ResolvedLocation
 
 logger = logging.getLogger(__name__)
 
@@ -249,7 +250,7 @@ def add_school_closure_interventions(
     model: EpiModel,
     closure_dict: dict[str, set[tuple[dt.date, dt.date, str]]],
     reduction_factor: float,
-    custom_location: CustomLocation | None = None,
+    location: ResolvedLocation | None = None,
 ) -> EpiModel:
     """Add school closure interventions to a model.
 
@@ -272,11 +273,11 @@ def add_school_closure_interventions(
     from .utils import convert_location_name_format
 
     # Get the school closures that apply to the location/population of the model
-    population_name = custom_location.parent_iso if custom_location else model.population.name
-    location = convert_location_name_format(population_name, "abbreviation")
-    if custom_location is not None and location not in closure_dict:
-        raise ValueError(f"No school closure data for custom parent region {custom_location.parent_iso}.")
-    closures = closure_dict[location]
+    location = location or resolve_location(model.population.name)
+    abbreviation = convert_location_name_format(location.source_iso, "abbreviation")
+    if abbreviation not in closure_dict:
+        raise ValueError(f"No school closure data for source region {location.source_iso}.")
+    closures = closure_dict[abbreviation]
 
     # Add all interventions to the model
     [

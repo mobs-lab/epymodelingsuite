@@ -357,7 +357,7 @@ class TestValidateCalibrationDataForConfigSet:
     @patch("epymodelingsuite.config_loader.load_basemodel_config_from_file")
     @patch("epymodelingsuite.config_loader.load_calibration_config_from_file")
     @patch("epymodelingsuite.builders.utils.get_data_in_window")
-    @patch("pandas.read_csv")
+    @patch("epymodelingsuite.schema.data_validation.pd")
     def test_returns_false_when_empty_window(
         self,
         mock_read_csv,
@@ -373,7 +373,7 @@ class TestValidateCalibrationDataForConfigSet:
         mock_load_calib.return_value.modelset.calibration.fitting_window.start_date = date(2024, 1, 1)
         mock_load_calib.return_value.modelset.calibration.fitting_window.end_date = date(2024, 3, 1)
 
-        mock_read_csv.return_value = pd.DataFrame({"col": [1]})
+        mock_read_csv.read_csv.return_value = pd.DataFrame({"col": [1]})
         mock_get_window.return_value = pd.DataFrame()  # Empty window
 
         success, error = validate_calibration_data_for_config_set(
@@ -426,7 +426,7 @@ class TestValidateCalibrationDataForConfigSet:
 
         assert success is True
         assert error is None
-        assert mock_validate.call_args.kwargs["population_names"] == expected
+        assert [loc.location_id for loc in mock_validate.call_args.kwargs["population_names"]] == expected
 
     @patch("epymodelingsuite.config_loader.load_basemodel_config_from_file")
     @patch("epymodelingsuite.config_loader.load_calibration_config_from_file")

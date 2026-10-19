@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 from epymodelingsuite.schema.output import QuantilesOutputConfig, QuantilesPlotConfig
+from epymodelingsuite.utils.location import resolve_location
 from epymodelingsuite.visualization.preparation import (
     LocationPlotData,
     ResolvedPanelSettings,
@@ -160,7 +161,7 @@ def date_range_of(df: pd.DataFrame | None) -> tuple | None:
 @pytest.fixture
 def location_data() -> LocationPlotData:
     return LocationPlotData(
-        location="United_States_California",
+        location=resolve_location("US-CA"),
         calibration_quantiles=weekly_frame("2023-11-04", "2024-01-13"),  # 11 weeks
         projection_quantiles=weekly_frame("2023-12-02", "2024-03-02"),  # 14 weeks
         surveillance={"hosp": weekly_frame("2023-10-07", "2024-01-27", quantiles=False)},  # 17 weeks

@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 
 from .epydemix_data import get_available_locations
+from .resolved_location import ResolvedLocation
 
 if TYPE_CHECKING:
     from ..schema.basemodel import BaseEpiModel
@@ -17,22 +18,8 @@ CUSTOM_PREFIX = "custom_location_"
 
 
 @dataclass(frozen=True)
-class CustomLocation:
-    location_id: str
-    parent_iso: str
-    location_name: str
-    location_name_short: str
-    total_population: float
-    vaccination_scaling: tuple[tuple[str, float], ...] | None = None
-
-    @property
-    def population_name(self) -> str:
-        return f"{CUSTOM_PREFIX}{self.location_id}"
-
-
-@dataclass(frozen=True)
 class CustomPopulation:
-    location: CustomLocation
+    location: ResolvedLocation
     population_by_age: tuple[float, ...]
     parent_population_name: str
 
@@ -50,7 +37,6 @@ def resolve_epydemix_name(value: str, available: pd.DataFrame | None = None) -> 
 def load_custom_locations(basemodel: "BaseEpiModel") -> dict[str, CustomPopulation]:
     """Read and validate custom CSVs once for a builder invocation."""
     from .location import get_location_codebook, get_metrocast_locations, validate_custom_location_id, validate_iso3166
-    from .populations import aggregate_population_by_age_groups, get_population_codebook
 
     config = basemodel.population
     if config.locations_path is None and config.population_path is None:
@@ -101,7 +87,6 @@ def load_custom_locations(basemodel: "BaseEpiModel") -> dict[str, CustomPopulati
             raise ValueError(f"Custom location ID conflicts with an ISO code: {location_id}")
 
     available = get_available_locations()
-    parent_populations = get_population_codebook() if basemodel.vaccination else None
     expected_ages = {str(age) for age in range(84)} | {"84+"}
     result = {}
     for row in locations.to_dict("records"):
@@ -124,18 +109,19 @@ def load_custom_locations(basemodel: "BaseEpiModel") -> dict[str, CustomPopulati
             )
         age_data = age_data.set_index("age").loc[[str(age) for age in range(84)] + ["84+"]]
         counts = tuple(float(value) for value in age_data["population"])
-        scaling = None
-        if parent_populations is not None:
-            if parent_name not in parent_populations:
-                raise ValueError(f"Vaccination population data unavailable for custom parent {parent_iso}")
-            custom_counts = aggregate_population_by_age_groups(age_data.reset_index(), config.age_groups)
-            parent_counts = aggregate_population_by_age_groups(parent_populations[parent_name], config.age_groups)
-            if any(value <= 0 for value in parent_counts.values()):
-                raise ValueError(f"Vaccination parent {parent_iso} has an empty age group")
-            scaling = tuple((group, custom_counts[group] / parent_counts[group]) for group in config.age_groups)
         short_name = row.get("location_name_short")
         if pd.isna(short_name) or not short_name:
             short_name = row["location_name"]
-        location = CustomLocation(location_id, parent_iso, row["location_name"], short_name, total, scaling)
+        location = ResolvedLocation(
+            kind="custom",
+            location_id=location_id,
+            source_iso=parent_iso,
+            population_name=f"{CUSTOM_PREFIX}{location_id}",
+            location_name=row["location_name"],
+            location_name_short=short_name,
+            identifiers=(("location_id", location_id),),
+            total_population=total,
+            flusight_population=total,
+        )
         result[location_id] = CustomPopulation(location, counts, parent_name)
     return result

@@ -5,9 +5,9 @@ from datetime import date
 from epydemix.calibration import ABCSampler, CalibrationResults
 from epydemix.model import EpiModel
 from epydemix.model.simulation_results import SimulationResults
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
-from ..utils.custom_locations import CustomLocation
+from ..utils.resolved_location import ResolvedLocation
 from .calibration import CalibrationStrategy
 
 
@@ -39,13 +39,70 @@ class ProjectionArguments(BaseModel):
     )
 
 
-class BuilderOutput(BaseModel):
+class _LocatedOutput(BaseModel):
+    """Resolve old builtin inputs once at the construction or unpickle boundary."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    location: ResolvedLocation
+
+    @model_validator(mode="before")
+    @classmethod
+    def resolve_legacy_location(cls, value):
+        if not isinstance(value, dict):
+            return value
+        data = value.copy()
+        population = data.pop("population", None)
+        location = data.get("location")
+        if location is None:
+            reference = population
+            if reference is None:
+                model = data.get("model")
+                if model is None:
+                    calibrator = data.get("calibrator")
+                    parameters = getattr(calibrator, "parameters", None)
+                    model = parameters.get("epimodel") if isinstance(parameters, dict) else None
+                reference = getattr(getattr(model, "population", None), "name", None)
+            if isinstance(reference, str):
+                if reference.startswith("custom_location_"):
+                    raise ValueError("Custom artifacts require an explicit resolved location")
+                from ..utils.location import resolve_location
+
+                location = resolve_location(reference)
+        if location is not None:
+            if not isinstance(location, ResolvedLocation):
+                location = TypeAdapter(ResolvedLocation).validate_python(location)
+            if population is not None and not location.matches(population):
+                raise ValueError("Population must match the resolved location")
+            data["location"] = location
+        return data
+
+    @model_validator(mode="after")
+    def check_location_matches_models(self):
+        model = getattr(self, "model", None)
+        calibrator = getattr(self, "calibrator", None)
+        parameters = getattr(calibrator, "parameters", None)
+        calibrated_model = parameters.get("epimodel") if isinstance(parameters, dict) else None
+        for candidate in (model, calibrated_model):
+            name = getattr(getattr(candidate, "population", None), "name", None)
+            if name is not None and name not in (self.location.population_name, *self.location.aliases):
+                raise ValueError("Resolved location must match the model and calibrator populations")
+        return self
+
+    def __setstate__(self, state):
+        state = state.copy()
+        state["__dict__"] = self.resolve_legacy_location(state["__dict__"])
+        if "location" not in state["__dict__"]:
+            raise ValueError("Saved artifacts require a resolved location or a builtin population")
+        fields = set(state.get("__pydantic_fields_set__", ()))
+        state["__pydantic_fields_set__"] = (fields - {"population"}) | {"location"}
+        super().__setstate__(state)
+        self.check_location_matches_models()
+
+
+class BuilderOutput(_LocatedOutput):
     """
     A bundle containing a single EpiModel or ABCSampler object paired with instructions for simulation/calibration/projection.
     """
-
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-    custom_location: CustomLocation | None = None
 
     primary_id: int = Field(
         description="Primary identifier of an EpiModel or ABCSampler object paired with instructions for simulation/calibration/projection."
@@ -72,10 +129,6 @@ class BuilderOutput(BaseModel):
         """
         Ensure combination of fields is valid.
         """
-        if self.custom_location is not None and self.model is not None:
-            if self.custom_location.population_name != self.model.population.name:
-                raise ValueError("Custom location metadata must match the model population")
-
         if not (self.model or self.calibrator):
             msg = "BuilderOutput must contain an EpiModel or ABCSampler."
             raise ValueError(msg)
@@ -96,33 +149,29 @@ class BuilderOutput(BaseModel):
         return self
 
 
-class SimulationOutput(BaseModel):
+class SimulationOutput(_LocatedOutput):
     """Results of a call to EpiModel.run_simulations() with tracking information."""
-
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-    custom_location: CustomLocation | None = None
 
     primary_id: int = Field(
         description="Primary identifier of an EpiModel object paired with instructions for simulation."
     )
     seed: int | None = Field(None, description="Random seed.")
     delta_t: float | None = Field(None, description="Timestep.")
-    population: str = Field(description="Population name (epydemix).")
     results: SimulationResults | None = Field(description="Results of a call to EpiModel.run_simulations()")
 
+    @property
+    def population(self) -> str:
+        return self.location.population_name
 
-class CalibrationOutput(BaseModel):
+
+class CalibrationOutput(_LocatedOutput):
     """Results of a call to ABCSampler.calibrate() or ABCSampler.run_projections() with tracking information."""
-
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-    custom_location: CustomLocation | None = None
 
     primary_id: int = Field(
         description="Primary identifier of an ABCSampler object paired with instructions for calibration/projection."
     )
     seed: int | None = Field(None, description="Random seed.")
     delta_t: float | None = Field(None, description="Timestep.")
-    population: str = Field(description="Population name (epydemix).")
     start_date_reference: date | None = Field(
         None,
         description="Reference date for start_date parameter offsets (used for converting posterior distributions to actual dates in visualizations).",
@@ -131,3 +180,7 @@ class CalibrationOutput(BaseModel):
         description="Results of a call to ABCSampler.calibrate() or ABCSampler.run_projections()"
     )
     calibration_strategy: CalibrationStrategy | None = Field(None, description="Calibration strategy used.")
+
+    @property
+    def population(self) -> str:
+        return self.location.population_name

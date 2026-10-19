@@ -8,7 +8,7 @@ from epydemix.model import EpiModel
 from ..schema.basemodel import Intervention, Timespan
 from ..school_closures import add_school_closure_interventions
 from ..seasonality import get_scaled_parameter
-from ..utils.custom_locations import CustomLocation
+from ..utils.resolved_location import ResolvedLocation
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,7 @@ def add_school_closure_intervention_from_config(
     model: EpiModel,
     interventions: list[Intervention],
     closure_dict: dict,
-    custom_location: CustomLocation | None = None,
+    location: ResolvedLocation | None = None,
 ) -> EpiModel:
     """
     Apply a school closure intervention to the EpiModel instance.
@@ -45,7 +45,7 @@ def add_school_closure_intervention_from_config(
             model=model,
             closure_dict=closure_dict,
             reduction_factor=intervention.scaling_factor,
-            custom_location=custom_location,
+            location=location,
         )
         logger.info(f"Applied school closure intervention with reduction factor: {intervention.scaling_factor}")
     except Exception as e:

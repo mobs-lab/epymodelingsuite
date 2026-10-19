@@ -1,6 +1,7 @@
 """Core model building functions for EpiModel instances."""
 
 import logging
+from dataclasses import dataclass, replace
 from functools import partial
 
 import numpy as np
@@ -12,17 +13,31 @@ from epydemix.utils import convert_to_2Darray
 from ..schema.basemodel import Compartment, Parameter, Transition
 from ..schema.basemodel import Population as PopulationConfig
 from ..utils import convert_location_name_format, load_epydemix_population
-from ..utils.custom_locations import CustomPopulation, resolve_epydemix_name
+from ..utils.custom_locations import CustomPopulation, load_custom_locations, resolve_epydemix_name
 from ..utils.expression_eval import resolve_model_name, safe_eval
 from ..utils.location import (
-    METROCAST_PREFIX,
     get_metrocast_population_data,
-    get_parent_region,
-    is_state_level_metrocast_location,
+    resolve_location,
 )
 from ..utils.populations import aggregate_population_by_age_groups
+from ..utils.resolved_location import ResolvedLocation, VaccinationContext
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class LocatedModel:
+    """Keep a model's regional identity attached through filtering and sampling."""
+
+    model: EpiModel
+    location: ResolvedLocation
+    vaccination: VaccinationContext | None = None
+
+    def __post_init__(self):
+        if not self.location.matches(self.model.population.name):
+            raise ValueError("Resolved location must match the model population")
+        if self.location.total_population is None:
+            self.location = replace(self.location, total_population=float(self.model.population.Nk.sum()))
 
 
 def _parse_age_group(group_str: str) -> list:
@@ -52,7 +67,7 @@ def _parse_age_group(group_str: str) -> list:
 
 
 def load_iso_population(
-    location_name: str,
+    location_name: str | ResolvedLocation,
     age_groups: list[str],
     contact_matrix_override: str | None = None,
 ) -> Population:
@@ -70,14 +85,15 @@ def load_iso_population(
         epydemix Population object
     """
 
+    location = resolve_location(location_name, "iso")
     age_group_mapping = {group: _parse_age_group(group) for group in age_groups}
     population = load_epydemix_population(
-        population_name=convert_location_name_format(location_name, "epydemix_population"),
+        population_name=location.population_name,
         age_group_mapping=age_group_mapping,
     )
 
     # Keep location_name's population counts; replace only the contact matrices
-    if contact_matrix_override and contact_matrix_override != location_name:
+    if contact_matrix_override and contact_matrix_override != location.location_id:
         cm_population = load_epydemix_population(
             population_name=convert_location_name_format(contact_matrix_override, "epydemix_population"),
             age_group_mapping=age_group_mapping,
@@ -88,7 +104,7 @@ def load_iso_population(
 
 
 def load_metrocast_population(
-    location_name: str,
+    location_name: str | ResolvedLocation,
     age_groups: list[str],
     contact_matrix_override: str | None = None,
 ) -> Population:
@@ -109,59 +125,21 @@ def load_metrocast_population(
     -------
         epydemix Population object with metrocast naming
     """
-    # Check if this is a state-level metrocast location
-    if is_state_level_metrocast_location(location_name):
-        # State-level: use ISO population loading with metrocast naming
-        state_iso = get_parent_region(
-            location_name,
-            output_format="ISO",
-            granularity="state",
-        )
+    location = resolve_location(location_name, "metrocast_location")
+    if location.format("original_location_code") == "All":
+        parent = load_iso_population(location.source_iso, age_groups, contact_matrix_override=contact_matrix_override)
+        parent.name = location.population_name
+        return parent
 
-        # Load population using ISO method
-        population = load_iso_population(
-            location_name=state_iso,
-            age_groups=age_groups,
-            contact_matrix_override=contact_matrix_override or state_iso,
-        )
-
-        # Override name to use metrocast naming convention for output formatting. Metrocast output expects location names as "colorado", not FIPS code "08" as in FluSight.
-        population.name = f"{METROCAST_PREFIX}{location_name}"
-
-        return population
-
-    # Sub-state locations: load from metrocast population data
-    # 1. Load granular age data
     age_data = get_metrocast_population_data()
-    location_data = age_data[age_data["metrocast_location_id"] == location_name]
-
+    location_data = age_data[age_data["metrocast_location_id"] == location.location_id]
     if location_data.empty:
-        raise ValueError(f"No population data found for metrocast location: {location_name}")
-
-    # 2. Aggregate to model age groups
-    pop_by_age = aggregate_population_by_age_groups(location_data, age_groups)
-    Nk = [pop_by_age[ag] for ag in age_groups]
-
-    # 3. Get contact matrix (inherit from parent region or use override)
-    if contact_matrix_override:
-        cm_iso = contact_matrix_override
-    else:
-        cm_iso = get_parent_region(
-            location_name,
-            output_format="ISO",
-            granularity="state",
-        )
-
-    # 4. Load parent region's contact matrix
-    cm_epydemix = convert_location_name_format(cm_iso, "epydemix_population")
-    age_mapping = {g: _parse_age_group(g) for g in age_groups}
-    cm_population = load_epydemix_population(cm_epydemix, age_group_mapping=age_mapping)
-
-    # 5. Create custom population with metrocast Nk + parent region contact matrix
-    population = Population(name=f"{METROCAST_PREFIX}{location_name}")
-    population.add_population(Nk=np.array(Nk, dtype=float), Nk_names=age_groups)
-    population.contact_matrices = cm_population.contact_matrices  # layers derived from this
-
+        raise ValueError(f"No population data found for metrocast location: {location.location_id}")
+    counts = aggregate_population_by_age_groups(location_data, age_groups)
+    parent = load_iso_population(contact_matrix_override or location.source_iso, age_groups)
+    population = Population(name=location.population_name)
+    population.add_population(Nk=np.array([counts[group] for group in age_groups], dtype=float), Nk_names=age_groups)
+    population.contact_matrices = parent.contact_matrices
     return population
 
 
@@ -189,50 +167,35 @@ def load_custom_population(
 
 
 def set_population_from_config(
-    model: EpiModel, population_config: PopulationConfig, custom_population: CustomPopulation | None = None
+    model: EpiModel,
+    population_config: PopulationConfig,
+    location: ResolvedLocation | None = None,
+    custom_populations: dict[str, CustomPopulation] | None = None,
 ) -> EpiModel:
-    """
-    Set the population for the EpiModel instance with location type awareness.
+    """Load demographics for a canonical region and bind them to an epydemix model."""
+    if location is None:
+        if custom_populations is None and population_config.locations_path is not None:
+            from types import SimpleNamespace
 
-    Parameters
-    ----------
-        model: The EpiModel instance for which the population will be set.
-        population_config: Population configuration schema object.
-
-    Returns
-    -------
-        EpiModel instance with the population set.
-    """
-    location_name = population_config.name
-    location_type = population_config.location_type
+            custom_populations = load_custom_locations(SimpleNamespace(population=population_config))
+        location = resolve_location(population_config.name, population_config.location_type, custom_populations)
     age_groups = population_config.age_groups
-    contact_matrix_override = population_config.contact_matrix
-
+    contact_matrix = population_config.contact_matrix
     try:
-        if location_type == "iso":
-            population = load_iso_population(
-                location_name,
-                age_groups,
-                contact_matrix_override,
-            )
-        elif location_type == "custom":
-            if custom_population is None or custom_population.location.location_id != location_name:
-                raise ValueError(f"Matching custom population data required for {location_name}")
-            population = load_custom_population(custom_population, age_groups, contact_matrix_override)
-        elif location_type == "metrocast_location":
-            population = load_metrocast_population(
-                location_name,
-                age_groups,
-                contact_matrix_override,
-            )
+        if location.kind == "iso":
+            population = load_iso_population(location, age_groups, contact_matrix)
+        elif location.kind == "metrocast_location":
+            population = load_metrocast_population(location, age_groups, contact_matrix)
         else:
-            raise ValueError(f"Unsupported location type: {location_type}")
-
+            definition = (custom_populations or {}).get(location.location_id)
+            if definition is None or definition.location != location:
+                raise ValueError(f"Matching custom population data required for {location.location_id}")
+            population = load_custom_population(definition, age_groups, contact_matrix)
+        population.name = location.population_name
         model.set_population(population)
-        logger.info(f"Model population set to: {location_name} (type: {location_type})")
-    except Exception as e:
-        raise ValueError(f"Error setting population for {location_name}: {e}")
-
+        logger.info("Model population set to: %s (type: %s)", location.location_id, location.kind)
+    except Exception as exc:
+        raise ValueError(f"Error setting population for {location.location_id}: {exc}") from exc
     return model
 
 

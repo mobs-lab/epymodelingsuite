@@ -21,6 +21,7 @@ from epymodelingsuite.schema.output import (
     OutputConfiguration,
     TabularOutputTypeEnum,
 )
+from epymodelingsuite.utils.location import resolve_location
 
 HORIZONS = [-1, 0, 1, 2, 3]
 REFERENCE_DATE = date(2026, 10, 10)
@@ -47,6 +48,7 @@ def _calibration(population: str, trajectories: dict, seed: int | None = 42) -> 
     calibration.primary_id = 1
     calibration.seed = seed
     calibration.population = population
+    calibration.location = resolve_location(population)
     calibration.delta_t = 1.0
     calibration.start_date_reference = None
     calibration.results.get_projection_trajectories.return_value = trajectories
@@ -299,9 +301,14 @@ class TestBuildFlusightTrajectorySamples:
             entropy = iter([1, 2])
             monkeypatch.setattr(np.random, "default_rng", lambda _seed: rng_factory(next(entropy)))
         factors = pd.DataFrame({"population": ["United_States"], "rescaling_factor": [2e-4]})
-        rows, warns = ts.build_flusight_trajectory_samples(
-            [_calibration("United_States", traj, seed=seed)], flusight, factors
-        )
+        calibration = _calibration("United_States", traj, seed=seed)
+
+        def unavailable():
+            raise AssertionError("Saved samples must not reload location tables")
+
+        monkeypatch.setattr("epymodelingsuite.utils.location.get_location_codebook", unavailable)
+        monkeypatch.setattr("epymodelingsuite.utils.location.get_metrocast_locations", unavailable)
+        rows, warns = ts.build_flusight_trajectory_samples([calibration], flusight, factors)
         df = _concat(rows)
         hosp = df[df.target == "wk inc flu hosp"]
         ed = df[df.target == "wk inc flu prop ed visits"]

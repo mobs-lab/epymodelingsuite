@@ -8,21 +8,28 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from epymodelingsuite.builders.base import LocatedModel
 from epymodelingsuite.builders.orchestrators import apply_vaccination_for_sampled_start
 from epymodelingsuite.school_closures import add_school_closure_interventions
-from epymodelingsuite.utils.custom_locations import CustomLocation
+from epymodelingsuite.utils.resolved_location import ResolvedLocation, VaccinationContext
 from epymodelingsuite.vaccinations import add_vaccination_schedule
 
 
-def location(scaling=(("0+", 0.25),)):
-    return CustomLocation(
+def location():
+    return ResolvedLocation(
+        kind="custom",
         location_id="test-city",
-        parent_iso="US-MA",
+        population_name="custom_location_test-city",
+        source_iso="US-MA",
         location_name="Test city",
         location_name_short="Test",
         total_population=100,
-        vaccination_scaling=scaling,
+        identifiers=(("location_id", "test-city"),),
     )
+
+
+def vaccination():
+    return VaccinationContext("US-MA", (("0+", 0.25),))
 
 
 def test_custom_vaccination_scales_parent_doses_and_keeps_schedule(monkeypatch):
@@ -31,27 +38,27 @@ def test_custom_vaccination_scales_parent_doses_and_keeps_schedule(monkeypatch):
     model.population.Nk_names = ["0+"]
     schedule = pd.DataFrame({"location": ["US-MA", "US-MA"], "0+": [5.0, 7.0]})
     monkeypatch.setattr("epymodelingsuite.vaccinations.remove_vaccination_transitions", lambda model, *_: model)
-    add_vaccination_schedule(model, lambda *_: None, "S", "V", schedule, custom_location=location())
+    add_vaccination_schedule(model, lambda *_: None, "S", "V", schedule, context=vaccination())
     np.testing.assert_array_equal(model.add_transition.call_args.kwargs["params"][0], [[1], [2]])
     assert schedule["0+"].tolist() == [5.0, 7.0]
 
 
-def test_custom_vaccination_requires_resolved_scaling():
+def test_vaccination_rejects_scaling_for_wrong_age_groups():
     model = MagicMock()
     model.population.Nk_names = ["0+"]
-    with pytest.raises(ValueError, match="not resolved"):
+    with pytest.raises(ValueError, match="match model age groups"):
         add_vaccination_schedule(
             model,
             lambda *_: None,
             "S",
             "V",
             pd.DataFrame({"location": ["US-MA"], "0+": [4]}),
-            custom_location=location(None),
+            context=VaccinationContext("US-MA", (("5+", 0.25),)),
         )
 
 
 def test_sampled_start_reaggregates_before_passing_custom_snapshot(monkeypatch):
-    snapshot = location()
+    snapshot = vaccination()
     original = pd.DataFrame({"location": ["US-MA"], "0+": [7]})
     reaggregated = pd.DataFrame({"location": ["US-MA"], "0+": [11]})
     timespan = SimpleNamespace(start_date=date(2024, 1, 2))
@@ -63,7 +70,7 @@ def test_sampled_start_reaggregates_before_passing_custom_snapshot(monkeypatch):
     apply_vaccination_for_sampled_start(object(), basemodel, timespan, original, object(), snapshot)
     reaggregate.assert_called_once_with(original, timespan.start_date)
     assert add.call_args.kwargs["use_schedule"] is reaggregated
-    assert add.call_args.kwargs["custom_location"] is snapshot
+    assert add.call_args.kwargs["context"] is snapshot
 
 
 def test_custom_school_closure_uses_parent_region(monkeypatch):
@@ -73,7 +80,7 @@ def test_custom_school_closure_uses_parent_region(monkeypatch):
     monkeypatch.setattr(epymodelingsuite.utils, "convert_location_name_format", convert)
     closure = SimpleNamespace(start_date=date(2024, 1, 1), end_date=date(2024, 1, 2), name="Winter")
     model = MagicMock()
-    add_school_closure_interventions(model, {"MA": [closure]}, 0.2, custom_location=location())
+    add_school_closure_interventions(model, {"MA": [closure]}, 0.2, location=location())
     convert.assert_called_once_with("US-MA", "abbreviation")
     model.add_intervention.assert_called_once_with(
         layer_name="school",
@@ -83,7 +90,7 @@ def test_custom_school_closure_uses_parent_region(monkeypatch):
         name="Winter",
     )
     with pytest.raises(ValueError, match="No school closure data"):
-        add_school_closure_interventions(model, {}, 0.2, custom_location=location())
+        add_school_closure_interventions(model, {}, 0.2, location=location())
 
 
 @pytest.mark.parametrize(
@@ -116,7 +123,7 @@ def test_runner_preserves_custom_snapshot_on_success_and_failure(monkeypatch, mo
         delta_t=1.0,
         model=model,
         simulation={},
-        custom_location=snapshot,
+        location=snapshot,
         calibrator=calibrator,
         start_date_reference=None,
         calibration=SimpleNamespace(name="test", options={}),
@@ -138,9 +145,9 @@ def test_runner_preserves_custom_snapshot_on_success_and_failure(monkeypatch, mo
             function(configs)
     else:
         result = function(configs)
-        assert result.custom_location is snapshot
+        assert result.location is snapshot
     output.assert_called_once()
-    assert output.call_args.kwargs["custom_location"] is snapshot
+    assert output.call_args.kwargs["location"] is snapshot
 
 
 @pytest.mark.parametrize("schedule_parent", ["US-MA", "US-CA"])
@@ -158,7 +165,8 @@ def test_sampled_custom_setup_uses_parent_and_rejects_missing_schedule(monkeypat
         vaccination=SimpleNamespace(preprocessed_vaccination_data_path=None, scenario_data_path="ignored.csv"),
         population=SimpleNamespace(age_groups=["0+"]),
     )
-    args = (basemodel, [model], timespan, [snapshot.location_id], {snapshot.population_name: snapshot})
+    monkeypatch.setattr("epymodelingsuite.builders.orchestrators.prepare_vaccination_context", lambda *_: vaccination())
+    args = (basemodel, [LocatedModel(model, snapshot)], timespan)
     if schedule_parent == "US-MA":
         _, earliest = setup_vaccination_schedules(*args)
         assert earliest is schedule
@@ -167,3 +175,17 @@ def test_sampled_custom_setup_uses_parent_and_rejects_missing_schedule(monkeypat
         with pytest.raises(ValueError, match="US-MA.*not found"):
             setup_vaccination_schedules(*args)
     assert scenario.call_args.kwargs["states"] == ["US-MA"]
+
+
+def test_sampled_vaccination_rejects_unprepared_runtime():
+    from epymodelingsuite.builders.orchestrators import make_simulate_wrapper
+
+    with pytest.raises(ValueError, match="prepared vaccination context"):
+        make_simulate_wrapper(
+            basemodel=SimpleNamespace(vaccination=object()),
+            calibration=None,
+            observed_data=pd.DataFrame(),
+            intervention_types=[],
+            sampled_start_timespan=object(),
+            location=location(),
+        )

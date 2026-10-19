@@ -25,8 +25,7 @@ from ..schema.output import (
     QuantilesOutputTypeEnum,
     QuantilesPlotConfig,
 )
-from ..utils import convert_location_name_format
-from ..utils.custom_locations import CustomLocation
+from ..utils.resolved_location import ResolvedLocation
 from .core import (
     figure_to_output_object,
     format_location_name,
@@ -110,30 +109,17 @@ def get_locations_to_plot(calibrations: list[CalibrationOutput], single_config: 
         Set of location names to plot, as they appear in `calibration.population`.
     """
     if single_config is True:
-        return {cal.population for cal in calibrations}
+        return {cal.location.population_name for cal in calibrations}
     if isinstance(single_config, list):
         selected = set()
         for requested in single_config:
-            matched = {
-                cal.population
-                for cal in calibrations
-                if _to_epydemix_population_name(cal.population) == _to_epydemix_population_name(requested)
-                or (getattr(cal, "custom_location", None) is not None and requested == cal.custom_location.location_id)
-            }
+            matched = {cal.location.population_name for cal in calibrations if cal.location.matches(requested)}
             if not matched:
                 msg = f"Requested plot location not found in results: {requested}"
                 raise ValueError(msg)
             selected.update(matched)
         return selected
     return set()
-
-
-def _to_epydemix_population_name(location: str) -> str:
-    """Convert a location in any known format to its epydemix population name, or return it unchanged."""
-    try:
-        return convert_location_name_format(location, "epydemix_population")
-    except (AssertionError, ValueError):
-        return location
 
 
 def _draw_quantile_panel(panel_data: PanelPlotData, ax: plt.Axes, ylabel: str | None) -> None:
@@ -148,7 +134,7 @@ def _draw_quantile_panel(panel_data: PanelPlotData, ax: plt.Axes, ylabel: str | 
         fitting_window_start=panel_data.fitting_window_start,
         fitting_window_end=panel_data.fitting_window_end,
         xlabel_interval=panel_data.xlabel_interval,
-        title=format_location_name(panel_data.location, panel_data.custom_location) + panel_data.title_suffix,
+        title=format_location_name(panel_data.location) + panel_data.title_suffix,
         ylabel=ylabel,
         ax=ax,
     )
@@ -184,10 +170,10 @@ def _plot_quantiles_grid(
     plot_config: QuantilesPlotConfig,
 ) -> plt.Figure:
     """Arrange prepared panels by location; a side-by-side pair stays in the same row."""
-    locations = sort_locations_by_state(
-        panel_data_by_location,
-        {loc: panels[0].custom_location for loc, panels in panel_data_by_location.items() if panels[0].custom_location},
-    )
+    locations = [
+        location.population_name
+        for location in sort_locations_by_state([panels[0].location for panels in panel_data_by_location.values()])
+    ]
     panels_per_location = len(panel_data_by_location[locations[0]])
     ncols = plot_config.grid.panels_per_row
     n_panels = len(locations) * panels_per_location
@@ -243,7 +229,7 @@ def generate_quantile_plots(
     selected_calibrations = [
         calibration
         for calibration in calibrations
-        if plot_config.grid.enabled or calibration.population in single_locations
+        if plot_config.grid.enabled or calibration.location.population_name in single_locations
     ]
     panels_by_variant = prepare_quantile_plots(selected_calibrations, plots_config, surveillance_sources)
     for variant_config in plot_config.outputs:
@@ -342,7 +328,7 @@ def generate_single_location_posterior_plots(
 
     # Generate plots for each location
     for calibration in calibrations:
-        if calibration.population not in locations:
+        if calibration.location.population_name not in locations:
             continue
 
         location = calibration.population
@@ -396,8 +382,7 @@ def generate_single_location_posterior_plots(
                 notes.append(note)
             title_suffix, footnote = _format_plot_notes(notes)
 
-            custom_location = getattr(calibration, "custom_location", None)
-            label = format_location_name(location, custom_location) if custom_location else location
+            label = format_location_name(calibration.location)
             fig.suptitle(f"Posterior Distributions - {label}{title_suffix}", fontsize=14, y=0.995)
             fig.tight_layout()
             if footnote:
@@ -455,8 +440,7 @@ def generate_posterior_grid_plot(
     # Collect posterior distributions for each location
     for calibration in calibrations:
         loc = calibration.population
-        custom_location = getattr(calibration, "custom_location", None)
-        location_labels[loc] = format_location_name(loc, custom_location) if custom_location else loc
+        location_labels[loc] = format_location_name(calibration.location)
 
         # Check for incomplete generations
         notes = []
@@ -512,7 +496,7 @@ def generate_categorical_plots(
     plots_config: PlotsConfig,
     out_dict: dict[str, list[OutputObject]],
     hub_format_data: pd.DataFrame | None = None,
-    custom_locations: dict[str, CustomLocation] | None = None,
+    locations: list[ResolvedLocation] | None = None,
 ) -> None:
     """
     Generate categorical forecast probability plots and add to output dictionary.
@@ -567,11 +551,11 @@ def generate_categorical_plots(
         )
         return
 
-    # Convert location codes to readable names
-    df_rate_trends = df_rate_trends.copy()
-    df_rate_trends["location"] = df_rate_trends["location"].apply(
-        lambda loc: format_location_name(loc, (custom_locations or {}).get(loc))
-    )
+    # Preserve the location object until the renderer produces labels.
+    if locations is not None:
+        by_hub_id = {location.hub_id: location for location in locations}
+        df_rate_trends = df_rate_trends.copy()
+        df_rate_trends["location"] = df_rate_trends["location"].map(lambda value: by_hub_id[value])
 
     # Default category labels (prettier display names)
     default_category_labels = {

@@ -7,11 +7,12 @@ from epydemix.model import EpiModel
 from pandas import DataFrame
 
 from ..schema.basemodel import Timespan, Transition, Vaccination
-from ..utils import convert_location_name_format
-from ..utils.custom_locations import CustomLocation
+from ..utils.location import resolve_location
+from ..utils.resolved_location import VaccinationContext
 from ..vaccinations import (
     add_vaccination_schedule,
     make_vaccination_rate_function,
+    prepare_vaccination_context,
     resample_vaccination_schedule,
     scenario_to_epydemix,
 )
@@ -66,7 +67,7 @@ def add_vaccination_schedules_from_config(
     vaccination: Vaccination,
     timespan: Timespan,
     use_schedule: DataFrame | None = None,
-    custom_location: CustomLocation | None = None,
+    context: VaccinationContext | None = None,
 ) -> EpiModel:
     """
     Add transitions between compartments due to vaccination to the EpiModel instance.
@@ -92,9 +93,9 @@ def add_vaccination_schedules_from_config(
     )
 
     # Vaccination data is state-level; metrocast locations map to their parent state ISO
-    iso_location = (
-        custom_location.parent_iso if custom_location else convert_location_name_format(model.population.name, "ISO")
-    )
+    if context is None:
+        context = prepare_vaccination_context(model, resolve_location(model.population.name))
+    iso_location = context.source_iso
 
     # Ignore provided data path in vaccination input if use_schedule is provided
     if use_schedule is not None:
@@ -135,7 +136,7 @@ def add_vaccination_schedules_from_config(
                 source_comp=transition.source,
                 target_comp=transition.target,
                 vaccination_schedule=vaccination_schedule,
-                custom_location=custom_location,
+                context=context,
             )
             logger.info(f"Added vaccination transition: {transition.source} -> {transition.target}")
         except Exception as e:

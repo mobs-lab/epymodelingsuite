@@ -46,7 +46,7 @@ class TestMakeSimulateWrapper:
     def test_returns_callable(self, base_model_config, mock_calibration, data_state):
         """Test that make_simulate_wrapper returns a callable function and can be invoked."""
         # Create EpiModels using create_model_collection
-        models, _ = create_model_collection(base_model_config, None)
+        models = [item.model for item in create_model_collection(base_model_config, None)]
         model = models[0]
 
         simulate_wrapper = make_simulate_wrapper(
@@ -83,7 +83,7 @@ class TestMakeSimulateWrapper:
         it correctly uses that data_state for calibration output alignment.
         """
         # Create a single EpiModel
-        models, _ = create_model_collection(base_model_config, None)
+        models = [item.model for item in create_model_collection(base_model_config, None)]
         model = models[0]
 
         # Create a data_state with the specified number of observations
@@ -133,7 +133,7 @@ class TestMakeSimulateWrapper:
         Calibration mode should return a dict with a "data" key containing a numpy array
         of simulated values aligned to the observation dates in data_state.
         """
-        models, _ = create_model_collection(base_model_config, None)
+        models = [item.model for item in create_model_collection(base_model_config, None)]
         model = models[0]
 
         wrapper = make_simulate_wrapper(
@@ -175,7 +175,7 @@ class TestMakeSimulateWrapper:
         Projection mode should return a flattened dict with "date" key and all
         transition/compartment keys at the top level.
         """
-        models, _ = create_model_collection(base_model_config, None)
+        models = [item.model for item in create_model_collection(base_model_config, None)]
         model = models[0]
 
         wrapper = make_simulate_wrapper(
@@ -223,7 +223,7 @@ class TestMakeSimulateWrapper:
         # Modify base model to have a calibrated parameter (no value for calibrated type)
         base_model_config.parameters["beta"] = Parameter(type="calibrated")
 
-        models, _ = create_model_collection(base_model_config, None)
+        models = [item.model for item in create_model_collection(base_model_config, None)]
         model = models[0]
 
         wrapper = make_simulate_wrapper(
@@ -264,7 +264,7 @@ class TestMakeSimulateWrapper:
             min_value=0.3,
         )
 
-        models, _ = create_model_collection(base_model_config, None)
+        models = [item.model for item in create_model_collection(base_model_config, None)]
         model = models[0]
 
         wrapper = make_simulate_wrapper(
@@ -307,7 +307,7 @@ class TestMakeSimulateWrapper:
             )
         ]
 
-        models, _ = create_model_collection(base_model_config, None)
+        models = [item.model for item in create_model_collection(base_model_config, None)]
         model = models[0]
 
         wrapper = make_simulate_wrapper(
@@ -337,7 +337,7 @@ class TestMakeSimulateWrapper:
 
         Tests: start_date calculation when sampled_start_timespan is provided.
         """
-        models, _ = create_model_collection(base_model_config, None)
+        models = [item.model for item in create_model_collection(base_model_config, None)]
         model = models[0]
 
         # Create a sampled_start_timespan (earliest possible start date)
@@ -377,7 +377,7 @@ class TestMakeSimulateWrapper:
 
         Tests: exception handling in projection mode.
         """
-        models, _ = create_model_collection(base_model_config, None)
+        models = [item.model for item in create_model_collection(base_model_config, None)]
         model = models[0]
 
         wrapper = make_simulate_wrapper(
@@ -416,7 +416,7 @@ class TestMakeSimulateWrapper:
         # Add a calculated parameter to base model
         base_model_config.parameters["R0"] = Parameter(type="calculated", value="beta / gamma")
 
-        models, _ = create_model_collection(base_model_config, None)
+        models = [item.model for item in create_model_collection(base_model_config, None)]
         model = models[0]
 
         wrapper = make_simulate_wrapper(
@@ -459,7 +459,7 @@ class TestMakeSimulateWrapper:
         original_min = base_model_config.seasonality.min_value
 
         # Create two wrappers sharing the same basemodel config
-        models, _ = create_model_collection(base_model_config, None)
+        models = [item.model for item in create_model_collection(base_model_config, None)]
         model = models[0]
 
         wrapper1 = make_simulate_wrapper(
@@ -534,7 +534,7 @@ class TestMakeSimulateWrapper:
         - Transformation output is used in final results
         - Works in both calibration and projection modes
         """
-        models, _ = create_model_collection(base_model_config, None)
+        models = [item.model for item in create_model_collection(base_model_config, None)]
         model = models[0]
 
         # Create a simple transformation function that adds a new compartment
@@ -604,7 +604,7 @@ class TestMakeSimulateWrapper:
         - Simulation continues despite transformation error
         - Warning is logged
         """
-        models, _ = create_model_collection(base_model_config, None)
+        models = [item.model for item in create_model_collection(base_model_config, None)]
         model = models[0]
 
         # Create a transformation function that always raises an exception
@@ -658,7 +658,7 @@ class TestMakeSimulateWrapper:
         - Function can access actual dates via context['timespan']
         - Works with optional context argument (backward compatible)
         """
-        models, _ = create_model_collection(base_model_config, None)
+        models = [item.model for item in create_model_collection(base_model_config, None)]
         model = models[0]
 
         # Track what context was passed to the transformation
@@ -740,7 +740,7 @@ class TestMakeSimulateWrapper:
         - TypeError is caught and function is retried without context
         - Backward compatibility is maintained
         """
-        models, _ = create_model_collection(base_model_config, None)
+        models = [item.model for item in create_model_collection(base_model_config, None)]
         model = models[0]
 
         # Track that the function was called

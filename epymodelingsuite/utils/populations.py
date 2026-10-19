@@ -6,8 +6,7 @@ import pandas as pd
 from epydemix import EpiModel
 from epydemix.population import Population
 
-from .custom_locations import CUSTOM_PREFIX, CustomLocation
-from .location import METROCAST_PREFIX, convert_location_name_format, get_metrocast_locations
+from .resolved_location import ResolvedLocation
 
 logger = logging.getLogger(__name__)
 
@@ -210,109 +209,70 @@ def get_population_codebook() -> pd.DataFrame:
     return population_codebook
 
 
-def get_total_population(epydemix_name: str, custom_location: CustomLocation | None = None) -> int:
-    """Get total population for a given epydemix location name.
+POPULATION_LOOKUP = {
+    "United_States": 338120586,
+    "United_States__Alabama": 5108468,
+    "United_States__Alaska": 733406,
+    "United_States__Arizona": 7431344,
+    "United_States__Arkansas": 3067732,
+    "United_States__California": 38965193,
+    "United_States__Colorado": 5877610,
+    "United_States__Connecticut": 3617176,
+    "United_States__Delaware": 1031890,
+    "United_States__District_of_Columbia": 678972,
+    "United_States__Florida": 22610726,
+    "United_States__Georgia": 11029227,
+    "United_States__Hawaii": 1435138,
+    "United_States__Idaho": 1964726,
+    "United_States__Illinois": 12549689,
+    "United_States__Indiana": 6862199,
+    "United_States__Iowa": 3207004,
+    "United_States__Kansas": 2940546,
+    "United_States__Kentucky": 4526154,
+    "United_States__Louisiana": 4573749,
+    "United_States__Maine": 1395722,
+    "United_States__Maryland": 6180253,
+    "United_States__Massachusetts": 7001399,
+    "United_States__Michigan": 10037261,
+    "United_States__Minnesota": 5737915,
+    "United_States__Mississippi": 2939690,
+    "United_States__Missouri": 6196156,
+    "United_States__Montana": 1132812,
+    "United_States__Nebraska": 1978379,
+    "United_States__Nevada": 3194176,
+    "United_States__New_Hampshire": 1402054,
+    "United_States__New_Jersey": 9290841,
+    "United_States__New_Mexico": 2114371,
+    "United_States__New_York": 19571216,
+    "United_States__North_Carolina": 10835491,
+    "United_States__North_Dakota": 783926,
+    "United_States__Ohio": 11785935,
+    "United_States__Oklahoma": 4053824,
+    "United_States__Oregon": 4233358,
+    "United_States__Pennsylvania": 12961683,
+    "United_States__Rhode_Island": 1095962,
+    "United_States__South_Carolina": 5373555,
+    "United_States__South_Dakota": 919318,
+    "United_States__Tennessee": 7126489,
+    "United_States__Texas": 30503301,
+    "United_States__Utah": 3417734,
+    "United_States__Vermont": 647464,
+    "United_States__Virginia": 8715698,
+    "United_States__Washington": 7812880,
+    "United_States__West_Virginia": 1770071,
+    "United_States__Wisconsin": 5910955,
+    "United_States__Wyoming": 584057,
+}
 
-    Handles both ISO locations (countries/states) and metrocast locations.
 
-    Parameters
-    ----------
-    epydemix_name : str
-        Name of epydemix's population object (e.g., "United_States__Alabama" or "metrocast_location_denver").
-        Legacy single-underscore names (e.g., "United_States_Alabama") are normalized via the codebook.
+def get_total_population(location: str | ResolvedLocation) -> int:
+    """Return the saved reporting denominator for a resolved region."""
+    from .location import resolve_location
 
-    Returns
-    -------
-    int
-        Total population for the location
-
-    Raises
-    ------
-    KeyError
-        If the location name is not found in the lookup table
-    ValueError
-        If a metrocast location is not found in metrocast data
-    """
-    if epydemix_name.startswith(CUSTOM_PREFIX) or custom_location is not None:
-        if custom_location is None or epydemix_name not in (
-            custom_location.population_name,
-            custom_location.location_id,
-        ):
-            raise ValueError(f"Matching custom location metadata required for {epydemix_name}")
-        return int(custom_location.total_population)
-
-    # Handle metrocast locations
-    if epydemix_name.startswith(METROCAST_PREFIX):
-        location_name = epydemix_name[len(METROCAST_PREFIX) :]
-        metrocast_locs = get_metrocast_locations()
-        location_row = metrocast_locs[metrocast_locs["metrocast_location_id"] == location_name]
-
-        if location_row.empty:
-            msg = f"Metrocast location '{location_name}' not found in metrocast locations data"
-            raise ValueError(msg)
-
-        return int(location_row["population"].iloc[0])
-
-    # Normalize to canonical epydemix name (handles legacy single-underscore inputs via deprecated column lookup)
-    epydemix_name = convert_location_name_format(epydemix_name, "epydemix_population")
-
-    # ISO locations - use hardcoded lookup
-    POPULATION_LOOKUP = {
-        "United_States": 338120586,
-        "United_States__Alabama": 5108468,
-        "United_States__Alaska": 733406,
-        "United_States__Arizona": 7431344,
-        "United_States__Arkansas": 3067732,
-        "United_States__California": 38965193,
-        "United_States__Colorado": 5877610,
-        "United_States__Connecticut": 3617176,
-        "United_States__Delaware": 1031890,
-        "United_States__District_of_Columbia": 678972,
-        "United_States__Florida": 22610726,
-        "United_States__Georgia": 11029227,
-        "United_States__Hawaii": 1435138,
-        "United_States__Idaho": 1964726,
-        "United_States__Illinois": 12549689,
-        "United_States__Indiana": 6862199,
-        "United_States__Iowa": 3207004,
-        "United_States__Kansas": 2940546,
-        "United_States__Kentucky": 4526154,
-        "United_States__Louisiana": 4573749,
-        "United_States__Maine": 1395722,
-        "United_States__Maryland": 6180253,
-        "United_States__Massachusetts": 7001399,
-        "United_States__Michigan": 10037261,
-        "United_States__Minnesota": 5737915,
-        "United_States__Mississippi": 2939690,
-        "United_States__Missouri": 6196156,
-        "United_States__Montana": 1132812,
-        "United_States__Nebraska": 1978379,
-        "United_States__Nevada": 3194176,
-        "United_States__New_Hampshire": 1402054,
-        "United_States__New_Jersey": 9290841,
-        "United_States__New_Mexico": 2114371,
-        "United_States__New_York": 19571216,
-        "United_States__North_Carolina": 10835491,
-        "United_States__North_Dakota": 783926,
-        "United_States__Ohio": 11785935,
-        "United_States__Oklahoma": 4053824,
-        "United_States__Oregon": 4233358,
-        "United_States__Pennsylvania": 12961683,
-        "United_States__Rhode_Island": 1095962,
-        "United_States__South_Carolina": 5373555,
-        "United_States__South_Dakota": 919318,
-        "United_States__Tennessee": 7126489,
-        "United_States__Texas": 30503301,
-        "United_States__Utah": 3417734,
-        "United_States__Vermont": 647464,
-        "United_States__Virginia": 8715698,
-        "United_States__Washington": 7812880,
-        "United_States__West_Virginia": 1770071,
-        "United_States__Wisconsin": 5910955,
-        "United_States__Wyoming": 584057,
-    }
-
-    return POPULATION_LOOKUP[epydemix_name]
+    resolved = resolve_location(location)
+    if resolved.total_population is None:
+        raise ValueError(f"No reporting population available for {resolved.location_id}")
+    return int(resolved.total_population)
 
 
 def make_dummy_population(model: EpiModel) -> Population:

@@ -12,6 +12,7 @@ from epydemix.calibration import CalibrationResults
 from epymodelingsuite.schema.calibration import CalibrationStrategy
 from epymodelingsuite.schema.dispatcher import CalibrationOutput
 from epymodelingsuite.schema.output import ObservedValuesConfig, PlotsConfig, QuantilesPlotConfig
+from epymodelingsuite.utils.location import resolve_location
 from epymodelingsuite.visualization.generators import generate_single_quantile_plots, get_locations_to_plot
 from epymodelingsuite.visualization.preparation import (
     _check_incomplete_generations,
@@ -82,7 +83,8 @@ class TestSurveillanceDataFiltering:
     def mock_calibration_output(self, calibration_quantiles, projection_quantiles):
         """Create a mock CalibrationOutput object."""
         calibration = MagicMock(spec=CalibrationOutput)
-        calibration.population = "US-CA"
+        calibration.population = "United_States__California"
+        calibration.location = resolve_location("US-CA")
 
         calibration.results = _results_for_dates(calibration_quantiles, projection_quantiles)
 
@@ -169,7 +171,8 @@ class TestSurveillanceDataFiltering:
         """Test that surveillance is filtered by surveillance_points even when calibration quantiles are not available."""
         # Create calibration output with no calibration quantiles
         calibration = MagicMock(spec=CalibrationOutput)
-        calibration.population = "US-CA"
+        calibration.population = "United_States__California"
+        calibration.location = resolve_location("US-CA")
         calibration.results = _results_for_dates()
 
         out_dict = {}
@@ -196,7 +199,8 @@ class TestSurveillanceDataFiltering:
 
         # Create calibration output with only calibration quantiles (no projection)
         calibration = MagicMock(spec=CalibrationOutput)
-        calibration.population = "US-CA"
+        calibration.population = "United_States__California"
+        calibration.location = resolve_location("US-CA")
         calibration.results = _results_for_dates(calibration_quantiles)
 
         out_dict = {}
@@ -238,7 +242,8 @@ class TestSurveillanceDataFiltering:
     ):
         """Test behavior when surveillance data has no matching location."""
         # Create calibration for a different location
-        mock_calibration_output.population = "US-TX"
+        mock_calibration_output.population = "United_States__Texas"
+        mock_calibration_output.location = resolve_location("US-TX")
 
         out_dict = {}
 
@@ -670,8 +675,10 @@ class TestLocationsToPlot:
     def test_metrocast_location_matches_population_name(self):
         """A metrocast location ID matches its prefixed population name."""
         calibrations = [
-            SimpleNamespace(population="metrocast_location_denver"),
-            SimpleNamespace(population="metrocast_location_mesa"),
+            SimpleNamespace(
+                population="metrocast_location_denver", location=resolve_location("metrocast_location_denver")
+            ),
+            SimpleNamespace(population="metrocast_location_mesa", location=resolve_location("metrocast_location_mesa")),
         ]
         assert get_locations_to_plot(calibrations, ["denver"]) == {"metrocast_location_denver"}
 
@@ -684,7 +691,9 @@ class TestLocationsToPlot:
     def test_matches_epydemix_population_names(self, requested):
         """ISO, current and deprecated names all match the epydemix population name."""
         calibrations = [
-            SimpleNamespace(population="United_States__California"),
-            SimpleNamespace(population="United_States"),
+            SimpleNamespace(
+                population="United_States__California", location=resolve_location("United_States__California")
+            ),
+            SimpleNamespace(population="United_States", location=resolve_location("United_States")),
         ]
         assert get_locations_to_plot(calibrations, [requested]) == {"United_States__California"}

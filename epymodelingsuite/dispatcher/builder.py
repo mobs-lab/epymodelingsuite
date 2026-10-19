@@ -10,6 +10,7 @@ from epydemix.calibration import ABCSampler, ae, mae, mape, rmse, wmape
 from epydemix.model import EpiModel
 
 from ..builders.base import (
+    LocatedModel,
     add_model_compartments_from_config,
     add_model_parameters_from_config,
     add_model_transitions_from_config,
@@ -41,7 +42,8 @@ from ..telemetry import ExecutionTelemetry, extract_builder_metadata
 from ..utils.config import get_workflow_type_from_configs
 from ..utils.custom_locations import load_custom_locations
 from ..utils.distance import wrmse
-from ..vaccinations import reaggregate_vaccines
+from ..utils.location import resolve_location
+from ..vaccinations import prepare_vaccination_context, reaggregate_vaccines
 
 logger = logging.getLogger(__name__)
 
@@ -191,9 +193,11 @@ def build_basemodel(*, basemodel_config: BasemodelConfig, **_) -> BuilderOutput:
     logger.info("BUILDER: setting up single model...")
 
     # This workflow uses a single population
-    custom_population = custom_populations.get(basemodel.population.name)
-    custom_location = custom_population.location if custom_population else None
-    set_population_from_config(model, basemodel.population, custom_population=custom_population)
+    location = resolve_location(
+        basemodel.population.name, basemodel.population.location_type.value, custom_populations=custom_populations
+    )
+    set_population_from_config(model, basemodel.population, location, custom_populations=custom_populations)
+    location = LocatedModel(model, location).location
 
     # Compartments and transitions
     add_model_compartments_from_config(model, basemodel.compartments)
@@ -202,7 +206,11 @@ def build_basemodel(*, basemodel_config: BasemodelConfig, **_) -> BuilderOutput:
     # Vaccination
     if basemodel.vaccination:
         add_vaccination_schedules_from_config(
-            model, basemodel.transitions, basemodel.vaccination, basemodel.timespan, custom_location=custom_location
+            model,
+            basemodel.transitions,
+            basemodel.vaccination,
+            basemodel.timespan,
+            context=prepare_vaccination_context(model, location),
         )
 
     # Initial conditions
@@ -229,9 +237,7 @@ def build_basemodel(*, basemodel_config: BasemodelConfig, **_) -> BuilderOutput:
             closure_dict = make_school_closure_dict(
                 range(basemodel.timespan.start_date.year, basemodel.timespan.end_date.year + 1)
             )
-            add_school_closure_intervention_from_config(
-                model, basemodel.interventions, closure_dict, custom_location=custom_location
-            )
+            add_school_closure_intervention_from_config(model, basemodel.interventions, closure_dict, location=location)
 
         # Contact matrix
         if "contact_matrix" in intervention_types:
@@ -254,7 +260,7 @@ def build_basemodel(*, basemodel_config: BasemodelConfig, **_) -> BuilderOutput:
 
     return BuilderOutput(
         primary_id=0,
-        custom_location=custom_location,
+        location=location,
         seed=basemodel.random_seed,
         delta_t=basemodel.timespan.delta_t,
         model=model,
@@ -288,11 +294,10 @@ def build_sampling(
     # For compactness
     basemodel = basemodel_config.model
     custom_populations = load_custom_locations(basemodel)
-    custom_locations = {item.location.population_name: item.location for item in custom_populations.values()}
     sampling = sampling_config.modelset
 
     # Build a collection of EpiModels
-    models, population_names = create_model_collection(basemodel, sampling.population_names, custom_populations)
+    models = create_model_collection(basemodel, sampling.population_names, custom_populations)
 
     # Output of this is a list of dicts containing start_date, initial conditions, and parameter value
     # combinations where parameters is in the same format as basemodel.parameters.
@@ -318,27 +323,21 @@ def build_sampling(
         sampled_start_timespan = None
 
     # Vaccination is sensitive to location and start_date but not to model parameters.
-    models, earliest_vax = setup_vaccination_schedules(
-        basemodel, models, sampled_start_timespan, population_names, custom_locations
-    )
+    models, earliest_vax = setup_vaccination_schedules(basemodel, models, sampled_start_timespan)
 
     # These interventions are sensitive to location but not to model parameters and can be applied
     # using the earliest start_date before further duplicating the models.
-    models = setup_interventions(models, basemodel, intervention_types, sampled_start_timespan, custom_locations)
+    models = setup_interventions(models, basemodel, intervention_types, sampled_start_timespan)
 
     logger.info("BUILDER: using sampled values to modify EpiModels")
 
     # Create models with sampled/calculated parameters, apply vaccination and interventions
     simulation_args = []
     final_models = []
-    for model in models:
-        custom_location = custom_locations.get(model.population.name)
+    for item in models:
+        model, location = item.model, item.location
         vax_state = (
-            get_data_in_location(
-                earliest_vax, custom_location.parent_iso if custom_location else model.population.name, "location"
-            )
-            if earliest_vax is not None
-            else None
+            earliest_vax[earliest_vax["location"] == location.source_iso].copy() if earliest_vax is not None else None
         )
         for varset in sampled_vars:
             m = copy.deepcopy(model)
@@ -376,7 +375,7 @@ def build_sampling(
                     basemodel.vaccination,
                     timespan,
                     use_schedule=reaggregated_vax,
-                    custom_location=custom_location,
+                    context=item.vaccination,
                 )
 
             # Seasonality (this must occur before parameter interventions to preserve parameter overrides)
@@ -396,7 +395,7 @@ def build_sampling(
                 resample_frequency=basemodel.simulation.resample_frequency,
             )
 
-            final_models.append(m)
+            final_models.append(LocatedModel(m, location, item.vaccination))
             simulation_args.append(sim_args)
 
     # Ensure models and specifications align
@@ -407,11 +406,11 @@ def build_sampling(
     logger.info("BUILDER: completed for sampling.")
     return [
         BuilderOutput(
-            custom_location=custom_locations.get(t[0].population.name),
+            location=t[0].location,
             primary_id=i,
             seed=basemodel.random_seed,
             delta_t=basemodel.timespan.delta_t,
-            model=t[0],
+            model=t[0].model,
             simulation=t[1],
         )
         for i, t in enumerate(zip(final_models, simulation_args, strict=True))
@@ -461,7 +460,6 @@ def build_calibration(
     # For compactness
     basemodel = basemodel_config.model
     custom_populations = load_custom_locations(basemodel)
-    custom_locations = {item.location.population_name: item.location for item in custom_populations.values()}
     modelset = calibration_config.modelset
     calibration = modelset.calibration
 
@@ -469,7 +467,7 @@ def build_calibration(
     rng = np.random.default_rng(basemodel.random_seed)
 
     # Build a collection of EpiModels
-    models, population_names = create_model_collection(basemodel, modelset.population_names, custom_populations)
+    models = create_model_collection(basemodel, modelset.population_names, custom_populations)
 
     # Extract intervention types
     intervention_types = []
@@ -487,13 +485,11 @@ def build_calibration(
         sampled_start_timespan = None
 
     # Vaccination is sensitive to location and start_date but not to model parameters.
-    models, earliest_vax = setup_vaccination_schedules(
-        basemodel, models, sampled_start_timespan, population_names, custom_locations
-    )
+    models, earliest_vax = setup_vaccination_schedules(basemodel, models, sampled_start_timespan)
 
     # These interventions are sensitive to location but not to model parameters and can be applied
     # using the earliest start_date before creating ABCSamplers.
-    models = setup_interventions(models, basemodel, intervention_types, sampled_start_timespan, custom_locations)
+    models = setup_interventions(models, basemodel, intervention_types, sampled_start_timespan)
 
     # Extract UDF functions (now wrapped in PicklableFunction for correct serialization)
     post_hoc_func = calibration.post_hoc_transformation.user_function if calibration.post_hoc_transformation else None
@@ -513,12 +509,10 @@ def build_calibration(
     # Validate data availability for each location
     from ..schema.data_validation import validate_calibration_data
 
-    # valid/invalid_population_names are subsets of population_names (e.g., "denver", "US-MA")
     valid_population_names, invalid_population_names = validate_calibration_data(
         calibration_config=calibration_config,
-        population_names=population_names,
+        population_names=[item.location for item in models],
         observed_data=observed_in_window,
-        custom_locations={key: item.location for key, item in custom_populations.items()},
     )
 
     # All locations have no data - fail early
@@ -533,11 +527,8 @@ def build_calibration(
                 len(invalid_population_names),
                 invalid_population_names,
             )
-            # Filter using population_names (e.g., "denver", "US-MA")
-            # This is different from EpiModel.population.name (e.g., "metrocast_location_denver")
-            valid_set = set(valid_population_names)
-            models = [model for model, name in zip(models, population_names) if name in valid_set]
-            population_names = [name for name in population_names if name in valid_set]
+            valid_set = {location.key for location in valid_population_names}
+            models = [item for item in models if item.location.key in valid_set]
         else:
             raise CalibrationDataError(f"Data validation failed for locations: {invalid_population_names}")
 
@@ -545,21 +536,16 @@ def build_calibration(
     location_column = calibration.comparison[0].observed_location_column
     location_format = calibration.comparison[0].observed_location_format
 
-    for model in models:
-        custom_location = custom_locations.get(model.population.name)
+    for item in models:
+        model, location = item.model, item.location
         observed_data = get_data_in_location(
             observed_in_window,
-            model.population.name,
+            location,
             location_column,
             location_format,
-            custom_location=custom_location,
         )
         vax_state = (
-            get_data_in_location(
-                earliest_vax, custom_location.parent_iso if custom_location else model.population.name, "location"
-            )
-            if earliest_vax is not None
-            else None
+            earliest_vax[earliest_vax["location"] == location.source_iso].copy() if earliest_vax is not None else None
         )
 
         # Create simulate_wrapper
@@ -570,7 +556,8 @@ def build_calibration(
             intervention_types=intervention_types,
             sampled_start_timespan=sampled_start_timespan,
             earliest_vax=vax_state,
-            custom_location=custom_location,
+            location=location,
+            vaccination_context=item.vaccination,
             post_hoc_transformation=post_hoc_func,
             rng=rng,
         )
@@ -638,10 +625,10 @@ def build_calibration(
     return [
         BuilderOutput(
             primary_id=i,
-            custom_location=custom_locations.get(t[0].population.name),
+            location=t[0].location,
             seed=basemodel.random_seed,
             delta_t=basemodel.timespan.delta_t,
-            model=t[0],
+            model=t[0].model,
             calibrator=t[1],
             calibration=calibration.strategy,
             projection=projection_options,

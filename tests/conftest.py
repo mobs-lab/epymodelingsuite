@@ -14,6 +14,7 @@ from epymodelingsuite.schema.basemodel import (
     Transition,
 )
 from epymodelingsuite.schema.dispatcher import BuilderOutput
+from epymodelingsuite.utils.location import resolve_location
 
 # =============================================================================
 # Shared Constants
@@ -111,4 +112,5 @@ def make_sir_config(
 
 def create_builder_output(**kwargs):
     """Create a BuilderOutput bypassing Pydantic validation for testing with mocks."""
+    kwargs.setdefault("location", resolve_location("US-MA"))
     return BuilderOutput.model_construct(**kwargs)

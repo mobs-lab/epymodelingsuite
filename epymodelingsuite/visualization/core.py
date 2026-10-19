@@ -1,6 +1,7 @@
 """Visualization functions for calibration/projection outputs."""
 
 import io
+from collections.abc import Iterable
 from datetime import datetime
 from typing import Any
 
@@ -10,12 +11,8 @@ import numpy as np
 import pandas as pd
 
 from ..schema.output import FigureOutputTypeEnum, OutputObject
-from ..utils.custom_locations import CUSTOM_PREFIX, CustomLocation
-from ..utils.location import (
-    convert_location_name_format,
-    get_parent_region,
-    parse_population_name,
-)
+from ..utils.location import resolve_location
+from ..utils.resolved_location import ResolvedLocation
 
 # Constants
 MEDIAN_QUANTILE = 0.5
@@ -24,84 +21,23 @@ MEDIAN_QUANTILE = 0.5
 # == Helper functions ==
 
 
-def _get_location_sort_key(location: str, custom_location: CustomLocation | None = None) -> tuple[str, str]:
-    """
-    Get sort key for a location (state, location_name).
-
-    For metrocast locations, returns (state_abbreviation, location_name).
-    For ISO locations, returns (state_code, location_name).
-    For unknown locations, returns ("ZZZ", location) to sort them last.
-
-    Parameters
-    ----------
-    location : str
-        Location name (e.g., "denver", "US-MA").
-
-    Returns
-    -------
-    tuple[str, str]
-        (state_key, location_name) for sorting.
-    """
-    if custom_location is not None:
-        return (custom_location.parent_iso, custom_location.location_id)
+def _get_location_sort_key(location: str | ResolvedLocation) -> tuple[str, str]:
+    """Group resolved locations by their reference region."""
     try:
-        # Try to get parent state abbreviation
-        state_abbrev = get_parent_region(location, output_format="abbreviation", custom_location=custom_location)
-        return (state_abbrev, location)
-    except (ValueError, KeyError):
-        # For ISO locations or unknown, extract state code or sort last
-        if "-" in location:
-            # ISO format like "US-MA" -> use "MA" as state key
-            return (location.rsplit("-", maxsplit=1)[-1], location)
-        return ("ZZZ", location)
+        resolved = resolve_location(location)
+        return resolved.source_iso, resolved.location_id
+    except ValueError:
+        return "ZZZ", str(location)
 
 
-def sort_locations_by_state(
-    locations: list[str] | set[str], custom_locations: dict[str, CustomLocation] | None = None
-) -> list[str]:
-    """
-    Sort locations by state, then alphabetically within each state.
-
-    Parameters
-    ----------
-    locations : list or set of str
-        Location names to sort.
-
-    Returns
-    -------
-    list of str
-        Sorted location names.
-    """
-    return sorted(locations, key=lambda loc: _get_location_sort_key(loc, (custom_locations or {}).get(loc)))
+def sort_locations_by_state(locations: Iterable[str | ResolvedLocation]) -> list[str | ResolvedLocation]:
+    """Sort locations by reference region, then canonical ID."""
+    return sorted(locations, key=_get_location_sort_key)
 
 
-def format_location_name(location: str, custom_location: CustomLocation | None = None) -> str:
-    """
-    Convert location name from epydemix format to clean readable name.
-
-    For metrocast locations, uses short name (e.g., "Greater Boston, MA").
-    For ISO locations, uses standard name (e.g., "Texas").
-
-    Parameters
-    ----------
-    location : str
-        Location name in any format (e.g., "United_States_Texas", "metrocast_location_denver").
-
-    Returns
-    -------
-    str
-        Clean location name (e.g., "Texas", "Greater Boston, MA").
-    """
-    if custom_location is not None or location.startswith(CUSTOM_PREFIX):
-        return convert_location_name_format(location, "name_short", custom_location=custom_location)
-    try:
-        location_name, location_type = parse_population_name(location)
-        if location_type == "metrocast_location":
-            return convert_location_name_format(location_name, "name_short", location_type="metrocast_location")
-        return convert_location_name_format(location, "name")
-    except (AssertionError, KeyError, IndexError):
-        # If conversion fails, return original name with underscores replaced
-        return location.replace("_", " ")
+def format_location_name(location: str | ResolvedLocation) -> str:
+    """Use the saved display name, resolving legacy string inputs at this boundary."""
+    return resolve_location(location).location_name_short
 
 
 # == Base plotting functions ==
@@ -283,7 +219,6 @@ def plot_quantiles_grid(  # noqa: PLR0913
     color: str = "C0",
     panels_per_row: int = 4,
     figsize: tuple[float, float] | None = None,
-    custom_locations: dict[str, CustomLocation] | None = None,
 ) -> tuple[plt.Figure, np.ndarray]:
     """
     Create grid of quantile plots for multiple locations.
@@ -353,7 +288,7 @@ def plot_quantiles_grid(  # noqa: PLR0913
             date_col=date_col,
             quantile_col=quantile_col,
             color=color,
-            title=format_location_name(location, (custom_locations or {}).get(location)),
+            title=format_location_name(location),
             ax=ax,
         )
 
@@ -783,7 +718,6 @@ def plot_quantile_panels_grid(  # noqa: PLR0913
     ylabel: str | None = None,
     xlabel_interval: str | None = None,
     suptitle: str | None = None,
-    custom_locations: dict[str, CustomLocation] | None = None,
 ) -> tuple[plt.Figure, np.ndarray]:
     """
     Draw a grid with one quantile panel per location.
@@ -878,7 +812,7 @@ def plot_quantile_panels_grid(  # noqa: PLR0913
         locations.update(location_calibration_quantiles.keys())
     if location_projection_quantiles is not None:
         locations.update(location_projection_quantiles.keys())
-    locations = sort_locations_by_state(locations, custom_locations)
+    locations = sort_locations_by_state(locations)
 
     if not locations:
         msg = "No locations provided"
@@ -918,7 +852,7 @@ def plot_quantile_panels_grid(  # noqa: PLR0913
             surveillance_size=surveillance_size,
             fitting_window_start=fitting_window_start,
             fitting_window_end=fitting_window_end,
-            title=format_location_name(location, (custom_locations or {}).get(location)),
+            title=format_location_name(location),
             ax=ax,
             xlabel_interval=xlabel_interval,
             ylabel=ylabel if c == 0 else None,
