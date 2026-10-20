@@ -28,7 +28,7 @@ def augment_hhs_hospitalizations(
     snapshot : pd.DataFrame
         Output of ``fetch_hhs_hospitalizations(include_reporting_frac=True, preserve_missing_counts=True)``.
     method : {"weighted", "average"}
-        Weighted correction for non-reporting hospitals, or normalization to average reporting coverage.
+        Weighted correction for non-reporting hospitals, or correction for reporting below average coverage.
     unreported_weight : float, optional
         Share of the non-reporting hospitals' admissions to add back, between 0 and 1.
         0 keeps reported counts; 1 applies the full inverse of the reporting fraction. Default is 0.5.
@@ -57,7 +57,7 @@ def augment_hhs_hospitalizations(
     -----
     Weighted: ``(r + unreported_weight * (1 - r)) / r``. With the default weight,
     100 admissions at 50% reporting become 150.
-    Average: ``average_reporting_frac / r``. This can reduce counts when reporting exceeds the average.
+    Average: ``max(1, average_reporting_frac / r)``. Counts stay unchanged when reporting meets or exceeds the average.
     """
     # Select the latest week and check its inputs.
     latest_date = snapshot["target_end_date"].max()
@@ -96,7 +96,7 @@ def augment_hhs_hospitalizations(
             missing = locations[average_fractions.isna()].unique().tolist()
             msg = f"Missing average reporting fractions for {missing}"
             raise ValueError(msg)
-        factor = average_fractions / fractions
+        factor = (average_fractions / fractions).clip(lower=1)
         unreported_weight = float("nan")
     else:
         msg = f"Unknown augmentation method: {method!r}"

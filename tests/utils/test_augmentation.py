@@ -60,15 +60,15 @@ def test_out_of_range_fraction_raises(snapshot, fraction):
         augment_hhs_hospitalizations(snapshot, method="weighted")
 
 
-def test_average_normalizes_up_and_down_without_mutating_snapshot(snapshot):
+def test_average_augments_without_reducing_or_mutating_snapshot(snapshot):
     original = snapshot.copy()
     augmented, reporting = augment_hhs_hospitalizations(
         snapshot, method="average", average_reporting_frac={"US-CA": 0.75, "US-TX": 0.8}
     )
-    assert augmented["hospitalizations"].iloc[[1, 3]].tolist() == [150.0, 16.0]
+    assert augmented["hospitalizations"].iloc[[1, 3]].tolist() == [150.0, 20.0]
     assert pd.isna(augmented["hospitalizations"].iloc[0])
     assert augmented["hospitalizations"].iloc[2] == 40.0
-    assert reporting["estimated_reporting"].tolist() == [1.5, 0.8]
+    assert reporting["estimated_reporting"].tolist() == [1.5, 1.0]
     assert reporting["average_reporting_frac"].tolist() == [0.75, 0.8]
     assert reporting["method"].tolist() == ["average", "average"]
     assert reporting["unreported_weight"].isna().all()
@@ -115,4 +115,17 @@ def test_average_accepts_integer_counts_from_csv(snapshot):
     augmented, _ = augment_hhs_hospitalizations(
         snapshot, method="average", average_reporting_frac={"US-CA": 0.70213, "US-TX": 0.77076}
     )
-    assert augmented["hospitalizations"].iloc[[1, 3]].tolist() == pytest.approx([140.426, 15.4152])
+    assert augmented["hospitalizations"].iloc[[1, 3]].tolist() == pytest.approx([140.426, 20.0])
+
+
+@pytest.mark.parametrize(
+    ("average", "expected_factor", "expected_count"),
+    [(0.25, 1.0, 100.0), (0.5, 1.0, 100.0), (0.8, 1.6, 160.0)],
+)
+def test_average_factor_at_below_and_above_current_reporting(snapshot, average, expected_factor, expected_count):
+    augmented, reporting = augment_hhs_hospitalizations(
+        snapshot, method="average", average_reporting_frac={"US-CA": average, "US-TX": 0.8}
+    )
+    assert augmented.loc[1, "hospitalizations"] == expected_count
+    assert reporting.loc[1, "values_augment"] == expected_count
+    assert reporting.loc[1, "estimated_reporting"] == expected_factor
