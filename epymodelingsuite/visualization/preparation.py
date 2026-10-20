@@ -22,6 +22,7 @@ from ..schema.output import (
     QuantilesPlotConfig,
 )
 from ..utils.quantiles import get_calibration_quantiles, get_projection_quantiles
+from ..utils.resolved_location import ResolvedLocation
 
 logger = logging.getLogger(__name__)
 
@@ -146,7 +147,7 @@ def _fetch_quantiles_for_location(
 
 def _select_surveillance(
     surveillance: pd.DataFrame,
-    location: str,
+    location: ResolvedLocation,
     surveillance_config: ObservedValuesConfig,
 ) -> pd.DataFrame | None:
     """
@@ -434,7 +435,7 @@ def resolve_panel_settings(
 class LocationPlotData:
     """Quantiles, surveillance and notes for one location, collected once before plotting."""
 
-    location: str
+    location: ResolvedLocation
     calibration_quantiles: pd.DataFrame | None  # value column renamed to "value"
     projection_quantiles: pd.DataFrame | None  # untrimmed, value column renamed to "value"
     surveillance: dict[str, pd.DataFrame]  # source name -> this location's rows as date/value
@@ -452,7 +453,7 @@ class PanelPlotData:
     Renderers treat the frames as read-only so single and grid can share them.
     """
 
-    location: str
+    location: ResolvedLocation
     calibration_quantiles: pd.DataFrame | None
     projection_quantiles: pd.DataFrame | None
     surveillance: pd.DataFrame | None
@@ -656,7 +657,7 @@ def _collect_location_plot_data(
     LocationPlotData
         Collected data for the location.
     """
-    location = calibration.population
+    location = calibration.location
     notes = []
     if note := _check_incomplete_generations(calibration):
         notes.append(note)
@@ -744,7 +745,7 @@ def prepare_quantile_plots(
                     panel.calibration_quantiles is not None or panel.projection_quantiles is not None
                     for panel in panel_data
                 ):
-                    prepared[variant_type][location_data.location] = panel_data
+                    prepared[variant_type][location_data.location.population_name] = panel_data
             except Exception as e:
                 logger.warning(
                     "Failed to prepare %s panels for %s: %s",

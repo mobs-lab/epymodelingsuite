@@ -5,13 +5,9 @@ from collections.abc import Callable
 import pandas as pd
 from epydemix.model import EpiModel
 
-from .utils.location import (
-    get_metrocast_population_data,
-    get_parent_region,
-    is_state_level_metrocast_location,
-    parse_population_name,
-)
+from .utils.location import resolve_location
 from .utils.populations import aggregate_population_by_age_groups, get_age_group_mapping, validate_age_groups
+from .utils.resolved_location import ResolvedLocation, VaccinationContext
 
 logger = logging.getLogger(__name__)
 
@@ -803,69 +799,29 @@ def make_vaccination_rate_function(origin_compartment: str, eligible_compartment
     return compute_vaccination_rate
 
 
-def _get_vaccination_scaling_factors(
-    population_name: str,
-    age_groups: list[str],
-) -> dict[str, float]:
-    """
-    Calculate age-stratified vaccination dose scaling factors for sub-state level locations.
+def prepare_vaccination_context(model: EpiModel, location: ResolvedLocation) -> VaccinationContext:
+    """Resolve dose scaling once, before serializing a runtime."""
+    from .utils import get_population_codebook
 
-    For sub-state level locations (e.g., HSA regions for Metrocast), returns a dict
-    mapping each age group to its scaling factor (substate_pop[age] / state_pop[age]).
-    For ISO locations (state-level), returns scaling factor of 1.0 for all age groups.
-
-    Parameters
-    ----------
-    population_name : str
-        The model's population name (e.g., "metrocast_location_denver" or "United_States_Colorado")
-    age_groups : list[str]
-        List of age group strings (e.g., ["0-4", "5-17", "18-49", "50-64", "65+"])
-
-    Returns
-    -------
-    dict[str, float]
-        Mapping of age group -> scaling factor
-    """
-    from .utils import convert_location_name_format, get_population_codebook
-
-    location_id, location_type = parse_population_name(population_name)
-
-    # No scaling for ISO locations
-    if location_type != "metrocast_location":
-        return dict.fromkeys(age_groups, 1.0)
-
-    # No scaling for state-level metrocast locations
-    # (Uses the original epydemix population for states directly)
-    if is_state_level_metrocast_location(location_id):
-        return dict.fromkeys(age_groups, 1.0)
-
-    # Get metrocast population aggregated by age groups
-    metro_pop_data = get_metrocast_population_data()
-    location_data = metro_pop_data[metro_pop_data["metrocast_location_id"] == location_id]
-
-    if location_data.empty:
-        logger.warning(f"Metrocast location '{location_id}' not found. No vaccination scaling applied.")
-        return dict.fromkeys(age_groups, 1.0)
-
-    metro_pop = aggregate_population_by_age_groups(location_data, age_groups)
-
-    # Get parent state population aggregated by age groups
-    state_iso = get_parent_region(location_id, output_format="ISO")
-    state_epydemix = convert_location_name_format(state_iso, "epydemix_population")
-
-    population_codebook = get_population_codebook()
-    state_pop = aggregate_population_by_age_groups(population_codebook[state_epydemix], age_groups)
-
-    # Calculate scaling factors
-    scaling_factors = {}
-    for ag in age_groups:
-        if state_pop[ag] > 0:
-            scaling_factors[ag] = metro_pop[ag] / state_pop[ag]
-        else:
-            scaling_factors[ag] = 1.0
-
-    logger.info(f"Vaccination scaling factors for {location_id}: {scaling_factors}")
-    return scaling_factors
+    age_groups = model.population.Nk_names
+    if age_groups is None:
+        raise ValueError("Model population must have Nk_names defined for vaccination scheduling.")
+    if location.kind == "iso" or (
+        location.kind == "metrocast_location" and location.format("original_location_code") == "All"
+    ):
+        factors = tuple((age, 1.0) for age in age_groups)
+    else:
+        source = resolve_location(location.source_iso)
+        populations = get_population_codebook()
+        if source.population_name not in populations:
+            raise ValueError(f"Vaccination population data unavailable for source {location.source_iso}")
+        parent = aggregate_population_by_age_groups(populations[source.population_name], age_groups)
+        if any(value <= 0 for value in parent.values()):
+            raise ValueError(f"Vaccination source {location.source_iso} has an empty age group")
+        factors = tuple(
+            (age, float(count) / parent[age]) for age, count in zip(age_groups, model.population.Nk, strict=True)
+        )
+    return VaccinationContext(location.source_iso, factors)
 
 
 def add_vaccination_schedule(
@@ -874,6 +830,7 @@ def add_vaccination_schedule(
     source_comp: str,
     target_comp: str,
     vaccination_schedule: pd.DataFrame,
+    context: VaccinationContext | None = None,
 ) -> EpiModel:
     """
     Register and add a vaccination transition to the model using a time-varying schedule by age group.
@@ -911,10 +868,10 @@ def add_vaccination_schedule(
     ValueError
         If any age groups required by the model are missing from the DataFrame.
     """
-    from .utils import convert_location_name_format
-
     # Location handling
-    iso_location = convert_location_name_format(model.population.name, "ISO")
+    if context is None:
+        context = prepare_vaccination_context(model, resolve_location(model.population.name))
+    iso_location = context.source_iso
 
     if "location" not in vaccination_schedule.columns:
         raise ValueError(
@@ -931,7 +888,9 @@ def add_vaccination_schedule(
     age_groups_model = model.population.Nk_names
     if age_groups_model is None:
         raise ValueError("Model population must have Nk_names defined for vaccination scheduling.")
-    scaling_factors = _get_vaccination_scaling_factors(model.population.name, age_groups_model)
+    scaling_factors = dict(context.scaling)
+    if set(scaling_factors) != set(age_groups_model):
+        raise ValueError("Prepared vaccination scaling must match model age groups.")
 
     for age_group, factor in scaling_factors.items():
         if factor != 1.0 and age_group in vaccination_schedule.columns:

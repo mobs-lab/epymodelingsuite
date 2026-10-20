@@ -12,6 +12,7 @@ import pandas as pd
 from pydantic import BaseModel
 
 from ..builders.utils import get_data_in_location
+from ..utils.resolved_location import ResolvedLocation
 from .calibration import CalibrationConfig
 from .common import InputFile
 
@@ -70,9 +71,9 @@ def find_missing_data_files(*configs: BaseModel | None) -> list[str]:
 
 def validate_calibration_data(
     calibration_config: CalibrationConfig,
-    population_names: list[str],
+    population_names: list[str | ResolvedLocation],
     observed_data: pd.DataFrame,
-) -> tuple[list[str], list[str]]:
+) -> tuple[list[str | ResolvedLocation], list[str | ResolvedLocation]]:
     """
     Validate data availability for each location in fitting window.
 
@@ -185,21 +186,24 @@ def validate_calibration_data_for_config_set(
             load_basemodel_config_from_file,
             load_calibration_config_from_file,
         )
-        from ..utils.location import resolve_population_names
+        from ..utils.custom_locations import load_custom_locations
+        from ..utils.location import resolve_location, resolve_locations
 
         # Load configs
         basemodel_config = load_basemodel_config_from_file(basemodel_path)
         calibration_config = load_calibration_config_from_file(calibration_path)
 
         calibration = calibration_config.modelset.calibration
+        custom_populations = load_custom_locations(basemodel_config.model)
 
         # Resolve population names (same logic as create_model_collection)
         population_names = calibration_config.modelset.population_names
         if population_names:
-            population_names = [name for name, _ in resolve_population_names(population_names)]
+            population_names = resolve_locations(population_names, custom_populations)
         else:
             # Use population from basemodel
-            population_names = [basemodel_config.model.population.name]
+            population = basemodel_config.model.population
+            population_names = [resolve_location(population.name, population.location_type, custom_populations)]
 
         # Load and filter observed data
         observed_raw = pd.read_csv(calibration.observed_data_path)

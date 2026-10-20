@@ -2,7 +2,7 @@ import logging
 from datetime import date, timedelta
 
 from ..utils.common import parse_transition_name, strip_agegroup_suffix
-from ..utils.location import resolve_population_names
+from ..utils.location import validate_population_names
 from .basemodel import BasemodelConfig
 from .calibration import CalibrationConfig, CalibrationConfiguration
 from .output import OutputConfig
@@ -79,7 +79,7 @@ def _ensure_populations_valid(modelset_populations: list[str | dict[str, str]] |
         Raised when a modelset population is not a valid location.
     """
     if modelset_populations:
-        resolve_population_names(modelset_populations)
+        validate_population_names(modelset_populations)
 
 
 def _ensure_transitions_valid(base_transitions: set, calibration: CalibrationConfiguration | None) -> None:

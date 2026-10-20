@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 from epydemix.calibration import CalibrationResults
 
+from ..builders.utils import get_data_in_location
 from ..output.hub_format import normalize_target_values
 from ..output.quantiles import get_simulation_quantiles, select_projection_quantile_variables
 from ..output.tabular import (
@@ -25,53 +26,33 @@ from ..schema.output import (
     FlusightPropED,
     ObservedValuesConfig,
     OutputConfig,
+    OutputConfiguration,
     OutputObject,
     get_flusight_categorical_horizons,
     get_metrocast_quantiles,
 )
 from ..telemetry import ExecutionTelemetry
 from ..utils.location import (
-    convert_location_name_format,
     get_flusight_population,
     get_hub_location_id,
-    parse_population_name,
+    resolve_location,
 )
 from ..utils.quantiles import get_calibration_quantiles, get_projection_quantiles
+from ..utils.resolved_location import ResolvedLocation
 from ..visualization.generators import (
     generate_categorical_plots,
     generate_posterior_grid_plot,
     generate_quantile_plots,
     generate_single_location_posterior_plots,
+    get_locations_to_plot,
 )
 
 logger = logging.getLogger(__name__)
 
 
-def get_plot_location_label(population_name: str) -> str:
-    """
-    Convert population name to human-readable label for plot titles.
-
-    For ISO locations, returns state name (e.g., "California").
-    For metrocast locations, returns short name from CSV (e.g., "Greater Boston, MA").
-
-    Parameters
-    ----------
-    population_name : str
-        Population name in epydemix format (e.g., "United_States_California" or
-        "metrocast_location_denver").
-
-    Returns
-    -------
-    str
-        Human-readable location label for plot titles.
-    """
-    location_name, location_type = parse_population_name(population_name)
-    if location_type == "metrocast_location":
-        return convert_location_name_format(location_name, "name_short", location_type="metrocast_location")
-    return convert_location_name_format(population_name, "name")
-
-
-# ===== Output Generator Helper Functions =====
+def get_plot_location_label(location: ResolvedLocation) -> str:
+    """Return the saved location label."""
+    return location.location_name_short
 
 
 def add_metadata_columns(df: pd.DataFrame, **metadata: object) -> pd.DataFrame:
@@ -108,7 +89,7 @@ def filter_failed_projections(calibration_results: CalibrationResults) -> Calibr
         # There can be multiple scenarios. The default is "baseline".
         for scenario_id in calibration_results.projections:
             projections = calibration_results.projections[scenario_id]
-            if not projections:
+            if projections is None or len(projections) == 0:
                 continue
 
             # Compute mask once so we can apply it to aligned structures (projection_parameters).
@@ -178,7 +159,7 @@ def filter_failed_calibration_trajectories(calibration_results: CalibrationResul
         # Filter each generation's trajectories
         for generation in calibration_results.selected_trajectories:
             trajectories = calibration_results.selected_trajectories[generation]
-            if trajectories:
+            if trajectories is not None and len(trajectories) > 0:
                 original_count = len(trajectories)
                 # Filter out failed trajectories
                 valid_trajectories = []
@@ -540,6 +521,7 @@ def prop_ed_surveillance_window(
     fit_start: date,
     fit_end: date,
     target: str = "wk inc flu prop ed visits",
+    locations: dict[str, ResolvedLocation] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Create FluSight prop ed forecasts using surveillance_window strategy.
@@ -574,34 +556,32 @@ def prop_ed_surveillance_window(
     prop_ed_list = []
     r_dict = defaultdict(list)
     for loc in pred_hosp.location.unique():
-        # Convert hub location to surveillance data formats for filtering
-        loc_hosp = convert_location_name_format(loc, obs_hosp.location_format)
-        loc_ed = convert_location_name_format(loc, obs_ed.location_format)
+        location = locations[loc] if locations is not None else resolve_location(loc)
+        hosp_rows = get_data_in_location(obs_hosp_df, location, obs_hosp.location_column, obs_hosp.location_format)
+        ed_rows = get_data_in_location(obs_ed_df, location, obs_ed.location_column, obs_ed.location_format)
 
         # Filter forecasts and observations
         filt_pred_hosp = pred_hosp[(pred_hosp.location == loc) & (pred_hosp.output_type == "quantile")].copy(deep=True)
         filt_obs_hosp = (
-            obs_hosp_df[
-                (obs_hosp_df[obs_hosp.location_column] == loc_hosp)
-                & (obs_hosp_df[obs_hosp.date_column] >= pd.to_datetime(fit_start))
-                & (obs_hosp_df[obs_hosp.date_column] < pd.to_datetime(fit_end))
+            hosp_rows[
+                (hosp_rows[obs_hosp.date_column] >= pd.to_datetime(fit_start))
+                & (hosp_rows[obs_hosp.date_column] < pd.to_datetime(fit_end))
             ]
             .dropna(axis=0, subset=obs_hosp.value_column)
             .rename(columns={obs_hosp.value_column: "value_pred"})
         )
         filt_obs_ed = (
-            obs_ed_df[
-                (obs_ed_df[obs_ed.location_column] == loc_ed)
-                & (obs_ed_df[obs_ed.date_column] >= pd.to_datetime(fit_start))
-                & (obs_ed_df[obs_ed.date_column] < pd.to_datetime(fit_end))
+            ed_rows[
+                (ed_rows[obs_ed.date_column] >= pd.to_datetime(fit_start))
+                & (ed_rows[obs_ed.date_column] < pd.to_datetime(fit_end))
             ]
             .dropna(axis=0, subset=obs_ed.value_column)
             .rename(columns={obs_ed.value_column: "value_truth"})
         )
         timeseries = filt_obs_hosp.merge(
             filt_obs_ed,
-            left_on=[filt_obs_hosp[obs_hosp.location_column], filt_obs_hosp[obs_hosp.date_column]],
-            right_on=[filt_obs_ed[obs_ed.location_column], filt_obs_ed[obs_ed.date_column]],
+            left_on=obs_hosp.date_column,
+            right_on=obs_ed.date_column,
             how="inner",
         )
 
@@ -611,7 +591,7 @@ def prop_ed_surveillance_window(
         )
         filt_pred_hosp.value = filt_pred_hosp.value * r
         prop_ed_list.append(filt_pred_hosp)
-        r_dict["population"].append(convert_location_name_format(loc, "epydemix_population"))
+        r_dict["population"].append(location.population_name)
         r_dict["rescaling_factor"].append(r)
 
     # Format and return
@@ -628,6 +608,7 @@ def prop_ed_calibration_window(
     calibration_quantiles: pd.DataFrame,
     num_fit_weeks: int,
     target: str = "wk inc flu prop ed visits",
+    locations: dict[str, ResolvedLocation] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Create FluSight prop ed forecasts using calibration_window strategy.
@@ -656,12 +637,6 @@ def prop_ed_calibration_window(
     # Read surveillance file from config
     obs_ed_df = read_surveillance_from_config(obs_ed)
 
-    # TODO: Use ISO in future
-    # Convert location codes to FIPS format to match pred_hosp
-    obs_ed_df[obs_ed.location_column] = obs_ed_df[obs_ed.location_column].apply(
-        lambda x: convert_location_name_format(x, "FIPS")
-    )
-
     # Resolve fitting windows
     fit_end = calibration_quantiles.date.max()
     fit_start = fit_end - timedelta(weeks=num_fit_weeks - 1)
@@ -673,27 +648,23 @@ def prop_ed_calibration_window(
     prop_ed_list = []
     r_dict = defaultdict(list)
     for loc in pred_hosp.location.unique():
-        # Convert hub location to surveillance data format for filtering
-        loc_ed = convert_location_name_format(loc, obs_ed.location_format)
+        location = locations[loc] if locations is not None else resolve_location(loc)
+        ed_rows = get_data_in_location(obs_ed_df, location, obs_ed.location_column, obs_ed.location_format)
 
         # Filter forecasts and observations
         filt_pred_hosp = pred_hosp[(pred_hosp.location == loc) & (pred_hosp.output_type == "quantile")].copy(deep=True)
         filt_obs_ed = (
-            obs_ed_df[
-                (obs_ed_df[obs_ed.location_column] == loc_ed)
-                & (obs_ed_df[obs_ed.date_column] >= fit_start)
-                & (obs_ed_df[obs_ed.date_column] <= fit_end)
-            ]
+            ed_rows[(ed_rows[obs_ed.date_column] >= fit_start) & (ed_rows[obs_ed.date_column] <= fit_end)]
             .rename(columns={obs_ed.value_column: "value_truth"})
             .sort_values(by=obs_ed.date_column)
         )
-        epy_loc = convert_location_name_format(loc, "epydemix_population")
-        filt_calibration = calibration_window[calibration_window.population == epy_loc].copy()
+        epy_loc = location.population_name
+        filt_calibration = calibration_window[calibration_window.population.isin((epy_loc, *location.aliases))].copy()
         filt_calibration["location"] = loc
         window = filt_obs_ed.merge(
             filt_calibration,
-            left_on=[filt_obs_ed[obs_ed.location_column], filt_obs_ed[obs_ed.date_column]],
-            right_on=[filt_calibration["location"], filt_calibration["date"]],
+            left_on=obs_ed.date_column,
+            right_on="date",
         )
         # Obtain rescaling and create forecast for location
         r = prop_ed_rescaling_factor(np.array(window.value_truth), np.array(window.value_pred))
@@ -718,6 +689,7 @@ def make_prop_ed_flusightforecast(
     projection_quantiles: pd.DataFrame | None = None,
     reference_date: date | None = None,
     horizons: Sequence[int] = range(-1, 4),
+    locations: Sequence[ResolvedLocation] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Create FluSight prop ed forecasts from hosp forecast and surveillance data.
@@ -747,6 +719,7 @@ def make_prop_ed_flusightforecast(
     pd.DataFrame
         Record of rescaling factors for each location
     """
+    by_hub_id = {location.hub_id: location for location in locations} if locations is not None else None
     match config.strategy:
         case "surveillance_window":
             # Ensure sources are present
@@ -761,6 +734,7 @@ def make_prop_ed_flusightforecast(
                 config.fit_start,
                 config.fit_end,
                 target=config.target,
+                locations=by_hub_id,
             )
         case "calibration_window":
             # Ensure sources are present
@@ -776,6 +750,7 @@ def make_prop_ed_flusightforecast(
                 calibration_quantiles,
                 config.num_fit_weeks,
                 target=config.target,
+                locations=by_hub_id,
             )
         case "transition":
             # Ensure projection_quantiles is provided
@@ -820,9 +795,18 @@ def make_prop_ed_flusightforecast(
 
             # Add location and reference_date columns
             # Convert population to location ID (FIPS for ISO, metrocast_location_id for metrocast)
+            if locations is None:
+                hub_ids = formatted.population.apply(get_hub_location_id)
+            else:
+                by_population = {
+                    name: location.hub_id
+                    for location in locations
+                    for name in (location.population_name, *location.aliases)
+                }
+                hub_ids = formatted.population.map(by_population.__getitem__)
             formatted = add_metadata_columns(
                 formatted,
-                location=formatted.population.apply(get_hub_location_id),
+                location=hub_ids,
                 reference_date=reference_date,
                 target=config.target,
                 output_type="quantile",
@@ -881,6 +865,35 @@ def register_output_generator(kind_set):
     return deco
 
 
+def _validate_output_locations(
+    results: Sequence[SimulationOutput | CalibrationOutput], output: OutputConfiguration
+) -> None:
+    """Check the geographic representations required by the requested output."""
+    config = output.flusight_format
+    if config is None:
+        return
+    requires_official_iso = not config.metrocast
+    requires_window_iso = config.prop_ed is not None and config.prop_ed.strategy != "transition"
+    for result in results:
+        try:
+            result.location.hub_id
+            if requires_official_iso:
+                result.location.format("FIPS")
+            if requires_window_iso:
+                result.location.format("ISO")
+        except ValueError as exc:
+            if requires_official_iso:
+                raise ValueError(
+                    "Locations without a US FIPS mapping cannot use official FluSight output; "
+                    "official FluSight calculations require supported US locations"
+                ) from exc
+            if requires_window_iso:
+                raise ValueError(
+                    "Locations without an ISO mapping do not support window-based prop ED rescaling; use transition output"
+                ) from exc
+            raise ValueError(f"Location {result.location.location_id} has no supported hub identifier") from exc
+
+
 @register_output_generator({"simulations", "output_config"})
 def generate_simulation_outputs(
     *, simulations: list[SimulationOutput], output_config: OutputConfig, **_
@@ -904,6 +917,7 @@ def generate_simulation_outputs(
     """
     logger.info("OUTPUT GENERATOR: dispatched for simulation")
     output = output_config.output
+    _validate_output_locations(simulations, output)
     warnings = set()
 
     # Initialize lists for efficient DataFrame concatenation (converted to DataFrames after loops)
@@ -1137,6 +1151,10 @@ def generate_calibration_outputs(
     """
     logger.info("OUTPUT GENERATOR: dispatched for calibration")
     output = output_config.output
+    _validate_output_locations(calibrations, output)
+    if output.plots:
+        get_locations_to_plot(calibrations, output.plots.quantiles.single)
+        get_locations_to_plot(calibrations, output.plots.posterior.single)
     warnings = set()
 
     # Initialize structures for efficient DataFrame concatenation (converted to DataFrames after loops)
@@ -1164,7 +1182,9 @@ def generate_calibration_outputs(
                     for generation in output.quantiles.calibration:
                         try:
                             cal_trajs = calibration.results.get_selected_trajectories(generation)
-                            cal_dates = cal_trajs[0].get("date") if cal_trajs else None
+                            cal_dates = (
+                                cal_trajs[0].get("date") if cal_trajs is not None and len(cal_trajs) > 0 else None
+                            )
                             quancal_df = get_calibration_quantiles(
                                 calibration.results,
                                 quantiles=output.quantiles.selections,
@@ -1188,7 +1208,7 @@ def generate_calibration_outputs(
                 else:
                     try:
                         cal_trajs = calibration.results.get_selected_trajectories()
-                        cal_dates = cal_trajs[0].get("date") if cal_trajs else None
+                        cal_dates = cal_trajs[0].get("date") if cal_trajs is not None and len(cal_trajs) > 0 else None
                         quancal_df = get_calibration_quantiles(
                             calibration.results,
                             quantiles=output.quantiles.selections,
@@ -1213,7 +1233,7 @@ def generate_calibration_outputs(
                 continue
             try:
                 proj_sims = calibration.results.projections.get("baseline", [])
-                proj_dates = proj_sims[0].get("date") if proj_sims else None
+                proj_dates = proj_sims[0].get("date") if proj_sims is not None and len(proj_sims) > 0 else None
                 quan_df = get_projection_quantiles(
                     calibration.results,
                     quantiles=output.quantiles.selections,
@@ -1466,7 +1486,7 @@ def generate_calibration_outputs(
                 try:
                     # FRAGILE: the name 'hospitalizations' is user-supplied in the modelset as the column to look for in the surveillance data.
                     proj_sims = calibration.results.projections.get("baseline", [])
-                    proj_dates = proj_sims[0].get("date") if proj_sims else None
+                    proj_dates = proj_sims[0].get("date") if proj_sims is not None and len(proj_sims) > 0 else None
                     quanf_df = get_projection_quantiles(
                         calibration.results,
                         quantiles=flusight_quantiles,
@@ -1491,7 +1511,7 @@ def generate_calibration_outputs(
                 )
                 quanf_df = add_metadata_columns(
                     quanf_df,
-                    location=get_hub_location_id(calibration.population),
+                    location=calibration.location.hub_id,
                     reference_date=output.flusight_format.reference_date,
                 )
                 hosp_forecast_list.append(quanf_df)
@@ -1513,7 +1533,7 @@ def generate_calibration_outputs(
                 for calibration in calibrations:
                     try:
                         cal_trajs = calibration.results.get_selected_trajectories()
-                        cal_dates = cal_trajs[0].get("date") if cal_trajs else None
+                        cal_dates = cal_trajs[0].get("date") if cal_trajs is not None and len(cal_trajs) > 0 else None
                         quancalflu_df = get_calibration_quantiles(
                             calibration.results,
                             quantiles=flusight_quantiles,
@@ -1540,7 +1560,7 @@ def generate_calibration_outputs(
                 for calibration in calibrations:
                     try:
                         proj_sims = calibration.results.projections.get("baseline", [])
-                        proj_dates = proj_sims[0].get("date") if proj_sims else None
+                        proj_dates = proj_sims[0].get("date") if proj_sims is not None and len(proj_sims) > 0 else None
                         quanproj_df = get_projection_quantiles(
                             calibration.results,
                             quantiles=flusight_quantiles,
@@ -1577,6 +1597,7 @@ def generate_calibration_outputs(
                     quantiles_projection_flusight,
                     output.flusight_format.reference_date,
                     horizons=output.flusight_format.horizons,
+                    locations=[calibration.location for calibration in calibrations],
                 )
                 hub_format_output_list.append(prop_ed_df)
             except (ValueError, AssertionError, KeyError, IndexError) as e:
@@ -1611,10 +1632,9 @@ def generate_calibration_outputs(
                     )
                     continue
 
-                # Filter surveillance for location
-                # Convert calibration population to surveillance data's location format
-                target_location = convert_location_name_format(calibration.population, source_config.location_format)
-                surv = surveillance[surveillance[source_config.location_column] == target_location]
+                surv = get_data_in_location(
+                    surveillance, calibration.location, source_config.location_column, source_config.location_format
+                )
                 surv = surv.drop(columns=source_config.location_column).rename(
                     columns={
                         source_config.date_column: "date",
@@ -1630,11 +1650,11 @@ def generate_calibration_outputs(
                         proj_dates=traj["date"],
                         proj_values=traj["hospitalizations"],
                         observed=surv,
-                        population=get_flusight_population(calibration.population),
+                        population=get_flusight_population(calibration.location),
                     )
                     trends_df = add_metadata_columns(
                         trends_df,
-                        location=get_hub_location_id(calibration.population),
+                        location=calibration.location.hub_id,
                         reference_date=output.flusight_format.reference_date,
                         output_type="pmf",
                         target="wk flu hosp rate change",
@@ -1700,7 +1720,7 @@ def generate_calibration_outputs(
             # Fitting window
             try:
                 selected = calibration.results.get_selected_trajectories()
-                dates = np.asarray(selected[0].get("date", [])) if selected else None
+                dates = np.asarray(selected[0].get("date", [])) if selected is not None and len(selected) > 0 else None
                 if dates is not None and len(dates) > 0:
                     meta_dict["fitting_start"].append(str(min(dates).date()))
                     meta_dict["fitting_end"].append(str(max(dates).date()))
@@ -1715,7 +1735,11 @@ def generate_calibration_outputs(
             # Projection window
             try:
                 projections = calibration.results.projections.get("baseline", [])
-                dates = np.asarray(projections[0].get("date", [])) if projections else None
+                dates = (
+                    np.asarray(projections[0].get("date", []))
+                    if projections is not None and len(projections) > 0
+                    else None
+                )
                 if dates is not None and len(dates) > 0:
                     meta_dict["start_date"].append(str(min(dates).date()))
                     meta_dict["end_date"].append(str(max(dates).date()))
@@ -1855,7 +1879,12 @@ def generate_calibration_outputs(
         # Generate categorical plots (requires FluSight rate-trend data)
         if plots_config.categorical:
             logger.info("  - Generating categorical plots")
-            generate_categorical_plots(plots_config, out_dict, hub_format_output)
+            generate_categorical_plots(
+                plots_config,
+                out_dict,
+                hub_format_output,
+                [cal.location for cal in calibrations],
+            )
 
     logger.info("Output generation complete. Generated %d output types", len(out_dict))
     return out_dict

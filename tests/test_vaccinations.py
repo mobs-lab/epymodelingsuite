@@ -10,12 +10,12 @@ import pytest
 
 from epymodelingsuite.vaccinations import (
     _calculate_overlap_weight,
-    _get_vaccination_scaling_factors,
     _parse_age_group_bounds,
     add_vaccination_schedule,
     get_age_groups_from_data,
     make_reweighting_factors,
     make_vaccination_rate_function,
+    prepare_vaccination_context,
     reaggregate_vaccines,
     remove_vaccination_transitions,
     resample_vaccination_schedule,
@@ -1261,7 +1261,7 @@ class TestVaccinationLocationIsolation:
             preprocessed_vaccination_data_path=str(csv_path), origin_compartment="S", eligible_compartments=["S"]
         )
         transitions = [Transition(source="S", target="R", type="vaccination", rate=None)]
-        models, _ = create_model_collection(basemodel, ["US-CA", "US-TX"])
+        models = [item.model for item in create_model_collection(basemodel, ["US-CA", "US-TX"])]
 
         for model, expected_daily in zip(models, [10, 100], strict=True):
             add_vaccination_schedules_from_config(model, transitions, vaccination, basemodel.timespan)
@@ -1301,7 +1301,7 @@ class TestPreprocessedScenarioSelection:
 
         basemodel = make_sir_config(end_date=date(2024, 3, 31))
         transitions = [Transition(source="S", target="R", type="vaccination", rate=None)]
-        models, _ = create_model_collection(basemodel, ["US-CA", "US-TX"])
+        models = [item.model for item in create_model_collection(basemodel, ["US-CA", "US-TX"])]
 
         for model, expected_daily in zip(models, [20, 200], strict=True):
             add_vaccination_schedules_from_config(
@@ -1927,11 +1927,28 @@ class TestRemoveVaccinationTransitions:
 class TestGetVaccinationScalingFactors:
     """Tests for _get_vaccination_scaling_factors function."""
 
+    @staticmethod
+    def scaling_factors(name, age_groups):
+        from types import SimpleNamespace
+
+        from epymodelingsuite.utils.location import get_metrocast_population_data, resolve_location
+        from epymodelingsuite.utils.populations import aggregate_population_by_age_groups
+
+        location = resolve_location(name)
+        counts = [1.0] * len(age_groups)
+        if location.kind == "metrocast_location":
+            data = get_metrocast_population_data()
+            data = data[data.metrocast_location_id == location.location_id]
+            if not data.empty:
+                counts = list(aggregate_population_by_age_groups(data, age_groups).values())
+        model = SimpleNamespace(population=SimpleNamespace(Nk_names=age_groups, Nk=counts))
+        return dict(prepare_vaccination_context(model, location).scaling)
+
     def test_iso_location_returns_all_ones(self):
         """Test that ISO (state-level) locations return scaling factors of 1.0."""
         age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
 
-        result = _get_vaccination_scaling_factors("United_States_Colorado", age_groups)
+        result = self.scaling_factors("United_States_Colorado", age_groups)
 
         assert all(factor == 1.0 for factor in result.values())
         assert list(result.keys()) == age_groups
@@ -1944,12 +1961,12 @@ class TestGetVaccinationScalingFactors:
         age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
 
         # Test Maryland (state-level metrocast location)
-        result = _get_vaccination_scaling_factors("metrocast_location_maryland", age_groups)
+        result = self.scaling_factors("metrocast_location_maryland", age_groups)
         assert all(factor == 1.0 for factor in result.values())
         assert list(result.keys()) == age_groups
 
         # Test Colorado (state-level metrocast location)
-        result = _get_vaccination_scaling_factors("metrocast_location_colorado", age_groups)
+        result = self.scaling_factors("metrocast_location_colorado", age_groups)
         assert all(factor == 1.0 for factor in result.values())
         assert list(result.keys()) == age_groups
 
@@ -1957,7 +1974,7 @@ class TestGetVaccinationScalingFactors:
         """Test that sub-state locations return age-stratified scaling factors < 1.0."""
         age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
 
-        result = _get_vaccination_scaling_factors("metrocast_location_denver", age_groups)
+        result = self.scaling_factors("metrocast_location_denver", age_groups)
 
         # Denver is part of Colorado, so all factors should be < 1.0
         assert all(0 < factor < 1.0 for factor in result.values())
@@ -1968,7 +1985,7 @@ class TestGetVaccinationScalingFactors:
         """Test that different age groups can have different scaling factors."""
         age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
 
-        result = _get_vaccination_scaling_factors("metrocast_location_denver", age_groups)
+        result = self.scaling_factors("metrocast_location_denver", age_groups)
 
         # Scaling factors should not all be identical (demographic differences)
         factors = list(result.values())
@@ -1979,26 +1996,22 @@ class TestGetVaccinationScalingFactors:
         """Test that scaling factors are in reasonable range for Denver/Colorado."""
         age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
 
-        result = _get_vaccination_scaling_factors("metrocast_location_denver", age_groups)
+        result = self.scaling_factors("metrocast_location_denver", age_groups)
 
         # Denver is roughly 50% of Colorado's population
         # Average scaling factor should be around 0.4-0.6
         avg_factor = sum(result.values()) / len(result)
         assert 0.3 < avg_factor < 0.7
 
-    def test_unknown_metrocast_location_returns_ones(self):
-        """Test that unknown sub-state location returns 1.0 with warning."""
-        age_groups = ["0-4", "5+"]
-
-        result = _get_vaccination_scaling_factors("metrocast_location_nonexistent", age_groups)
-
-        assert all(factor == 1.0 for factor in result.values())
+    def test_unknown_location_fails_before_scaling(self):
+        with pytest.raises(ValueError):
+            self.scaling_factors("metrocast_location_nonexistent", ["0-4", "5+"])
 
     def test_boston_massachusetts_scaling(self):
         """Test scaling factors for Boston (Massachusetts sub-state region)."""
         age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
 
-        result = _get_vaccination_scaling_factors("metrocast_location_boston", age_groups)
+        result = self.scaling_factors("metrocast_location_boston", age_groups)
 
         # Boston is part of Massachusetts, factors should be < 1.0
         assert all(0 < factor < 1.0 for factor in result.values())
@@ -2007,7 +2020,7 @@ class TestGetVaccinationScalingFactors:
         """Test scaling factors for NC flu region (North Carolina sub-state)."""
         age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
 
-        result = _get_vaccination_scaling_factors("metrocast_location_nenc", age_groups)
+        result = self.scaling_factors("metrocast_location_nenc", age_groups)
 
         # NENC is part of North Carolina, factors should be < 1.0
         assert all(0 < factor < 1.0 for factor in result.values())

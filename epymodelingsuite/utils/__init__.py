@@ -21,8 +21,15 @@ from .distributions import distribution_to_scipy, validate_distribution
 from .epydemix_data import EPYDEMIX_DATA_VERSION, get_available_locations, load_epydemix_population
 from .expression_eval import resolve_model_name, safe_eval
 from .formatting import format_data_size, format_duration
-from .location import convert_location_name_format, get_location_codebook, validate_iso3166
+from .location import (
+    convert_location_name_format,
+    get_location_codebook,
+    resolve_location,
+    resolve_locations,
+    validate_iso3166,
+)
 from .populations import get_population_codebook, get_total_population, make_dummy_population
+from .resolved_location import ResolvedLocation
 
 __all__ = [
     # Common utilities
@@ -50,6 +57,9 @@ __all__ = [
     "convert_location_name_format",
     "get_location_codebook",
     "validate_iso3166",
+    "ResolvedLocation",
+    "resolve_location",
+    "resolve_locations",
     # Population utilities
     "get_population_codebook",
     "get_total_population",

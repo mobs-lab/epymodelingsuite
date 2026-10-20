@@ -51,8 +51,8 @@ def run_simulation(configs: BuilderOutput, rng: np.random.Generator | None = Non
         output = SimulationOutput(
             primary_id=configs.primary_id,
             seed=configs.seed,
+            location=configs.location,
             delta_t=configs.delta_t,
-            population=configs.model.population.name,
             results=results,
         )
 
@@ -67,8 +67,8 @@ def run_simulation(configs: BuilderOutput, rng: np.random.Generator | None = Non
         output = SimulationOutput(
             primary_id=configs.primary_id,
             seed=configs.seed,
+            location=configs.location,
             delta_t=configs.delta_t,
-            population=configs.model.population.name,
             results=None,  # type: ignore
         )
         telemetry = ExecutionTelemetry.get_current()
@@ -112,8 +112,8 @@ def run_calibration(configs: BuilderOutput, rng: np.random.Generator | None = No
         output = CalibrationOutput(
             primary_id=configs.primary_id,
             seed=configs.seed,
+            location=configs.location,
             delta_t=configs.delta_t,
-            population=configs.model.population.name,
             start_date_reference=configs.start_date_reference,
             results=results,
             calibration_strategy=configs.calibration,
@@ -130,8 +130,8 @@ def run_calibration(configs: BuilderOutput, rng: np.random.Generator | None = No
         output = CalibrationOutput(
             primary_id=configs.primary_id,
             seed=configs.seed,
+            location=configs.location,
             delta_t=configs.delta_t,
-            population=configs.model.population.name,
             start_date_reference=configs.start_date_reference,
             results=None,  # type: ignore
             calibration_strategy=configs.calibration,
@@ -169,7 +169,6 @@ def run_calibration_with_projection(
         If calibration or projection fails.
     """
     logger.info("RUNNER: running calibration and projection.")
-    population = configs.calibrator.parameters["epimodel"].population.name
 
     # Calibration phase
     calibration_start = time.time()
@@ -184,8 +183,8 @@ def run_calibration_with_projection(
         output = CalibrationOutput(
             primary_id=configs.primary_id,
             seed=configs.seed,
+            location=configs.location,
             delta_t=configs.delta_t,
-            population=population,
             start_date_reference=configs.start_date_reference,
             results=None,  # type: ignore
             calibration_strategy=configs.calibration,
@@ -216,8 +215,8 @@ def run_calibration_with_projection(
         output = CalibrationOutput(
             primary_id=configs.primary_id,
             seed=configs.seed,
+            location=configs.location,
             delta_t=configs.delta_t,
-            population=configs.model.population.name,
             start_date_reference=configs.start_date_reference,
             results=projection_results,
             calibration_strategy=configs.calibration,
@@ -246,8 +245,8 @@ def run_calibration_with_projection(
         output = CalibrationOutput(
             primary_id=configs.primary_id,
             seed=configs.seed,
+            location=configs.location,
             delta_t=configs.delta_t,
-            population=configs.model.population.name,
             start_date_reference=configs.start_date_reference,
             results=calibration_results,
             calibration_strategy=configs.calibration,

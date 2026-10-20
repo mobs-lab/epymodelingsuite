@@ -32,9 +32,9 @@ from epymodelingsuite.schema.output import (
 )
 from epymodelingsuite.visualization.generators import generate_quantile_plots
 
-CA = "United_States_California"
-NY = "United_States_New_York"
-TX = "United_States_Texas"
+CA = "United_States__California"
+NY = "United_States__New_York"
+TX = "United_States__Texas"
 
 FITTING_WINDOW = ("2023-11-04", "2024-01-13")
 

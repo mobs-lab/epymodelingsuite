@@ -27,6 +27,7 @@ from epymodelingsuite.schema.output import (
     PosteriorsOutput,
     TabularOutputTypeEnum,
 )
+from epymodelingsuite.utils.location import resolve_location
 from epymodelingsuite.visualization.generators import generate_categorical_plots
 
 
@@ -388,6 +389,7 @@ class TestPosteriorExport:
         calibration.primary_id = 1
         calibration.seed = 42
         calibration.population = "United_States_California"
+        calibration.location = resolve_location("United_States_California")
         calibration.results.projections = {}
         calibration.results.get_posterior_distribution.side_effect = lambda generation=1: stored[generation]
         output_config = OutputConfig(
@@ -443,6 +445,7 @@ class TestProjectionParametersLongFile:
         calibration.seed = seed
         calibration.delta_t = 1.0
         calibration.population = population
+        calibration.location = resolve_location(population)
         calibration.start_date_reference = None
         calibration.results.projections = projections if projections is not None else {}
         if projection_parameters is not None:
@@ -752,11 +755,11 @@ class TestGetPlotLocationLabel:
         from epymodelingsuite.dispatcher.output import get_plot_location_label
 
         # California
-        result = get_plot_location_label("United_States_California")
+        result = get_plot_location_label(resolve_location("United_States_California"))
         assert result == "California"
 
         # Massachusetts
-        result = get_plot_location_label("United_States_Massachusetts")
+        result = get_plot_location_label(resolve_location("United_States_Massachusetts"))
         assert result == "Massachusetts"
 
     def test_metrocast_location_returns_short_name(self):
@@ -764,15 +767,15 @@ class TestGetPlotLocationLabel:
         from epymodelingsuite.dispatcher.output import get_plot_location_label
 
         # Denver - same as full name
-        result = get_plot_location_label("metrocast_location_denver")
+        result = get_plot_location_label(resolve_location("metrocast_location_denver"))
         assert result == "Denver, CO"
 
         # Boston - shortened from "Boston Metro, South Shore, Cape & Islands, MA"
-        result = get_plot_location_label("metrocast_location_boston")
+        result = get_plot_location_label(resolve_location("metrocast_location_boston"))
         assert result == "Greater Boston, MA"
 
         # NC flu region
-        result = get_plot_location_label("metrocast_location_nenc")
+        result = get_plot_location_label(resolve_location("metrocast_location_nenc"))
         assert result == "Northeastern, NC"
 
 
@@ -891,11 +894,15 @@ class TestPropEDValueNormalization:
     """Check shared target formatting through every ED quantile strategy."""
 
     @pytest.mark.parametrize("strategy", ["transition", "surveillance_window", "calibration_window"])
+    @pytest.mark.parametrize("snapshots", [False, True])
+    @pytest.mark.parametrize("observed_format", ["FIPS", "ISO", "epydemix_population"])
     @pytest.mark.parametrize(
         "target,expected",
         [("wk inc flu prop ed visits", [0, 1, 1]), ("Flu ED visits pct", [0, 2.5, 100])],
     )
-    def test_all_strategies_apply_target_bounds(self, strategy, target, expected, monkeypatch):
+    def test_all_strategies_apply_target_bounds(
+        self, strategy, target, expected, snapshots, observed_format, monkeypatch
+    ):
         """Each strategy clips its final values by target without clipping the fitted factor."""
         reference_date = date(2026, 10, 10)
         dates = pd.date_range(reference_date, periods=3, freq="7D")
@@ -947,6 +954,22 @@ class TestPropEDValueNormalization:
         else:
             extra = {"ed_source": "ed", "num_fit_weeks": 3}
 
+        location = resolve_location("US-MA")
+        surveillance["ed"].location_format = observed_format
+        observed_id = (
+            "United_States_Massachusetts"
+            if observed_format == "epydemix_population"
+            else location.format(observed_format)
+        )
+        surveillance_tables["ed.csv"]["location"] = observed_id
+        if snapshots:
+
+            def unavailable():
+                raise AssertionError("Saved output must not reload location tables")
+
+            monkeypatch.setattr("epymodelingsuite.utils.location.get_location_codebook", unavailable)
+            monkeypatch.setattr("epymodelingsuite.utils.location.get_metrocast_locations", unavailable)
+
         rows, factors = make_prop_ed_flusightforecast(
             pred_hosp,
             FlusightPropED(target=target, strategy=strategy, **extra),
@@ -954,6 +977,7 @@ class TestPropEDValueNormalization:
             calibration_quantiles=calibration_quantiles,
             projection_quantiles=projection_quantiles,
             reference_date=reference_date,
+            locations=[location] if snapshots else None,
         )
         np.testing.assert_allclose(rows.value, expected)
         assert set(rows.target) == {target}

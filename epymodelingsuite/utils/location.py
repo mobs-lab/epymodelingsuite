@@ -7,6 +7,10 @@ import sys
 import pandas as pd
 import pycountry
 
+from .resolved_location import ResolvedLocation
+
+CUSTOM_PREFIX = "custom_location_"
+
 
 def get_location_codebook() -> pd.DataFrame:
     """Retrieve the location codebook as a Pandas DataFrame."""
@@ -24,144 +28,49 @@ def get_flusight_locations() -> pd.DataFrame:
     return flusight_locations
 
 
-def get_flusight_population(location: str) -> int:
-    """Retrieve the population of the specified location."""
-    flusight_locations = get_flusight_locations()
-
-    return flusight_locations[flusight_locations.location == convert_location_name_format(location, "FIPS")][
-        "population"
-    ].iloc[0]
+def get_flusight_population(location: str | ResolvedLocation) -> int:
+    """Return the region's saved denominator for hub rate calculations."""
+    resolved = resolve_location(location)
+    if resolved.flusight_population is None:
+        raise ValueError(f"No FluSight population available for {resolved.location_id}")
+    return int(resolved.flusight_population)
 
 
 METROCAST_PREFIX = "metrocast_location_"
 
 
 def convert_location_name_format(
-    value: str,
+    value: str | ResolvedLocation,
     output_format: str,
     input_format: str | None = None,
     location_type: str | None = None,
 ) -> str:
-    """
-    Convert location name from any valid format to the specified format.
-
-    Available formats for ISO locations:
-    - "ISO" - Location code in ISO 3166 (e.g., "US", "US-NY")
-    - "epydemix_population" - Population names used by epydemix (e.g., "United_States_New_York")
-    - "name" - Standard English names (e.g., "New York")
-    - "abbreviation" - Two-letter postal abbreviations (e.g., "NY")
-    - "FIPS" - Federal Information Processing Standard codes (e.g., "36")
-
-    Available formats for metrocast locations:
-    - "metrocast_location_id" - Location ID (e.g., "denver", "nenc")
-    - "original_location_code" - Original code from source data (e.g., "688", "1")
-    - "epydemix_population" - Prefixed location ID (e.g., "metrocast_location_denver")
-    - "name" - Human-readable name (e.g., "Denver, CO")
-    - "name_short" - Short name for plots (e.g., "Greater Boston, MA")
-    - "hsa_counties" - Counties list (e.g., "Adams, Arapahoe, ...")
-    - "state" - Full state name (e.g., "Colorado")
-    - "abbreviation" - State abbreviation (e.g., "CO")
-    - "ISO" - State ISO code (e.g., "US-CO")
-
-    Parameters
-    ----------
-    value : str
-        The location name to convert, in any valid format.
-    output_format : str
-        The format to convert to.
-    input_format : str | None
-        Optional. The format of the input value. If provided, enables direct lookup
-        instead of auto-detection, which is more efficient for batch conversions.
-    location_type : str | None
-        Location type: "iso", "metrocast_location", or None for auto-detection.
-        Auto-detection checks for metrocast prefix or metrocast location list.
-
-    Returns
-    -------
-    str
-        The converted location name.
-    """
-    # Auto-detect location_type if not provided
-    if location_type is None:
-        if value.startswith(METROCAST_PREFIX):
-            location_type = "metrocast_location"
-            input_format = "epydemix_population"
-        elif value in get_metrocast_locations()["metrocast_location_id"].values:
-            location_type = "metrocast_location"
-        else:
-            location_type = "iso"
-
-    # Handle metrocast locations
-    if location_type == "metrocast_location":
-        # Parse location name from input
-        if input_format == "epydemix_population" and value.startswith(METROCAST_PREFIX):
-            location_id = value[len(METROCAST_PREFIX) :]
-        else:
-            location_id = value
-
-        # Convert to output format
-        if output_format == "epydemix_population":
-            return f"{METROCAST_PREFIX}{location_id}"
-
-        if output_format == "metrocast_location_id":
-            return location_id
-
-        # Formats that require CSV lookup
-        csv_column_map = {
+    """Adapt a region to an external table format; resolved inputs need no lookup."""
+    if isinstance(value, ResolvedLocation):
+        return value.format(output_format)
+    # Tabular interchange can carry the adapter name without a full snapshot.
+    if value.startswith(CUSTOM_PREFIX) and output_format in {"location_id", "epydemix_population"}:
+        return value.removeprefix(CUSTOM_PREFIX) if output_format == "location_id" else value
+    if (
+        input_format is not None
+        and (location_type is None or location_type == "iso")
+        and not value.startswith(METROCAST_PREFIX)
+    ):
+        columns = {
+            "ISO": "ISO",
+            "epydemix_population": "location_name_epydemix",
             "name": "location_name",
-            "name_short": "location_name_short",
-            "hsa_counties": "hsa_counties",
-            "state": "state",
-            "abbreviation": "state_abb",
-            "ISO": "state_iso",
-            "original_location_code": "original_location_code",
+            "abbreviation": "location_abbreviation",
+            "FIPS": "location_code",
         }
-        if output_format in csv_column_map:
-            metrocast_locs = get_metrocast_locations()
-            row = metrocast_locs[metrocast_locs["metrocast_location_id"] == location_id]
-            if not row.empty:
-                return row[csv_column_map[output_format]].iloc[0]
-
-        # Unknown format - raise error for clarity
-        valid_formats = ["epydemix_population", "metrocast_location_id", *csv_column_map.keys()]
-        raise ValueError(
-            f"Unknown output format '{output_format}' for metrocast location. Valid formats: {valid_formats}"
-        )
-
-    # ISO location handling
-    codebook = get_location_codebook()
-
-    # Match format strings to codebook columns
-    format_dict = {
-        "ISO": "ISO",
-        "epydemix_population": "location_name_epydemix",
-        "name": "location_name",
-        "abbreviation": "location_abbreviation",
-        "FIPS": "location_code",
-    }
-
-    # Find row with input value
-    if input_format is not None:
-        # Direct lookup using known input format (more efficient)
-        input_col = format_dict[input_format]
-        location = codebook[codebook[input_col] == value]
-    else:
-        # Auto-detect by searching all columns (current behavior)
-        location = codebook[codebook.isin([value]).any(axis=1)]
-
-    # Ensure value exists
-    if location.empty:
-        raise ValueError(f"No ISO location mapping for {value} in the bundled codebook")
-
-    # Location name in requested format
-    result = location[format_dict[output_format]].values[0]
-
-    # Zero-pad FIPS codes to 2 characters.
-    # FluSight location codes use zero-padded FIPS codes.
-    if output_format == "FIPS" and len(str(result)) == 1:
-        result = str(result).zfill(2)
-
-    return result
+        if input_format in columns:
+            codebook = get_location_codebook()
+            rows = codebook[codebook[columns[input_format]].astype(str) == str(value)]
+            if not rows.empty:
+                value = str(rows.iloc[0]["ISO"])
+            elif location_type == "iso":
+                raise ValueError(f"No ISO location mapping for {value} in the bundled codebook")
+    return resolve_location(value, location_type).format(output_format)
 
 
 def get_metrocast_locations() -> pd.DataFrame:
@@ -217,75 +126,17 @@ def is_state_level_metrocast_location(location_name: str) -> bool:
 
 
 def get_parent_region(
-    location_name: str,
+    location_name: str | ResolvedLocation,
     output_format: str = "ISO",
     granularity: str = "state",
 ) -> str:
-    """
-    Get parent region for a location in specified format.
-
-    Supports metrocast locations and ISO 3166-2 state codes.
-
-    Parameters
-    ----------
-    location_name : str
-        Location name: metrocast location (e.g., "denver", "metrocast_location_denver")
-        or ISO 3166-2 state code (e.g., "US-MA")
-    output_format : str
-        Output format: "ISO", "FIPS", "abbreviation", "name", "epydemix_population"
-    granularity : str
-        Region level: "state", "country"
-
-    Returns
-    -------
-    str
-        Parent region identifier in requested format
-
-    Examples
-    --------
-    >>> get_parent_region("denver")
-    'US-CO'
-    >>> get_parent_region("denver", output_format="abbreviation")
-    'CO'
-    >>> get_parent_region("denver", granularity="country")
-    'US'
-    >>> get_parent_region("US-MA", granularity="country")
-    'US'
-    """
-    # Parse location name (handles "metrocast_location_denver" prefix)
-    parsed_name, location_type = parse_population_name(location_name)
-
-    # Determine if this is a metrocast location or ISO location
-    if location_type == "metrocast_location":
-        # Prefixed metrocast location
-        metrocast_locs = get_metrocast_locations()
-        location_row = metrocast_locs[metrocast_locs["metrocast_location_id"] == parsed_name]
-        if location_row.empty:
-            raise ValueError(f"Metrocast location '{parsed_name}' not found")
-        state_iso = location_row["state_iso"].iloc[0]
-    elif parsed_name in get_metrocast_locations()["metrocast_location_id"].values:
-        # Raw metrocast location name
-        metrocast_locs = get_metrocast_locations()
-        location_row = metrocast_locs[metrocast_locs["metrocast_location_id"] == parsed_name]
-        state_iso = location_row["state_iso"].iloc[0]
-    elif "-" in parsed_name:
-        # ISO 3166-2 state code (e.g., "US-MA")
-        state_iso = parsed_name
-    else:
-        raise ValueError(f"Unknown location: '{location_name}'")
-
+    """Get the inherited data region, or its country, in the requested format."""
+    source = resolve_location(location_name).source_iso
     if granularity == "country":
-        # Extract country code (e.g., "US" from "US-CO")
-        country = state_iso.split("-")[0]
-        if output_format == "ISO":
-            return country
-        return convert_location_name_format(country, output_format, input_format="ISO")
-    if granularity == "state":
-        # Return state in requested format
-        if output_format == "ISO":
-            return state_iso
-        return convert_location_name_format(state_iso, output_format, input_format="ISO")
-    raise ValueError(f"Invalid granularity: {granularity}. Must be 'state' or 'country'")
+        source = source.split("-")[0]
+    elif granularity != "state":
+        raise ValueError(f"Invalid granularity: {granularity}. Must be 'state' or 'country'")
+    return source if output_format == "ISO" else convert_location_name_format(source, output_format, input_format="ISO")
 
 
 def validate_iso3166(value: str) -> str:
@@ -330,10 +181,18 @@ def validate_metrocast_location(location_id: str) -> str:
     return location_id
 
 
+def validate_custom_location_id(value: str) -> str:
+    """Check an external location identifier without reading its CSV."""
+    if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]*", value):
+        raise ValueError(f"Invalid custom location ID: {value}")
+    return value
+
+
 # Registry for location validators
 LOCATION_VALIDATOR_REGISTRY = {
     "iso": validate_iso3166,
     "metrocast_location": validate_metrocast_location,
+    "custom": validate_custom_location_id,
 }
 
 
@@ -387,87 +246,181 @@ def parse_population_name(population_name: str) -> tuple[str, str]:
         - For countries/states: ("United_States_Massachusetts", "iso")
         - For metrocast: ("denver", "metrocast_location")
     """
+    if population_name.startswith(CUSTOM_PREFIX):
+        return population_name[len(CUSTOM_PREFIX) :], "custom"
     if population_name.startswith(METROCAST_PREFIX):
         location_name = population_name[len(METROCAST_PREFIX) :]
         return location_name, "metrocast_location"
     return population_name, "iso"
 
 
-def resolve_population_names(population_names: list[str | dict[str, str]]) -> list[tuple[str, str]]:
-    """
-    Expand modelset population names into validated ``(name, location_type)`` pairs.
-
-    Parameters
-    ----------
-    population_names : list[str | dict[str, str]]
-        Entries as accepted by the modelset schema:
-        - Keywords: "all" (deprecated), "all-states", "all-metrocast"
-        - Strings (type auto-detected): "US-MA", "denver"
-        - Dicts (explicit type): {"name": "denver", "type": "metrocast_location"}
-
-    Returns
-    -------
-    list[tuple[str, str]]
-        Resolved location names and types ("iso" or "metrocast_location").
-
-    Raises
-    ------
-    ValueError
-        If an entry is not a valid location.
-    """
+def validate_population_names(population_names: list[str | dict[str, str]]) -> None:
+    """Validate config references; external custom IDs are resolved during building."""
     import warnings
 
-    metrocast_ids = get_metrocast_locations()["metrocast_location_id"].tolist()
-    resolved = []
+    metrocast_ids = set(get_metrocast_locations()["metrocast_location_id"])
     for population in population_names:
         if isinstance(population, dict):
             name = population.get("name")
             if not name:
                 raise ValueError("population dict must have 'name' field")
-            location_type = population.get("type", "iso")
-            resolved.append((validate_location_by_type(name, location_type), location_type))
+            validate_location_by_type(name, population.get("type", "iso"))
+        elif not isinstance(population, str):
+            raise ValueError(f"Invalid population format: {population}")
+        elif population == "all":
+            warnings.warn(
+                "The 'all' keyword is deprecated. Use 'all-states' instead.", DeprecationWarning, stacklevel=2
+            )
+        elif population in ("all-states", "all-metrocast") or population in metrocast_ids:
+            continue
+        elif re.fullmatch(r"[A-Z]{2}(?:-[A-Z0-9]+)?", population):
+            validate_iso3166(population)
+        else:
+            validate_custom_location_id(population)
+
+
+def resolve_location(
+    value: str | ResolvedLocation,
+    location_type: str | None = None,
+    custom_populations: dict | None = None,
+) -> ResolvedLocation:
+    """Resolve an input alias once, within the current build's catalog."""
+    if isinstance(value, ResolvedLocation):
+        if location_type is not None and value.kind != location_type:
+            raise ValueError(f"Location {value.location_id} is not of type {location_type}")
+        return value
+    if not isinstance(value, str):
+        raise ValueError(f"Invalid population format: {value}")
+    if location_type not in {None, "iso", "metrocast_location", "custom"}:
+        raise ValueError(f"Unknown location type: {location_type}")
+    custom_id = value.removeprefix(CUSTOM_PREFIX)
+    if location_type == "custom" or value.startswith(CUSTOM_PREFIX) or custom_id in (custom_populations or {}):
+        definition = (custom_populations or {}).get(custom_id)
+        if definition is None:
+            raise ValueError(f"Unknown custom location: {custom_id}; resolve it with its build catalog")
+        resolved = definition if isinstance(definition, ResolvedLocation) else definition.location
+        if location_type is not None and resolved.kind != location_type:
+            raise ValueError(f"Location {value} is not of type {location_type}")
+        return resolved
+
+    metro = get_metrocast_locations()
+    metro_id = value.removeprefix(METROCAST_PREFIX)
+    if location_type == "metrocast_location" or (
+        location_type is None
+        and (value.startswith(METROCAST_PREFIX) or metro_id in set(metro["metrocast_location_id"]))
+    ):
+        rows = metro[metro["metrocast_location_id"] == metro_id]
+        if rows.empty:
+            raise ValueError(f"Invalid metrocast location: {metro_id}")
+        row = rows.iloc[0]
+        formats = {
+            "location_id": metro_id,
+            "metrocast_location_id": metro_id,
+            "original_location_code": str(row["original_location_code"]),
+            "ISO": str(row["state_iso"]),
+            "abbreviation": str(row["state_abb"]),
+            "state": str(row["state"]),
+            "hsa_counties": str(row["hsa_counties"]),
+        }
+        return ResolvedLocation(
+            kind="metrocast_location",
+            location_id=metro_id,
+            population_name=f"{METROCAST_PREFIX}{metro_id}",
+            location_name=str(row["location_name"]),
+            location_name_short=str(row["location_name_short"]),
+            source_iso=str(row["state_iso"]),
+            identifiers=tuple(formats.items()),
+            total_population=float(row["population"]),
+            flusight_population=float(row["population"]),
+        )
+
+    codebook = get_location_codebook()
+    rows = codebook[codebook.astype(str).isin([value]).any(axis=1)]
+    if not rows.empty:
+        from .populations import POPULATION_LOOKUP
+
+        row = rows.iloc[0]
+        iso, population_name = str(row["ISO"]), str(row["location_name_epydemix"])
+        fips = str(row["location_code"])
+        fips = fips.zfill(2) if fips.isdigit() else fips
+        hub = get_flusight_locations()
+        hub_rows = hub[hub["location"].astype(str) == fips]
+        return ResolvedLocation(
+            kind="iso",
+            location_id=iso,
+            population_name=population_name,
+            location_name=str(row["location_name"]),
+            location_name_short=str(row["location_name"]),
+            source_iso=iso,
+            identifiers=(
+                ("ISO", iso),
+                ("FIPS", fips),
+                ("location_id", fips),
+                ("abbreviation", str(row["location_abbreviation"])),
+            ),
+            aliases=(str(row["location_name_epydemix_deprecated"]),),
+            total_population=POPULATION_LOOKUP.get(population_name),
+            flusight_population=float(hub_rows.iloc[0]["population"]) if not hub_rows.empty else None,
+        )
+
+    try:
+        iso = validate_iso3166(value)
+    except ValueError:
+        raise ValueError(f"No ISO location mapping for {value} in the bundled codebook") from None
+    from .epydemix_data import get_available_locations
+
+    available = get_available_locations()
+    rows = available[available["iso_code"] == iso]
+    if len(rows) != 1:
+        raise ValueError(f"No unique epydemix population mapping for {value}")
+    country = pycountry.countries.get(alpha_2=iso) or pycountry.subdivisions.get(code=iso)
+    return ResolvedLocation(
+        kind="iso",
+        location_id=iso,
+        population_name=str(rows.iloc[0]["location"]),
+        location_name=country.name,
+        location_name_short=country.name,
+        source_iso=iso,
+        identifiers=(("ISO", iso),),
+    )
+
+
+def resolve_locations(
+    population_names: list[str | dict[str, str]], custom_populations: dict | None = None
+) -> list[ResolvedLocation]:
+    """Expand selectors and resolve every kind through the same identity boundary."""
+    import warnings
+
+    resolved = []
+    for population in population_names:
+        if isinstance(population, dict):
+            if not population.get("name"):
+                raise ValueError("population dict must have 'name' field")
+            resolved.append(resolve_location(population["name"], population.get("type", "iso"), custom_populations))
         elif population in ("all", "all-states"):
             if population == "all":
                 warnings.warn(
                     "The 'all' keyword is deprecated. Use 'all-states' instead.", DeprecationWarning, stacklevel=2
                 )
-            resolved.extend((iso_name, "iso") for iso_name in get_location_codebook()["ISO"].tolist())
+            resolved.extend(resolve_location(iso, "iso") for iso in get_location_codebook()["ISO"])
         elif population == "all-metrocast":
-            # All metrocast locations (including state-level, excluding NYC)
             resolved.extend(
-                (location_id, "metrocast_location") for location_id in metrocast_ids if location_id != "nyc"
+                resolve_location(name, "metrocast_location")
+                for name in get_metrocast_locations()["metrocast_location_id"]
+                if name != "nyc"
             )
-        elif population in metrocast_ids:
-            resolved.append((population, "metrocast_location"))
-        elif isinstance(population, str):
-            try:
-                resolved.append((validate_iso3166(population), "iso"))
-            except ValueError as exc:
-                raise ValueError(f"Invalid population: {population}") from exc
         else:
-            raise ValueError(f"Invalid population format: {population}")
+            try:
+                resolved.append(resolve_location(population, custom_populations=custom_populations))
+            except ValueError as exc:
+                raise ValueError(f"Invalid population: {population}. {exc}") from exc
     return resolved
 
 
-def get_hub_location_id(population_name: str) -> str:
-    """
-    Convert population name to location ID for hub CSV outputs.
-
-    For ISO locations, returns FIPS code (e.g., "06" for California).
-    For metrocast locations, returns metrocast_location_id (e.g., "denver").
-
-    Parameters
-    ----------
-    population_name : str
-        Population name in epydemix format (e.g., "United_States_California" or
-        "metrocast_location_denver").
-
-    Returns
-    -------
-    str
-        Location ID appropriate for hub CSV output format.
-    """
-    location_name, location_type = parse_population_name(population_name)
-    if location_type == "metrocast_location":
-        return location_name
-    return convert_location_name_format(population_name, "FIPS")
+def get_hub_location_id(population_name: str | ResolvedLocation) -> str:
+    """Adapt a snapshot or a tabular population column to its submission ID."""
+    if isinstance(population_name, str):
+        for prefix in (CUSTOM_PREFIX, METROCAST_PREFIX):
+            if population_name.startswith(prefix):
+                return population_name.removeprefix(prefix)
+    return resolve_location(population_name).hub_id
