@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
+from matplotlib.colors import to_rgba
 
 from epymodelingsuite.schema.output import FigureOutputTypeEnum
 from epymodelingsuite.visualization.core import (
@@ -336,6 +337,43 @@ class TestPlotSurveillanceScatter:
 class TestPlotPosteriorHistogram:
     """Tests for plot_posterior_histogram function."""
 
+    @pytest.mark.parametrize("weighted", [False, True])
+    @pytest.mark.parametrize("custom_style", [False, True])
+    def test_weighted_default_style(self, weighted, custom_style):
+        posterior = pd.DataFrame({"beta": [0.0, 2.0]})
+        if weighted:
+            posterior["weight"] = [0.1, 0.9]
+        kwargs = {"color": "red", "title": "Custom title"} if custom_style else {}
+        fig, ax = plot_posterior_histogram(posterior, "beta", **kwargs)
+        try:
+            expected_color = "red" if custom_style else ("skyblue" if weighted else "C0")
+            assert ax.patches[0].get_facecolor() == to_rgba(expected_color, alpha=0.7)
+            expected_title = "Custom title" if custom_style else ("beta (Weighted posterior)" if weighted else "beta")
+            assert ax.get_title() == expected_title
+        finally:
+            plt.close(fig)
+
+    @pytest.mark.parametrize("parameter", ["beta", "start_date"])
+    @pytest.mark.parametrize("explicit_weights", [False, True])
+    def test_weighted_bin_mass_with_missing_parameter(self, parameter, explicit_weights):
+        posterior = pd.DataFrame({parameter: [0.0, np.nan, 2.0], "weight": [0.1, 0.6, 0.3]}, index=[7, 2, 9])
+        kwargs = {}
+        if explicit_weights:
+            kwargs["weights"] = posterior.pop("weight").to_numpy()
+        fig, ax = plot_posterior_histogram(posterior, parameter, bins=2, start_date_reference="2024-01-01", **kwargs)
+        try:
+            masses = [bar.get_height() * bar.get_width() for bar in ax.patches]
+            np.testing.assert_allclose(masses, [0.25, 0.75])
+            assert ax.patches[0].get_facecolor() == to_rgba("skyblue", alpha=0.7)
+        finally:
+            plt.close(fig)
+
+    @pytest.mark.parametrize("weights", [[-0.1, 1.1], [0.0, 0.0], [np.nan, 1.0], [np.inf, 1.0]])
+    def test_invalid_weights_raise(self, weights):
+        posterior = pd.DataFrame({"beta": [0.0, 2.0], "weight": weights})
+        with pytest.raises(ValueError, match="weights"):
+            plot_posterior_histogram(posterior, "beta")
+
     def test_basic_histogram(self, posterior_df):
         """Test basic posterior histogram."""
         fig, ax = plot_posterior_histogram(
@@ -395,6 +433,18 @@ class TestPlotPosteriorHistogram:
 
 class TestPlotPosteriorGrid:
     """Tests for plot_posterior_histogram_grid function."""
+
+    def test_mixed_weighted_grid(self):
+        posterior = pd.DataFrame({"beta": [0.0, 2.0], "weight": [0.1, 0.9]})
+        fig, axes = plot_posterior_histogram_grid(
+            {"Weighted": posterior, "Unweighted": posterior.drop(columns="weight")}, ["beta"]
+        )
+        try:
+            assert fig._suptitle.get_text() == "Posterior distributions (sky blue: weighted)"
+            assert axes[0, 0].patches[0].get_facecolor() == to_rgba("skyblue", alpha=0.7)
+            assert axes[1, 0].patches[0].get_facecolor() == to_rgba("C0", alpha=0.7)
+        finally:
+            plt.close(fig)
 
     def test_basic_grid(self, posterior_df):
         """Test basic posterior grid."""
