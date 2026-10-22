@@ -1098,7 +1098,9 @@ def generate_simulation_outputs(
     if not hub_format_output.empty:
         # will want to build filename to be something better, like to fit hub standards
         hf_name = "output_hub_formatted"
-        out_dict[hf_name] = format_hub_objects(hub_format_output, hf_name, output.tabular_output_types)
+        out_dict[hf_name] = format_hub_objects(
+            hub_format_output, hf_name, output.tabular_output_types, metrocast=output.flusight_format.metrocast
+        )
     if not model_meta.empty:
         mm_name = "model_metadata"
         mm_objects = [format_tabular_object(model_meta, mm_name, _type) for _type in output.tabular_output_types]
@@ -1817,7 +1819,9 @@ def generate_calibration_outputs(
     if not hub_format_output.empty:
         # will want to build filename to be something better, like to fit hub standards
         hf_name = "output_hub_formatted"
-        out_dict[hf_name] = format_hub_objects(hub_format_output, hf_name, output.tabular_output_types)
+        out_dict[hf_name] = format_hub_objects(
+            hub_format_output, hf_name, output.tabular_output_types, metrocast=output.flusight_format.metrocast
+        )
     if not model_meta.empty:
         mm_name = "model_metadata"
         mm_objects = [format_tabular_object(model_meta, mm_name, _type) for _type in output.tabular_output_types]

@@ -48,7 +48,7 @@ def format_tabular_object(df: pd.DataFrame, name: str, output_type: TabularOutpu
 
 
 def format_hub_objects(
-    df: pd.DataFrame, name: str, output_types: list[TabularOutputTypeEnum]
+    df: pd.DataFrame, name: str, output_types: list[TabularOutputTypeEnum], *, metrocast: bool = False
 ) -> list[OutputObject]:
     """Prepare hub tables per format and pass them to the common tabular writer.
 
@@ -61,12 +61,16 @@ def format_hub_objects(
         Output name without a filename extension.
     output_types : list[TabularOutputTypeEnum]
         Requested output formats, in the order they should be returned.
+    metrocast : bool
+        Use the 2026-27 MetroCast columns and S-prefixed sample IDs.
 
     Returns
     -------
     list[OutputObject]
         One object per requested format. Parquet uses a copy with the FluSight
         column order and Arrow dtypes. CSV and DataFrame use the original table.
+        MetroCast omits horizon, orders columns as in the hub README, and
+        prefixes sample IDs with S in every format.
         An empty format list produces an empty result.
     """
     objects = []
@@ -74,6 +78,12 @@ def format_hub_objects(
         hub_table = df
         if output_type == TabularOutputTypeEnum.Parquet:
             hub_table = cast_hub_dtypes(hub_table)
+        if metrocast:
+            hub_table = hub_table[
+                ["reference_date", "target", "target_end_date", "location", "output_type", "output_type_id", "value"]
+            ].copy()
+            samples = hub_table["output_type"] == "sample"
+            hub_table.loc[samples, "output_type_id"] = "S" + hub_table.loc[samples, "output_type_id"].astype("string")
         objects.append(format_tabular_object(hub_table, name, output_type))
     return objects
 
