@@ -1,4 +1,4 @@
-"""Shared long-form dashboard trajectory schema, formatting and validation."""
+"""Shared long-form trajectory schema, formatting and validation."""
 
 import json
 import re
@@ -11,8 +11,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from epiweeks import Week
 
-DASHBOARD_TRAJECTORY_SCHEMA_VERSION = "1"
-DASHBOARD_TRAJECTORY_SCHEMA = pa.schema(
+LONG_FORM_TRAJECTORY_SCHEMA_VERSION = "1"
+LONG_FORM_TRAJECTORY_SCHEMA = pa.schema(
     [
         pa.field("sample_id", pa.int64(), nullable=False),
         pa.field("sim_id", pa.int64()),
@@ -41,13 +41,13 @@ def _validate_file_data(df: pd.DataFrame) -> None:
     for _, rows in groups:
         labels = rows.series.dropna().unique() if "series" in rows else []
         strains = [s for s in labels if isinstance(s, str) and s != "total" and not s.startswith("baseline")]
-        errors = validate_dashboard_trajectories(rows, strains)
+        errors = validate_long_form_trajectories(rows, strains)
         if errors:
-            raise ValueError("Invalid dashboard trajectories: " + "; ".join(errors))
+            raise ValueError("Invalid long-form trajectories: " + "; ".join(errors))
 
     errors = _sample_mapping_errors(df)
     if errors:
-        raise ValueError("Invalid dashboard trajectories: " + "; ".join(errors))
+        raise ValueError("Invalid long-form trajectories: " + "; ".join(errors))
 
 
 def _sample_mapping_errors(df: pd.DataFrame) -> list[str]:
@@ -62,58 +62,58 @@ def _sample_mapping_errors(df: pd.DataFrame) -> list[str]:
 
 def _validate_sources(sources: object, df: pd.DataFrame) -> None:
     if not isinstance(sources, list):
-        raise ValueError("Dashboard sources must be a list.")
+        raise ValueError("Trajectory sources must be a list.")
     seen = set()
     pairs = set(df[["target", "series"]].drop_duplicates().itertuples(index=False, name=None))
     for source in sources:
         if not isinstance(source, dict) or not {"target", "strain"}.issubset(source):
-            raise ValueError("Each dashboard source requires target and strain.")
+            raise ValueError("Each trajectory source requires target and strain.")
         if set(source) - {"target", "strain", "experiment", "run_id", "trajectory_file"} or any(
             not isinstance(value, str) or not value.strip() for value in source.values()
         ):
-            raise ValueError("Dashboard source fields must be known, non-blank strings; omit unavailable fields.")
+            raise ValueError("Trajectory source fields must be known, non-blank strings; omit unavailable fields.")
         pair = (source["target"], source["strain"])
         if pair in seen or pair not in pairs or source["strain"] == "total" or source["strain"].startswith("baseline"):
-            raise ValueError("Dashboard sources must uniquely identify existing target/strain pairs.")
+            raise ValueError("Trajectory sources must uniquely identify existing target/strain pairs.")
         if source.get("run_id") in {"latest", "any", "*", "unknown"}:
-            raise ValueError("Dashboard source run_id must be resolved; omit it when unknown.")
+            raise ValueError("Trajectory source run_id must be resolved; omit it when unknown.")
         seen.add(pair)
 
 
-def write_dashboard_trajectories(df: pd.DataFrame, path, *, sources: list[dict[str, str]] | None = None) -> None:
+def write_long_form_trajectories(df: pd.DataFrame, path, *, sources: list[dict[str, str]] | None = None) -> None:
     """Validate and write versioned Parquet, optionally with source provenance.
 
     Sources identify target/strain and may include experiment, resolved run_id,
     and trajectory_file. No environment variables or cloud access are required.
-    When omitted, preserve sources loaded by read_dashboard_trajectories.
+    When omitted, preserve sources loaded by read_long_form_trajectories.
     """
     _validate_file_data(df)
     if sources is None:
         sources = df.attrs.get("sources")
-    metadata = {b"schema_version": DASHBOARD_TRAJECTORY_SCHEMA_VERSION.encode()}
+    metadata = {b"schema_version": LONG_FORM_TRAJECTORY_SCHEMA_VERSION.encode()}
     if sources is not None:
         _validate_sources(sources, df)
         metadata[b"sources"] = json.dumps(sources, ensure_ascii=False).encode()
-    table = pa.Table.from_pandas(df, schema=DASHBOARD_TRAJECTORY_SCHEMA, preserve_index=False, safe=True)
+    table = pa.Table.from_pandas(df, schema=LONG_FORM_TRAJECTORY_SCHEMA, preserve_index=False, safe=True)
     # Use Arrow metadata explicitly: DataFrame.attrs alone is not the file contract.
     table = table.replace_schema_metadata({**(table.schema.metadata or {}), **metadata})
     pq.write_table(table, path)
 
 
-def read_dashboard_trajectories(path) -> pd.DataFrame:
-    """Read/validate canonical long Parquet; expose file metadata in DataFrame.attrs."""
+def read_long_form_trajectories(path) -> pd.DataFrame:
+    """Read and validate long-form Parquet; expose file metadata in DataFrame.attrs."""
     table = pq.read_table(path)
     metadata = table.schema.metadata or {}
-    if metadata.get(b"schema_version") != DASHBOARD_TRAJECTORY_SCHEMA_VERSION.encode():
-        raise ValueError(f"Missing or unsupported dashboard schema_version: {metadata.get(b'schema_version')!r}.")
+    if metadata.get(b"schema_version") != LONG_FORM_TRAJECTORY_SCHEMA_VERSION.encode():
+        raise ValueError(f"Missing or unsupported trajectory schema_version: {metadata.get(b'schema_version')!r}.")
     df = table.to_pandas(types_mapper=pd.ArrowDtype)
     _validate_file_data(df)
-    df.attrs = {"schema_version": DASHBOARD_TRAJECTORY_SCHEMA_VERSION}
+    df.attrs = {"schema_version": LONG_FORM_TRAJECTORY_SCHEMA_VERSION}
     if b"sources" in metadata:
         try:
             sources = json.loads(metadata[b"sources"])
         except (ValueError, UnicodeError) as exc:
-            raise ValueError("Invalid dashboard sources JSON.") from exc
+            raise ValueError("Invalid trajectory sources JSON.") from exc
         _validate_sources(sources, df)
         df.attrs["sources"] = sources
     return df
@@ -134,7 +134,7 @@ def _check_labels(strains: Sequence[str], baselines: Sequence[str]) -> None:
         raise ValueError("Baseline series must be baseline or baseline_k<positive integer>; do not mix them.")
 
 
-def validate_dashboard_trajectories(df: pd.DataFrame, strains: Sequence[str]) -> list[str]:
+def validate_long_form_trajectories(df: pd.DataFrame, strains: Sequence[str]) -> list[str]:
     """Return long-form schema/data errors without casting or changing the table.
 
     Each sample/location/date/age_group/target must have all strain series, total, and every
@@ -146,7 +146,7 @@ def validate_dashboard_trajectories(df: pd.DataFrame, strains: Sequence[str]) ->
     Source IDs must be shared across age groups and targets.
     String/large_string are equivalent. Dates must be timezone-naive timestamp[us].
     """
-    schema = DASHBOARD_TRAJECTORY_SCHEMA
+    schema = LONG_FORM_TRAJECTORY_SCHEMA
     if list(df.columns) != schema.names:
         return [f"Columns must be exactly {schema.names}, in that order."]
     if df.empty:
@@ -168,7 +168,7 @@ def validate_dashboard_trajectories(df: pd.DataFrame, strains: Sequence[str]) ->
         return _sample_mapping_errors(df) + [
             f"{target}: {error}"
             for target, rows in df.groupby("target")
-            for error in validate_dashboard_trajectories(rows, strains)
+            for error in validate_long_form_trajectories(rows, strains)
         ]
     labels = df.series.unique().tolist()
     baselines = [s for s in labels if s.startswith("baseline")]
@@ -242,7 +242,7 @@ def validate_dashboard_trajectories(df: pd.DataFrame, strains: Sequence[str]) ->
     return errors
 
 
-def format_dashboard_trajectories(
+def format_long_form_trajectories(
     df: pd.DataFrame,
     strains: Sequence[str],
     reference_date: date | str | pd.Timestamp,
@@ -253,7 +253,7 @@ def format_dashboard_trajectories(
     or aggregate. Recomputes existing weekly metadata; rejects extra columns.
     Returns a new Arrow-backed frame preserving column types in Parquet.
     """
-    schema = DASHBOARD_TRAJECTORY_SCHEMA
+    schema = LONG_FORM_TRAJECTORY_SCHEMA
     if not df.columns.is_unique or "date" not in df:
         raise ValueError("Column names must be unique and include date.")
     out = df.copy()
@@ -270,15 +270,15 @@ def format_dashboard_trajectories(
     try:
         table = pa.Table.from_pandas(out[schema.names], schema=schema, preserve_index=False, safe=True)
     except (pa.ArrowException, TypeError, ValueError) as exc:
-        raise ValueError(f"Cannot cast dashboard trajectories: {exc}") from exc
+        raise ValueError(f"Cannot cast long-form trajectories: {exc}") from exc
     out = table.to_pandas(types_mapper=pd.ArrowDtype)
-    errors = validate_dashboard_trajectories(out, strains)
+    errors = validate_long_form_trajectories(out, strains)
     if errors:
-        raise ValueError("Invalid dashboard trajectories: " + "; ".join(errors))
+        raise ValueError("Invalid long-form trajectories: " + "; ".join(errors))
     return out
 
 
-def dashboard_trajectories_from_wide(
+def long_form_trajectories_from_wide(
     df: pd.DataFrame,
     strains: Sequence[str],
     reference_date: date | str | pd.Timestamp,
@@ -312,4 +312,4 @@ def dashboard_trajectories_from_wide(
         frame["series"] = label
         frame["value"] = df[f"target_{label}"]
         frames.append(frame)
-    return format_dashboard_trajectories(pd.concat(frames, ignore_index=True), strains, reference_date)
+    return format_long_form_trajectories(pd.concat(frames, ignore_index=True), strains, reference_date)

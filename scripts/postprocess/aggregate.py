@@ -28,9 +28,9 @@ from epymodelingsuite.multistrain.aggregator import (
     merge_strain_trajectories,
     pull_trajectory_projections,
 )
-from epymodelingsuite.output.dashboard_trajectories import (
-    dashboard_trajectories_from_wide,
-    write_dashboard_trajectories,
+from epymodelingsuite.output.long_form_trajectories import (
+    long_form_trajectories_from_wide,
+    write_long_form_trajectories,
 )
 
 
@@ -113,7 +113,7 @@ def main():
                 f"  Added {aggregation.baseline.method} baseline noise with dispersion/variance modifiers {aggregation.baseline.dispersion_values}:\n{aggregated_df.tail()}"
             )
 
-    aggregated_df = dashboard_trajectories_from_wide(
+    aggregated_df = long_form_trajectories_from_wide(
         aggregated_df,
         strains=[source.strain for source in aggregation.sources],
         reference_date=Week.fromstring(str(aggregation.submission_week)).enddate(),
@@ -121,11 +121,11 @@ def main():
     )
 
     # Write aggregated trajectories to file, named after the config (e.g.
-    # "202613_bphc_ed.yaml" -> "dashboard_trajectories_202613_bphc_ed.parquet").
+    # "202613_bphc_ed.yaml" -> "long_form_trajectories_202613_bphc_ed.parquet").
     # Deriving it from sources[0].experiment instead gives useless names, because
     # the leading path segment is the epiweek for flu and "test" for bphc.
-    fname = f"{args.output}/dashboard_trajectories_{Path(args.config).stem}.parquet"
-    write_dashboard_trajectories(aggregated_df, fname, sources=sources)
+    fname = f"{args.output}/long_form_trajectories_{Path(args.config).stem}.parquet"
+    write_long_form_trajectories(aggregated_df, fname, sources=sources)
     print(f"  Saved aggregated trajectories at {fname}")
 
 

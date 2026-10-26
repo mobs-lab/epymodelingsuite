@@ -1,1 +1,1 @@
-"""Output formatting: hub submissions, dashboard trajectories and trajectory samples."""
+"""Output formatting: hub submissions, long-form trajectories and trajectory samples."""

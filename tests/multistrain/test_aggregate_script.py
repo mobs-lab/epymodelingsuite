@@ -14,10 +14,10 @@ import yaml
 from epiweeks import Week
 
 from epymodelingsuite.multistrain import aggregator
-from epymodelingsuite.output.dashboard_trajectories import (
-    DASHBOARD_TRAJECTORY_SCHEMA,
-    dashboard_trajectories_from_wide,
-    validate_dashboard_trajectories,
+from epymodelingsuite.output.long_form_trajectories import (
+    LONG_FORM_TRAJECTORY_SCHEMA,
+    long_form_trajectories_from_wide,
+    validate_long_form_trajectories,
 )
 from epymodelingsuite.schema.aggregation import AggregationConfiguration, SourceExperiment
 
@@ -85,15 +85,15 @@ def test_aggregate_dates_are_microseconds(tmp_path, monkeypatch, unit, labels, w
         return
     runpy.run_path(str(Path(__file__).resolve().parents[2] / "scripts/postprocess/aggregate.py"), run_name="__main__")
 
-    path = tmp_path / "dashboard_trajectories_example.parquet"
+    path = tmp_path / "long_form_trajectories_example.parquet"
     schema = pq.read_schema(path)
     assert schema.metadata[b"schema_version"] == b"1"
     assert json.loads(schema.metadata[b"sources"]) == sources
     assert schema.field("date").type == pa.timestamp("us")
     assert schema.field("reference_date").type == pa.timestamp("us")
-    assert [f.type for f in schema] == [f.type for f in DASHBOARD_TRAJECTORY_SCHEMA]
+    assert [f.type for f in schema] == [f.type for f in LONG_FORM_TRAJECTORY_SCHEMA]
     result = pd.read_parquet(path)
-    assert validate_dashboard_trajectories(result, labels) == []
+    assert validate_long_form_trajectories(result, labels) == []
     assert len(result) == len(dates) * (len(labels) + 1) * (len(age_columns) + 1)
     assert result.target.eq("wk inc flu hosp").all()
     assert set(result.series) == {*labels, "total"}
@@ -137,8 +137,8 @@ def test_sum_preserves_all_missing_and_real_zero():
     result = aggregator.dispatch_strain_aggregator(merged, config)
     pd.testing.assert_frame_equal(merged, original)
     np.testing.assert_array_equal(result.target_total.to_numpy(), [60.0, 40.0, np.nan, 0.0])
-    dashboard = dashboard_trajectories_from_wide(result, labels, "2026-10-10", config.target)
-    assert validate_dashboard_trajectories(dashboard, labels) == []
+    trajectories = long_form_trajectories_from_wide(result, labels, "2026-10-10", config.target)
+    assert validate_long_form_trajectories(trajectories, labels) == []
 
 
 @pytest.mark.parametrize("with_ages", [False, True])
@@ -195,8 +195,8 @@ def test_age_groups_use_the_same_sampled_trajectories(with_ages):
     assert len(aggregated) == 4 * len(ages)
     assert aggregated.loc[aggregated.date.eq(pd.Timestamp("2026-10-10")), "target_b"].isna().all()
     assert aggregated.loc[aggregated.date.eq(pd.Timestamp("2026-10-17")), "target_a"].isna().all()
-    dashboard = dashboard_trajectories_from_wide(aggregated, ["a", "b"], "2026-10-10", config.target)
-    assert validate_dashboard_trajectories(dashboard, ["a", "b"]) == []
+    long_form = long_form_trajectories_from_wide(aggregated, ["a", "b"], "2026-10-10", config.target)
+    assert validate_long_form_trajectories(long_form, ["a", "b"]) == []
 
     missing_column = "b_young" if with_ages else "b_all"
     trajectories["b"] = trajectories["b"].drop(columns=missing_column)

@@ -41,10 +41,10 @@ class AggregatedTrajectoriesConfig(BaseModel):
 
     target: str | None = Field(
         None,
-        description="Output variable identifier to select from dashboard data. Required when the file contains multiple targets.",
+        description="Output variable identifier to select from long-form trajectory data. Required when the file contains multiple targets.",
     )
     target_column: str = Field(
-        description="Dashboard series (e.g. total or baseline_k10), or legacy wide target column (e.g. target_total)."
+        description="Trajectory series (e.g. total or baseline_k10), or legacy wide target column (e.g. target_total)."
     )
     date_column: str = Field("date", description="Name of column in trajectory file with target date.")
     location_column: str = Field("location", description="Name of column in trajectory file with location/population.")

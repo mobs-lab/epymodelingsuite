@@ -2,16 +2,16 @@
 
 The postprocessing scripts produce two kinds of files:
 
-1. **Dashboard parquet**: long-form strain trajectories, totals and optional baselines. This is the file sent to the dashboard.
+1. **Long-form Parquet**: long-form strain trajectories, totals and optional baselines. This format supports analysis, plotting, and dashboards.
 2. **Submission CSV**: hubverse quantile (and for hosp, PMF) forecasts built from the aggregated parquet.
 
 The scripts in this directory produce these files (commands at the end).
-The dashboard trajectory contract is shared output infrastructure in `epymodelingsuite/output/dashboard_trajectories.py`; it does not require aggregation or sampling.
+The long-form trajectory contract is shared output infrastructure in `epymodelingsuite/output/long_form_trajectories.py`; it does not require aggregation or sampling.
 
-## 1. Dashboard trajectories (long-form Parquet)
+## 1. Long-form trajectories (Parquet)
 
-**Filename:** `dashboard_trajectories_<config stem>.parquet` for `aggregate.py` output.
-Single-strain and multistrain dashboard files use the same fixed eleven columns.
+**Filename:** `long_form_trajectories_<config stem>.parquet` for `aggregate.py` output.
+Single-strain and multistrain long-form trajectory files use the same fixed eleven columns.
 One row per (`sample_id`, `location`, `date`, `age_group`, `target`, `series`).
 
 | column | Parquet type | description |
@@ -45,7 +45,7 @@ Set `aggregation.target` explicitly. Use the model variable name (for example, `
 | BPHC ED | `wk inc ed signal` |
 
 The validator requires a non-empty target name but does not hard-code a hub's changing task vocabulary.
-Use one target per aggregation run. Multiple targets may be combined in a dashboard file; their series and values are checked separately. A source simulation ID must stay constant for each location/sample/strain across dates, age groups and targets.
+Use one target per aggregation run. Multiple targets may be combined in a long-form trajectory file; their series and values are checked separately. A source simulation ID must stay constant for each location/sample/strain across dates, age groups and targets.
 Values retain the source variable's units; formatting does not rescale them.
 
 ### Age groups
@@ -150,41 +150,41 @@ Callers supply provenance explicitly; the shared output functions do not inspect
 
 ### Shared schema, formatter and validator
 
-`epymodelingsuite.output.dashboard_trajectories` provides:
+`epymodelingsuite.output.long_form_trajectories` provides:
 
-- `DASHBOARD_TRAJECTORY_SCHEMA`: fixed Arrow column order and types above. Conditional null rules are checked by the validator.
-- `format_dashboard_trajectories(df, strains, reference_date)`: requires `age_group` on long rows, recomputes weekly metadata, safely casts types and validates. Does not sample or aggregate. Returns a new Arrow-backed DataFrame; invalid data raises `ValueError` before writing.
-- `dashboard_trajectories_from_wide(df, strains, reference_date, target)`: adapter for existing aggregate results/legacy files; preserves strain values (including NaN), source IDs and an existing `age_group` column. For legacy wide data without an age column, adds `age_group="all"`, then calls the shared formatter.
-- `validate_dashboard_trajectories(df, strains)`: returns errors, or an empty list on success, without changing the input. Accepts string/large_string as equivalent logical strings.
-- `write_dashboard_trajectories(df, path, sources=None)`: validates data and optional provenance, and writes versioned Parquet. If `sources` is omitted, preserves `df.attrs["sources"]` when present.
-- `read_dashboard_trajectories(path)`: validates the version, data, and provenance and returns long rows. File metadata is available in `df.attrs["schema_version"]` and optional `df.attrs["sources"]`.
+- `LONG_FORM_TRAJECTORY_SCHEMA`: fixed Arrow column order and types above. Conditional null rules are checked by the validator.
+- `format_long_form_trajectories(df, strains, reference_date)`: requires `age_group` on long rows, recomputes weekly metadata, safely casts types and validates. Does not sample or aggregate. Returns a new Arrow-backed DataFrame; invalid data raises `ValueError` before writing.
+- `long_form_trajectories_from_wide(df, strains, reference_date, target)`: adapter for existing aggregate results/legacy files; preserves strain values (including NaN), source IDs and an existing `age_group` column. For legacy wide data without an age column, adds `age_group="all"`, then calls the shared formatter.
+- `validate_long_form_trajectories(df, strains)`: returns errors, or an empty list on success, without changing the input. Accepts string/large_string as equivalent logical strings.
+- `write_long_form_trajectories(df, path, sources=None)`: validates data and optional provenance, and writes versioned Parquet. If `sources` is omitted, preserves `df.attrs["sources"]` when present.
+- `read_long_form_trajectories(path)`: validates the version, data, and provenance and returns long rows. File metadata is available in `df.attrs["schema_version"]` and optional `df.attrs["sources"]`.
 
 Use the shared writer rather than `DataFrame.to_parquet` to include required file metadata.
 This schema is still under development before its first merge, so these changes
 remain version 1. The reader requires the current eleven-column schema. To update
 an earlier all-age export without `age_group`, load it with `pd.read_parquet`, add `age_group="all"`,
-and order the columns with `DASHBOARD_TRAJECTORY_SCHEMA.names`. Save to a new path
-with `write_dashboard_trajectories`. Pass any original `sources` metadata explicitly.
+and order the columns with `LONG_FORM_TRAJECTORY_SCHEMA.names`. Save to a new path
+with `write_long_form_trajectories`. Pass any original `sources` metadata explicitly.
 This validates the data, including the shared source-ID mapping across targets,
 before writing. The row validator alone does not validate file metadata.
 
 Validation checks exact columns/order/types, required values, unique keys, complete series per key, non-negative IDs, contiguous sample IDs, and stable source IDs within each location/sample/strain across ages and targets. Dates must be Saturdays at midnight with a single reference date per target and matching horizon/epiweek. Non-missing values must be finite and non-negative. Totals must match the sum of available strains (rtol `1e-10`, atol `1e-12`), including NaN exactly when all strains are NaN. Baseline series must be missing exactly where total is missing, and otherwise be at least total; beta and negative-binomial baseline series cannot be mixed within a target.
 
-`aggregate.py` uses the adapter and writes only long-form dashboard output. Submission and plot readers also accept legacy wide files. Existing `target_column: target_total` selects `series: total`; `target_column: target_baseline_k10` selects `series: baseline_k10`. The shorter `target_column: total` is also accepted for long files. If a file contains multiple targets, set `aggregated.target` to the stored variable identifier to avoid mixing them. Submission and plot readers select `age_group="all"` and fail if it is absent, so age rows cannot be mixed into all-age quantiles. Hub submission target names still come from the submission profile.
+`aggregate.py` uses the adapter and writes only long-form output. Submission and plot readers also accept legacy wide files. Existing `target_column: target_total` selects `series: total`; `target_column: target_baseline_k10` selects `series: baseline_k10`. The shorter `target_column: total` is also accepted for long files. If a file contains multiple targets, set `aggregated.target` to the stored variable identifier to avoid mixing them. Submission and plot readers select `age_group="all"` and fail if it is absent, so age rows cannot be mixed into all-age quantiles. Hub submission target names still come from the submission profile.
 
-A future direct single-strain output producer can supply long rows to `format_dashboard_trajectories`, without invoking aggregation. Dispatcher integration is not yet implemented. Hub submission schema/validation remain separate.
+A future direct single-strain output producer can supply long rows to `format_long_form_trajectories`, without invoking aggregation. Dispatcher integration is not yet implemented. Hub submission schema/validation remain separate.
 
 ```python
-from epymodelingsuite.output.dashboard_trajectories import (
-    format_dashboard_trajectories,
-    read_dashboard_trajectories,
-    write_dashboard_trajectories,
+from epymodelingsuite.output.long_form_trajectories import (
+    format_long_form_trajectories,
+    read_long_form_trajectories,
+    write_long_form_trajectories,
 )
 
 # rows contains sample_id, sim_id, location, date, age_group, target, series, value.
-dashboard = format_dashboard_trajectories(rows, ["single"], "2026-10-10")
-write_dashboard_trajectories(dashboard, "dashboard.parquet")  # No cloud metadata needed.
-dashboard = read_dashboard_trajectories("dashboard.parquet")
+trajectories = format_long_form_trajectories(rows, ["single"], "2026-10-10")
+write_long_form_trajectories(trajectories, "long_form_trajectories.parquet")  # No cloud metadata needed.
+trajectories = read_long_form_trajectories("long_form_trajectories.parquet")
 ```
 
 ### Location vocabulary
@@ -242,7 +242,7 @@ uv run $REPO/scripts/postprocess/aggregate.py --config 202616_hosp.yaml --output
 
 # 2. Aggregated parquet -> submission CSV
 uv run $REPO/scripts/postprocess/submission.py --config 202616_hosp_submission.yaml \
-    --aggregated outputs/202616_hosp/dashboard_trajectories_202616_hosp.parquet --output submissions/202616
+    --aggregated outputs/202616_hosp/long_form_trajectories_202616_hosp.parquet --output submissions/202616
 
 # 3. Aggregated parquet -> comparison plots (optional)
 uv run $REPO/scripts/postprocess/plot.py --config 202616_hosp_plot.yaml \
@@ -295,10 +295,10 @@ plot:
   profile: flusight_hosp               # panels are labelled with this profile's location ids
   aggregated:
     multistrain:
-      trajectory_file: 202616_hosp/dashboard_trajectories_202616_hosp.parquet
+      trajectory_file: 202616_hosp/long_form_trajectories_202616_hosp.parquet
       target_column: target_total
     multistrain_baseline:
-      trajectory_file: 202616_hosp/dashboard_trajectories_202616_hosp.parquet
+      trajectory_file: 202616_hosp/long_form_trajectories_202616_hosp.parquet
       target_column: target_baseline_k10
   subplots_per_row: 4                  # default 4
   surveillance:
