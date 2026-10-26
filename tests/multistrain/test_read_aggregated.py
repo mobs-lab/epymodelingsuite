@@ -91,3 +91,17 @@ def test_legacy_wide_files_still_read(tmp_path, suffix):
         wide.to_csv(path, index=False)
     result = read_aggregated(str(path), AggregatedTrajectoriesConfig(target_column="target_total"))
     pd.testing.assert_frame_equal(result, wide[["date", "location", "target_total", "sample_id"]])
+
+
+def test_consumer_selects_all_ages_without_mixing_age_rows(tmp_path):
+    all_ages = dashboard_trajectories_from_wide(_wide(), ["single"], "2026-10-10", "ed_signal")
+    young = all_ages.assign(age_group="0-4", value=all_ages.value * 0.25)
+    older = all_ages.assign(age_group="5+", value=all_ages.value * 0.75)
+    path = tmp_path / "ages.parquet"
+    write_dashboard_trajectories(pd.concat([all_ages, young, older], ignore_index=True), path)
+    result = read_aggregated(str(path), AggregatedTrajectoriesConfig(target="ed_signal", target_column="total"))
+    expected = _wide()[["date", "location", "target_total", "sample_id"]].rename(columns={"target_total": "total"})
+    pd.testing.assert_frame_equal(result.reset_index(drop=True), expected, check_dtype=False)
+    write_dashboard_trajectories(pd.concat([young, older], ignore_index=True), path)
+    with pytest.raises(ValueError, match="age_group='all'"):
+        read_aggregated(str(path), AggregatedTrajectoriesConfig(target_column="total"))

@@ -18,6 +18,7 @@ DASHBOARD_TRAJECTORY_SCHEMA = pa.schema(
         pa.field("sim_id", pa.int64()),
         pa.field("location", pa.string(), nullable=False),
         pa.field("date", pa.timestamp("us"), nullable=False),
+        pa.field("age_group", pa.string(), nullable=False),
         pa.field("target", pa.string(), nullable=False),
         pa.field("series", pa.string(), nullable=False),
         pa.field("value", pa.float64()),
@@ -26,7 +27,7 @@ DASHBOARD_TRAJECTORY_SCHEMA = pa.schema(
         pa.field("epiweek", pa.string(), nullable=False),
     ]
 )
-TRAJECTORY_INDEX = ["sample_id", "location", "date", "target"]
+TRAJECTORY_INDEX = ["sample_id", "location", "date", "age_group", "target"]
 
 
 def _validate_file_data(df: pd.DataFrame) -> None:
@@ -43,6 +44,20 @@ def _validate_file_data(df: pd.DataFrame) -> None:
         errors = validate_dashboard_trajectories(rows, strains)
         if errors:
             raise ValueError("Invalid dashboard trajectories: " + "; ".join(errors))
+
+    errors = _sample_mapping_errors(df)
+    if errors:
+        raise ValueError("Invalid dashboard trajectories: " + "; ".join(errors))
+
+
+def _sample_mapping_errors(df: pd.DataFrame) -> list[str]:
+    strains = df.loc[~df.series.eq("total") & ~df.series.str.startswith("baseline")]
+    if (strains.groupby(["location", "sample_id", "series"]).sim_id.nunique() > 1).any():
+        return [
+            "Source simulation IDs must stay constant across dates, age groups and targets "
+            "within each location/sample/strain."
+        ]
+    return []
 
 
 def _validate_sources(sources: object, df: pd.DataFrame) -> None:
@@ -122,10 +137,13 @@ def _check_labels(strains: Sequence[str], baselines: Sequence[str]) -> None:
 def validate_dashboard_trajectories(df: pd.DataFrame, strains: Sequence[str]) -> list[str]:
     """Return long-form schema/data errors without casting or changing the table.
 
-    Each sample/location/date/target must have all strain series, total, and every
+    Each sample/location/date/age_group/target must have all strain series, total, and every
     baseline series present in the file. Strain rows require sim_id and allow
     missing value; total is missing iff all strains are missing. Baselines must
     share total's missingness. Derived rows require null sim_id.
+    Age labels must be complete per target. If present alongside individual ages,
+    all-age values must equal their sum, propagating any missing age value.
+    Source IDs must be shared across age groups and targets.
     String/large_string are equivalent. Dates must be timezone-naive timestamp[us].
     """
     schema = DASHBOARD_TRAJECTORY_SCHEMA
@@ -147,7 +165,7 @@ def validate_dashboard_trajectories(df: pd.DataFrame, strains: Sequence[str]) ->
     if errors:
         return errors
     if df.target.nunique() > 1:
-        return [
+        return _sample_mapping_errors(df) + [
             f"{target}: {error}"
             for target, rows in df.groupby("target")
             for error in validate_dashboard_trajectories(rows, strains)
@@ -162,9 +180,9 @@ def validate_dashboard_trajectories(df: pd.DataFrame, strains: Sequence[str]) ->
     if set(labels) != set(expected_series):
         return [f"series must contain exactly {expected_series}; got {labels}."]
     if df.duplicated([*TRAJECTORY_INDEX, "series"]).any():
-        return ["Duplicate (sample_id, location, date, target, series) rows."]
+        return ["Duplicate (sample_id, location, date, age_group, target, series) rows."]
     if not df.groupby(TRAJECTORY_INDEX).size().eq(len(expected_series)).all():
-        return ["Every sample/location/date/target must contain all series, including missing strain values."]
+        return ["Every sample/location/date/age_group/target must contain all series, including missing strain values."]
     strain_rows = df.series.isin(strains)
     if df.loc[strain_rows, "sim_id"].isna().any():
         errors.append("Strain rows require sim_id.")
@@ -175,12 +193,24 @@ def validate_dashboard_trajectories(df: pd.DataFrame, strains: Sequence[str]) ->
     samples = sorted(df.sample_id.unique())
     if samples != list(range(len(samples))):
         errors.append("sample_id must cover 0 .. n_samples-1.")
-    if (df.loc[strain_rows].groupby(["location", "sample_id", "target", "series"]).sim_id.nunique() > 1).any():
-        errors.append("Source simulation IDs must stay constant within each location/sample/strain.")
+    errors.extend(_sample_mapping_errors(df))
     if df.location.str.strip().eq("").any():
         errors.append("location must not be blank.")
     if df.target.str.strip().eq("").any():
-        errors.append("target must not be blank; use the original hub target name.")
+        errors.append("target must not be blank.")
+    if df.age_group.str.strip().eq("").any():
+        errors.append("age_group must not be blank; use 'all' for all ages.")
+    age_key = ["sample_id", "location", "date", "target", "series"]
+    ages = df.pivot(index=age_key, columns="age_group", values="value")
+    if not df.groupby(age_key).size().eq(len(ages.columns)).all():
+        errors.append("Every sample/location/date/target/series must contain the same age groups, including missing values.")
+    age_columns = [age for age in ages.columns if age != "all"]
+    if "all" in ages and age_columns:
+        values_by_age = ages[age_columns].to_numpy(dtype=float, na_value=np.nan)
+        expected_all = values_by_age.sum(axis=1)
+        actual_all = ages["all"].to_numpy(dtype=float, na_value=np.nan)
+        if not np.allclose(actual_all, expected_all, rtol=1e-10, atol=1e-12, equal_nan=True):
+            errors.append("age_group='all' must equal the sum of all age groups, and be missing if any age value is missing.")
     dates = pd.DatetimeIndex(df.date)
     references = pd.DatetimeIndex(df.reference_date)
     for name, values in [("date", dates), ("reference_date", references)]:
@@ -219,7 +249,7 @@ def format_dashboard_trajectories(
 ) -> pd.DataFrame:
     """Add weekly metadata, safely cast and validate a long-form producer table.
 
-    Requires sample_id, sim_id, location, date, target, series and value. Does not sample
+    Requires sample_id, sim_id, location, date, age_group, target, series and value. Does not sample
     or aggregate. Recomputes existing weekly metadata; rejects extra columns.
     Returns a new Arrow-backed frame preserving column types in Parquet.
     """
@@ -257,8 +287,9 @@ def dashboard_trajectories_from_wide(
     """Adapt aggregate results (or legacy wide files) to the long-form contract.
 
     Preserve source IDs only on strain rows. Total and baseline provenance is
-    recovered by joining strain rows on sample_id/location/date/target. Preserve NaN
-    strain rows so missing history is distinguishable from zero.
+    recovered by joining strain rows on sample_id/location/date/age_group/target. Preserve NaN
+    strain rows so missing history is distinguishable from zero. Preserve an
+    existing age_group column, or label legacy all-age data as "all".
     """
     if not df.columns.is_unique or not all(isinstance(c, str) for c in df):
         raise ValueError("Column names must be unique strings.")
@@ -266,12 +297,16 @@ def dashboard_trajectories_from_wide(
     _check_labels(strains, baselines)
     series = [*strains, "total", *baselines]
     source_key = ["sample_id", "location", "date"]
+    if "age_group" in df:
+        source_key.append("age_group")
     required = {*source_key, *[f"sim_id_{s}" for s in strains], *[f"target_{s}" for s in series]}
     if not required.issubset(df.columns) or set(df.columns) - required - {"reference_date", "horizon", "epiweek"}:
         raise ValueError(f"Columns must contain {sorted(required)} and optional weekly metadata.")
     frames = []
     for label in series:
         frame = df[source_key].copy()
+        if "age_group" not in frame:
+            frame["age_group"] = "all"
         frame["target"] = target
         frame["sim_id"] = df[f"sim_id_{label}"] if label in strains else pd.Series(pd.NA, index=df.index, dtype="Int64")
         frame["series"] = label

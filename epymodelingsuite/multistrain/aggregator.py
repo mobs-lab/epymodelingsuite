@@ -122,7 +122,7 @@ def pull_trajectory_projections(
         specified by the config (e.g. sim_id, population, date, hospitalizations).
     sources : list[dict[str, str]]
         One provenance record per configured source, in config order. Keys are
-        target (hub target name), strain (same label as a trajectories key),
+        target (output variable identifier), strain (same label as a trajectories key),
         experiment (experiment path within the bucket), run_id (resolved run ID),
         and trajectory_file (full gs:// URI of the downloaded object).
     """
@@ -220,7 +220,7 @@ def merge_strain_trajectories(
         DataFrame with merged trajectories:
         strain trajectories in columns "target_{strain}"
         strain sim_id in columns "{strain}"
-        identifying columns "sample_id", "location", and "date"
+        identifying columns "sample_id", "location", "date", and "age_group"
 
     """
     validate_strains(strains, config)
@@ -228,41 +228,39 @@ def merge_strain_trajectories(
     # Standardize strain DFs
     formatted_strains = {}
     for source in config.sources:
-        traj_df = strains[source.strain].copy()
-        formatted = traj_df.rename(
-            columns={
-                source.target_column: "target",
-                source.date_column: "date",
-                source.location_column: "location",
-                source.sim_id: "sim_id",
-            }
-        )[["date", "location", "target", "sim_id"]]
-        formatted_strains[source.strain] = formatted
+        traj_df = strains[source.strain]
+        age_columns = {"all": source.target_column, **source.age_group_columns}
+        required = {source.date_column, source.location_column, source.sim_id, *age_columns.values()}
+        missing = required - set(traj_df.columns)
+        if missing:
+            raise ValueError(f"Source {source.strain!r} is missing trajectory columns: {sorted(missing)}")
+        frames = []
+        for age_group, target_column in age_columns.items():
+            frame = traj_df[[source.date_column, source.location_column, source.sim_id, target_column]].copy()
+            frame.columns = ["date", "location", "sim_id", "target"]
+            frame["age_group"] = age_group
+            frames.append(frame)
+        source_id = f"sim_id_{source.strain}"
+        formatted_strains[source.strain] = (
+            mapping[["sample_id", source_id]]
+            .merge(pd.concat(frames, ignore_index=True), left_on=source_id, right_on="sim_id")
+            .drop(columns=[source_id, "sim_id"])
+            .rename(columns={"target": f"target_{source.strain}"})
+        )
 
     # Start with first strain
     first_source = config.sources[0]
-    combined = (
-        mapping.merge(
-            formatted_strains[first_source.strain], left_on=f"sim_id_{first_source.strain}", right_on="sim_id"
-        )
-        .rename(columns={"target": f"target_{first_source.strain}"})
-        .drop("sim_id", axis=1)
-    )
+    combined = formatted_strains[first_source.strain]
 
     # Merge remaining strains
     for source in config.sources[1:]:
-        combined = (
-            combined.merge(
-                formatted_strains[source.strain],
-                left_on=[f"sim_id_{source.strain}", "location", "date"],
-                right_on=["sim_id", "location", "date"],
-                how="outer",
-            )
-            .rename(columns={"target": f"target_{source.strain}"})
-            .drop("sim_id", axis=1)
+        combined = combined.merge(
+            formatted_strains[source.strain],
+            on=["sample_id", "location", "date", "age_group"],
+            how="outer",
         )
 
-    return combined
+    return combined.merge(mapping, on="sample_id", validate="many_to_one")
 
 
 ################
@@ -376,7 +374,7 @@ def _aggregate_sum(
     output_cols = (
         ["sample_id"]
         + [f"sim_id_{source.strain}" for source in config.sources]
-        + ["location", "date"]
+        + ["location", "date", "age_group"]
         + target_cols
         + [agg_colname]
     )

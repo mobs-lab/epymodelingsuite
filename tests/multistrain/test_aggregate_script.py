@@ -19,12 +19,13 @@ from epymodelingsuite.output.dashboard_trajectories import (
     dashboard_trajectories_from_wide,
     validate_dashboard_trajectories,
 )
-from epymodelingsuite.schema.aggregation import AggregationConfiguration
+from epymodelingsuite.schema.aggregation import AggregationConfiguration, SourceExperiment
 
 
 @pytest.mark.parametrize("unit", ["ms", "us", "ns", "invalid"])
 @pytest.mark.parametrize("labels", [("single",), ("h1", "h3", "b")])
-def test_aggregate_dates_are_microseconds(tmp_path, monkeypatch, unit, labels):
+@pytest.mark.parametrize("with_ages", [False, True])
+def test_aggregate_dates_are_microseconds(tmp_path, monkeypatch, unit, labels, with_ages):
     reference = pd.Timestamp(Week.fromstring("202640").enddate())
     dates = pd.date_range(reference - pd.Timedelta(weeks=1), periods=2, freq="7D").as_unit(
         "ms" if unit == "invalid" else unit
@@ -40,6 +41,11 @@ def test_aggregate_dates_are_microseconds(tmp_path, monkeypatch, unit, labels):
         )
         for label in labels
     }
+    age_columns = {"0-4": "young", "5+": "older"} if with_ages else {}
+    if with_ages:
+        for frame in trajectories.values():
+            frame["young"] = frame.hospitalizations * 0.25
+            frame["older"] = frame.hospitalizations * 0.75
     config = tmp_path / "example.yaml"
     config.write_text(
         yaml.safe_dump(
@@ -50,7 +56,13 @@ def test_aggregate_dates_are_microseconds(tmp_path, monkeypatch, unit, labels):
                     "target": "wk inc flu hosp",
                     "random_seed": 1337,
                     "sources": [
-                        {"strain": label, "experiment": "unused", "trajectory_file": "unused.csv"} for label in labels
+                        {
+                            "strain": label,
+                            "experiment": "unused",
+                            "trajectory_file": "unused.csv",
+                            **({"age_group_columns": age_columns} if with_ages else {}),
+                        }
+                        for label in labels
                     ],
                     "sampling": {"method": "random", "n_samples": 1},
                     "aggregate_method": "sum",
@@ -82,10 +94,14 @@ def test_aggregate_dates_are_microseconds(tmp_path, monkeypatch, unit, labels):
     assert [f.type for f in schema] == [f.type for f in DASHBOARD_TRAJECTORY_SCHEMA]
     result = pd.read_parquet(path)
     assert validate_dashboard_trajectories(result, labels) == []
-    assert len(result) == len(dates) * (len(labels) + 1)
+    assert len(result) == len(dates) * (len(labels) + 1) * (len(age_columns) + 1)
     assert result.target.eq("wk inc flu hosp").all()
     assert set(result.series) == {*labels, "total"}
-    total = result.loc[result.series.eq("total")]
+    assert set(result.age_group) == {"all", *age_columns}
+    for age, fraction in {"all": 1.0, **({"0-4": 0.25, "5+": 0.75} if with_ages else {})}.items():
+        age_total = result.loc[result.series.eq("total") & result.age_group.eq(age)]
+        np.testing.assert_array_equal(age_total.value.to_numpy(), [np.nan, 2.0 * len(labels) * fraction])
+    total = result.loc[result.series.eq("total") & result.age_group.eq("all")]
     assert total.date.tolist() == dates.tolist()
     assert result.reference_date.eq(reference).all()
     assert total.horizon.tolist() == [-1, 0]
@@ -123,3 +139,113 @@ def test_sum_preserves_all_missing_and_real_zero():
     np.testing.assert_array_equal(result.target_total.to_numpy(), [60.0, 40.0, np.nan, 0.0])
     dashboard = dashboard_trajectories_from_wide(result, labels, "2026-10-10", config.target)
     assert validate_dashboard_trajectories(dashboard, labels) == []
+
+
+@pytest.mark.parametrize("with_ages", [False, True])
+def test_age_groups_use_the_same_sampled_trajectories(with_ages):
+    config = AggregationConfiguration(
+        bucket="gs://unused",
+        submission_week="202640",
+        target="hospitalizations",
+        random_seed=42,
+        sources=[
+            {
+                "strain": label,
+                "experiment": "unused",
+                "trajectory_file": "unused.csv",
+                "target_column": f"{label}_all",
+                "age_group_columns": {"0-4": f"{label}_young", "5+": f"{label}_older"} if with_ages else {},
+            }
+            for label in ("a", "b")
+        ],
+        sampling={"method": "random", "n_samples": 2},
+        aggregate_method="sum",
+    )
+    trajectories = {}
+    for label, offset in [("a", 10), ("b", 20)]:
+        ids = np.arange(offset, offset + 4)
+        trajectories[label] = pd.DataFrame(
+            {
+                "sim_id": ids,
+                "population": "United_States",
+                "date": pd.Timestamp("2026-10-10"),
+                f"{label}_all": ids * 4.0,
+                f"{label}_young": ids * 1.0,
+                f"{label}_older": ids * 3.0,
+            }
+        )
+    originals = {label: frame.copy(deep=True) for label, frame in trajectories.items()}
+    mapping = aggregator.dispatch_strain_sampler(trajectories, config)
+    merged = aggregator.merge_strain_trajectories(trajectories, mapping, config)
+    aggregated = aggregator.dispatch_strain_aggregator(merged, config)
+    ages = {"all": 4.0, **({"0-4": 1.0, "5+": 3.0} if with_ages else {})}
+    assert len(aggregated) == 2 * len(ages)
+    for age, multiplier in ages.items():
+        rows = aggregated.loc[aggregated.age_group.eq(age)].sort_values("sample_id")
+        for label in ("a", "b"):
+            np.testing.assert_array_equal(rows[f"sim_id_{label}"], mapping[f"sim_id_{label}"])
+            np.testing.assert_array_equal(rows[f"target_{label}"], mapping[f"sim_id_{label}"] * multiplier)
+        np.testing.assert_array_equal(rows.target_total, (mapping.sim_id_a + mapping.sim_id_b) * multiplier)
+    for label, original in originals.items():
+        pd.testing.assert_frame_equal(trajectories[label], original)
+
+    trajectories["b"]["date"] += pd.Timedelta(weeks=1)
+    merged = aggregator.merge_strain_trajectories(trajectories, mapping, config)
+    aggregated = aggregator.dispatch_strain_aggregator(merged, config)
+    assert len(aggregated) == 4 * len(ages)
+    assert aggregated.loc[aggregated.date.eq(pd.Timestamp("2026-10-10")), "target_b"].isna().all()
+    assert aggregated.loc[aggregated.date.eq(pd.Timestamp("2026-10-17")), "target_a"].isna().all()
+    dashboard = dashboard_trajectories_from_wide(aggregated, ["a", "b"], "2026-10-10", config.target)
+    assert validate_dashboard_trajectories(dashboard, ["a", "b"]) == []
+
+    missing_column = "b_young" if with_ages else "b_all"
+    trajectories["b"] = trajectories["b"].drop(columns=missing_column)
+    with pytest.raises(ValueError, match=f"Source 'b'.*{missing_column}"):
+        aggregator.merge_strain_trajectories(trajectories, mapping, config)
+
+
+@pytest.mark.parametrize(
+    "columns",
+    [
+        {"all": "young"},
+        {" ": "young"},
+        {"0-4": " "},
+        {"0-4": "hospitalizations"},
+        {"0-4": "same", "5+": "same"},
+    ],
+)
+def test_invalid_age_column_mapping(columns):
+    with pytest.raises(ValueError, match="age_group_columns"):
+        SourceExperiment(strain="single", experiment="unused", trajectory_file="unused.csv", age_group_columns=columns)
+
+
+@pytest.mark.parametrize("incompatible", ["different_labels", "missing_labels", "baseline"])
+def test_reject_incompatible_age_configuration(incompatible):
+    source = {
+        "strain": "a",
+        "experiment": "unused",
+        "trajectory_file": "unused.csv",
+        "age_group_columns": {"0-4": "young"},
+    }
+    sources = [source]
+    extra = {}
+    if incompatible == "baseline":
+        extra["baseline"] = {"method": "negative_binomial", "observed_means": "unused.csv", "dispersion_values": 10}
+    else:
+        sources.append(
+            {
+                **source,
+                "strain": "b",
+                "age_group_columns": {"5+": "older"} if incompatible == "different_labels" else {},
+            }
+        )
+    with pytest.raises(ValueError, match="age_group_columns"):
+        AggregationConfiguration(
+            bucket="gs://unused",
+            submission_week="202640",
+            target="hospitalizations",
+            sources=sources,
+            sampling={"method": "random", "n_samples": 1},
+            aggregate_method="sum",
+            **extra,
+        )

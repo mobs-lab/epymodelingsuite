@@ -488,6 +488,9 @@ def read_aggregated(path: str, config) -> pd.DataFrame:
             raise ValueError("Dashboard file contains multiple targets; set aggregated.target explicitly.")
         if aggregated.empty:
             raise ValueError("Selected dashboard target has no rows.")
+        aggregated = aggregated.loc[aggregated.age_group.eq("all")]
+        if aggregated.empty:
+            raise ValueError("Submission and plot inputs require age_group='all'.")
         series = config.target_column.removeprefix("target_")
         aggregated = aggregated.loc[aggregated.series.eq(series), ["date", "location", "value", "sample_id"]].rename(
             columns={"date": config.date_column, "location": config.location_column, "value": config.target_column}

@@ -168,12 +168,11 @@ def test_validator_rejects_arrow_nan_without_null_bitmap():
     assert any("sum of available strain" in e for e in validate_dashboard_trajectories(frame, ["single"]))
 
 
-def test_targets_have_independent_values_and_simulation_ids():
+def test_targets_share_simulation_ids_but_have_independent_values():
     hosp = _formatted()
     ed = hosp.copy()
     ed["target"] = "wk inc flu prop ed visits"
     ed["value"] /= 100
-    ed["sim_id"] += 100
     combined = pd.concat([hosp, ed], ignore_index=True)
     assert validate_dashboard_trajectories(combined, ["single"]) == []
 
@@ -249,7 +248,7 @@ def test_versioned_parquet_roundtrip(tmp_path, sources):
     assert read_dashboard_trajectories(copy).attrs == result.attrs
 
 
-@pytest.mark.parametrize("version", [None, b"999"])
+@pytest.mark.parametrize("version", [None, b"2", b"999"])
 def test_reader_rejects_missing_or_unknown_version(tmp_path, version):
     frame = dashboard_trajectories_from_wide(_source(), ["single"], REFERENCE, TARGET)
     table = pa.Table.from_pandas(frame)
@@ -311,3 +310,106 @@ def test_reader_rejects_malformed_sources_json(tmp_path):
     pq.write_table(table, path)
     with pytest.raises(ValueError, match="sources JSON"):
         read_dashboard_trajectories(path)
+
+
+def _age_rows():
+    all_ages = _formatted().assign(target="hospitalizations")
+    young = all_ages.assign(age_group="0-4", value=all_ages.value * 0.25)
+    older = all_ages.assign(age_group="5+", value=all_ages.value * 0.75)
+    return pd.concat([young, older, all_ages], ignore_index=True)
+
+
+@pytest.mark.parametrize("include_all", [False, True])
+def test_age_groups_and_model_targets_roundtrip(tmp_path, include_all):
+    hosp = _age_rows()
+    if not include_all:
+        hosp = hosp.loc[hosp.age_group.ne("all")]
+    ed = hosp.assign(target="ed_signal", value=hosp.value * 2.8)
+    rows = pd.concat([hosp, ed], ignore_index=True)
+    formatted = format_dashboard_trajectories(rows, ["single"], REFERENCE)
+    path = tmp_path / "ages.parquet"
+    write_dashboard_trajectories(formatted, path)
+    result = read_dashboard_trajectories(path)
+    pd.testing.assert_frame_equal(result, formatted)
+    assert set(result.age_group) == ({"0-4", "5+", "all"} if include_all else {"0-4", "5+"})
+    assert set(result.target) == {"hospitalizations", "ed_signal"}
+
+
+@pytest.mark.parametrize("value", [None, "", "   "])
+def test_age_group_required_nonblank(value):
+    rows = _formatted()
+    rows["age_group"] = value
+    with pytest.raises(ValueError, match="age_group"):
+        format_dashboard_trajectories(rows, ["single"], REFERENCE)
+
+
+def test_direct_long_requires_age_group():
+    with pytest.raises(ValueError, match="Columns"):
+        format_dashboard_trajectories(_formatted().drop(columns="age_group"), ["single"], REFERENCE)
+
+
+def test_wide_adapter_preserves_age_groups_and_defaults_legacy_to_all():
+    source = _source()
+    assert dashboard_trajectories_from_wide(source, ["single"], REFERENCE, TARGET).age_group.eq("all").all()
+    ages = pd.concat([source.assign(age_group="0-4"), source.assign(age_group="5+")], ignore_index=True)
+    result = dashboard_trajectories_from_wide(ages, ["single"], REFERENCE, TARGET)
+    assert set(result.age_group) == {"0-4", "5+"}
+    assert len(result) == len(ages) * 2
+
+
+def test_rejects_missing_age_rows_even_when_all_series_removed():
+    rows = _age_rows()
+    rows = rows.loc[~(rows.age_group.eq("0-4") & rows.sample_id.eq(0) & rows.horizon.eq(0))]
+    assert any("same age groups" in e for e in validate_dashboard_trajectories(rows, ["single"]))
+
+
+@pytest.mark.parametrize("bad_value", [0.0, 99.0, np.nan])
+def test_rejects_incorrect_all_age_sum(bad_value):
+    rows = _age_rows()
+    rows.loc[rows.age_group.eq("all") & rows.horizon.eq(0), "value"] = bad_value
+    assert any("sum of all age groups" in e for e in validate_dashboard_trajectories(rows, ["single"]))
+
+
+def test_missing_age_cannot_be_treated_as_zero():
+    rows = _age_rows()
+    rows.loc[rows.age_group.eq("0-4"), "value"] = np.nan
+    assert any("missing if any age" in e for e in validate_dashboard_trajectories(rows, ["single"]))
+    rows.loc[rows.age_group.eq("all"), "value"] = np.nan
+    assert validate_dashboard_trajectories(rows, ["single"]) == []
+
+
+@pytest.mark.parametrize("dimension", ["age_group", "target"])
+def test_rejects_different_source_ids_across_ages_and_targets(tmp_path, dimension):
+    rows = _age_rows()
+    if dimension == "target":
+        ed = rows.assign(target="ed_signal", sim_id=rows.sim_id + 100)
+        rows = pd.concat([rows, ed], ignore_index=True)
+    else:
+        rows.loc[rows.age_group.eq("0-4"), "sim_id"] += 100
+    assert any("stay constant" in e for e in validate_dashboard_trajectories(rows, ["single"]))
+    with pytest.raises(ValueError, match="stay constant"):
+        write_dashboard_trajectories(rows, tmp_path / "bad.parquet")
+
+
+def test_age_and_strain_sums_are_separate_dimensions(tmp_path):
+    source = _source(("a", "b"))
+    source["target_a"] = [np.nan, 0.0, 4.0, 6.0]
+    source["target_b"] = [np.nan, np.nan, 5.0, 7.0]
+    source["target_total"] = source[["target_a", "target_b"]].sum(axis=1, min_count=1)
+    source["target_baseline_k10"] = source.target_total + 1
+    all_ages = dashboard_trajectories_from_wide(source, ["a", "b"], REFERENCE, "hospitalizations")
+    young = all_ages.assign(age_group="0-4", value=all_ages.value * 0.25)
+    older = all_ages.assign(age_group="5+", value=all_ages.value * 0.75)
+    combined = format_dashboard_trajectories(
+        pd.concat([all_ages, young, older], ignore_index=True), ["a", "b"], REFERENCE
+    )
+    path = tmp_path / "multistrain_ages.parquet"
+    write_dashboard_trajectories(combined, path)
+    restored = read_dashboard_trajectories(path)
+    pd.testing.assert_frame_equal(restored, combined)
+    zeros = restored.loc[restored.sample_id.eq(0) & restored.horizon.eq(0) & restored.series.eq("total")]
+    assert zeros.value.eq(0).all()
+    assert len(zeros) == 3
+    invalid = restored.copy()
+    invalid.loc[invalid.age_group.eq("0-4") & invalid.series.eq("total") & invalid.horizon.eq(0), "value"] = 99.0
+    assert any("sum of available strain" in e for e in validate_dashboard_trajectories(invalid, ["a", "b"]))

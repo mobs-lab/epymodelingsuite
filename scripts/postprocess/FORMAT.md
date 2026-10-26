@@ -11,29 +11,30 @@ The dashboard trajectory contract is shared output infrastructure in `epymodelin
 ## 1. Dashboard trajectories (long-form Parquet)
 
 **Filename:** `dashboard_trajectories_<config stem>.parquet` for `aggregate.py` output.
-Single-strain and multistrain dashboard files use the same fixed ten columns.
-One row per (`sample_id`, `location`, `date`, `target`, `series`).
+Single-strain and multistrain dashboard files use the same fixed eleven columns.
+One row per (`sample_id`, `location`, `date`, `age_group`, `target`, `series`).
 
 | column | Parquet type | description |
 |---|---|---|
-| `sample_id` | int64 | Sample index, `0 .. n_samples-1` per target |
+| `sample_id` | int64 | Sample index, `0 .. n_samples-1` per target; the same sample identifies the same source trajectories across ages and targets |
 | `sim_id` | int64, nullable | Original trajectory ID on strain rows; null on total/baseline rows |
 | `location` | string | epydemix population name, not hub location ID |
 | `date` | timestamp[us] | Week end date, Saturday at midnight, no timezone |
-| `target` | string | Original hub target name (table below), not the internal model variable |
+| `age_group` | string | Model age-group label, or `all` for all ages; required and non-blank |
+| `target` | string | Non-blank output variable identifier, such as `hospitalizations`, `ed_signal`, or a hub target name |
 | `series` | string | Strain label, `total`, `baseline`, or `baseline_k<k>` |
 | `value` | float64, nullable | Value of this series; missingness follows the rules below |
 | `reference_date` | timestamp[us] | Forecast reference Saturday, constant within each target |
 | `horizon` | int64 | `(date - reference_date)` in weeks; negative before the reference date |
 | `epiweek` | string | CDC epiweek of `date`, `YYYYww` |
 
-The file covers the whole trajectory. Filter on `horizon` for forecast weeks and on `series == "total"` for the sum.
-All series must have a row for every sample/location/date/target, including strain rows whose value is NaN.
+The file covers the whole trajectory. Filter on `horizon` for forecast weeks and on `series == "total"` for the strain sum within an age group. Select `age_group == "all"` for all ages.
+All series must have a row for every sample/location/date/age_group/target, including strain rows whose value is NaN.
 No target-specific values are stored in column names.
 
 ### Target names
 
-Use the original hub vocabulary. Set `aggregation.target` explicitly; it is required for new aggregation configs.
+Set `aggregation.target` explicitly. Use the model variable name (for example, `hospitalizations` or `ed_signal`) or a hub target name. The following hub names remain valid examples, not a required vocabulary.
 `sources[].target_column` still identifies the internal input variable, such as `hospitalizations` or `ed_prop`.
 
 | profile | target |
@@ -44,8 +45,68 @@ Use the original hub vocabulary. Set `aggregation.target` explicitly; it is requ
 | BPHC ED | `wk inc ed signal` |
 
 The validator requires a non-empty target name but does not hard-code a hub's changing task vocabulary.
-Use one target per aggregation run. Multiple targets may be combined in a dashboard file; their IDs, series and values are checked separately.
+Use one target per aggregation run. Multiple targets may be combined in a dashboard file; their series and values are checked separately. A source simulation ID must stay constant for each location/sample/strain across dates, age groups and targets.
 Values retain the source variable's units; formatting does not rescale them.
+
+### Age groups
+
+Use the model's age-group labels without renaming them. For BPHC these are `0-4`,
+`5-17`, `18-49`, `50-64`, and `65+`. Labels are not restricted to these five values.
+The reserved label `all` means all ages. Null and blank age labels are invalid.
+
+For `aggregate.py`, add `age_group_columns` to each source to map age labels to
+input CSV columns. `target_column` supplies the `all` rows. Omitting
+`age_group_columns` keeps the existing all-age output. For example:
+
+```yaml
+aggregation:
+  bucket: gs://your-bucket/pipeline/flu
+  submission_week: 202643
+  target: hospitalizations
+  random_seed: 1337
+  sources:
+    - strain: single
+      experiment: your-experiment
+      trajectory_file: trajectories_projection_transitions.csv.gz
+      target_column: hospitalizations
+      age_group_columns:
+        "0-4": hospitalizations_0-4
+        "5-17": hospitalizations_5-17
+        "18-49": hospitalizations_18-49
+        "50-64": hospitalizations_50-64
+        "65+": hospitalizations_65+
+  sampling: {method: random, n_samples: 1000}
+  aggregate_method: sum
+```
+
+Replace the example column names with those in the input file. All sources must
+specify the same age labels, but their input column names can differ. Each age
+must use a distinct column, separate from `target_column`. Missing input columns
+raise an error. Sampling happens once per strain and keeps the same source
+trajectory across all ages. Aggregation sums strains separately for each age and
+retains the supplied all-age values; it does not calculate all ages from the age
+columns. `age_group_columns` cannot be combined with `baseline`, whose current
+inputs describe only all-age noise. Submission and plot settings need no change.
+
+A target may contain only `all`, only age-specific rows, or both. Within a target,
+every sample/location/date/series must contain the same set of age labels.
+Keep rows with missing values; do not replace missing values with zero.
+
+When `all` and age-specific rows coexist, the age groups must form a complete,
+non-overlapping partition. For each sample/location/date/target/series, `all` must
+equal the sum of those ages (rtol `1e-10`, atol `1e-12`). If any age value is
+missing, `all` must also be missing. The validator checks values and row coverage;
+it does not parse age-label boundaries. Do not combine age-specific rates with an
+all-age rate unless their values are additive in the stored units.
+
+`series=total` sums strains within one age group. `age_group=all` combines ages
+within one series. These are separate dimensions. The formatter does not compute
+either sum. The producer supplies them and the validator checks them.
+
+Use the same `sample_id` and strain `sim_id` for a trajectory across ages and
+targets. For example, a producer can derive age-specific `ed_signal` by multiplying
+age-specific `hospitalizations` by that trajectory's shared `alpha`. This is a
+model-derived age breakdown, not a forecast fitted to age-specific ED data.
 
 ### Series and provenance
 
@@ -59,14 +120,14 @@ Strain labels come from `sources[].strain`. Custom labels are allowed except res
 `total` sums the available strain values, ignoring NaN. If all strains are NaN, `total` is also NaN (`sum(skipna=True, min_count=1)`). A real zero remains zero, even when the other strains are NaN. Baseline series preserve exactly the missing values of `total`. For a single-strain run, retain both `single` and `total` rows, including missing values. Rows are not dropped; plotting may hide missing values or display them as zero without changing the saved data.
 Baseline configurations add `baseline` (beta) or `baseline_k<k>` (negative binomial), with the same meaning as the previous `target_baseline*` columns. Omit `baseline` in the aggregation config to omit these rows.
 
-The original simulation ID is on each strain row. To recover the contributors to a total/baseline row, select the strain rows with the same sample/location/date/target. No synthetic simulation ID is assigned to sums.
+The original simulation ID is on each strain row. To recover the contributors to a total/baseline row, select the strain rows with the same sample/location/date/age_group/target. No synthetic simulation ID is assigned to sums.
 
 Example (weekly metadata omitted):
 
-| sample_id | sim_id | location | date | target | series | value |
-|---|---|---|---|---|---|---|
-| 0 | 42 | United_States | 2026-10-10 | wk inc flu hosp | single | 120 |
-| 0 | null | United_States | 2026-10-10 | wk inc flu hosp | total | 120 |
+| sample_id | sim_id | location | date | age_group | target | series | value |
+|---|---|---|---|---|---|---|---|
+| 0 | 42 | United_States | 2026-10-10 | all | hospitalizations | single | 120 |
+| 0 | null | United_States | 2026-10-10 | all | hospitalizations | total | 120 |
 
 ### File metadata
 
@@ -92,20 +153,24 @@ Callers supply provenance explicitly; the shared output functions do not inspect
 `epymodelingsuite.output.dashboard_trajectories` provides:
 
 - `DASHBOARD_TRAJECTORY_SCHEMA`: fixed Arrow column order and types above. Conditional null rules are checked by the validator.
-- `format_dashboard_trajectories(df, strains, reference_date)`: accepts long rows, recomputes weekly metadata, safely casts types and validates. Does not sample or aggregate. Returns a new Arrow-backed DataFrame; invalid data raises `ValueError` before writing.
-- `dashboard_trajectories_from_wide(df, strains, reference_date, target)`: adapter for existing aggregate results/legacy files; preserves strain values (including NaN) and source IDs, then calls the shared formatter.
+- `format_dashboard_trajectories(df, strains, reference_date)`: requires `age_group` on long rows, recomputes weekly metadata, safely casts types and validates. Does not sample or aggregate. Returns a new Arrow-backed DataFrame; invalid data raises `ValueError` before writing.
+- `dashboard_trajectories_from_wide(df, strains, reference_date, target)`: adapter for existing aggregate results/legacy files; preserves strain values (including NaN), source IDs and an existing `age_group` column. For legacy wide data without an age column, adds `age_group="all"`, then calls the shared formatter.
 - `validate_dashboard_trajectories(df, strains)`: returns errors, or an empty list on success, without changing the input. Accepts string/large_string as equivalent logical strings.
 - `write_dashboard_trajectories(df, path, sources=None)`: validates data and optional provenance, and writes versioned Parquet. If `sources` is omitted, preserves `df.attrs["sources"]` when present.
 - `read_dashboard_trajectories(path)`: validates the version, data, and provenance and returns long rows. File metadata is available in `df.attrs["schema_version"]` and optional `df.attrs["sources"]`.
 
 Use the shared writer rather than `DataFrame.to_parquet` to include required file metadata.
-The reader rejects missing/unsupported versions. To migrate a previous unversioned long file,
-load it with `pd.read_parquet` and save it with `write_dashboard_trajectories`; this validates its
-contents before writing. The row validator alone does not validate file metadata.
+This schema is still under development before its first merge, so these changes
+remain version 1. The reader requires the current eleven-column schema. To update
+an earlier all-age export without `age_group`, load it with `pd.read_parquet`, add `age_group="all"`,
+and order the columns with `DASHBOARD_TRAJECTORY_SCHEMA.names`. Save to a new path
+with `write_dashboard_trajectories`. Pass any original `sources` metadata explicitly.
+This validates the data, including the shared source-ID mapping across targets,
+before writing. The row validator alone does not validate file metadata.
 
-Validation checks exact columns/order/types, required values, unique keys, complete series per key, non-negative IDs, contiguous sample IDs, and stable source IDs within each target/location/sample/strain. Dates must be Saturdays at midnight with a single reference date per target and matching horizon/epiweek. Non-missing values must be finite and non-negative. Totals must match the sum of available strains (rtol `1e-10`, atol `1e-12`), including NaN exactly when all strains are NaN. Baseline series must be missing exactly where total is missing, and otherwise be at least total; beta and negative-binomial baseline series cannot be mixed within a target.
+Validation checks exact columns/order/types, required values, unique keys, complete series per key, non-negative IDs, contiguous sample IDs, and stable source IDs within each location/sample/strain across ages and targets. Dates must be Saturdays at midnight with a single reference date per target and matching horizon/epiweek. Non-missing values must be finite and non-negative. Totals must match the sum of available strains (rtol `1e-10`, atol `1e-12`), including NaN exactly when all strains are NaN. Baseline series must be missing exactly where total is missing, and otherwise be at least total; beta and negative-binomial baseline series cannot be mixed within a target.
 
-`aggregate.py` uses the adapter and writes only long-form dashboard output. Submission and plot readers also accept legacy wide files. Existing `target_column: target_total` selects `series: total`; `target_column: target_baseline_k10` selects `series: baseline_k10`. The shorter `target_column: total` is also accepted for long files. If a file contains multiple targets, set `aggregated.target` to the original hub name to avoid mixing them.
+`aggregate.py` uses the adapter and writes only long-form dashboard output. Submission and plot readers also accept legacy wide files. Existing `target_column: target_total` selects `series: total`; `target_column: target_baseline_k10` selects `series: baseline_k10`. The shorter `target_column: total` is also accepted for long files. If a file contains multiple targets, set `aggregated.target` to the stored variable identifier to avoid mixing them. Submission and plot readers select `age_group="all"` and fail if it is absent, so age rows cannot be mixed into all-age quantiles. Hub submission target names still come from the submission profile.
 
 A future direct single-strain output producer can supply long rows to `format_dashboard_trajectories`, without invoking aggregation. Dispatcher integration is not yet implemented. Hub submission schema/validation remain separate.
 
@@ -116,7 +181,7 @@ from epymodelingsuite.output.dashboard_trajectories import (
     write_dashboard_trajectories,
 )
 
-# rows contains sample_id, sim_id, location, date, target, series, value.
+# rows contains sample_id, sim_id, location, date, age_group, target, series, value.
 dashboard = format_dashboard_trajectories(rows, ["single"], "2026-10-10")
 write_dashboard_trajectories(dashboard, "dashboard.parquet")  # No cloud metadata needed.
 dashboard = read_dashboard_trajectories("dashboard.parquet")
@@ -210,7 +275,7 @@ submission:
   profile: flusight_hosp
   model_name: MOBS-EpyStrain_Flu
   aggregated:
-    target: wk inc flu hosp          # required when the file has multiple targets
+    target: wk inc flu hosp          # must match the stored target; required for multiple targets
     target_column: total
   surveillance:                       # flusight_hosp only
     directory: ../flu-forecast-epydemix/common-data/surveillance

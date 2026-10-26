@@ -41,7 +41,7 @@ class AggregatedTrajectoriesConfig(BaseModel):
 
     target: str | None = Field(
         None,
-        description="Original hub target to select from dashboard data. Required when the file contains multiple targets.",
+        description="Output variable identifier to select from dashboard data. Required when the file contains multiple targets.",
     )
     target_column: str = Field(
         description="Dashboard series (e.g. total or baseline_k10), or legacy wide target column (e.g. target_total)."

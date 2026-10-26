@@ -28,13 +28,30 @@ class SourceExperiment(BaseModel):
     )
     trajectory_file: str = Field(description="Name of trajectory file from experiment.")
     target_column: str = Field(
-        default="hospitalizations", description="Name of column in trajectory file with target values."
+        default="hospitalizations", description="Name of column in trajectory file with all-age target values."
+    )
+    age_group_columns: dict[str, str] = Field(
+        default_factory=dict,
+        description="Optional age-group label to input column mapping, in addition to the all-age target_column.",
     )
     date_column: str = Field(default="date", description="Name of column in trajectory file with date.")
     location_column: str = Field(
         default="population", description="Name of column in trajectory file with location/population."
     )
     sim_id: str = Field(default="sim_id", description="Name of column in trajectory file with simulation ID.")
+
+    @model_validator(mode="after")
+    def check_age_group_columns(self):
+        if any(not age.strip() or age.strip() == "all" for age in self.age_group_columns):
+            raise ValueError(
+                "age_group_columns labels must be non-blank and cannot be 'all'; use target_column for all ages."
+            )
+        columns = list(self.age_group_columns.values())
+        if any(not column.strip() for column in columns):
+            raise ValueError("age_group_columns must refer to non-blank column names.")
+        if len(set(columns)) != len(columns) or self.target_column in columns:
+            raise ValueError("age_group_columns must use distinct columns, separate from target_column.")
+        return self
 
 
 class SamplingStrategyEnum(str, Enum):
@@ -104,7 +121,8 @@ class AggregationConfiguration(BaseModel):
     random_seed: int | None = Field(None, description="Random seed for reproducibility")
     submission_week: str | int = Field(description="Epiweek of submission in CDC format, i.e. 'YYYYww'")
     target: str = Field(
-        min_length=1, description="Original hub target name, e.g. 'wk inc flu hosp' or 'wk inc flu prop ed visits'."
+        min_length=1,
+        description="Output variable identifier, e.g. 'hospitalizations', 'ed_signal', or a hub target name.",
     )
     sources: list[SourceExperiment] = Field(description="Identifiers for stage C trajectory outputs to aggregate.")
     sampling: SamplingConfiguration = Field(
@@ -114,6 +132,14 @@ class AggregationConfiguration(BaseModel):
     baseline: BaselineConfiguration | None = Field(
         None, description="Configuration for adding post-hoc baseline noise."
     )
+
+    @model_validator(mode="after")
+    def check_age_groups(self):
+        if len({frozenset(source.age_group_columns) for source in self.sources}) > 1:
+            raise ValueError("All sources must specify the same age_group_columns labels.")
+        if self.baseline and any(source.age_group_columns for source in self.sources):
+            raise ValueError("baseline cannot be combined with age_group_columns; baseline inputs are all-age only.")
+        return self
 
 
 class AggregationConfig(BaseModel):
