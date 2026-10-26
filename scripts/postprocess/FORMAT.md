@@ -75,7 +75,9 @@ aggregation:
         "18-49": hospitalizations_18-49
         "50-64": hospitalizations_50-64
         "65+": hospitalizations_65+
-  sampling: {method: random, n_samples: 1000}
+  sampling:
+    method: random
+    n_samples: 1000
   aggregate_method: sum
 ```
 
@@ -263,7 +265,9 @@ aggregation:
   - {strain: h1, experiment: 202616/hosp_aug_smc_wrmse_202550-202615_h1, trajectory_file: trajectories_projection_transitions.csv.gz, target_column: hospitalizations}
   - {strain: h3, experiment: 202616/hosp_aug_smc_wrmse_202550-202615_h3, trajectory_file: trajectories_projection_transitions.csv.gz, target_column: hospitalizations}
   - {strain: b,  experiment: 202616/hosp_aug_smc_wrmse_202550-202615_b,  trajectory_file: trajectories_projection_transitions.csv.gz, target_column: hospitalizations}
-  sampling: {method: random, n_samples: 1000}
+  sampling:
+    method: random
+    n_samples: 1000
   aggregate_method: sum
 ```
 
