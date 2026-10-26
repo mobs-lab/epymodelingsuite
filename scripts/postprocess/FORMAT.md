@@ -1,6 +1,6 @@
-# Multistrain output formats
+# Postprocessing output formats
 
-Two kinds of files come out of the multistrain pipeline:
+The postprocessing scripts produce two kinds of files:
 
 1. **Dashboard parquet**: long-form strain trajectories, totals and optional baselines. This is the file sent to the dashboard.
 2. **Submission CSV**: hubverse quantile (and for hosp, PMF) forecasts built from the aggregated parquet.
@@ -173,14 +173,14 @@ Scripts run from anywhere with `uv` and no conda env. They use the checked-out `
 REPO=~/Developer/epymodelingsuite
 
 # 1. Per-strain GCS runs -> aggregated parquet (needs gcloud auth)
-uv run $REPO/scripts/multistrain/aggregate.py --config 202616_hosp.yaml --output outputs/202616_hosp
+uv run $REPO/scripts/postprocess/aggregate.py --config 202616_hosp.yaml --output outputs/202616_hosp
 
 # 2. Aggregated parquet -> submission CSV
-uv run $REPO/scripts/multistrain/submission.py --config 202616_hosp_submission.yaml \
+uv run $REPO/scripts/postprocess/submission.py --config 202616_hosp_submission.yaml \
     --aggregated outputs/202616_hosp/dashboard_trajectories_202616_hosp.parquet --output submissions/202616
 
 # 3. Aggregated parquet -> comparison plots (optional)
-uv run $REPO/scripts/multistrain/plot.py --config 202616_hosp_plot.yaml \
+uv run $REPO/scripts/postprocess/plot.py --config 202616_hosp_plot.yaml \
     --aggregated outputs/ --output outputs/202616_hosp/plots
 ```
 

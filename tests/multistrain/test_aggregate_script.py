@@ -67,11 +67,11 @@ def test_aggregate_dates_are_microseconds(tmp_path, monkeypatch, unit, labels):
     if unit == "invalid":
         with pytest.raises(ValueError, match="non-negative"):
             runpy.run_path(
-                str(Path(__file__).resolve().parents[2] / "scripts/multistrain/aggregate.py"), run_name="__main__"
+                str(Path(__file__).resolve().parents[2] / "scripts/postprocess/aggregate.py"), run_name="__main__"
             )
         assert not list(tmp_path.glob("*.parquet"))
         return
-    runpy.run_path(str(Path(__file__).resolve().parents[2] / "scripts/multistrain/aggregate.py"), run_name="__main__")
+    runpy.run_path(str(Path(__file__).resolve().parents[2] / "scripts/postprocess/aggregate.py"), run_name="__main__")
 
     path = tmp_path / "dashboard_trajectories_example.parquet"
     schema = pq.read_schema(path)
