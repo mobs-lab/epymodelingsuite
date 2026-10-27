@@ -384,6 +384,22 @@ class TestFetchHHSHospitalizations:
         with pytest.raises(ValueError, match="Invalid data_type"):
             fetch_hhs_hospitalizations(data_type="invalid")
 
+    @patch("epymodelingsuite.utils.data.Socrata")
+    @patch("epymodelingsuite.utils.data.get_flusight_locations")
+    def test_published_hospital_counts(self, mock_get_locations, mock_socrata_class, mock_locations_data):
+        mock_socrata_class.return_value.get.return_value = [
+            {"weekendingdate": "2026-10-17", "jurisdiction": "CA", "totalconfflunewadm": "150",
+             "totalconfflunewadmhosprep": "320", "totalconfflunewadmperchosprep": "80"},
+            {"weekendingdate": "2026-10-17", "jurisdiction": "TX", "totalconfflunewadm": "0",
+             "totalconfflunewadmperchosprep": "0"},
+        ]
+        mock_get_locations.return_value = mock_locations_data
+        result = fetch_hhs_hospitalizations(data_type="preliminary", include_reporting_frac=True,
+                                           include_reporting_hospitals=True).set_index("location_iso")
+        assert result.loc["US-CA", "reporting_hospitals"] == 320
+        assert result.loc["US-CA", "reporting_frac"] == 0.8
+        assert pd.isna(result.loc["US-TX", "reporting_hospitals"])
+
 
 class TestLatestWeekEnd:
     """Test suite for the latest-week checks."""
