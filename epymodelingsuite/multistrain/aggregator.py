@@ -106,7 +106,7 @@ def pull_trajectory_projections(
     Pull trajectory projection files from Google Cloud Storage.
     Requires cloud authorization and gcloud.
 
-    Downloads e.g. trajectories_projection_transitions.csv.gz files (NOT runner artifacts).
+    Downloads trajectory CSV or Parquet files (NOT runner artifacts).
 
     Parameters
     ----------
@@ -174,7 +174,13 @@ def pull_trajectory_projections(
         if exit_code == 0:
             logger.info(f"Downloaded: {source.strain}")
             # Load the downloaded data
-            trajectories[source.strain] = pd.read_csv(target_location, parse_dates=[source.date_column])
+            if source.trajectory_file.lower().endswith(".parquet"):
+                trajectories[source.strain] = pd.read_parquet(target_location)
+                trajectories[source.strain][source.date_column] = pd.to_datetime(
+                    trajectories[source.strain][source.date_column]
+                )
+            else:
+                trajectories[source.strain] = pd.read_csv(target_location, parse_dates=[source.date_column])
             sources.append(
                 {
                     "target": config.target,

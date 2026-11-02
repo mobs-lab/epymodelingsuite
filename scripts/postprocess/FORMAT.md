@@ -90,6 +90,9 @@ retains the supplied all-age values; it does not calculate all ages from the age
 columns. `age_group_columns` cannot be combined with `baseline`, whose current
 inputs describe only all-age noise. Submission and plot settings need no change.
 
+Source trajectory files can be CSV (including `.csv.gz`) or Parquet. For Parquet,
+set `trajectory_file: trajectories_projection_transitions.parquet`.
+
 A target may contain only `all`, only age-specific rows, or both. Within a target,
 every sample/location/date/series must contain the same set of age labels.
 Keep rows with missing values; do not replace missing values with zero.
