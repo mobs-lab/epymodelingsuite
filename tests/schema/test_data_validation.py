@@ -234,6 +234,18 @@ class TestValidateCalibrationData:
 class TestValidateCalibrationDataForConfigSet:
     """Tests for validate_calibration_data_for_config_set function."""
 
+    @pytest.fixture(autouse=True)
+    def local_location_tables(self):
+        from epymodelingsuite.utils.location import get_location_codebook, get_metrocast_locations
+
+        # Observation CSV mocks must not replace the bundled location tables.
+        codebook, metrocast = get_location_codebook(), get_metrocast_locations()
+        with (
+            patch("epymodelingsuite.utils.location.get_location_codebook", return_value=codebook),
+            patch("epymodelingsuite.utils.location.get_metrocast_locations", return_value=metrocast),
+        ):
+            yield
+
     def test_returns_tuple(self):
         """Test that function returns a tuple of (bool, str|None)."""
         # Non-existent file should return error

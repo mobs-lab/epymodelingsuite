@@ -49,7 +49,7 @@ def test_submission_profile(profile):
 
     sub = create_submission(_trajectories(populations), REFERENCE_DATE, profile, surveillance_df=surveillance)
 
-    assert list(sub.columns) == [
+    expected_columns = [
         "reference_date",
         "horizon",
         "target_end_date",
@@ -59,10 +59,16 @@ def test_submission_profile(profile):
         "output_type_id",
         "value",
     ]
+    if profile == "metrocast":
+        expected_columns.remove("horizon")
+    assert list(sub.columns) == expected_columns
     quantiles = sub[sub["output_type"] == "quantile"]
     assert set(quantiles["target"]) == {target}
     assert sorted(sub["location"].unique()) == sorted(locations)
-    assert sorted(quantiles["horizon"].unique()) == horizons
+    expected_dates = [(pd.Timestamp(REFERENCE_DATE) + pd.Timedelta(weeks=h)).strftime("%Y-%m-%d") for h in horizons]
+    assert sorted(quantiles["target_end_date"].unique()) == expected_dates
+    if profile != "metrocast":
+        assert sorted(quantiles["horizon"].unique()) == horizons
     assert len(quantiles) == len(locations) * len(horizons) * n_quantiles
 
     pmf = sub[sub["output_type"] == "pmf"]
@@ -94,6 +100,7 @@ def test_submission_samples(profile):
     )
 
     rows = sub[sub["output_type"] == "sample"]
+    assert ("horizon" in sub.columns) == (profile != "metrocast")
     assert set(rows["target"]) == {target}
     assert len(rows) == len(locations) * len(horizons) * 10
     for location, first_id in SAMPLE_IDS[profile].items():
@@ -101,7 +108,12 @@ def test_submission_samples(profile):
         assert loc_rows["output_type_id"].nunique() == 10
         assert first_id in set(loc_rows["output_type_id"])
         # every sample covers every horizon
-        assert all(sorted(h) == horizons for h in loc_rows.groupby("output_type_id")["horizon"].apply(list))
+        expected_dates = [(pd.Timestamp(REFERENCE_DATE) + pd.Timedelta(weeks=h)).strftime("%Y-%m-%d") for h in horizons]
+        assert all(
+            sorted(d) == expected_dates for d in loc_rows.groupby("output_type_id")["target_end_date"].apply(list)
+        )
+        if profile != "metrocast":
+            assert all(sorted(h) == horizons for h in loc_rows.groupby("output_type_id")["horizon"].apply(list))
     assert (rows["target_end_date"].map(type) == str).all()
 
 

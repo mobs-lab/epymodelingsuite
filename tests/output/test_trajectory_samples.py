@@ -508,7 +508,7 @@ def test_ed_model_parquet_output_is_submission_ready(monkeypatch, metrocast, hor
     assert hub.name == "output_hub_formatted.parquet"
     table = pq.read_table(io.BytesIO(hub.data))
     # Check the actual file schema produced through the dispatcher and shared writer.
-    assert [f.type for f in table.schema] == [
+    expected_types = [
         "date32[day]",
         "int32",
         "date32[day]",
@@ -518,17 +518,34 @@ def test_ed_model_parquet_output_is_submission_ready(monkeypatch, metrocast, hor
         "string",
         "double",
     ]
+    metrocast_columns = [
+        "reference_date",
+        "target",
+        "target_end_date",
+        "location",
+        "output_type",
+        "output_type_id",
+        "value",
+    ]
+    if metrocast:
+        expected_types = ["date32[day]", "string", "date32[day]", "string", "string", "string", "double"]
+        assert table.column_names == metrocast_columns
+    assert [f.type for f in table.schema] == expected_types
     df = table.to_pandas()
     assert set(df.target) == {target}
     # Explicit horizons must reach both quantile and sample generation, including
     # horizon 4 outside either hub's defaults and the omission of horizons 1 and 3.
     for _, rows in df.groupby("output_type"):
-        assert rows.horizon.unique().tolist() == expected_horizons
+        assert pd.to_datetime(rows.target_end_date).unique().tolist() == [
+            pd.Timestamp(REFERENCE_DATE) + pd.Timedelta(weeks=h) for h in expected_horizons
+        ]
+        if not metrocast:
+            assert rows.horizon.unique().tolist() == expected_horizons
     if metrocast:
         # 100 draws over the configured horizons, without submitted quantiles.
         assert df.groupby("output_type").size().to_dict() == {"sample": 100 * len(expected_horizons)}
         assert set(df.location) == {"denver"}
-        assert df.output_type_id.unique().tolist() == [str(i) for i in range(1, 101)]
+        assert df.output_type_id.unique().tolist() == [f"S{i}" for i in range(1, 101)]
     else:
         assert df.groupby("output_type").size().to_dict() == {
             "quantile": 3 * len(expected_horizons),
@@ -536,23 +553,26 @@ def test_ed_model_parquet_output_is_submission_ready(monkeypatch, metrocast, hor
         }
         assert df.query("output_type == 'quantile'").output_type_id.unique().tolist() == ["0.025", "0.5", "0.975"]
 
-    # Requesting Parquet first must not normalize the later CSV/DataFrame outputs.
-    # Preserve the original table's column order, dates and integer horizons. FluSight
-    # also retains numeric quantile IDs; Metrocast has only string sample indexes.
+    # All MetroCast formats share the submission columns and IDs. FluSight
+    # CSV/DataFrame retain their original ordering and numeric quantile IDs.
     legacy = dataframe.data
-    leading_columns = (
-        ["reference_date", "horizon", "target_end_date", "location"]
-        if metrocast
-        else ["location", "reference_date", "horizon", "target_end_date"]
-    )
-    assert legacy.columns.tolist() == leading_columns + [
-        "target",
-        "output_type",
-        "output_type_id",
-        "value",
-    ]
+    if metrocast:
+        assert legacy.columns.tolist() == metrocast_columns
+        assert legacy.output_type_id.unique().tolist() == [f"S{i}" for i in range(1, 101)]
+        np.testing.assert_array_equal(legacy.value, df.value)
+    else:
+        assert legacy.columns.tolist() == [
+            "location",
+            "reference_date",
+            "horizon",
+            "target_end_date",
+            "target",
+            "output_type",
+            "output_type_id",
+            "value",
+        ]
+        assert legacy.horizon.dtype == np.dtype("int64")
+        assert legacy.output_type_id.iloc[0] == 0.025
     assert legacy.reference_date.iloc[0] == REFERENCE_DATE
-    assert legacy.horizon.dtype == np.dtype("int64")
-    assert legacy.output_type_id.iloc[0] == ("1" if metrocast else 0.025)
     # Compare decompressed CSV text so gzip metadata does not affect the compatibility check.
     assert gzip.decompress(csv.data).decode() == legacy.to_csv(index=False, date_format="%Y-%m-%d")

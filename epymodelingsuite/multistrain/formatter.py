@@ -273,6 +273,7 @@ def create_submission(
     -------
     pd.DataFrame
         Submission with the 8 hubverse columns, sorted by location, target, horizon, output type and id.
+        Metrocast omits the horizon column after sorting.
     """
     profile_spec = SUBMISSION_PROFILES[profile]
     df = trajectories_df.copy()
@@ -336,9 +337,12 @@ def create_submission(
         pmf_df = compute_rate_trend_pmf(categories_df)
         submission = pd.concat([submission, _pmf_rows(pmf_df, reference_date)], ignore_index=True)
 
-    return submission.sort_values(["location", "target", "horizon", "output_type", "output_type_id"]).reset_index(
+    submission = submission.sort_values(["location", "target", "horizon", "output_type", "output_type_id"]).reset_index(
         drop=True
     )
+    if profile == "metrocast":
+        submission = submission.drop(columns="horizon")
+    return submission
 
 
 def _build_location_trajectory_samples(  # noqa: PLR0913
