@@ -1,7 +1,7 @@
 """Shared data and capture helpers for the quantile plot characterization tests.
 
 Builds real ``CalibrationResults`` for a few locations and captures every call to
-``plot_calibration_projection`` while still drawing real (Agg) figures.
+``plot_quantile_panel`` while still drawing real (Agg) figures.
 """
 
 from __future__ import annotations
@@ -129,7 +129,7 @@ def summarize_frame(df: pd.DataFrame | None) -> tuple | None:
 
 @dataclass
 class Panel:
-    """One call to plot_calibration_projection, i.e. one drawn axis."""
+    """One call to plot_quantile_panel, i.e. one drawn axis."""
 
     output: str | None  # output key the figure was packaged under
     title: str
@@ -146,12 +146,12 @@ class Panel:
 
 
 class PlotCapture:
-    """Wrap plot_calibration_projection in both namespaces and record every panel drawn."""
+    """Wrap plot_quantile_panel in both namespaces and record every panel drawn."""
 
     def __init__(self, monkeypatch):
         self.panels: list[Panel] = []
         self.packaged: dict[str, object] = {}  # output name -> figure
-        real_plot = core.plot_calibration_projection
+        real_plot = core.plot_quantile_panel
         real_package = generators._package_figure_outputs
 
         def capture_plot(**kwargs):
@@ -186,8 +186,8 @@ class PlotCapture:
                     panel.output = name
             return real_package(fig, name, plots_config)
 
-        monkeypatch.setattr(core, "plot_calibration_projection", capture_plot)
-        monkeypatch.setattr(generators, "plot_calibration_projection", capture_plot)
+        monkeypatch.setattr(core, "plot_quantile_panel", capture_plot)
+        monkeypatch.setattr(generators, "plot_quantile_panel", capture_plot)
         monkeypatch.setattr(generators, "_package_figure_outputs", capture_package)
 
     def get_panels(self, output: str) -> list[Panel]:

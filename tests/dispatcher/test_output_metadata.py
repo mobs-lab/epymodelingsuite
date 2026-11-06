@@ -19,7 +19,7 @@ from epymodelingsuite.schema.output import FlusightForecastOutput, FlusightPropE
 
 @pytest.mark.parametrize("workflow", ["simulation", "calibration"])
 @pytest.mark.parametrize("generations", [True, [0, 1]])
-def test_wide_output_metadata(workflow: str, *, generations: bool | list[int]) -> None:
+def test_wide_output_metadata(monkeypatch: pytest.MonkeyPatch, workflow: str, *, generations: bool | list[int]) -> None:
     """Export fragmented results without warnings, preserving column order, values, and source frames."""
     dates = pd.date_range("2025-11-29", periods=2, freq="7D")
     quantiles = pd.DataFrame({"date": dates, "quantile": [0.5, 0.5]}, index=[4, 9])
@@ -40,10 +40,8 @@ def test_wide_output_metadata(workflow: str, *, generations: bool | list[int]) -
     result.parameters = {}
     result.get_stacked_compartments.return_value = {key: [value] for key, value in compartments.items()}
     # Return the same source frame so accidental mutation can affect later exports and be detected.
-    result.get_quantiles_compartments.return_value = quantiles
-    result.get_quantiles_transitions.return_value = quantiles
-    result.get_calibration_quantiles.return_value = quantiles
-    result.get_projection_quantiles.return_value = quantiles
+    for helper in ("get_simulation_quantiles", "get_calibration_quantiles", "get_projection_quantiles"):
+        monkeypatch.setattr(f"epymodelingsuite.dispatcher.output.{helper}", lambda *_, **__: quantiles)
     result.get_posterior_distribution.return_value = quantiles
     result.get_projection_trajectories.return_value = {
         key: [value] for key, value in {"date": dates, **compartments, **transitions}.items()

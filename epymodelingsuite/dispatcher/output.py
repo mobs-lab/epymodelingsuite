@@ -11,6 +11,7 @@ import pandas as pd
 from epydemix.calibration import CalibrationResults
 
 from ..output.hub_format import normalize_target_values
+from ..output.quantiles import get_simulation_quantiles, select_projection_quantile_variables
 from ..output.tabular import (
     dataframe_to_gzipped_csv as dataframe_to_gzipped_csv,
 )
@@ -35,12 +36,12 @@ from ..utils.location import (
     get_hub_location_id,
     parse_population_name,
 )
+from ..utils.quantiles import get_calibration_quantiles, get_projection_quantiles
 from ..visualization.generators import (
     generate_categorical_plots,
     generate_posterior_grid_plot,
-    generate_quantile_grid_plot,
+    generate_quantile_plots,
     generate_single_location_posterior_plots,
-    generate_single_quantile_plots,
 )
 
 logger = logging.getLogger(__name__)
@@ -884,17 +885,22 @@ def register_output_generator(kind_set):
 def generate_simulation_outputs(
     *, simulations: list[SimulationOutput], output_config: OutputConfig, **_
 ) -> dict[str, list[OutputObject]]:
-    """
-    Create a dictionary of outputs specified in an OutputConfig for a simulation workflow.
+    """Generate configured outputs for a simulation workflow.
 
     Parameters
     ----------
-        simulations: a list of SimulationOutputs containing SimulationResults.
-        output_config: an OutputConfig instance with output specifications.
+    simulations : list[SimulationOutput]
+        Result objects supplying tables and plots.
+    output_config : OutputConfig
+        Enabled output types, formatting and plot settings.
+    **_ : dict
+        Additional dispatcher arguments, ignored.
 
     Returns
     -------
-        A dictionary where keys are intended filenames for writing data, and values are gzip-compressed CSV strings.
+    dict[str, list[OutputObject]]
+        Logical output names mapped to configured DataFrame, bytes or figure objects; an internal sink may stage them
+        instead.
     """
     logger.info("OUTPUT GENERATOR: dispatched for simulation")
     output = output_config.output
@@ -914,8 +920,11 @@ def generate_simulation_outputs(
         for simulation in simulations:
             # Compartments
             if output.quantiles.compartments:
-                quanc_df = simulation.results.get_quantiles_compartments(
-                    quantiles=output.quantiles.selections, ignore_nan=True
+                quanc_df = get_simulation_quantiles(
+                    simulation.results,
+                    "compartments",
+                    output.quantiles.selections,
+                    output.quantiles.compartments,
                 )
                 if hasattr(output.quantiles.compartments, "__len__"):
                     try:
@@ -936,8 +945,11 @@ def generate_simulation_outputs(
 
             # Transitions
             if output.quantiles.transitions:
-                quant_df = simulation.results.get_quantiles_transitions(
-                    quantiles=output.quantiles.selections, ignore_nan=True
+                quant_df = get_simulation_quantiles(
+                    simulation.results,
+                    "transitions",
+                    output.quantiles.selections,
+                    output.quantiles.transitions,
                 )
                 if hasattr(output.quantiles.transitions, "__len__"):
                     try:
@@ -1086,7 +1098,9 @@ def generate_simulation_outputs(
     if not hub_format_output.empty:
         # will want to build filename to be something better, like to fit hub standards
         hf_name = "output_hub_formatted"
-        out_dict[hf_name] = format_hub_objects(hub_format_output, hf_name, output.tabular_output_types)
+        out_dict[hf_name] = format_hub_objects(
+            hub_format_output, hf_name, output.tabular_output_types, metrocast=output.flusight_format.metrocast
+        )
     if not model_meta.empty:
         mm_name = "model_metadata"
         mm_objects = [format_tabular_object(model_meta, mm_name, _type) for _type in output.tabular_output_types]
@@ -1102,17 +1116,26 @@ def generate_simulation_outputs(
 def generate_calibration_outputs(
     *, calibrations: list[CalibrationOutput], output_config: OutputConfig, **_
 ) -> dict[str, list[OutputObject]]:
-    """
-    Create a dictionary of outputs specified in an OutputConfig for a calibration workflow.
+    """Generate configured outputs for a calibration workflow.
 
     Parameters
     ----------
-        calibrations: a list of CalibrationOutputs containing CalibrationResults.
-        output_config: an OutputConfig instance with output specifications.
+    calibrations : list[CalibrationOutput]
+        Result objects supplying tables and plots.
+    output_config : OutputConfig
+        Enabled output types, formatting and plot settings.
+    **_ : dict
+        Additional dispatcher arguments, ignored.
 
     Returns
     -------
-        A dictionary where keys are intended filenames for writing data, and values are gzip-compressed CSV strings.
+    dict[str, list[OutputObject]]
+        Logical output names mapped to configured DataFrame, bytes or figure objects; an internal sink may stage them
+        instead.
+
+    Notes
+    -----
+    Failed projections are filtered in place.
     """
     logger.info("OUTPUT GENERATOR: dispatched for calibration")
     output = output_config.output
@@ -1144,7 +1167,8 @@ def generate_calibration_outputs(
                         try:
                             cal_trajs = calibration.results.get_selected_trajectories(generation)
                             cal_dates = cal_trajs[0].get("date") if cal_trajs else None
-                            quancal_df = calibration.results.get_calibration_quantiles(
+                            quancal_df = get_calibration_quantiles(
+                                calibration.results,
                                 quantiles=output.quantiles.selections,
                                 generation=generation,
                                 dates=cal_dates,
@@ -1167,7 +1191,8 @@ def generate_calibration_outputs(
                     try:
                         cal_trajs = calibration.results.get_selected_trajectories()
                         cal_dates = cal_trajs[0].get("date") if cal_trajs else None
-                        quancal_df = calibration.results.get_calibration_quantiles(
+                        quancal_df = get_calibration_quantiles(
+                            calibration.results,
                             quantiles=output.quantiles.selections,
                             dates=cal_dates,
                             variables=["data"],
@@ -1186,12 +1211,16 @@ def generate_calibration_outputs(
                         )
 
             # Projection quantiles
+            if not output.quantiles.compartments and not output.quantiles.transitions:
+                continue
             try:
                 proj_sims = calibration.results.projections.get("baseline", [])
                 proj_dates = proj_sims[0].get("date") if proj_sims else None
-                quan_df = calibration.results.get_projection_quantiles(
+                quan_df = get_projection_quantiles(
+                    calibration.results,
                     quantiles=output.quantiles.selections,
                     dates=proj_dates,
+                    variables=select_projection_quantile_variables(proj_sims, output.quantiles),
                     ignore_nan=True,
                 )
             except ValueError:
@@ -1440,7 +1469,8 @@ def generate_calibration_outputs(
                     # FRAGILE: the name 'hospitalizations' is user-supplied in the modelset as the column to look for in the surveillance data.
                     proj_sims = calibration.results.projections.get("baseline", [])
                     proj_dates = proj_sims[0].get("date") if proj_sims else None
-                    quanf_df = calibration.results.get_projection_quantiles(
+                    quanf_df = get_projection_quantiles(
+                        calibration.results,
                         quantiles=flusight_quantiles,
                         dates=proj_dates,
                         variables=["hospitalizations"],
@@ -1486,7 +1516,8 @@ def generate_calibration_outputs(
                     try:
                         cal_trajs = calibration.results.get_selected_trajectories()
                         cal_dates = cal_trajs[0].get("date") if cal_trajs else None
-                        quancalflu_df = calibration.results.get_calibration_quantiles(
+                        quancalflu_df = get_calibration_quantiles(
+                            calibration.results,
                             quantiles=flusight_quantiles,
                             dates=cal_dates,
                             variables=["data"],
@@ -1512,7 +1543,8 @@ def generate_calibration_outputs(
                     try:
                         proj_sims = calibration.results.projections.get("baseline", [])
                         proj_dates = proj_sims[0].get("date") if proj_sims else None
-                        quanproj_df = calibration.results.get_projection_quantiles(
+                        quanproj_df = get_projection_quantiles(
+                            calibration.results,
                             quantiles=flusight_quantiles,
                             dates=proj_dates,
                             variables=[transition_name],
@@ -1537,9 +1569,7 @@ def generate_calibration_outputs(
             quantiles_projection_flusight = (
                 pd.concat(quantiles_projection_flusight_list) if quantiles_projection_flusight_list else None
             )
-            hosp_forecast = (
-                pd.concat(hosp_forecast_list, ignore_index=True) if hosp_forecast_list else pd.DataFrame()
-            )
+            hosp_forecast = pd.concat(hosp_forecast_list, ignore_index=True) if hosp_forecast_list else pd.DataFrame()
             try:
                 prop_ed_df, rescaling_factors = make_prop_ed_flusightforecast(
                     hosp_forecast,
@@ -1671,10 +1701,11 @@ def generate_calibration_outputs(
 
             # Fitting window
             try:
-                trajc = calibration.results.get_calibration_trajectories()
-                if trajc and "date" in trajc and len(trajc["date"]) > 0:
-                    meta_dict["fitting_start"].append(str(sorted(trajc["date"][0])[0].date()))
-                    meta_dict["fitting_end"].append(str(sorted(trajc["date"][0])[-1].date()))
+                selected = calibration.results.get_selected_trajectories()
+                dates = np.asarray(selected[0].get("date", [])) if selected else None
+                if dates is not None and len(dates) > 0:
+                    meta_dict["fitting_start"].append(str(min(dates).date()))
+                    meta_dict["fitting_end"].append(str(max(dates).date()))
                 else:
                     meta_dict["fitting_start"].append(None)
                     meta_dict["fitting_end"].append(None)
@@ -1685,10 +1716,11 @@ def generate_calibration_outputs(
 
             # Projection window
             try:
-                trajp = calibration.results.get_projection_trajectories()
-                if trajp and "date" in trajp and len(trajp["date"]) > 0:
-                    meta_dict["start_date"].append(str(sorted(trajp["date"][0])[0].date()))
-                    meta_dict["end_date"].append(str(sorted(trajp["date"][0])[-1].date()))
+                projections = calibration.results.projections.get("baseline", [])
+                dates = np.asarray(projections[0].get("date", [])) if projections else None
+                if dates is not None and len(dates) > 0:
+                    meta_dict["start_date"].append(str(min(dates).date()))
+                    meta_dict["end_date"].append(str(max(dates).date()))
                 else:
                     meta_dict["start_date"].append(None)
                     meta_dict["end_date"].append(None)
@@ -1787,7 +1819,9 @@ def generate_calibration_outputs(
     if not hub_format_output.empty:
         # will want to build filename to be something better, like to fit hub standards
         hf_name = "output_hub_formatted"
-        out_dict[hf_name] = format_hub_objects(hub_format_output, hf_name, output.tabular_output_types)
+        out_dict[hf_name] = format_hub_objects(
+            hub_format_output, hf_name, output.tabular_output_types, metrocast=output.flusight_format.metrocast
+        )
     if not model_meta.empty:
         mm_name = "model_metadata"
         mm_objects = [format_tabular_object(model_meta, mm_name, _type) for _type in output.tabular_output_types]
@@ -1817,8 +1851,7 @@ def generate_calibration_outputs(
         if output.options and output.options.surveillance:
             surveillance_sources = output.options.surveillance
 
-        generate_single_quantile_plots(calibrations, plots_config, out_dict, surveillance_sources)
-        generate_quantile_grid_plot(calibrations, plots_config, out_dict, surveillance_sources)
+        generate_quantile_plots(calibrations, plots_config, out_dict, surveillance_sources)
         logger.info("  - Generating posterior plots")
         generate_single_location_posterior_plots(calibrations, plots_config, out_dict, start_date_reference)
         generate_posterior_grid_plot(calibrations, plots_config, out_dict, start_date_reference)

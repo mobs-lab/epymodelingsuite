@@ -48,18 +48,28 @@ charleston,212,South Carolina,SC,"Charleston, SC","Charleston, SC",891304,hsa_nc
 rock-hill,244,South Carolina,SC,"Rock Hill, SC","Rock Hill, SC",325855,hsa_nci_id,"Chester, York",US-SC
 horry,246,South Carolina,SC,"Horry, SC","Horry, SC",447827,hsa_nci_id,"Georgetown, Horry",US-SC
 south-carolina,All,South Carolina,SC,South Carolina,South Carolina,5296225,hsa_nci_id,,US-SC
+amarillo,405,Texas,TX,"Amarillo, TX","Amarillo, TX",354682,hsa_nci_id,"Armstrong, Briscoe, Carson, Dallam, Donley, Hansford, Hartley, Hutchinson, Moore, Ochiltree, Oldham, Potter, Randall, Sherman, Swisher",US-TX
+lubbock,406,Texas,TX,"Lubbock, TX","Lubbock, TX",394437,hsa_nci_id,"Bailey, Borden, Cochran, Crosby, Dawson, Dickens, Garza, Hockley, King, Lamb, Lubbock, Lynn, Motley",US-TX
 houston,408,Texas,TX,"Houston, TX","Houston, TX",6692543,hsa_nci_id,"Austin, Chambers, Fort Bend, Harris, Liberty, Montgomery, San Jacinto, Waller",US-TX
 san-antonio,410,Texas,TX,"San Antonio, TX","San Antonio, TX",2534291,hsa_nci_id,"Atascosa, Bandera, Bexar, Frio, Gonzales, Guadalupe, Kendall, La Salle, McMullen, Medina, Wilson, Zavala",US-TX
 beaumont,413,Texas,TX,"Beaumont, TX","Beaumont, TX",461885,hsa_nci_id,"Hardin, Jasper, Jefferson, Newton, Orange, Tyler",US-TX
 el-paso,415,Texas,TX,"El Paso, TX","El Paso, TX",876410,hsa_nci_id,"Culberson, El Paso, Hudspeth, Loving",US-TX
 austin,425,Texas,TX,"Austin, TX","Austin, TX",2202332,hsa_nci_id,"Bastrop, Burnet, Lee, Llano, Travis, Williamson",US-TX
-dallas,453,Texas,TX,"Dallas, TX","Dallas, TX",4453428,hsa_nci_id,"Collin, Dallas, Ellis, Hopkins, Hunt, Kaufman, Rains, Rockwall",US-TX
+mcallen,427,Texas,TX,"Mcallen, TX","Mcallen, TX",958044,hsa_nci_id,"Hidalgo, Starr",US-TX
+fort-worth,434,Texas,TX,"Fort Worth, TX","Fort Worth, TX",2603740,hsa_nci_id,"Hood, Johnson, Parker, Somervell, Tarrant",US-TX
+corpus-christi,437,Texas,TX,"Corpus Christi, TX","Corpus Christi, TX",545891,hsa_nci_id,"Aransas, Brooks, Duval, Jim Wells, Kenedy, Kleberg, Live Oak, Nueces, San Patricio",US-TX
 tyler,441,Texas,TX,"Tyler, TX","Tyler, TX",436212,hsa_nci_id,"Henderson, Smith, Van Zandt, Wood",US-TX
+killeen,452,Texas,TX,"Killeen, TX","Killeen, TX",519927,hsa_nci_id,"Bell, Coryell, Lampasas, Milam",US-TX
+dallas,453,Texas,TX,"Dallas, TX","Dallas, TX",4453428,hsa_nci_id,"Collin, Dallas, Ellis, Hopkins, Hunt, Kaufman, Rains, Rockwall",US-TX
+waco,462,Texas,TX,"Waco, TX","Waco, TX",370062,hsa_nci_id,"Bosque, Falls, Hamilton, Hill, Limestone, McLennan",US-TX
+bryan,464,Texas,TX,"Bryan, TX","Bryan, TX",346322,hsa_nci_id,"Brazos, Burleson, Grimes, Robertson, Washington",US-TX
+denton,495,Texas,TX,"Denton, TX","Denton, TX",1097612,hsa_nci_id,"Cooke, Denton, Wise",US-TX
+lake-jackson,505,Texas,TX,"Lake Jackson, TX","Lake Jackson, TX",469378,hsa_nci_id,"Brazoria, Matagorda, Wharton",US-TX
+san-marcos,510,Texas,TX,"San Marcos, TX","San Marcos, TX",317307,hsa_nci_id,"Caldwell, Hays",US-TX
+brownsville,520,Texas,TX,"Brownsville, TX","Brownsville, TX",446259,hsa_nci_id,"Cameron, Willacy",US-TX
+galveston,532,Texas,TX,"Galveston, TX","Galveston, TX",358990,hsa_nci_id,Galveston,US-TX
+laredo,538,Texas,TX,"Laredo, TX","Laredo, TX",287862,hsa_nci_id,"Jim Hogg, Webb, Zapata",US-TX
 texas,All,Texas,TX,Texas,Texas,30188424,hsa_nci_id,,US-TX
-provo,703,Utah,UT,"Provo, UT","Provo, UT",785689,hsa_nci_id,"Juab, Millard, Sanpete, Sevier, Utah, Wayne",US-UT
-salt-lake-city,708,Utah,UT,"Salt Lake City, UT","Salt Lake City, UT",1412723,hsa_nci_id,"Duchesne, Salt Lake, Summit, Tooele, Uintah, Wasatch",US-UT
-ogden,744,Utah,UT,"Ogden, UT","Ogden, UT",717251,hsa_nci_id,"Box Elder, Davis, Morgan, Rich, Weber",US-UT
-utah,All,Utah,UT,Utah,Utah,3392331,hsa_nci_id,,US-UT
 roanoke,14,Virginia,VA,"Roanoke, VA","Roanoke, VA",513483,hsa_nci_id,"Amherst, Appomattox, Botetourt, Campbell, Craig, Floyd, Franklin, Lynchburg, Roanoke, Salem",US-VA
 virginia,All,Virginia,VA,Virginia,Virginia,8705170,hsa_nci_id,,US-VA
 nyc,94,New York,NY,NYC,NYC,8483844,hsa_nci_id,"Bronx, Kings, New York, Queens, Richmond",US-NY
@@ -85,3 +95,17 @@ los-angeles,,California,CA,"Los Angeles, CA","Los Angeles, CA",10014009,ca_regio
 rural-north,,California,CA,"Rural North, CA","Rural North, CA",702489,ca_region_id,"Del Norte, Glenn, Humboldt, Lake, Lassen, Mendocino, Modoc, Shasta, Siskiyou, Tehama, Trinity",US-CA
 southern-california,,California,CA,"Southern California, CA","Southern California, CA",12871871,ca_region_id,"Imperial, Inyo, Mono, Orange, Riverside, San Bernardino, San Diego, San Luis Obispo, Santa Barbara, Ventura",US-CA
 california,All,California,CA,California,California,39538223,ca_region_id,,US-CA
+bear-river,1,Utah,UT,"Bear River, UT","Bear River, UT",214622,ut_region_id,"Cache, Box Elder, Rich",US-UT
+central,2,Utah,UT,"Central Utah, UT","Central Utah, UT",87134,ut_region_id,"Sanpete, Sevier, Millard, Juab, Wayne, Piute",US-UT
+davis,3,Utah,UT,"Davis County, UT","Davis County, UT",383992,ut_region_id,Davis,US-UT
+salt-lake,4,Utah,UT,"Salt Lake County, UT","Salt Lake County, UT",1224378,ut_region_id,Salt Lake,US-UT
+san-juan,5,Utah,UT,"San Juan County, UT","San Juan County, UT",14585,ut_region_id,San Juan,US-UT
+southeast,6,Utah,UT,"Southeast, UT","Southeast, UT",40852,ut_region_id,"Carbon, Emery, Grand",US-UT
+southwest,7,Utah,UT,"Southwest, UT","Southwest, UT",308766,ut_region_id,"Washington, Iron, Kane, Beaver, Garfield",US-UT
+summit,8,Utah,UT,"Summit County, UT","Summit County, UT",43032,ut_region_id,Summit,US-UT
+tooele,9,Utah,UT,"Tooele County, UT","Tooele County, UT",90094,ut_region_id,Tooele,US-UT
+tri-county,10,Utah,UT,"TriCounty, UT","TriCounty, UT",60354,ut_region_id,"Uintah, Duchesne, Daggett",US-UT
+utah-county,11,Utah,UT,"Utah County, UT","Utah County, UT",774050,ut_region_id,Utah,US-UT
+wasatch,12,Utah,UT,"Wasatch County, UT","Wasatch County, UT",39179,ut_region_id,Wasatch,US-UT
+weber-morgan,13,Utah,UT,"Weber-Morgan, UT","Weber-Morgan, UT",293787,ut_region_id,"Weber, Morgan",US-UT
+utah,All,Utah,UT,Utah,Utah,3574825,ut_region_id,,US-UT

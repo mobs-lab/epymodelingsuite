@@ -23,6 +23,7 @@ def fetch_hhs_hospitalizations(
     data_type: str = "default",
     *,
     include_reporting_frac: bool = False,
+    include_reporting_hospitals: bool = False,
     preserve_missing_counts: bool = False,
 ) -> pd.DataFrame:
     """
@@ -48,6 +49,9 @@ def fetch_hhs_hospitalizations(
     preserve_missing_counts : bool, optional
         Keep unreported admission counts as NaN instead of filling them with 0.
         Default is False.
+    include_reporting_hospitals : bool, optional
+        Add ``reporting_hospitals`` from the published hospital count
+        ``totalconfflunewadmhosprep``. Missing hospital counts remain NaN.
 
     Returns
     -------
@@ -66,6 +70,8 @@ def fetch_hhs_hospitalizations(
             Total confirmed flu new admissions
         - reporting_frac : float
             Fraction of hospitals reporting (only if ``include_reporting_frac``)
+        - reporting_hospitals : float
+            Published hospital count (only if ``include_reporting_hospitals``)
 
     Examples
     --------
@@ -130,6 +136,8 @@ def fetch_hhs_hospitalizations(
     source_columns = ["weekendingdate", "jurisdiction", "totalconfflunewadm"]
     if include_reporting_frac:
         source_columns.append("totalconfflunewadmperchosprep")
+    if include_reporting_hospitals:
+        source_columns.append("totalconfflunewadmhosprep")
     data = data[source_columns]
 
     # Process dates and epiweeks
@@ -141,6 +149,8 @@ def fetch_hhs_hospitalizations(
     data["hospitalizations"] = counts if preserve_missing_counts else counts.fillna(0)
     if include_reporting_frac:
         data["reporting_frac"] = data["totalconfflunewadmperchosprep"].astype(float) / 100
+    if include_reporting_hospitals:
+        data["reporting_hospitals"] = pd.to_numeric(data["totalconfflunewadmhosprep"], errors="raise")
 
     # Load location mapping
     locations = get_flusight_locations()
@@ -172,6 +182,8 @@ def fetch_hhs_hospitalizations(
     output_columns = ["location_iso", "location_code", "target_end_date", "epiweek", "hospitalizations"]
     if include_reporting_frac:
         output_columns.append("reporting_frac")
+    if include_reporting_hospitals:
+        output_columns.append("reporting_hospitals")
     data = data[output_columns]
 
     # Sort by location code and date

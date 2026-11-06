@@ -17,6 +17,7 @@ from epymodelingsuite.schema.calibration import (
     ComparisonSpec,
     ProjectionSpec,
 )
+from epymodelingsuite.schema.sampling import SamplingModelset
 
 
 class TestCalibrationStrategyMaxTime:
@@ -400,6 +401,20 @@ class TestCalibrationModelsetPopulationNames:
         base_config["modelset"]["population_names"] = ["denver", "boston"]
         config = CalibrationConfig(**base_config)
         assert config.modelset.population_names == ["denver", "boston"]
+
+    @pytest.mark.parametrize("population", ["JP-01", {"name": "JP-01", "type": "iso"}])
+    def test_iso_location_outside_codebook_is_valid(self, base_config, population):
+        base_config["modelset"]["population_names"] = [population]
+        assert CalibrationConfig(**base_config).modelset.population_names == [population]
+        assert SamplingModelset(population_names=[population]).population_names == [population]
+
+    @pytest.mark.parametrize("population", ["ZZ-99", {"name": "ZZ-99", "type": "iso"}])
+    def test_unassigned_iso_code_is_rejected(self, base_config, population):
+        base_config["modelset"]["population_names"] = [population]
+        with pytest.raises(ValueError, match="Invalid"):
+            CalibrationConfig(**base_config)
+        with pytest.raises(ValueError, match="Invalid"):
+            SamplingModelset(population_names=[population])
 
     def test_mixed_keywords_and_locations(self, base_config):
         """Test that keywords can be mixed with specific locations."""
