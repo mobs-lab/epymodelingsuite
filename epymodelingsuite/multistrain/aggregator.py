@@ -101,12 +101,12 @@ def pull_single_strain_submission(source_location: str, fname: str) -> pd.DataFr
 
 def pull_trajectory_projections(
     config: AggregationConfiguration, tempdir: TemporaryDirectory
-) -> dict[str, pd.DataFrame]:
+) -> tuple[dict[str, pd.DataFrame], list[dict[str, str]]]:
     """
     Pull trajectory projection files from Google Cloud Storage.
     Requires cloud authorization and gcloud.
 
-    Downloads e.g. trajectories_projection_transitions.csv.gz files (NOT runner artifacts).
+    Downloads trajectory CSV or Parquet files (NOT runner artifacts).
 
     Parameters
     ----------
@@ -117,10 +117,17 @@ def pull_trajectory_projections(
 
     Returns
     -------
-    dict[str, pd.DataFrame]
-        trajectories: {subtype: DataFrame}
+    trajectories : dict[str, pd.DataFrame]
+        Strain label -> downloaded trajectory table, retaining the source columns
+        specified by the config (e.g. sim_id, population, date, hospitalizations).
+    sources : list[dict[str, str]]
+        One provenance record per configured source, in config order. Keys are
+        target (output variable identifier), strain (same label as a trajectories key),
+        experiment (experiment path within the bucket), run_id (resolved run ID),
+        and trajectory_file (full gs:// URI of the downloaded object).
     """
     trajectories = {}
+    sources = []
 
     for source in config.sources:
         # Download trajectory projections (not runner artifacts)
@@ -130,7 +137,10 @@ def pull_trajectory_projections(
             )
             if output.returncode == 0:
                 assert type(output.stdout) is str
-                run_id = output.stdout.split("/")[-2]
+                runs = [path.rstrip("/").rsplit("/", 1)[-1] for path in output.stdout.splitlines() if path.strip()]
+                if not runs:
+                    raise ValueError(f"No runs found for experiment: {source.experiment}")
+                run_id = sorted(runs)[-1]
             else:
                 raise ValueError(
                     f"Failed to find runs for experiment: {source.experiment}\n\
@@ -142,30 +152,53 @@ def pull_trajectory_projections(
             run_id = "*"
         else:
             run_id = source.run_id
-        source_location = f"{config.bucket}/{source.experiment}/{run_id}/outputs/*/{source.trajectory_file}"
+        prefix = f"{config.bucket.rstrip('/')}/{source.experiment.strip('/')}/"
+        pattern = f"{prefix}{run_id}/outputs/*/{source.trajectory_file}"
+        matches = subprocess.run(["gcloud", "storage", "ls", pattern], capture_output=True, text=True)
+        if matches.returncode:
+            raise ValueError(f"Failed to resolve trajectory file: {pattern}\n{matches.stderr}")
+        paths = [path.strip() for path in matches.stdout.splitlines() if path.strip()]
+        if len(paths) != 1:
+            raise ValueError(f"Expected exactly one trajectory file for {pattern}; found {len(paths)}.")
+        source_location = paths[0]
+        if not source_location.startswith(prefix):
+            raise ValueError(f"Unexpected trajectory path: {source_location}")
+        resolved_run_id = source_location.removeprefix(prefix).split("/", 1)[0]
         target_location = f"{tempdir}/{source.strain}_{source.trajectory_file}"
 
-        command = f"gcloud storage cp -r {source_location} {target_location}"
-        exit_code = os.system(command)
+        result = subprocess.run(
+            ["gcloud", "storage", "cp", source_location, target_location], capture_output=True, text=True
+        )
+        exit_code = result.returncode
 
         if exit_code == 0:
             logger.info(f"Downloaded: {source.strain}")
             # Load the downloaded data
-            trajectories[source.strain] = pd.read_csv(target_location, parse_dates=[source.date_column])
+            if source.trajectory_file.lower().endswith(".parquet"):
+                trajectories[source.strain] = pd.read_parquet(target_location)
+                trajectories[source.strain][source.date_column] = pd.to_datetime(
+                    trajectories[source.strain][source.date_column]
+                )
+            else:
+                trajectories[source.strain] = pd.read_csv(target_location, parse_dates=[source.date_column])
+            sources.append(
+                {
+                    "target": config.target,
+                    "strain": source.strain,
+                    "experiment": source.experiment,
+                    "run_id": resolved_run_id,
+                    "trajectory_file": source_location,
+                }
+            )
         else:
-            prepend_err = ""
-            if source.run_id == "any":
-                prepend_err = "Warning: setting source.run_id to 'any' will\
-                fail if more than one matching trajectory file exists.\n"
-                logger.warning(prepend_err)
             raise ValueError(
-                f"{prepend_err}Failed to download: {source.experiment}\n\
+                f"Failed to download: {source.experiment}\n\
                     Exit code: {exit_code}\n\
                     Source: {source_location}\n\
-                    Target: {target_location}"
+                    Target: {target_location}\n{result.stderr}"
             )
 
-    return trajectories
+    return trajectories, sources
 
 
 def merge_strain_trajectories(
@@ -193,7 +226,7 @@ def merge_strain_trajectories(
         DataFrame with merged trajectories:
         strain trajectories in columns "target_{strain}"
         strain sim_id in columns "{strain}"
-        identifying columns "sample_id", "location", and "date"
+        identifying columns "sample_id", "location", "date", and "age_group"
 
     """
     validate_strains(strains, config)
@@ -201,41 +234,39 @@ def merge_strain_trajectories(
     # Standardize strain DFs
     formatted_strains = {}
     for source in config.sources:
-        traj_df = strains[source.strain].copy()
-        formatted = traj_df.rename(
-            columns={
-                source.target_column: "target",
-                source.date_column: "date",
-                source.location_column: "location",
-                source.sim_id: "sim_id",
-            }
-        )[["date", "location", "target", "sim_id"]]
-        formatted_strains[source.strain] = formatted
+        traj_df = strains[source.strain]
+        age_columns = {"all": source.target_column, **source.age_group_columns}
+        required = {source.date_column, source.location_column, source.sim_id, *age_columns.values()}
+        missing = required - set(traj_df.columns)
+        if missing:
+            raise ValueError(f"Source {source.strain!r} is missing trajectory columns: {sorted(missing)}")
+        frames = []
+        for age_group, target_column in age_columns.items():
+            frame = traj_df[[source.date_column, source.location_column, source.sim_id, target_column]].copy()
+            frame.columns = ["date", "location", "sim_id", "target"]
+            frame["age_group"] = age_group
+            frames.append(frame)
+        source_id = f"sim_id_{source.strain}"
+        formatted_strains[source.strain] = (
+            mapping[["sample_id", source_id]]
+            .merge(pd.concat(frames, ignore_index=True), left_on=source_id, right_on="sim_id")
+            .drop(columns=[source_id, "sim_id"])
+            .rename(columns={"target": f"target_{source.strain}"})
+        )
 
     # Start with first strain
     first_source = config.sources[0]
-    combined = (
-        mapping.merge(
-            formatted_strains[first_source.strain], left_on=f"sim_id_{first_source.strain}", right_on="sim_id"
-        )
-        .rename(columns={"target": f"target_{first_source.strain}"})
-        .drop("sim_id", axis=1)
-    )
+    combined = formatted_strains[first_source.strain]
 
     # Merge remaining strains
     for source in config.sources[1:]:
-        combined = (
-            combined.merge(
-                formatted_strains[source.strain],
-                left_on=[f"sim_id_{source.strain}", "location", "date"],
-                right_on=["sim_id", "location", "date"],
-                how="outer",
-            )
-            .rename(columns={"target": f"target_{source.strain}"})
-            .drop("sim_id", axis=1)
+        combined = combined.merge(
+            formatted_strains[source.strain],
+            on=["sample_id", "location", "date", "age_group"],
+            how="outer",
         )
 
-    return combined
+    return combined.merge(mapping, on="sample_id", validate="many_to_one")
 
 
 ################
@@ -343,13 +374,13 @@ def _aggregate_sum(
     # Sum target values from all strains
     target_cols = [f"target_{source.strain}" for source in config.sources]
     agg_colname = "target_total"
-    aggregated[agg_colname] = aggregated[target_cols].fillna(0).sum(axis=1)
+    aggregated[agg_colname] = aggregated[target_cols].sum(axis=1, skipna=True, min_count=1)
 
     # Clean up columns
     output_cols = (
         ["sample_id"]
         + [f"sim_id_{source.strain}" for source in config.sources]
-        + ["location", "date"]
+        + ["location", "date", "age_group"]
         + target_cols
         + [agg_colname]
     )

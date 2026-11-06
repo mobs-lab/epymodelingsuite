@@ -18,7 +18,6 @@ import argparse
 import tempfile
 from pathlib import Path
 
-import pandas as pd
 from epiweeks import Week
 
 from epymodelingsuite.config_loader import load_aggregation_config_from_file
@@ -28,6 +27,10 @@ from epymodelingsuite.multistrain.aggregator import (
     dispatch_strain_sampler,
     merge_strain_trajectories,
     pull_trajectory_projections,
+)
+from epymodelingsuite.output.long_form_trajectories import (
+    long_form_trajectories_from_wide,
+    write_long_form_trajectories,
 )
 
 
@@ -69,9 +72,8 @@ def main():
 
     # Work inside temp directory for pulling from bucket
     # Make dict of strain: trajectory df
-    strains = {}
     with tempfile.TemporaryDirectory() as tempdir:
-        strains.update(pull_trajectory_projections(aggregation, tempdir))
+        strains, sources = pull_trajectory_projections(aggregation, tempdir)
 
     print("  Obtained trajectories for strains:")
     for strain, traj_df in strains.items():
@@ -111,18 +113,19 @@ def main():
                 f"  Added {aggregation.baseline.method} baseline noise with dispersion/variance modifiers {aggregation.baseline.dispersion_values}:\n{aggregated_df.tail()}"
             )
 
-    # Add formatting columns
-    ref_date = pd.Timestamp(Week.fromstring(str(aggregation.submission_week)).enddate()).as_unit("us")
-    aggregated_df["reference_date"] = ref_date
-    aggregated_df["horizon"] = ((aggregated_df["date"] - ref_date).dt.days // 7).astype(int)
-    aggregated_df["epiweek"] = [Week.fromdate(dat).cdcformat() for dat in aggregated_df.date]
+    aggregated_df = long_form_trajectories_from_wide(
+        aggregated_df,
+        strains=[source.strain for source in aggregation.sources],
+        reference_date=Week.fromstring(str(aggregation.submission_week)).enddate(),
+        target=aggregation.target,
+    )
 
     # Write aggregated trajectories to file, named after the config (e.g.
-    # "202613_bphc_ed.yaml" -> "trajectories_aggregated_202613_bphc_ed.parquet").
+    # "202613_bphc_ed.yaml" -> "long_form_trajectories_202613_bphc_ed.parquet").
     # Deriving it from sources[0].experiment instead gives useless names, because
     # the leading path segment is the epiweek for flu and "test" for bphc.
-    fname = f"{args.output}/trajectories_aggregated_{Path(args.config).stem}.parquet"
-    aggregated_df.to_parquet(fname, index=False)
+    fname = f"{args.output}/long_form_trajectories_{Path(args.config).stem}.parquet"
+    write_long_form_trajectories(aggregated_df, fname, sources=sources)
     print(f"  Saved aggregated trajectories at {fname}")
 
 

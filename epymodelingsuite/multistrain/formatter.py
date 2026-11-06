@@ -1,5 +1,7 @@
 import pandas as pd
+import pyarrow.parquet as pq
 
+from ..output.long_form_trajectories import read_long_form_trajectories
 from ..output.trajectory_samples import select_trajectory_indices, trajectories_to_sample_rows
 from ..schema.output import (
     FlusightTrajectorySamples,
@@ -464,9 +466,9 @@ def _pmf_rows(pmf_df: pd.DataFrame, reference_date: str) -> pd.DataFrame:
 
 
 def read_aggregated(path: str, config) -> pd.DataFrame:
-    """Read aggregated trajectories (parquet, or csv as fallback) and keep the columns needed downstream."""
+    """Read long-form Parquet or legacy wide trajectories for submission/plotting."""
     try:
-        aggregated = pd.read_parquet(path)
+        schema = pq.read_schema(path)
     except Exception as e1:
         try:
             aggregated = pd.read_csv(path)
@@ -474,6 +476,32 @@ def read_aggregated(path: str, config) -> pd.DataFrame:
             raise ValueError(
                 f"Failed to read {path} as either parquet or csv:\nParquet error:\n{e1}\nCSV error:\n{e2}"
             ) from e2
+    else:
+        if "series" in schema.names or "value" in schema.names:
+            aggregated = read_long_form_trajectories(path)
+        else:
+            aggregated = pd.read_parquet(path)
+    if "series" in aggregated or "value" in aggregated:
+        if "schema_version" not in aggregated.attrs:
+            raise ValueError("Long-form trajectories require versioned Parquet; long CSV is not supported.")
+        if "target" not in aggregated:
+            raise ValueError("Long-form trajectories require a target column.")
+        if config.target is not None:
+            aggregated = aggregated.loc[aggregated.target.eq(config.target)]
+        elif aggregated.target.nunique() > 1:
+            raise ValueError("Long-form trajectory file contains multiple targets; set aggregated.target explicitly.")
+        if aggregated.empty:
+            raise ValueError("Selected trajectory target has no rows.")
+        aggregated = aggregated.loc[aggregated.age_group.eq("all")]
+        if aggregated.empty:
+            raise ValueError("Submission and plot inputs require age_group='all'.")
+        series = config.target_column.removeprefix("target_")
+        aggregated = aggregated.loc[aggregated.series.eq(series), ["date", "location", "value", "sample_id"]].rename(
+            columns={"date": config.date_column, "location": config.location_column, "value": config.target_column}
+        )
+        if aggregated.empty:
+            raise ValueError(f"Trajectory series {series!r} not found in {path}.")
+        aggregated[config.target_column] = aggregated[config.target_column].astype("float64")
     aggregated = aggregated[[config.date_column, config.location_column, config.target_column, "sample_id"]]
     return cols_to_dt(aggregated, [config.date_column])
 

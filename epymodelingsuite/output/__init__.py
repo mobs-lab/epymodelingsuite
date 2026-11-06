@@ -1,1 +1,1 @@
-"""Output formatting: hub submission files, trajectory samples and quantiles."""
+"""Output formatting: hub submissions, long-form trajectories, trajectory samples and quantiles."""
