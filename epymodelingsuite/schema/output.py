@@ -1,7 +1,7 @@
 import logging
 from datetime import date
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, ValidationInfo, field_validator, model_validator
 
@@ -443,9 +443,11 @@ class TrajectoriesOutput(BaseModel):
 
 
 class PosteriorsOutput(BaseModel):
-    """Specifications for posterior outputs."""
+    """Posterior parameters with generation, particle_id, weight, and distance per row."""
 
-    generations: list[int] | None = Field(None, description="Generations of SMC to get posteriors for")
+    generations: list[int] | Literal["all"] | None = Field(
+        None, description="Zero-based SMC generations to export, or 'all' for every generation present in the results."
+    )
 
 
 class ModelMetaOutput(BaseModel):

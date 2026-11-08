@@ -31,7 +31,8 @@ output:
     compartments: true
     transitions: true
 
-  # Set true for default behavior or use subfield 'generations'
+  # true exports the last generation; use {generations: all} or {generations: [0, 1]} to select more.
+  # Each particle row includes generation, particle_id, weight, and distance.
   posteriors: true
 
   # Hub format

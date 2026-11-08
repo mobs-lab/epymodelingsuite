@@ -16,6 +16,7 @@ import math
 import matplotlib.pyplot as plt
 import pandas as pd
 
+from ..calibration import get_posterior_table
 from ..schema.dispatcher import CalibrationOutput
 from ..schema.output import (
     ObservedValuesConfig,
@@ -45,7 +46,17 @@ from .preparation import (
 logger = logging.getLogger(__name__)
 
 # Columns that are metadata/identifiers and should be excluded when extracting parameter names
-POSTERIOR_METADATA_COLUMNS = {"sim_id", "location", "population", "primary_id", "seed"}
+POSTERIOR_METADATA_COLUMNS = {
+    "sim_id",
+    "location",
+    "population",
+    "primary_id",
+    "seed",
+    "generation",
+    "particle_id",
+    "weight",
+    "distance",
+}
 
 
 def _add_footnote(fig: plt.Figure, footnote: str) -> None:
@@ -334,7 +345,7 @@ def generate_single_location_posterior_plots(
         logger.info("    Creating posterior plot for %s", location)
 
         try:
-            posterior_df = calibration.results.get_posterior_distribution()
+            posterior_df = get_posterior_table(calibration.results)
 
             # Get parameters to plot (exclude metadata columns)
             params = [col for col in posterior_df.columns if col not in POSTERIOR_METADATA_COLUMNS]
@@ -381,7 +392,7 @@ def generate_single_location_posterior_plots(
                 notes.append(note)
             title_suffix, footnote = _format_plot_notes(notes)
 
-            fig.suptitle(f"Posterior Distributions - {location}{title_suffix}", fontsize=14, y=0.995)
+            fig.suptitle(f"Weighted posterior distributions - {location}{title_suffix}", fontsize=14, y=0.995)
             fig.tight_layout()
             if footnote:
                 _add_footnote(fig, footnote)
@@ -445,7 +456,7 @@ def generate_posterior_grid_plot(
         location_notes[loc] = _format_plot_notes(notes)
 
         try:
-            posterior_df = calibration.results.get_posterior_distribution()
+            posterior_df = get_posterior_table(calibration.results)
             if not posterior_df.empty:
                 location_posteriors[loc] = posterior_df
                 all_params.update(col for col in posterior_df.columns if col not in POSTERIOR_METADATA_COLUMNS)
