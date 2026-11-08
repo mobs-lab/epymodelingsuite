@@ -42,7 +42,9 @@ class TestCreateModelCollection:
 
     def test_creates_single_model_when_population_names_none(self, base_model_config):
         """Test that a single model is created when population_names is None."""
-        models, resolved_names = create_model_collection(base_model_config, None)
+        located = create_model_collection(base_model_config, None)
+        models = [item.model for item in located]
+        resolved_names = [item.location.location_id for item in located]
 
         # Should create exactly one model
         assert len(models) == 1
@@ -57,7 +59,9 @@ class TestCreateModelCollection:
     def test_creates_multiple_models_for_multiple_populations(self, base_model_config):
         """Test that multiple models are created for a list of population names."""
         population_names = ["US-CA", "US-TX", "US-NY"]
-        models, resolved_names = create_model_collection(base_model_config, population_names)
+        located = create_model_collection(base_model_config, population_names)
+        models = [item.model for item in located]
+        resolved_names = [item.location.location_id for item in located]
 
         # Should create one model per population
         assert len(models) == 3
@@ -71,7 +75,9 @@ class TestCreateModelCollection:
 
     def test_dict_population_form(self, base_model_config):
         """Test that the {name, type} dict form resolves like the string form."""
-        models, resolved_names = create_model_collection(base_model_config, [{"name": "US-CA", "type": "iso"}])
+        located = create_model_collection(base_model_config, [{"name": "US-CA", "type": "iso"}])
+        models = [item.model for item in located]
+        resolved_names = [item.location.location_id for item in located]
 
         assert resolved_names == ["US-CA"]
         assert models[0].population.name == "United_States__California"
@@ -81,9 +87,10 @@ class TestCreateModelCollection:
         with pytest.raises(ValueError, match="Invalid population: notaplace"):
             create_model_collection(base_model_config, ["notaplace"])
 
-    def test_unavailable_iso_location_fails_during_model_construction(self, base_model_config):
-        with pytest.raises(ValueError, match="Error setting population for JP-01: No ISO location mapping for JP-01"):
-            create_model_collection(base_model_config, ["JP-01"])
+    def test_international_iso_location_is_canonical(self, base_model_config):
+        models = create_model_collection(base_model_config, ["JP-01"])
+        assert models[0].location.key == ("iso", "JP-01")
+        assert models[0].model.population.name == models[0].location.population_name
 
     def test_expands_all_keyword_to_all_locations(self, base_model_config):
         """Test that 'all' in population_names expands to all locations in codebook."""
@@ -99,9 +106,14 @@ class TestCreateModelCollection:
             }
         )
 
+        from epymodelingsuite.utils.location import get_location_codebook
+
+        mock_codebook = get_location_codebook().set_index("ISO").loc[mock_codebook["ISO"]].reset_index()
         with patch("epymodelingsuite.utils.location.get_location_codebook", return_value=mock_codebook):
             population_names = ["all"]
-            models, resolved_names = create_model_collection(base_model_config, population_names)
+            located = create_model_collection(base_model_config, population_names)
+            models = [item.model for item in located]
+            resolved_names = [item.location.location_id for item in located]
 
             # Should create models for all locations in mocked codebook
             expected_locations = mock_codebook["ISO"].tolist()
@@ -125,9 +137,14 @@ class TestCreateModelCollection:
             }
         )
 
+        from epymodelingsuite.utils.location import get_location_codebook
+
+        mock_codebook = get_location_codebook().set_index("ISO").loc[mock_codebook["ISO"]].reset_index()
         with patch("epymodelingsuite.utils.location.get_location_codebook", return_value=mock_codebook):
             population_names = ["all-states"]
-            models, resolved_names = create_model_collection(base_model_config, population_names)
+            located = create_model_collection(base_model_config, population_names)
+            models = [item.model for item in located]
+            resolved_names = [item.location.location_id for item in located]
 
             # Should create models for all states in mocked codebook
             expected_locations = mock_codebook["ISO"].tolist()
@@ -153,15 +170,23 @@ class TestCreateModelCollection:
             }
         )
 
+        mock_metrocast["location_name_short"] = mock_metrocast["location_name"]
         with (
             patch(
                 "epymodelingsuite.utils.location.get_metrocast_locations",
                 return_value=mock_metrocast,
             ),
-            patch("epymodelingsuite.builders.orchestrators.set_population_from_config"),
+            patch(
+                "epymodelingsuite.builders.orchestrators.set_population_from_config",
+                side_effect=lambda model, config, location, **_: setattr(
+                    model.population, "name", location.population_name
+                ),
+            ),
         ):
             population_names = ["all-metrocast"]
-            models, resolved_names = create_model_collection(base_model_config, population_names)
+            located = create_model_collection(base_model_config, population_names)
+            models = [item.model for item in located]
+            resolved_names = [item.location.location_id for item in located]
 
             # Should include ALL locations (including state-level "colorado" and "georgia")
             expected_locations = ["denver", "mesa", "colorado", "savannah", "georgia"]
@@ -185,15 +210,23 @@ class TestCreateModelCollection:
             }
         )
 
+        mock_metrocast["location_name_short"] = mock_metrocast["location_name"]
         with (
             patch(
                 "epymodelingsuite.utils.location.get_metrocast_locations",
                 return_value=mock_metrocast,
             ),
-            patch("epymodelingsuite.builders.orchestrators.set_population_from_config"),
+            patch(
+                "epymodelingsuite.builders.orchestrators.set_population_from_config",
+                side_effect=lambda model, config, location, **_: setattr(
+                    model.population, "name", location.population_name
+                ),
+            ),
         ):
             population_names = ["all-metrocast"]
-            models, resolved_names = create_model_collection(base_model_config, population_names)
+            located = create_model_collection(base_model_config, population_names)
+            models = [item.model for item in located]
+            resolved_names = [item.location.location_id for item in located]
 
             # Should exclude NYC
             expected_locations = ["denver", "boston"]
@@ -205,7 +238,7 @@ class TestCreateModelCollection:
     def test_all_models_share_compartments(self, base_model_config):
         """Test that all models have the same compartments."""
         population_names = ["US-CA", "US-TX"]
-        models, _ = create_model_collection(base_model_config, population_names)
+        models = [item.model for item in create_model_collection(base_model_config, population_names)]
 
         # Check compartments exist on all models
         # In epydemix, model.compartments is a list of compartment IDs (strings)
@@ -218,7 +251,7 @@ class TestCreateModelCollection:
     def test_all_models_share_transitions(self, base_model_config):
         """Test that all models have the same transitions."""
         population_names = ["US-CA", "US-TX"]
-        models, _ = create_model_collection(base_model_config, population_names)
+        models = [item.model for item in create_model_collection(base_model_config, population_names)]
 
         # Check transitions exist on all models
         # In epydemix, model.transitions is a dict mapping compartment IDs to transition objects
@@ -234,7 +267,7 @@ class TestCreateModelCollection:
     def test_all_models_share_parameters(self, base_model_config):
         """Test that all models have the same non-sampled parameters."""
         population_names = ["US-CA", "US-TX"]
-        models, _ = create_model_collection(base_model_config, population_names)
+        models = [item.model for item in create_model_collection(base_model_config, population_names)]
 
         # Check parameters exist on all models
         for model in models:
@@ -246,7 +279,7 @@ class TestCreateModelCollection:
     def test_models_have_different_populations(self, base_model_config):
         """Test that each model has a different population assigned."""
         population_names = ["US-CA", "US-TX", "US-NY"]
-        models, _ = create_model_collection(base_model_config, population_names)
+        models = [item.model for item in create_model_collection(base_model_config, population_names)]
 
         # Extract population names from models
         model_pop_names = [model.population.name for model in models]
@@ -259,14 +292,14 @@ class TestCreateModelCollection:
 
     def test_model_name_is_set_from_config(self, base_model_config):
         """Test that model name is set from basemodel config."""
-        models, _ = create_model_collection(base_model_config, ["US-CA"])
+        models = [item.model for item in create_model_collection(base_model_config, ["US-CA"])]
 
         assert models[0].name == "test_model"
 
     def test_model_name_not_set_when_none(self, base_model_config):
         """Test that model name is not set when basemodel.name is None."""
         base_model_config.name = None
-        models, _ = create_model_collection(base_model_config, ["US-CA"])
+        models = [item.model for item in create_model_collection(base_model_config, ["US-CA"])]
 
         # epydemix.EpiModel initializes name as 'EpiModel' by default when not set
         assert models[0].name == "EpiModel"
@@ -274,7 +307,7 @@ class TestCreateModelCollection:
     def test_models_have_age_structure(self, base_model_config):
         """Test that all models have proper age-structured population."""
         population_names = ["US-CA", "US-TX"]
-        models, _ = create_model_collection(base_model_config, population_names)
+        models = [item.model for item in create_model_collection(base_model_config, population_names)]
 
         for model in models:
             # Check that population is set and has age structure
@@ -284,28 +317,25 @@ class TestCreateModelCollection:
             # Should match the age groups from config
             assert len(model.population.Nk) == 5
 
-    def test_returns_tuple_of_list_and_names(self, base_model_config):
-        """Test that function returns tuple of (models, resolved_names)."""
+    def test_returns_models_bound_to_locations(self, base_model_config):
         result = create_model_collection(base_model_config, ["US-CA"])
-
-        assert isinstance(result, tuple)
-        assert len(result) == 2
-
-        models, resolved_names = result
-        assert isinstance(models, list)
-        assert isinstance(resolved_names, list)
+        assert len(result) == 1
+        assert result[0].location.key == ("iso", "US-CA")
+        assert result[0].model.population.name == result[0].location.population_name
 
     def test_resolved_names_matches_models_length(self, base_model_config):
         """Test that resolved_names list has same length as models list."""
         population_names = ["US-CA", "US-TX", "US-NY"]
-        models, resolved_names = create_model_collection(base_model_config, population_names)
+        located = create_model_collection(base_model_config, population_names)
+        models = [item.model for item in located]
+        resolved_names = [item.location.location_id for item in located]
 
         assert len(models) == len(resolved_names)
 
     def test_models_are_independent_copies(self, base_model_config):
         """Test that models are independent deepcopies, not references."""
         population_names = ["US-CA", "US-TX"]
-        models, _ = create_model_collection(base_model_config, population_names)
+        models = [item.model for item in create_model_collection(base_model_config, population_names)]
 
         # Modify first model's parameter
         models[0].parameters["beta"] = 0.9
@@ -316,7 +346,9 @@ class TestCreateModelCollection:
     def test_handles_empty_population_list(self, base_model_config):
         """Test behavior with empty population list."""
         # Empty list creates a dummy model with base population (implementation detail)
-        models, resolved_names = create_model_collection(base_model_config, [])
+        located = create_model_collection(base_model_config, [])
+        models = [item.model for item in located]
+        resolved_names = [item.location.location_id for item in located]
 
         # Actually creates one model from basemodel population when list is empty
         # This is because the code path falls through to use the base population
@@ -327,7 +359,7 @@ class TestCreateModelCollection:
     def test_maintains_model_configuration_integrity(self, base_model_config):
         """Test that model configuration is properly maintained across copies."""
         population_names = ["US-CA", "US-TX"]
-        models, _ = create_model_collection(base_model_config, population_names)
+        models = [item.model for item in create_model_collection(base_model_config, population_names)]
 
         for model in models:
             # Check compartments
@@ -385,7 +417,8 @@ class TestSetupVaccinationSchedules:
     @pytest.fixture
     def sample_models(self, base_model_config):
         """Create a collection of test models."""
-        models, population_names = create_model_collection(base_model_config, ["US-CA", "US-TX"])
+        models = create_model_collection(base_model_config, ["US-CA", "US-TX"])
+        population_names = [item.location.location_id for item in models]
         return models, population_names
 
     def test_returns_models_and_none_when_no_vaccination(self, base_model_config, sample_models):
@@ -394,7 +427,7 @@ class TestSetupVaccinationSchedules:
         models, population_names = sample_models
 
         result_models, earliest_vax = setup_vaccination_schedules(
-            basemodel=base_model_config, models=models, sampled_start_timespan=None, population_names=population_names
+            basemodel=base_model_config, models=models, sampled_start_timespan=None
         )
 
         # Should return the same models unchanged and None for earliest_vax
@@ -411,7 +444,7 @@ class TestSetupVaccinationSchedules:
         # Mock scenario_to_epydemix to return a predictable DataFrame
         import pandas as pd
 
-        mock_vax_schedule = pd.DataFrame({"date": ["2024-01-01"], "doses": [100]})
+        mock_vax_schedule = pd.DataFrame({"location": [item.location.source_iso for item in models], "doses": 100})
 
         with patch(
             "epymodelingsuite.builders.orchestrators.scenario_to_epydemix", return_value=mock_vax_schedule
@@ -420,7 +453,6 @@ class TestSetupVaccinationSchedules:
                 basemodel=base_model_with_vaccination,
                 models=models,
                 sampled_start_timespan=sampled_start_timespan,
-                population_names=population_names,
             )
 
             # Should return models unchanged and the earliest vaccination schedule
@@ -445,7 +477,6 @@ class TestSetupVaccinationSchedules:
                 basemodel=base_model_with_vaccination,
                 models=models,
                 sampled_start_timespan=None,
-                population_names=population_names,
             )
 
             # Should return models and None
@@ -455,7 +486,7 @@ class TestSetupVaccinationSchedules:
             # Verify _add_vaccination_schedules_from_config was called for each model
             assert mock_add_vax.call_count == len(models)
             for call in mock_add_vax.call_args_list:
-                assert call[0][0] in models  # First arg is a model
+                assert call[0][0] in [item.model for item in models]  # First arg is a model
                 assert call[0][1] == base_model_with_vaccination.transitions
                 assert call[0][2] == base_model_with_vaccination.vaccination
                 assert call[0][3] == base_model_with_vaccination.timespan
@@ -472,7 +503,6 @@ class TestSetupVaccinationSchedules:
                 basemodel=base_model_config,
                 models=models,
                 sampled_start_timespan=sampled_start_timespan,
-                population_names=population_names,
             )
 
             # scenario_to_epydemix should not be called when vaccination is None
@@ -486,7 +516,7 @@ class TestSetupVaccinationSchedules:
 
         import pandas as pd
 
-        mock_vax_schedule = pd.DataFrame({"date": ["2024-01-01"], "doses": [100]})
+        mock_vax_schedule = pd.DataFrame({"location": [item.location.source_iso for item in models], "doses": 100})
 
         with patch("epymodelingsuite.builders.orchestrators.scenario_to_epydemix", return_value=mock_vax_schedule):
             with patch("epymodelingsuite.builders.vaccination.add_vaccination_schedules_from_config") as mock_add_vax:
@@ -494,7 +524,6 @@ class TestSetupVaccinationSchedules:
                     basemodel=base_model_with_vaccination,
                     models=models,
                     sampled_start_timespan=sampled_start_timespan,
-                    population_names=population_names,
                 )
 
                 # _add_vaccination_schedules_from_config should not be called when start_date is sampled
@@ -502,12 +531,12 @@ class TestSetupVaccinationSchedules:
 
     def test_iso_states_passed_directly_to_scenario_to_epydemix(self, base_model_with_vaccination):
         """Test that ISO state codes are passed directly without conversion."""
-        models = [Mock(), Mock()]
         population_names = ["US-CA", "US-TX"]
+        models = create_model_collection(base_model_with_vaccination, population_names)
 
         sampled_start_timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
 
-        mock_vax_schedule = pd.DataFrame({"date": ["2024-01-01"], "location": ["US-CA"], "doses": [100]})
+        mock_vax_schedule = pd.DataFrame({"location": [item.location.source_iso for item in models], "doses": 100})
 
         with patch(
             "epymodelingsuite.builders.orchestrators.scenario_to_epydemix", return_value=mock_vax_schedule
@@ -516,7 +545,6 @@ class TestSetupVaccinationSchedules:
                 basemodel=base_model_with_vaccination,
                 models=models,
                 sampled_start_timespan=sampled_start_timespan,
-                population_names=population_names,
             )
 
             # Verify ISO states are passed directly
@@ -526,13 +554,13 @@ class TestSetupVaccinationSchedules:
 
     def test_metrocast_locations_converted_to_parent_state_iso(self, base_model_with_vaccination):
         """Test that metrocast locations are converted to their parent state ISO codes."""
-        models = [Mock(), Mock()]
         # denver -> US-CO, boston -> US-MA
         population_names = ["denver", "boston"]
+        models = create_model_collection(base_model_with_vaccination, population_names)
 
         sampled_start_timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
 
-        mock_vax_schedule = pd.DataFrame({"date": ["2024-01-01"], "location": ["US-CO"], "doses": [100]})
+        mock_vax_schedule = pd.DataFrame({"location": [item.location.source_iso for item in models], "doses": 100})
 
         with patch(
             "epymodelingsuite.builders.orchestrators.scenario_to_epydemix", return_value=mock_vax_schedule
@@ -541,7 +569,6 @@ class TestSetupVaccinationSchedules:
                 basemodel=base_model_with_vaccination,
                 models=models,
                 sampled_start_timespan=sampled_start_timespan,
-                population_names=population_names,
             )
 
             # Verify metrocast locations are converted to parent state ISO codes
@@ -551,13 +578,13 @@ class TestSetupVaccinationSchedules:
 
     def test_mixed_iso_and_metrocast_locations(self, base_model_with_vaccination):
         """Test handling of mixed ISO states and metrocast locations."""
-        models = [Mock(), Mock(), Mock()]
         # US-CA (ISO), denver (metrocast -> US-CO), US-TX (ISO)
         population_names = ["US-CA", "denver", "US-TX"]
+        models = create_model_collection(base_model_with_vaccination, population_names)
 
         sampled_start_timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
 
-        mock_vax_schedule = pd.DataFrame({"date": ["2024-01-01"], "location": ["US-CA"], "doses": [100]})
+        mock_vax_schedule = pd.DataFrame({"location": [item.location.source_iso for item in models], "doses": 100})
 
         with patch(
             "epymodelingsuite.builders.orchestrators.scenario_to_epydemix", return_value=mock_vax_schedule
@@ -566,7 +593,6 @@ class TestSetupVaccinationSchedules:
                 basemodel=base_model_with_vaccination,
                 models=models,
                 sampled_start_timespan=sampled_start_timespan,
-                population_names=population_names,
             )
 
             # Verify conversion: US-CA stays, denver -> US-CO, US-TX stays
@@ -576,13 +602,13 @@ class TestSetupVaccinationSchedules:
 
     def test_metrocast_locations_in_same_state_deduplicated(self, base_model_with_vaccination):
         """Test that multiple metrocast locations in the same state result in a single state ISO."""
-        models = [Mock(), Mock()]
         # Both denver and colorado-springs are in Colorado (US-CO)
         population_names = ["denver", "colorado-springs"]
+        models = create_model_collection(base_model_with_vaccination, population_names)
 
         sampled_start_timespan = Timespan(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31), delta_t=1.0)
 
-        mock_vax_schedule = pd.DataFrame({"date": ["2024-01-01"], "location": ["US-CO"], "doses": [100]})
+        mock_vax_schedule = pd.DataFrame({"location": [item.location.source_iso for item in models], "doses": 100})
 
         with patch(
             "epymodelingsuite.builders.orchestrators.scenario_to_epydemix", return_value=mock_vax_schedule
@@ -591,7 +617,6 @@ class TestSetupVaccinationSchedules:
                 basemodel=base_model_with_vaccination,
                 models=models,
                 sampled_start_timespan=sampled_start_timespan,
-                population_names=population_names,
             )
 
             # Verify duplicates are removed - both locations map to US-CO

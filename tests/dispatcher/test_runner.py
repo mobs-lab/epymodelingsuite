@@ -61,8 +61,8 @@ def base_epimodel_config():
 @pytest.fixture
 def real_simulation_builder_output(base_epimodel_config):
     """Create a BuilderOutput with a real EpiModel for simulation testing."""
-    models, _ = create_model_collection(base_epimodel_config, None)
-    model = models[0]
+    models = create_model_collection(base_epimodel_config, None)
+    model = models[0].model
 
     # Calculate initial conditions with numeric values
     # The model has 5 age groups, distribute infections across them
@@ -86,6 +86,7 @@ def real_simulation_builder_output(base_epimodel_config):
         seed=42,
         delta_t=1.0,
         model=model,
+        location=models[0].location,
         simulation=simulation_args,
     )
 
@@ -98,8 +99,8 @@ def real_calibration_builder_output(base_epimodel_config):
     The goal is to verify the runner executes calibration correctly, not to
     test calibration convergence or fit quality.
     """
-    models, _ = create_model_collection(base_epimodel_config, None)
-    model = models[0]
+    models = create_model_collection(base_epimodel_config, None)
+    model = models[0].model
 
     # Calculate initial conditions
     n_age_groups = len(model.population.Nk)
@@ -170,7 +171,7 @@ class TestDispatchRunnerRouting:
     def test_routes_to_run_simulation(self):
         """Test that dispatch_runner routes to run_simulation for simulation workflow."""
         mock_model = MagicMock()
-        mock_model.population.name = "test_location"
+        mock_model.population.name = "United_States__Massachusetts"
 
         simulation_args = SimulationArguments(
             start_date=date(2024, 1, 1),
@@ -190,7 +191,7 @@ class TestDispatchRunnerRouting:
 
         with patch("epymodelingsuite.dispatcher.runner.run_simulation") as mock_run:
             mock_run.return_value = SimulationOutput.model_construct(
-                primary_id=0, seed=42, delta_t=1.0, population="test_location", results=None
+                primary_id=0, seed=42, delta_t=1.0, location=builder_output.location, results=None
             )
 
             result = dispatch_runner(builder_output)
@@ -201,7 +202,7 @@ class TestDispatchRunnerRouting:
     def test_routes_to_run_calibration(self):
         """Test that dispatch_runner routes to run_calibration for calibration workflow."""
         mock_model = MagicMock()
-        mock_model.population.name = "test_location"
+        mock_model.population.name = "United_States__Massachusetts"
         mock_calibrator = MagicMock()
 
         strategy = CalibrationStrategy(name="rejection", options={"n_samples": 100})
@@ -217,7 +218,7 @@ class TestDispatchRunnerRouting:
 
         with patch("epymodelingsuite.dispatcher.runner.run_calibration") as mock_run:
             mock_run.return_value = CalibrationOutput.model_construct(
-                primary_id=0, seed=42, delta_t=1.0, population="test_location", results=None
+                primary_id=0, seed=42, delta_t=1.0, location=builder_output.location, results=None
             )
 
             result = dispatch_runner(builder_output)
@@ -228,10 +229,10 @@ class TestDispatchRunnerRouting:
     def test_routes_to_run_calibration_with_projection(self):
         """Test that dispatch_runner routes to run_calibration_with_projection for projection workflow."""
         mock_model = MagicMock()
-        mock_model.population.name = "test_location"
+        mock_model.population.name = "United_States__Massachusetts"
         mock_calibrator = MagicMock()
         mock_calibrator.parameters = {"epimodel": MagicMock()}
-        mock_calibrator.parameters["epimodel"].population.name = "test_location"
+        mock_calibrator.parameters["epimodel"].population.name = "United_States__Massachusetts"
 
         strategy = CalibrationStrategy(name="smc", options={"n_samples": 100})
         projection = ProjectionArguments(end_date=date(2024, 6, 30), n_trajectories=50)
@@ -248,7 +249,7 @@ class TestDispatchRunnerRouting:
 
         with patch("epymodelingsuite.dispatcher.runner.run_calibration_with_projection") as mock_run:
             mock_run.return_value = CalibrationOutput.model_construct(
-                primary_id=0, seed=42, delta_t=1.0, population="test_location", results=None
+                primary_id=0, seed=42, delta_t=1.0, location=builder_output.location, results=None
             )
 
             result = dispatch_runner(builder_output)
@@ -275,7 +276,7 @@ class TestErrorHandling:
     def test_simulation_raises_runtime_error_on_failure(self):
         """Test that RuntimeError is raised when simulation fails."""
         mock_model = MagicMock()
-        mock_model.population.name = "test_location"
+        mock_model.population.name = "United_States__Massachusetts"
         mock_model.run_simulations.side_effect = Exception("Simulation failed")
 
         simulation_args = SimulationArguments(
@@ -300,7 +301,7 @@ class TestErrorHandling:
     def test_simulation_error_includes_original_message(self):
         """Test that the RuntimeError message includes the original error message."""
         mock_model = MagicMock()
-        mock_model.population.name = "test_location"
+        mock_model.population.name = "United_States__Massachusetts"
         mock_model.run_simulations.side_effect = ValueError("Invalid parameter value")
 
         simulation_args = SimulationArguments(
@@ -328,7 +329,7 @@ class TestErrorHandling:
         mock_calibrator.calibrate.side_effect = Exception("Calibration failed")
 
         mock_model = MagicMock()
-        mock_model.population.name = "test_location"
+        mock_model.population.name = "United_States__Massachusetts"
 
         strategy = CalibrationStrategy(name="rejection", options={"n_samples": 100})
 
@@ -358,10 +359,10 @@ class TestProjectionFallbackBehavior:
         mock_calibrator.calibrate.return_value = mock_calibration_results
         mock_calibrator.run_projections.return_value = mock_projection_results
         mock_calibrator.parameters = {"epimodel": MagicMock()}
-        mock_calibrator.parameters["epimodel"].population.name = "test_location"
+        mock_calibrator.parameters["epimodel"].population.name = "United_States__Massachusetts"
 
         mock_model = MagicMock()
-        mock_model.population.name = "test_location"
+        mock_model.population.name = "United_States__Massachusetts"
 
         strategy = CalibrationStrategy(name="smc", options={"n_samples": 100, "generations": 2})
         projection = ProjectionArguments(end_date=date(2024, 6, 30), n_trajectories=50, generation_number=1)
@@ -489,15 +490,15 @@ class TestRunSimulationIntegration:
 
     def test_seed_produces_reproducible_results(self, base_epimodel_config):
         """Test that the same seed produces reproducible results."""
-        models1, _ = create_model_collection(base_epimodel_config, None)
-        models2, _ = create_model_collection(base_epimodel_config, None)
+        models1 = create_model_collection(base_epimodel_config, None)
+        models2 = create_model_collection(base_epimodel_config, None)
 
         # Calculate initial conditions with numeric values
-        n_age_groups = len(models1[0].population.Nk)
+        n_age_groups = len(models1[0].model.population.Nk)
         i_init = np.zeros(n_age_groups)
         i_init[2] = 100
         r_init = np.zeros(n_age_groups)
-        s_init = models1[0].population.Nk - i_init - r_init
+        s_init = models1[0].model.population.Nk - i_init - r_init
 
         simulation_args = SimulationArguments(
             start_date=base_epimodel_config.timespan.start_date,
@@ -509,10 +510,20 @@ class TestRunSimulationIntegration:
         )
 
         builder_output1 = BuilderOutput(
-            primary_id=0, seed=42, delta_t=1.0, model=models1[0], simulation=simulation_args
+            primary_id=0,
+            seed=42,
+            delta_t=1.0,
+            model=models1[0].model,
+            location=models1[0].location,
+            simulation=simulation_args,
         )
         builder_output2 = BuilderOutput(
-            primary_id=0, seed=42, delta_t=1.0, model=models2[0], simulation=simulation_args
+            primary_id=0,
+            seed=42,
+            delta_t=1.0,
+            model=models2[0].model,
+            location=models2[0].location,
+            simulation=simulation_args,
         )
 
         result1 = run_simulation(builder_output1)
@@ -529,15 +540,15 @@ class TestRunSimulationIntegration:
 
     def test_different_seeds_produce_different_results(self, base_epimodel_config):
         """Test that different seeds produce different results."""
-        models1, _ = create_model_collection(base_epimodel_config, None)
-        models2, _ = create_model_collection(base_epimodel_config, None)
+        models1 = create_model_collection(base_epimodel_config, None)
+        models2 = create_model_collection(base_epimodel_config, None)
 
         # Calculate initial conditions with numeric values
-        n_age_groups = len(models1[0].population.Nk)
+        n_age_groups = len(models1[0].model.population.Nk)
         i_init = np.zeros(n_age_groups)
         i_init[2] = 100
         r_init = np.zeros(n_age_groups)
-        s_init = models1[0].population.Nk - i_init - r_init
+        s_init = models1[0].model.population.Nk - i_init - r_init
 
         simulation_args = SimulationArguments(
             start_date=base_epimodel_config.timespan.start_date,
@@ -549,10 +560,20 @@ class TestRunSimulationIntegration:
         )
 
         builder_output1 = BuilderOutput(
-            primary_id=0, seed=42, delta_t=1.0, model=models1[0], simulation=simulation_args
+            primary_id=0,
+            seed=42,
+            delta_t=1.0,
+            model=models1[0].model,
+            location=models1[0].location,
+            simulation=simulation_args,
         )
         builder_output2 = BuilderOutput(
-            primary_id=0, seed=123, delta_t=1.0, model=models2[0], simulation=simulation_args
+            primary_id=0,
+            seed=123,
+            delta_t=1.0,
+            model=models2[0].model,
+            location=models2[0].location,
+            simulation=simulation_args,
         )
 
         result1 = run_simulation(builder_output1)

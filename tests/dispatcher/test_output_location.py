@@ -246,12 +246,12 @@ class TestConvertLocationNameFormatMetrocast:
 
     def test_location_id_to_fips_raises_error(self):
         """Test location ID to FIPS raises ValueError (no FIPS for metrocast)."""
-        with pytest.raises(ValueError, match="Unknown output format 'FIPS' for metrocast"):
+        with pytest.raises(ValueError, match="Unsupported output format 'FIPS' for metrocast"):
             convert_location_name_format("denver", "FIPS")
 
     def test_location_id_to_unknown_format_raises_error(self):
         """Test location ID to unknown format raises ValueError."""
-        with pytest.raises(ValueError, match="Unknown output format"):
+        with pytest.raises(ValueError, match="Unsupported output format"):
             convert_location_name_format("denver", "unknown_format")
 
     # From epydemix_population format (prefixed)
@@ -292,7 +292,7 @@ class TestConvertLocationNameFormatMetrocast:
 
     def test_prefixed_to_fips_raises_error(self):
         """Test prefixed to FIPS raises ValueError."""
-        with pytest.raises(ValueError, match="Unknown output format 'FIPS' for metrocast"):
+        with pytest.raises(ValueError, match="Unsupported output format 'FIPS' for metrocast"):
             convert_location_name_format("metrocast_location_denver", "FIPS")
 
     # NC flu regions (different location type in same system)
@@ -395,5 +395,5 @@ class TestGetTotalPopulation:
 
     def test_invalid_metrocast_raises_error(self):
         """Test that invalid metrocast location raises ValueError."""
-        with pytest.raises(ValueError, match="not found in metrocast locations"):
+        with pytest.raises(ValueError, match="Invalid metrocast location"):
             get_total_population("metrocast_location_invalid_location")

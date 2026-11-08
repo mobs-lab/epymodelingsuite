@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
-from ..utils.location import convert_location_name_format, get_hub_location_id
 from .hub_format import normalize_target_values
 
 if TYPE_CHECKING:
@@ -234,17 +233,20 @@ def build_flusight_trajectory_samples(
     # Key the factors by the same hub location IDs used for calibration outputs.
     factors = {}
     if prop_ed and prop_ed.strategy != "transition" and not rescaling_factors.empty:
-        factors = dict(
-            zip(
-                rescaling_factors.population.map(get_hub_location_id),
-                rescaling_factors.rescaling_factor,
-                strict=True,
-            )
-        )
+        by_population = {
+            name: calibration.location.hub_id
+            for calibration in calibrations
+            for name in (calibration.location.population_name, *calibration.location.aliases)
+        }
+        factors = {
+            by_population[name]: factor
+            for name, factor in zip(rescaling_factors.population, rescaling_factors.rescaling_factor, strict=True)
+            if name in by_population
+        }
 
     rows, warns, seen = [], [], set()
     for calibration in calibrations:
-        location = get_hub_location_id(calibration.population)
+        location = calibration.location.hub_id
         # Keep only the first calibration per location to avoid duplicate sample IDs.
         if location in seen:
             warns.append(f"OUTPUT GENERATOR: more than one model for location {location}; samples kept for the first.")
@@ -267,9 +269,7 @@ def build_flusight_trajectory_samples(
         # Metrocast indexes restart at 1 for each location/target. State abbreviations
         # cannot distinguish metros in the same state. FluSight requires IDs unique to one
         # location and target, so its prefixes add a hosp/ed tag (MA_hosp_00, MA_ed_00).
-        abbreviation = (
-            None if flusight_format.metrocast else convert_location_name_format(calibration.population, "abbreviation")
-        )
+        abbreviation = None if flusight_format.metrocast else calibration.location.format("abbreviation")
         ref = flusight_format.reference_date
 
         # Collect (target, sample ID tag, selected values with shape (samples, horizons)).

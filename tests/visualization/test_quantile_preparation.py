@@ -11,9 +11,9 @@ from quantile_plot_test_utils import make_calibration, make_plots_config, write_
 
 from epymodelingsuite.visualization import generators, preparation
 
-CA = "United_States_California"
-NY = "United_States_New_York"
-TX = "United_States_Texas"
+CA = "United_States__California"
+NY = "United_States__New_York"
+TX = "United_States__Texas"
 
 
 @pytest.fixture(autouse=True)

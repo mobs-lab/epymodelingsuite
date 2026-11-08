@@ -13,6 +13,7 @@ from epymodelingsuite.telemetry import (
     create_workflow_telemetry,
     extract_builder_metadata,
 )
+from epymodelingsuite.utils.location import resolve_location
 
 
 def make_mock_simulation_output(primary_id: int, population: str, n_sims: int = 100):
@@ -25,7 +26,7 @@ def make_mock_simulation_output(primary_id: int, population: str, n_sims: int = 
         primary_id=primary_id,
         seed=42,
         delta_t=1.0,
-        population=population,
+        location=resolve_location(population),
         results=mock_results,
     )
 
@@ -51,7 +52,7 @@ def make_mock_calibration_output(
         primary_id=primary_id,
         seed=42,
         delta_t=1.0,
-        population=population,
+        location=resolve_location(population),
         results=mock_results,
     )
 
@@ -59,13 +60,14 @@ def make_mock_calibration_output(
 def make_mock_builder_output(calibration_strategy: CalibrationStrategy | None = None):
     """Create a mock BuilderOutput for testing."""
     mock_model = MagicMock()
-    mock_model.population.name = "US-CA"
+    mock_model.population.name = resolve_location("US-CA").population_name
 
     return BuilderOutput.model_construct(
         primary_id=0,
         seed=42,
         delta_t=1.0,
         model=mock_model,
+        location=resolve_location("US-CA"),
         calibration=calibration_strategy,
     )
 
@@ -100,7 +102,7 @@ def make_mock_projection_output(
         primary_id=primary_id,
         seed=42,
         delta_t=1.0,
-        population=population,
+        location=resolve_location(population),
         results=mock_results,
     )
 
@@ -175,7 +177,7 @@ class TestExecutionTelemetry:
         assert len(telemetry.runner["models"]) == 1
         model = telemetry.runner["models"][0]
         assert model["primary_id"] == 0
-        assert model["population"] == "US-CA"
+        assert model["population"] == sim_output.population
         assert model["simulation"]["duration_seconds"] == 10.5
         assert model["simulation"]["n_sims"] == 100
 
@@ -1007,8 +1009,8 @@ class TestTelemetryCsv:
         csv_str = telemetry.to_csv(format="readable")
         assert csv_str is not None
         assert "primary_id" in csv_str
-        assert "US-CA" in csv_str
-        assert "US-NY" in csv_str
+        assert resolve_location("US-CA").population_name in csv_str
+        assert resolve_location("US-NY").population_name in csv_str
         assert "simulation" in csv_str
         # Calibration/projection columns should be empty or 0 for simulation
         lines = csv_str.strip().split("\n")
@@ -1045,7 +1047,7 @@ class TestTelemetryCsv:
 
         # Test readable format
         csv_str = telemetry.to_csv(format="readable")
-        assert "US-CA" in csv_str
+        assert resolve_location("US-CA").population_name in csv_str
         assert "calibration" in csv_str
         assert "smc" in csv_str
         assert "1000" in csv_str  # num_particles
@@ -1124,9 +1126,9 @@ class TestTelemetryCsv:
         csv_str = telemetry.to_csv(format="readable")
         lines = csv_str.strip().split("\n")
         assert len(lines) == 4  # Header + 3 data rows
-        assert "US-CA" in csv_str
-        assert "US-NY" in csv_str
-        assert "US-FL" in csv_str
+        assert resolve_location("US-CA").population_name in csv_str
+        assert resolve_location("US-NY").population_name in csv_str
+        assert resolve_location("US-FL").population_name in csv_str
 
     def test_csv_with_failed_models(self):
         """Test CSV export with failed models."""

@@ -87,7 +87,7 @@ class TestEnsurePopulationsValid:
 
     @pytest.mark.parametrize(
         "modelset_populations",
-        [["US-CA", "notaplace"], [{"name": "notaplace", "type": "metrocast_location"}], [{"name": "US-XX"}]],
+        [["US-CA", "invalid location"], [{"name": "notaplace", "type": "metrocast_location"}], [{"name": "US-XX"}]],
     )
     def test_invalid_populations(self, modelset_populations):
         with pytest.raises(ValueError, match="Invalid"):
@@ -234,8 +234,8 @@ class TestValidateModelsetConsistency:
 
     def test_invalid_populations(self):
         base_config = self._create_base_config()
-        sampling_config = self._create_sampling_config(population_names=["notaplace"])
-        with pytest.raises(ValueError, match="Invalid population: notaplace"):
+        sampling_config = self._create_sampling_config(population_names=["invalid location"])
+        with pytest.raises(ValueError, match="Invalid custom location ID"):
             validate_cross_config_consistency(base_config, sampling_config)
 
     @pytest.mark.parametrize(

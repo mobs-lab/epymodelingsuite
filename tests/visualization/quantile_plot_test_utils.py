@@ -27,14 +27,14 @@ QUANTILES = [0.025, 0.25, 0.5, 0.75, 0.975]
 # Each location's values are offset by a location number * 1000, so a captured frame tells which location it
 # came from. The second surveillance source ("hosp_aug") adds 5 to the location number.
 LOCATION_NUMBERS = {
-    "United_States_California": 1,
-    "United_States_New_York": 2,
-    "United_States_Texas": 3,
+    "United_States__California": 1,
+    "United_States__New_York": 2,
+    "United_States__Texas": 3,
 }
 ISO_CODES = {
-    "United_States_California": "US-CA",
-    "United_States_New_York": "US-NY",
-    "United_States_Texas": "US-TX",
+    "United_States__California": "US-CA",
+    "United_States__New_York": "US-NY",
+    "United_States__Texas": "US-TX",
 }
 HOSP_AUG_SOURCE_OFFSET = 5
 # Label that summarize_frame() reports for each value range
