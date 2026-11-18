@@ -27,7 +27,7 @@ from .base import (
     calculate_parameters_from_config,
     set_population_from_config,
 )
-from .comparison import format_multi_comparison_data
+from .comparison import format_comparison_data
 from .interventions import (
     add_contact_matrix_interventions_from_config,
     add_parameter_interventions_from_config,
@@ -313,45 +313,6 @@ def pad_trajectory_arrays(
     return {key: pad_array_with_nan(value, pad_length) for key, value in arrays_dict.items()}
 
 
-def calculate_padding_for_date_alignment(
-    actual_dates: np.ndarray | list,
-    target_dates: np.ndarray | list,
-) -> int:
-    """
-    Calculate padding needed to align actual dates to target date grid.
-
-    Determines how many padding steps are needed at the beginning when
-    actual dates start later than target dates.
-
-    Parameters
-    ----------
-    actual_dates : np.ndarray | list
-            Dates from simulation results.
-    target_dates : np.ndarray | list
-            Target date grid to align to (e.g., from reference start or observed data).
-
-    Returns
-    -------
-    int
-            Number of padding steps needed (0 if no padding required).
-
-    Examples
-    --------
-    >>> actual = [date(2024, 1, 10), date(2024, 1, 11)]
-    >>> target = [date(2024, 1, 5), date(2024, 1, 6), ..., date(2024, 1, 11)]
-    >>> calculate_padding_for_date_alignment(actual, target)
-    5  # Need 5 nan for dates Jan 5-9
-    """
-    # Find which target dates are covered by actual dates
-    mask = np.isin(target_dates, actual_dates)
-    covered_count = mask.sum()
-
-    # Padding needed = total target length - covered dates
-    pad_len = len(target_dates) - covered_count
-
-    return max(0, pad_len)  # Ensure non-negative
-
-
 def flatten_simulation_results(results: Any) -> dict:
     """
     Flatten simulation results structure for projection output.
@@ -495,61 +456,6 @@ def format_projection_trajectories(
         output["date"] = prepend_dates + results_dates_list
 
     return output
-
-
-def format_calibration_data(
-    results: Any,
-    comparison_transitions: list[str],
-    data_dates: list,
-    random_state: dict[str, Any],
-) -> dict[str, Any]:
-    """
-    Format simulation results for calibration mode (aggregate + filter + pad).
-
-    Processes simulation results through three steps:
-    1. Aggregates specified transitions (e.g., sum Hosp_vax + Hosp_unvax)
-    2. Filters to observed dates only
-    3. Pads to align with full observation date grid
-
-    Parameters
-    ----------
-    results : SimulationResults
-            Output from epydemix.simulate() with dates and transitions.
-    comparison_transitions : list[str]
-            List of transition keys to sum (e.g., ["Hosp_vax", "Hosp_unvax"]).
-    data_dates : list
-            List of observation dates from observed data.
-    random_state : dict[str, Any]
-            Random number generator state from rng.bit_generator.state.
-            Returned with results for reproducibility.
-
-    Returns
-    -------
-    dict[str, Any]
-            Dictionary containing:
-            - "data": np.ndarray of aggregated simulation values aligned to observation dates.
-                Padded with nan at the beginning if simulation starts after first observation.
-            - "date": list of observation dates from observed data.
-            - "random_state": dict containing RNG state for reproducibility.
-    """
-    # Step 1: Aggregate specified transitions
-    # Match simulation outputs to observed data granularity.
-    # e.g. observed "hospitalizations" = sum(Home_sev_to_Hosp_total + Home_sev_vax_to_Hosp_vax_total)
-    aggregated_data = get_aggregated_comparison_transition(results, comparison_transitions)
-
-    # Step 2: Filter to observed dates
-    # Simulation may run at different frequency (daily) than observations (weekly).
-    # Extract only the dates that match the observed data for comparison.
-    mask = np.isin(results.dates, data_dates)
-    filtered_data = aggregated_data[mask]
-
-    # Step 3: Pad to align with full observation grid
-    # When start_date is sampled, simulation may start later than first observation.
-    # Pad with nan at beginning to align arrays for distance calculation.
-    pad_len = calculate_padding_for_date_alignment(results.dates, data_dates)
-    aligned_data = pad_array_with_nan(filtered_data, pad_len)
-
-    return {"data": aligned_data, "date": data_dates, "random_state": random_state}
 
 
 def apply_seasonality_with_sampled_min(
@@ -923,10 +829,8 @@ def make_simulate_wrapper(
             if params["projection"]:
                 return {}
 
-            # Calibration: return zero-filled array
-            if len(calibration.comparison) > 1:
-                return format_multi_comparison_data(None, calibration.comparison, data_dates, random_state)
-            return {"data": np.full(len(data_dates), 0)}
+            # Calibration: return zero-filled series
+            return format_comparison_data(None, calibration.comparison, data_dates, random_state)
 
         # 12. Apply post-hoc transformation
         if post_hoc_transformation:
@@ -969,14 +873,7 @@ def make_simulate_wrapper(
             )
 
         # Calibration: return aggregated data (aligned to observed dates)
-        if len(calibration.comparison) > 1:
-            return format_multi_comparison_data(results, calibration.comparison, data_dates, random_state)
-        return format_calibration_data(
-            results=results,
-            comparison_transitions=calibration.comparison[0].simulation,
-            data_dates=data_dates,
-            random_state=random_state,
-        )
+        return format_comparison_data(results, calibration.comparison, data_dates, random_state)
 
     return simulate_wrapper
 

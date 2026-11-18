@@ -370,6 +370,9 @@ class CalibrationConfiguration(BaseModel):
             msg = f"Reserved comparison names: {sorted(reserved)} ('data' is allowed for the first comparison)"
             raise ValueError(msg)
 
+        # Shared columns let callers keep reading them from comparison[0].
+        # TODO: After #302 merges, replace the scattered comparison[0] column lookups
+        # (builder, orchestrators, builders/utils, data_validation) with one shared accessor.
         for field in ("observed_date_column", "observed_location_column", "observed_location_format"):
             if len({getattr(comp, field) for comp in self.comparison}) > 1:
                 msg = f"All comparisons must use the same {field}"

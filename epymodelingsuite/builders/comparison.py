@@ -20,25 +20,37 @@ def comparison_observations(
     return {comp.key: observed_data[comp.observed_value_column].values for comp in comparisons}
 
 
-def format_multi_comparison_data(
+def format_comparison_data(
     results: "Trajectory | None",
     comparisons: list["ComparisonSpec"],
     data_dates: list,
     random_state: dict[str, Any],
 ) -> dict[str, Any]:
-    """Sum each comparison's transitions and align them to the observation dates."""
+    """
+    Sum each comparison's transitions and align them to the observation dates.
+
+    Dates the simulation does not cover (e.g. before a sampled start date) become NaN.
+    "data" holds the first comparison; multiple comparisons also add each series under
+    its name. A failed simulation (``results=None``) returns zero-filled series without
+    "date", so output filtering drops it.
+    """
+    multiple = len(comparisons) > 1
     if results is None:
-        return {key: np.zeros(len(data_dates), dtype=int) for key in ["data", *(comp.key for comp in comparisons)]}
+        zeros = np.full(len(data_dates), 0)
+        return {"data": zeros, **({comp.key: zeros for comp in comparisons} if multiple else {})}
 
     simulation_dates = pd.DatetimeIndex(results.dates)
-    series = {}
-    for comp in comparisons:
-        values = sum(results.transitions[key] for key in comp.simulation)
-        series[comp.key] = pd.Series(values, index=simulation_dates).reindex(data_dates).to_numpy()
-
-    return {
-        "data": series[comparisons[0].key],
-        "date": data_dates,
-        "random_state": random_state,
-        **series,
+    target_dates = pd.DatetimeIndex(data_dates)
+    series = {
+        comp.key: pd.Series(sum(results.transitions[key] for key in comp.simulation), index=simulation_dates)
+        .reindex(target_dates)
+        .to_numpy()
+        for comp in comparisons
     }
+
+    # TODO: Stop duplicating the first series as "data" for multiple comparisons once
+    # dispatcher/output.py and visualization/preparation.py read calibration series by name.
+    output = {"data": series[comparisons[0].key], "date": data_dates, "random_state": random_state}
+    if multiple:
+        output.update(series)
+    return output

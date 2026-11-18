@@ -16,7 +16,6 @@ from epymodelingsuite.builders.orchestrators import (
     compute_simulation_start_date,
     create_model_collection,
     flatten_simulation_results,
-    format_calibration_data,
     format_projection_trajectories,
     get_aggregated_comparison_transition,
     setup_vaccination_schedules,
@@ -849,104 +848,6 @@ class TestApplySeasonalityWithSampledMin:
 
             # Original should not be mutated
             assert basemodel.seasonality.min_value == 0.5
-
-
-class TestFormatCalibrationData:
-    """Tests for format_calibration_data function."""
-
-    def test_aligns_simulation_to_observed_dates(self):
-        """Test that simulation results are aligned to observation dates."""
-        # Mock simulation results
-        results = Mock()
-        results.dates = [date(2024, 1, 1), date(2024, 1, 2), date(2024, 1, 3), date(2024, 1, 4), date(2024, 1, 5)]
-        results.transitions = {
-            "Hosp_vax": np.array([10, 20, 30, 40, 50]),
-            "Hosp_unvax": np.array([5, 10, 15, 20, 25]),
-        }
-
-        comparison_transitions = ["Hosp_vax", "Hosp_unvax"]
-        data_dates = [date(2024, 1, 2), date(2024, 1, 4)]
-        random_state = {
-            "bit_generator": "PCG64",
-            "state": {"state": 12345, "inc": 67890},
-            "has_uint32": 0,
-            "uinteger": 0,
-        }
-
-        result = format_calibration_data(results, comparison_transitions, data_dates, random_state)
-
-        # Should return dict with "data" and "date" keys
-        assert isinstance(result, dict)
-        assert "data" in result
-        assert "date" in result
-
-        # Should sum transitions and extract only dates matching data_dates
-        expected_data = np.array([30, 60])  # [20+10, 40+20] for dates Jan 2 and Jan 4
-        np.testing.assert_array_equal(result["data"], expected_data)
-        assert result["date"] == data_dates
-
-    def test_pads_with_nan_when_simulation_shorter(self):
-        """Test that NaN values are padded when simulation is shorter than observations."""
-        results = Mock()
-        results.dates = [date(2024, 1, 3), date(2024, 1, 4), date(2024, 1, 5)]
-        results.transitions = {
-            "Hosp": np.array([30.0, 40.0, 50.0]),  # Use float array for NaN padding
-        }
-
-        comparison_transitions = ["Hosp"]
-        data_dates = [date(2024, 1, 1), date(2024, 1, 2), date(2024, 1, 3), date(2024, 1, 4), date(2024, 1, 5)]
-        random_state = {
-            "bit_generator": "PCG64",
-            "state": {"state": 12345, "inc": 67890},
-            "has_uint32": 0,
-            "uinteger": 0,
-        }
-
-        result = format_calibration_data(results, comparison_transitions, data_dates, random_state)
-
-        # Should return dict with "data" and "date" keys
-        assert isinstance(result, dict)
-        assert "data" in result
-        assert "date" in result
-
-        # Should pad with 2 NaN values at beginning
-        assert len(result["data"]) == 5
-        assert np.isnan(result["data"][0])
-        assert np.isnan(result["data"][1])
-        np.testing.assert_array_equal(result["data"][2:], [30.0, 40.0, 50.0])
-        assert result["date"] == data_dates
-
-    def test_handles_multiple_transitions(self):
-        """Test that multiple transitions are summed correctly."""
-        results = Mock()
-        results.dates = [date(2024, 1, 1), date(2024, 1, 2)]
-        results.transitions = {
-            "Hosp_vax_0_4": np.array([1, 2]),
-            "Hosp_vax_5_17": np.array([3, 4]),
-            "Hosp_unvax_0_4": np.array([5, 6]),
-            "Hosp_unvax_5_17": np.array([7, 8]),
-        }
-
-        comparison_transitions = ["Hosp_vax_0_4", "Hosp_vax_5_17", "Hosp_unvax_0_4", "Hosp_unvax_5_17"]
-        data_dates = [date(2024, 1, 1), date(2024, 1, 2)]
-        random_state = {
-            "bit_generator": "PCG64",
-            "state": {"state": 12345, "inc": 67890},
-            "has_uint32": 0,
-            "uinteger": 0,
-        }
-
-        result = format_calibration_data(results, comparison_transitions, data_dates, random_state)
-
-        # Should return dict with "data" and "date" keys
-        assert isinstance(result, dict)
-        assert "data" in result
-        assert "date" in result
-
-        # Should sum all transitions: [1+3+5+7, 2+4+6+8]
-        expected_data = np.array([16, 20])
-        np.testing.assert_array_equal(result["data"], expected_data)
-        assert result["date"] == data_dates
 
 
 class TestFlattenSimulationResults:

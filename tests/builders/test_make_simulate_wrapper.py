@@ -157,7 +157,7 @@ class TestMakeSimulateWrapper:
         assert "data" in result
         assert isinstance(result["data"], np.ndarray)
 
-        # Should have "date" key (from format_calibration_data)
+        # Should have "date" key (from format_comparison_data)
         assert "date" in result
 
         # Should NOT have nested projection-specific keys
