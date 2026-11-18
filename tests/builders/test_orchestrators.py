@@ -1204,6 +1204,24 @@ class TestFormatProjectionTrajectories:
         np.testing.assert_array_equal(result["total_hosp"], np.array([15, 30]))
         np.testing.assert_array_equal(result["total_deaths"], np.array([1.5, 3]))
 
+    def test_named_comparison_specs_use_name_as_key(self):
+        """Named specs are keyed by name, so two specs can share an observed column."""
+        results = Mock()
+        results.dates = [date(2024, 1, 1), date(2024, 1, 2)]
+        results.transitions = {"Hosp_vax": np.array([10, 20]), "Hosp_unvax": np.array([5, 10])}
+        results.compartments = {}
+        comparison_specs = [
+            ComparisonSpec(observed_value_column="total_hosp", observed_date_column="date", simulation=["Hosp_vax"]),
+            ComparisonSpec(
+                name="unvax", observed_value_column="total_hosp", observed_date_column="date", simulation=["Hosp_unvax"]
+            ),
+        ]
+
+        result = format_projection_trajectories(results=results, comparison_specs=comparison_specs)
+
+        np.testing.assert_array_equal(result["total_hosp"], np.array([10, 20]))
+        np.testing.assert_array_equal(result["unvax"], np.array([5, 10]))
+
     def test_aggregated_data_is_padded(self):
         """Test that aggregated comparison transitions are padded along with other arrays."""
         results = Mock()

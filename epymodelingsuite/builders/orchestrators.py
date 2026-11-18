@@ -439,17 +439,16 @@ def format_projection_trajectories(
             Dictionary with "date" and all transition/compartment arrays.
             Arrays are padded with zeros at the beginning to match target length.
             If comparison_specs provided, also includes aggregated transition arrays
-            with keys based on observed_value_column (e.g., "total_hosp").
+            keyed by comparison name (default: observed_value_column, e.g., "total_hosp").
     """
     # Flatten results structure
     output = flatten_simulation_results(results)
 
-    # Add aggregated comparison transitions
-    # The key would be based on observed_value_column
+    # Add aggregated comparison transitions, keyed like the calibration series
     if comparison_specs is not None:
         for spec in comparison_specs:
             aggregated = get_aggregated_comparison_transition(results, spec.simulation)
-            output[spec.observed_value_column] = aggregated
+            output[spec.key] = aggregated
 
     # If no padding needed, return as-is
     if reference_start_date is None or actual_start_date is None or target_end_date is None:
