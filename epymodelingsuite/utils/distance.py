@@ -124,3 +124,17 @@ def dist_func_date_alignment_wrapper(dist_func: Callable) -> Callable:
         return dist_func(trunc_data, trunc_simulation)
 
     return wrapped_dist_func
+
+
+def multi_comparison_distance_wrapper(dist_func: Callable, keys: tuple[str, ...]) -> Callable:
+    """Unwrap observed series from ABCSampler and trim them to a common start."""
+
+    def wrapped_dist_func(data: dict, simulation: dict) -> float:
+        simulated = {key: np.array(simulation[key]) for key in keys}
+        start = max(count_nans_at_start(values) for values in simulated.values())
+        return dist_func(
+            {key: np.array(data["data"][key])[start:] for key in keys},
+            {key: values[start:] for key, values in simulated.items()},
+        )
+
+    return wrapped_dist_func

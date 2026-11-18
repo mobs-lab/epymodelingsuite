@@ -175,6 +175,30 @@ class TestCalibrationConfigWithMaxTime:
         assert isinstance(config.modelset.calibration.strategy.options["max_time"], timedelta)
         assert config.modelset.calibration.strategy.options["max_time"] == timedelta(hours=4)
 
+    @pytest.mark.parametrize(
+        ("overrides", "use_udf", "message"),
+        [
+            ({}, False, "user-defined distance_function"),
+            ({"name": "value"}, True, "names must be unique"),
+            ({"observed_value_column": "value"}, True, "names must be unique"),
+            ({"observed_date_column": "other_date"}, True, "same observed_date_column"),
+            ({"observed_location_column": "other_location"}, True, "same observed_location_column"),
+            ({"observed_location_format": "FIPS"}, True, "same observed_location_format"),
+            ({"name": "data"}, True, "Reserved comparison names"),
+            ({"name": "date"}, True, "Reserved comparison names"),
+            ({"name": "random_state"}, True, "Reserved comparison names"),
+        ],
+    )
+    def test_invalid_multiple_comparisons(self, base_calibration_config, overrides, use_udf, message):
+        """Reject configs whose comparisons cannot share a distance call."""
+        calibration = base_calibration_config["modelset"]["calibration"]
+        (first,) = calibration["comparison"]
+        calibration["comparison"].append({**first, "observed_value_column": "hospital", **overrides})
+        if use_udf:
+            calibration["distance_function"] = {"user_script_path": "distance.py", "user_function_name": "distance"}
+        with pytest.raises(ValidationError, match=message):
+            CalibrationConfig.model_validate(base_calibration_config)
+
     def test_full_config_max_time_different_formats(self, base_calibration_config):
         """Test various max_time formats in full config."""
         # Test with minutes

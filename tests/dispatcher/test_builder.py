@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import numpy as np
@@ -780,3 +781,93 @@ def custom_dist(data, simulation):
 
         # Also should be 0 since it's a perfect match
         assert np.isclose(result_no_nans, 0.0, atol=1e-10)
+
+    @pytest.mark.parametrize("multiple", [False, True], ids=["single", "multiple"])
+    def test_comparisons_through_abc_smc(
+        self, minimal_basemodel_config, calibration_config_with_distance_function_factory, tmp_path, multiple
+    ):
+        """ABC-SMC passes aligned series to the distance and retains full trajectories."""
+        import pandas as pd
+
+        from epymodelingsuite.dispatcher.output import filter_failed_calibration_trajectories
+        from epymodelingsuite.schema.calibration import CalibrationConfig
+
+        script = tmp_path / "distance.py"
+        script.write_text(
+            """
+import numpy as np
+
+def distance(data, simulation):
+    assert set(data) == set(simulation) == {"first", "other"}
+    if len(data["first"]) == 2:
+        np.testing.assert_array_equal(data["first"], [12, 13])
+        np.testing.assert_array_equal(data["other"], [22, 23])
+        np.testing.assert_array_equal(simulation["first"], [11, 11])
+        np.testing.assert_array_equal(simulation["other"], [20, 21])
+    return sum(np.abs(data[key] - simulation[key]).sum() for key in data)
+"""
+        )
+        config = calibration_config_with_distance_function_factory("rmse").model_dump(round_trip=True)
+        settings = config["modelset"]["calibration"]
+        settings["start_date"] = {"reference_date": "2024-01-01", "prior": {"name": "randint", "args": [11, 13]}}
+        first = settings["comparison"][0]
+        first["name"] = "first"
+        if multiple:
+            first["simulation"].append("extra")
+            settings["comparison"].append(
+                {**first, "name": None, "observed_value_column": "other", "simulation": ["I_to_R_total"]}
+            )
+            settings["distance_function"] = {"user_script_path": str(script), "user_function_name": "distance"}
+
+        dates = pd.date_range("2024-01-06", periods=4, freq="W-SAT")
+        pd.DataFrame({"date": dates, "location": "US-CA", "value": [10, 11, 12, 13], "other": [20, 21, 22, 23]}).iloc[
+            ::-1
+        ].to_csv(settings["observed_data_path"], index=False)
+
+        def set_test_population(model, _population):
+            model.population.name = "United_States_California"
+
+        def simulate_test_trajectory(*, start_date, **_kwargs):
+            assert start_date in {date(2024, 1, 12), date(2024, 1, 13)}
+            return SimpleNamespace(
+                dates=dates[1:],
+                transitions={
+                    "S_to_I_total": np.array([8, 9, 10]),
+                    "I_to_R_total": np.array([np.nan, 20, 21]),
+                    "extra": np.array([1, 2, 1]),
+                },
+            )
+
+        with patch("epymodelingsuite.builders.orchestrators.set_population_from_config", set_test_population):
+            (output,) = build_calibration(
+                basemodel_config=minimal_basemodel_config, calibration_config=CalibrationConfig.model_validate(config)
+            )
+        sampler = output.calibrator
+        smc_options = {"num_particles": 1, "num_generations": 1, "total_simulations_budget": 2, "verbose": False}
+        with patch("epymodelingsuite.builders.orchestrators.simulate", simulate_test_trajectory):
+            result = sampler.run_smc(**smc_options)
+
+        filtered = filter_failed_calibration_trajectories(result)
+        (trajectory,) = filtered.get_selected_trajectories()
+        assert list(trajectory["date"]) == list(dates)
+        assert "random_state" in trajectory
+        saved = filtered.get_calibration_trajectories()
+        if multiple:
+            assert set(saved) == {"data", "date", "random_state", "first", "other"}
+            np.testing.assert_array_equal(saved["data"], [[np.nan, 9, 11, 11]])
+            np.testing.assert_array_equal(saved["first"], saved["data"])
+            np.testing.assert_array_equal(saved["other"], [[np.nan, np.nan, 20, 21]])
+            assert result.get_distances() == [7]
+        else:
+            assert set(saved) == {"data", "date", "random_state"}
+            np.testing.assert_array_equal(sampler.observed_data["data"], [10, 11, 12, 13])
+            np.testing.assert_array_equal(saved["data"], [[np.nan, 8, 9, 10]])
+            assert result.get_distances() == pytest.approx([3.0])
+
+        with patch("epymodelingsuite.builders.orchestrators.simulate", side_effect=RuntimeError("simulation failed")):
+            failed = sampler.run_smc(**smc_options)
+        (failed_series,) = failed.get_selected_trajectories()
+        assert set(failed_series) == ({"data", "first", "other"} if multiple else {"data"})
+        for values in failed_series.values():
+            np.testing.assert_array_equal(values, np.zeros(4))
+        assert filter_failed_calibration_trajectories(failed).get_selected_trajectories() == []

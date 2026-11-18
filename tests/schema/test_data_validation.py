@@ -35,6 +35,7 @@ class TestValidateCalibrationData:
         config.modelset.calibration.comparison[0].observed_location_column = "location"
         config.modelset.calibration.comparison[0].observed_location_format = "ISO"
         config.modelset.calibration.comparison[0].observed_date_column = "date"
+        config.modelset.calibration.comparison[0].observed_value_column = "value"
         config.modelset.calibration.observed_data_path = "/path/to/data.csv"
         return config
 
@@ -92,7 +93,7 @@ class TestValidateCalibrationData:
 
     def test_all_locations_invalid(self, mock_calibration_config):
         """Test when all locations have no data."""
-        observed_data = pd.DataFrame()
+        observed_data = pd.DataFrame(columns=["location", "date", "value"])
 
         with patch("epymodelingsuite.schema.data_validation.get_data_in_location") as mock_get_data:
             # Return empty for all locations
@@ -118,11 +119,31 @@ class TestValidateCalibrationData:
                 validate_calibration_data(
                     calibration_config=mock_calibration_config,
                     population_names=["US-CA"],
-                    observed_data=pd.DataFrame(),
+                    observed_data=pd.DataFrame(columns=["location", "date", "value"]),
                 )
 
         assert "DATA VALIDATION FAILED" in caplog.text
         assert "US-CA" in caplog.text
+
+    def test_checks_value_columns_for_every_comparison(self, mock_calibration_config, caplog):
+        """Require a value in each series for each location while allowing partial gaps."""
+        comparisons = mock_calibration_config.modelset.calibration.comparison
+        comparisons.append(MagicMock(observed_value_column="hospital"))
+        observed_data = pd.DataFrame(
+            {
+                "location": ["US-CA", "US-CA", "US-NY"],
+                "date": ["2024-01-01", "2024-01-08", "2024-01-01"],
+                "value": [10, 11, 20],
+                "hospital": [None, 1, None],
+            }
+        )
+        with pytest.raises(ValueError, match="Missing observed data columns.*hospital"):
+            validate_calibration_data(mock_calibration_config, ["US-CA"], observed_data.drop(columns="hospital"))
+
+        valid, invalid = validate_calibration_data(mock_calibration_config, ["US-CA", "US-NY"], observed_data)
+        assert valid == ["US-CA"]
+        assert invalid == ["US-NY"]
+        assert "columns ['hospital']" in caplog.text
 
     def test_logs_debug_for_valid_location(self, mock_calibration_config, caplog):
         """Test that debug logs are created for valid locations."""
@@ -217,6 +238,7 @@ class TestValidateCalibrationData:
         config.modelset.calibration.comparison[0].observed_location_column = "location"
         config.modelset.calibration.comparison[0].observed_location_format = "ISO"
         config.modelset.calibration.comparison[0].observed_date_column = "date"
+        config.modelset.calibration.comparison[0].observed_value_column = "value"
         config.modelset.calibration.observed_data_path = "/path/to/data.csv"
 
         with patch("epymodelingsuite.schema.data_validation.get_data_in_location") as mock_get_data:
@@ -225,7 +247,7 @@ class TestValidateCalibrationData:
             _, invalid = validate_calibration_data(
                 calibration_config=config,
                 population_names=["US-CA"],
-                observed_data=pd.DataFrame(),
+                observed_data=pd.DataFrame(columns=["location", "date", "value"]),
             )
 
         assert invalid == ["US-CA"]
@@ -295,12 +317,15 @@ class TestValidateCalibrationDataForConfigSet:
         mock_load_calib.return_value.modelset.calibration.comparison[0].observed_location_column = "location"
         mock_load_calib.return_value.modelset.calibration.comparison[0].observed_location_format = "ISO"
         mock_load_calib.return_value.modelset.calibration.comparison[0].observed_date_column = "date"
+        mock_load_calib.return_value.modelset.calibration.comparison[0].observed_value_column = "col"
 
         mock_read_csv.return_value = pd.DataFrame({"col": [1, 2, 3], "location": ["US-CA", "US-CA", "US-CA"]})
-        mock_get_window.return_value = pd.DataFrame({"col": [1, 2], "location": ["US-CA", "US-CA"]})
+        mock_get_window.return_value = pd.DataFrame(
+            {"col": [1, 2], "location": ["US-CA", "US-CA"], "date": ["2024-01-01", "2024-03-01"]}
+        )
 
         with patch("epymodelingsuite.schema.data_validation.get_data_in_location") as mock_get_location:
-            mock_get_location.return_value = pd.DataFrame({"col": [1, 2], "date": ["2024-01-01", "2024-03-01"]})
+            mock_get_location.return_value = mock_get_window.return_value
 
             success, error = validate_calibration_data_for_config_set(
                 "basemodel.yml",
@@ -332,9 +357,10 @@ class TestValidateCalibrationDataForConfigSet:
         mock_load_calib.return_value.modelset.calibration.comparison[0].observed_location_column = "location"
         mock_load_calib.return_value.modelset.calibration.comparison[0].observed_location_format = "ISO"
         mock_load_calib.return_value.modelset.calibration.comparison[0].observed_date_column = "date"
+        mock_load_calib.return_value.modelset.calibration.comparison[0].observed_value_column = "col"
 
         mock_read_csv.return_value = pd.DataFrame({"col": [1], "location": ["US-CA"]})
-        mock_get_window.return_value = pd.DataFrame({"col": [1], "location": ["US-CA"]})
+        mock_get_window.return_value = pd.DataFrame({"col": [1], "location": ["US-CA"], "date": ["2024-01-01"]})
 
         with patch("epymodelingsuite.schema.data_validation.get_data_in_location") as mock_get_location:
             # US-CA has data, US-NY has no data

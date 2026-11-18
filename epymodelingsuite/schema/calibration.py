@@ -112,6 +112,14 @@ class ComparisonSpec(BaseModel):
         description="Format of location identifiers in observed data. Options: ISO, FIPS, abbreviation, name, epydemix_population, metrocast_location_id",
     )
     simulation: list[str] = Field(description="List of transition names to sum for comparison (e.g. I_to_R)")
+    name: str | None = Field(
+        default=None, description="Series name for custom distance functions. Defaults to the observed value column."
+    )
+
+    @property
+    def key(self) -> str:
+        """Return the effective series name."""
+        return self.observed_value_column if self.name is None else self.name
 
     @field_validator("observed_location_format")
     @classmethod
@@ -336,13 +344,36 @@ class CalibrationConfiguration(BaseModel):
         # Ensure all comparison specs have non-empty simulation lists
         for comp in self.comparison:
             if not comp.simulation:
-                msg = f"Comparison for '{comp.observed}' must specify at least one simulation transition"
+                msg = f"Comparison for '{comp.key}' must specify at least one simulation transition"
                 raise ValueError(msg)
+
+        if len(self.comparison) > 1:
+            self._check_multiple_comparisons()
 
         if not (self.start_date or self.parameters or self.compartments):
             msg = "Calibration requires at least one of start_date, parameters, or compartments"
             raise ValueError(msg)
         return self
+
+    def _check_multiple_comparisons(self) -> None:
+        """Validate the shared observation grid and series keys."""
+        if isinstance(self.distance_function, str):
+            msg = "Multiple comparisons require a user-defined distance_function"
+            raise ValueError(msg)
+
+        keys = [comp.key for comp in self.comparison]
+        if len(set(keys)) != len(keys):
+            msg = "Comparison names must be unique (default: observed_value_column)"
+            raise ValueError(msg)
+        reserved = {"date", "random_state"}.intersection(keys) | {"data"}.intersection(keys[1:])
+        if reserved:
+            msg = f"Reserved comparison names: {sorted(reserved)} ('data' is allowed for the first comparison)"
+            raise ValueError(msg)
+
+        for field in ("observed_date_column", "observed_location_column", "observed_location_format"):
+            if len({getattr(comp, field) for comp in self.comparison}) > 1:
+                msg = f"All comparisons must use the same {field}"
+                raise ValueError(msg)
 
     @model_validator(mode="after")
     def validate_sampled_start_date_against_fitting_window(

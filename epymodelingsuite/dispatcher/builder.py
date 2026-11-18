@@ -16,6 +16,7 @@ from ..builders.base import (
     calculate_parameters_from_config,
     set_population_from_config,
 )
+from ..builders.comparison import comparison_observations
 from ..builders.interventions import (
     add_contact_matrix_interventions_from_config,
     add_parameter_interventions_from_config,
@@ -39,7 +40,7 @@ from ..school_closures import make_school_closure_dict
 from ..telemetry import ExecutionTelemetry, extract_builder_metadata
 from ..utils.config import get_workflow_type_from_configs
 from ..utils.distance import count_nans_at_start as count_nans_at_start
-from ..utils.distance import dist_func_date_alignment_wrapper, dist_func_dict
+from ..utils.distance import dist_func_date_alignment_wrapper, dist_func_dict, multi_comparison_distance_wrapper
 from ..utils.distance import wrmse as wrmse
 from ..vaccinations import reaggregate_vaccines
 
@@ -375,6 +376,12 @@ def build_calibration(
         if isinstance(calibration.distance_function, str)
         else calibration.distance_function.user_function
     )
+    if len(calibration.comparison) == 1:
+        aligned_distance = dist_func_date_alignment_wrapper(dist_func)
+    else:
+        aligned_distance = multi_comparison_distance_wrapper(
+            dist_func, tuple(comp.key for comp in calibration.comparison)
+        )
 
     logger.info("BUILDER: setting up ABCSamplers...")
 
@@ -472,8 +479,8 @@ def build_calibration(
             simulation_function=simulate_wrapper,
             priors=priors,
             parameters=fixed_parameters,
-            observed_data=observed_data[calibration.comparison[0].observed_value_column].values,
-            distance_function=dist_func_date_alignment_wrapper(dist_func),
+            observed_data=comparison_observations(observed_data, calibration.comparison),
+            distance_function=aligned_distance,
             rng=basemodel.random_seed,
         )
 

@@ -27,6 +27,7 @@ from .base import (
     calculate_parameters_from_config,
     set_population_from_config,
 )
+from .comparison import format_multi_comparison_data
 from .interventions import (
     add_contact_matrix_interventions_from_config,
     add_parameter_interventions_from_config,
@@ -830,7 +831,7 @@ def make_simulate_wrapper(
         dict
                 For calibration (projection=False):
                         {"data": np.ndarray} of simulated values at observation times,
-                        aligned with observed data dates
+                        aligned with observed data dates, plus named series for multiple comparisons
                 For projection (projection=True):
                         Flattened simulation results with keys:
                         - "date": list of simulation dates
@@ -924,6 +925,8 @@ def make_simulate_wrapper(
                 return {}
 
             # Calibration: return zero-filled array
+            if len(calibration.comparison) > 1:
+                return format_multi_comparison_data(None, calibration.comparison, data_dates, random_state)
             return {"data": np.full(len(data_dates), 0)}
 
         # 12. Apply post-hoc transformation
@@ -967,6 +970,8 @@ def make_simulate_wrapper(
             )
 
         # Calibration: return aggregated data (aligned to observed dates)
+        if len(calibration.comparison) > 1:
+            return format_multi_comparison_data(results, calibration.comparison, data_dates, random_state)
         return format_calibration_data(
             results=results,
             comparison_transitions=calibration.comparison[0].simulation,

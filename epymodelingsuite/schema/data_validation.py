@@ -115,6 +115,11 @@ def validate_calibration_data(
     location_column = comparison.observed_location_column
     location_format = comparison.observed_location_format
     date_column = comparison.observed_date_column
+    value_columns = list(dict.fromkeys(comp.observed_value_column for comp in calibration.comparison))
+    missing_columns = {location_column, date_column, *value_columns}.difference(observed_data.columns)
+    if missing_columns:
+        msg = f"Missing observed data columns in {calibration.observed_data_path}: {sorted(missing_columns)}"
+        raise ValueError(msg)
 
     valid = []
     invalid = []
@@ -131,26 +136,36 @@ def validate_calibration_data(
                 calibration.observed_data_path,
             )
             invalid.append(location)
-        else:
-            logger.debug(
-                "Data validation passed for '%s': %d data points",
-                location,
-                len(location_data),
-            )
-            valid.append(location)
+            continue
 
-            # Warn if data doesn't cover the full fitting window
-            data_start = pd.to_datetime(location_data[date_column]).min()
-            data_end = pd.to_datetime(location_data[date_column]).max()
-            if data_start > pd.to_datetime(window_start) or data_end < pd.to_datetime(window_end):
-                logger.warning(
-                    "Incomplete data coverage for '%s': data spans [%s, %s] but fitting window is [%s, %s]",
-                    location,
-                    data_start.date(),
-                    data_end.date(),
-                    window_start,
-                    window_end,
-                )
+        empty_columns = [column for column in value_columns if not location_data[column].notna().any()]
+        if empty_columns:
+            logger.error(
+                "DATA VALIDATION FAILED: No values for location '%s' in fitting window [%s, %s] for columns %s. Data file: %s",
+                location,
+                window_start,
+                window_end,
+                empty_columns,
+                calibration.observed_data_path,
+            )
+            invalid.append(location)
+            continue
+
+        logger.debug("Data validation passed for '%s': %d data points", location, len(location_data))
+        valid.append(location)
+
+        # Warn if data doesn't cover the full fitting window
+        data_start = pd.to_datetime(location_data[date_column]).min()
+        data_end = pd.to_datetime(location_data[date_column]).max()
+        if data_start > pd.to_datetime(window_start) or data_end < pd.to_datetime(window_end):
+            logger.warning(
+                "Incomplete data coverage for '%s': data spans [%s, %s] but fitting window is [%s, %s]",
+                location,
+                data_start.date(),
+                data_end.date(),
+                window_start,
+                window_end,
+            )
 
     return valid, invalid
 
