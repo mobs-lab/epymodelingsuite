@@ -14,7 +14,6 @@ from epymodelingsuite.dispatcher.builder import (
     build_basemodel,
     build_calibration,
     build_sampling,
-    count_nans_at_start,
     dispatch_builder,
     dist_func_date_alignment_wrapper,
     dist_func_dict,
@@ -30,6 +29,7 @@ from epymodelingsuite.schema.basemodel import (
     Transition,
 )
 from epymodelingsuite.schema.dispatcher import BuilderOutput, SimulationArguments
+from epymodelingsuite.utils.distance import count_nans_at_start
 from tests.conftest import create_builder_output, make_sir_config
 
 
