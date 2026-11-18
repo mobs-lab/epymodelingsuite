@@ -2,11 +2,10 @@
 
 import copy
 import logging
-from collections.abc import Callable
 
 import numpy as np
 import pandas as pd
-from epydemix.calibration import ABCSampler, ae, mae, mape, rmse, wmape
+from epydemix.calibration import ABCSampler
 from epydemix.model import EpiModel
 
 from ..builders.base import (
@@ -39,7 +38,9 @@ from ..schema.sampling import SamplingConfig
 from ..school_closures import make_school_closure_dict
 from ..telemetry import ExecutionTelemetry, extract_builder_metadata
 from ..utils.config import get_workflow_type_from_configs
-from ..utils.distance import wrmse
+from ..utils.distance import count_nans_at_start as count_nans_at_start
+from ..utils.distance import dist_func_date_alignment_wrapper, dist_func_dict
+from ..utils.distance import wrmse as wrmse
 from ..vaccinations import reaggregate_vaccines
 
 logger = logging.getLogger(__name__)
@@ -47,102 +48,6 @@ logger = logging.getLogger(__name__)
 
 class CalibrationDataError(ValueError):
     """Raised when calibration data validation fails."""
-
-
-# ===== Helper Functions =====
-
-
-dist_func_dict = {
-    "rmse": rmse,
-    "wmape": wmape,
-    "ae": ae,
-    "mae": mae,
-    "mape": mape,
-    "wrmse": wrmse,
-}
-
-
-def count_nans_at_start(arr: np.ndarray) -> int:
-    """
-    Count the number of NaN values prepended to the input array, if any.
-
-    Parameters
-    ----------
-    arr: np.ndarray
-        The array to count NaNs from.
-
-    Returns
-    -------
-    int
-        The number of NaNs found prepended to the array.
-    """
-    # Handle empty array case
-    if arr.size == 0:
-        return 0
-
-    # Create a boolean mask for NaN values
-    mask = np.isnan(arr)
-
-    # If all values are NaN, return len(arr)
-    if mask.all():
-        return len(arr)
-
-    # If no values are NaN, return 0
-    if not mask.any():
-        return 0
-
-    # Find the index of the first non-NaN value
-    first_non_nan_index = np.argmax(~mask)
-    return first_non_nan_index
-
-
-def dist_func_date_alignment_wrapper(dist_func: Callable) -> Callable:
-    """
-    Create a wrapped version of an epydemix distance function which truncates observed and simulated
-    trajectories to exclude prepended NaNs before applying the distance calculation.
-
-    Parameters
-    ----------
-    dist_func: Callable
-        An epydemix distance function.
-
-    Returns
-    -------
-    Callable
-        The wrapped distance function for handling prepended NaNs.
-    """
-
-    def wrapped_dist_func(data: dict, simulation: dict) -> float | np.ndarray:
-        """
-        A wrapped epydemix distance function which truncates observed and simulated
-        trajectories to exclude prepended NaNs before applying the distance calculation.
-
-        Parameters
-        ----------
-        data: dict
-            A dictionary containing the observed data with a key "data" pointing to an array of observations.
-        simulation: dict
-            A dictionary containing the simulated data with a key "data" pointing to an array of simulated values.
-
-        Returns
-        -------
-        float | np.ndarray
-            The result of calling dist_func on the truncated data, which is np.ndarray if
-            dist_func is Absolute Error and float otherwise.
-        """
-        observed = np.array(data["data"])
-        simulated = np.array(simulation["data"])
-
-        num_nans = count_nans_at_start(simulated)
-
-        trunc_data = copy.deepcopy(data)
-        trunc_simulation = copy.deepcopy(simulation)
-        trunc_data["data"] = observed[num_nans:]
-        trunc_simulation["data"] = simulated[num_nans:]
-
-        return dist_func(trunc_data, trunc_simulation)
-
-    return wrapped_dist_func
 
 
 # ===== Builder Registry and Functions =====
