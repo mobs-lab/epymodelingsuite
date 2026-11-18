@@ -199,6 +199,12 @@ class TestCalibrationConfigWithMaxTime:
         with pytest.raises(ValidationError, match=message):
             CalibrationConfig.model_validate(base_calibration_config)
 
+    @pytest.mark.parametrize(("field", "key"), [("name", "date"), ("observed_value_column", "random_state")])
+    def test_single_comparison_rejects_reserved_key(self, base_calibration_config, field, key):
+        base_calibration_config["modelset"]["calibration"]["comparison"][0][field] = key
+        with pytest.raises(ValidationError, match=f"Reserved comparison names.*{key}"):
+            CalibrationConfig.model_validate(base_calibration_config)
+
     def test_full_config_max_time_different_formats(self, base_calibration_config):
         """Test various max_time formats in full config."""
         # Test with minutes

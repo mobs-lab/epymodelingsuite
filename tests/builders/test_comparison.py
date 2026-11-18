@@ -4,6 +4,7 @@ from datetime import date
 from unittest.mock import Mock
 
 import numpy as np
+import pytest
 
 from epymodelingsuite.builders.comparison import format_comparison_data
 from epymodelingsuite.schema.calibration import ComparisonSpec
@@ -64,6 +65,16 @@ class TestFormatComparisonData:
         )
 
         np.testing.assert_array_equal(result["data"], [16, 20])
+
+    def test_lists_missing_dates_from_actual_start(self):
+        # The first resampled date can be later than the actual simulation start.
+        observations = [date(2024, 1, d) for d in range(1, 7)]
+        results = _results([observations[2], observations[4]], {"Hosp": np.array([10, 20])})
+        with pytest.raises(ValueError) as error:
+            format_comparison_data(results, [_spec(["Hosp"])], observations, RANDOM_STATE, start_date=observations[1])
+        assert "2024-01-01" not in str(error.value)
+        for day in ("2024-01-02", "2024-01-04", "2024-01-06"):
+            assert day in str(error.value)
 
     def test_multiple_comparisons_add_named_series(self):
         """Multiple comparisons keep the first series as "data" and add every series by name."""

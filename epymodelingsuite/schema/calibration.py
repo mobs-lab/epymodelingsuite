@@ -342,9 +342,12 @@ class CalibrationConfiguration(BaseModel):
             raise ValueError(msg)
 
         # Ensure all comparison specs have non-empty simulation lists
-        for comp in self.comparison:
+        for index, comp in enumerate(self.comparison):
             if not comp.simulation:
                 msg = f"Comparison for '{comp.key}' must specify at least one simulation transition"
+                raise ValueError(msg)
+            if comp.key in {"date", "random_state"} or (index > 0 and comp.key == "data"):
+                msg = f"Reserved comparison names: '{comp.key}' ('data' is allowed for the first comparison)"
                 raise ValueError(msg)
 
         if len(self.comparison) > 1:
@@ -364,10 +367,6 @@ class CalibrationConfiguration(BaseModel):
         keys = [comp.key for comp in self.comparison]
         if len(set(keys)) != len(keys):
             msg = "Comparison names must be unique (default: observed_value_column)"
-            raise ValueError(msg)
-        reserved = {"date", "random_state"}.intersection(keys) | {"data"}.intersection(keys[1:])
-        if reserved:
-            msg = f"Reserved comparison names: {sorted(reserved)} ('data' is allowed for the first comparison)"
             raise ValueError(msg)
 
         # Shared columns let callers keep reading them from comparison[0].

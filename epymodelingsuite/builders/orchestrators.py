@@ -408,6 +408,9 @@ def format_projection_trajectories(
     # Add aggregated comparison transitions, keyed like the calibration series
     if comparison_specs is not None:
         for spec in comparison_specs:
+            if spec.key in output:
+                msg = f"Comparison conflicts with existing projection key '{spec.key}'. Choose a different comparison name."
+                raise ValueError(msg)
             aggregated = get_aggregated_comparison_transition(results, spec.simulation)
             output[spec.key] = aggregated
 
@@ -873,7 +876,7 @@ def make_simulate_wrapper(
             )
 
         # Calibration: return aggregated data (aligned to observed dates)
-        return format_comparison_data(results, calibration.comparison, data_dates, random_state)
+        return format_comparison_data(results, calibration.comparison, data_dates, random_state, start_date=start_date)
 
     return simulate_wrapper
 

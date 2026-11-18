@@ -1,5 +1,6 @@
 """Prepare aligned series for ABC calibration."""
 
+from datetime import date
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -25,11 +26,13 @@ def format_comparison_data(
     comparisons: list["ComparisonSpec"],
     data_dates: list,
     random_state: dict[str, Any],
+    *,
+    start_date: date | None = None,
 ) -> dict[str, Any]:
     """
     Sum each comparison's transitions and align them to the observation dates.
 
-    Dates the simulation does not cover (e.g. before a sampled start date) become NaN.
+    Missing dates before the simulation starts become NaN. Later missing dates raise ValueError.
     "data" holds the first comparison; multiple comparisons also add each series under
     its name. A failed simulation (``results=None``) returns zero-filled series without
     "date", so output filtering drops it.
@@ -41,6 +44,13 @@ def format_comparison_data(
 
     simulation_dates = pd.DatetimeIndex(results.dates)
     target_dates = pd.DatetimeIndex(data_dates)
+    missing = target_dates.difference(simulation_dates)
+    if start_date is not None or len(simulation_dates):
+        start = pd.Timestamp(start_date) if start_date is not None else simulation_dates.min()
+        missing = missing[missing >= start]
+    if len(missing):
+        msg = f"Observed dates missing from the simulation grid: {', '.join(missing.astype(str))}"
+        raise ValueError(msg)
     series = {
         comp.key: pd.Series(sum(results.transitions[key] for key in comp.simulation), index=simulation_dates)
         .reindex(target_dates)

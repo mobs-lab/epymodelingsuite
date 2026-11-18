@@ -40,7 +40,7 @@ class TestMakeSimulateWrapper:
     @pytest.fixture
     def data_state(self):
         """Create sample observed data DataFrame."""
-        dates = [date(2024, 1, 1) + timedelta(days=i * 7) for i in range(10)]
+        dates = [date(2024, 1, 6) + timedelta(days=i * 7) for i in range(10)]
         return pd.DataFrame({"target_end_date": dates, "observed": np.arange(10, dtype=float) * 10})
 
     def test_returns_callable(self, base_model_config, mock_calibration, data_state):
@@ -89,7 +89,7 @@ class TestMakeSimulateWrapper:
         # Create a data_state with the specified number of observations
         data_state = pd.DataFrame(
             {
-                "target_end_date": [date(2024, 1, 1) + timedelta(days=i * 7) for i in range(num_observations)],
+                "target_end_date": [date(2024, 1, 6) + timedelta(days=i * 7) for i in range(num_observations)],
                 "observed": np.arange(num_observations, dtype=float) * 10,
             }
         )

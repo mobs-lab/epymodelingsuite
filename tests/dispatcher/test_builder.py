@@ -871,3 +871,10 @@ def distance(data, simulation):
         for values in failed_series.values():
             np.testing.assert_array_equal(values, np.zeros(4))
         assert filter_failed_calibration_trajectories(failed).get_selected_trajectories() == []
+
+        late_output = simulate_test_trajectory(start_date=date(2024, 1, 12))
+        late_output.dates = late_output.dates + pd.Timedelta(weeks=1)
+        with patch("epymodelingsuite.builders.orchestrators.simulate", return_value=late_output) as simulate:
+            with pytest.raises(ValueError, match="missing from the simulation grid: 2024-01-13"):
+                sampler.run_smc(**smc_options)
+            simulate.assert_called_once()

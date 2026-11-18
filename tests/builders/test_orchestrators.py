@@ -1123,6 +1123,15 @@ class TestFormatProjectionTrajectories:
         np.testing.assert_array_equal(result["total_hosp"], np.array([10, 20]))
         np.testing.assert_array_equal(result["unvax"], np.array([5, 10]))
 
+    @pytest.mark.parametrize("key", ["S", "Hosp"])
+    def test_comparison_cannot_overwrite_projection_key(self, key):
+        results = Mock(
+            dates=[date(2024, 1, 1)], compartments={"S": np.array([100])}, transitions={"Hosp": np.array([5])}
+        )
+        spec = ComparisonSpec(name=key, observed_value_column="count", observed_date_column="date", simulation=["Hosp"])
+        with pytest.raises(ValueError, match=f"projection key '{key}'"):
+            format_projection_trajectories(results, comparison_specs=[spec])
+
     def test_aggregated_data_is_padded(self):
         """Test that aggregated comparison transitions are padded along with other arrays."""
         results = Mock()
