@@ -219,6 +219,35 @@ def filter_failed_calibration_trajectories(calibration_results: CalibrationResul
     return calibration_results
 
 
+def format_list_selected_trajectories(calibration_results: CalibrationResults) -> CalibrationResults:
+    """
+    Convert each generation's selected trajectories to a list.
+
+    epydemix's top_fraction strategy stores selected trajectories as a numpy object array,
+    while smc and rejection store lists. Output generation checks them with ``if trajectories``,
+    which raises ValueError for arrays with more than one element.
+
+    Modifies the calibration_results object in-place.
+
+    Parameters
+    ----------
+    calibration_results : CalibrationResults
+        Calibration results with selected_trajectories attribute (dict mapping generation to trajectories).
+
+    Returns
+    -------
+    CalibrationResults
+        The same object (modified in-place) with each generation's trajectories as a list.
+    """
+    selected_trajectories = getattr(calibration_results, "selected_trajectories", None)
+    if selected_trajectories:
+        for generation, trajectories in selected_trajectories.items():
+            if isinstance(trajectories, np.ndarray):
+                selected_trajectories[generation] = list(trajectories)
+
+    return calibration_results
+
+
 def format_quantiles_flusightforecast(
     quantiles_df: pd.DataFrame,
     reference_date: date,
@@ -1152,9 +1181,10 @@ def generate_calibration_outputs(
     meta_dict = defaultdict(list)
     projection_parameters_long_list: list[pd.DataFrame] = []
 
-    # Filter out failed projections
+    # Filter out failed projections and format selected trajectories as lists
     for calibration in calibrations:
         calibration.results = filter_failed_projections(calibration.results)
+        calibration.results = format_list_selected_trajectories(calibration.results)
 
     ### Quantiles
     if output.quantiles:
@@ -1709,7 +1739,7 @@ def generate_calibration_outputs(
                 else:
                     meta_dict["fitting_start"].append(None)
                     meta_dict["fitting_end"].append(None)
-            except (KeyError, IndexError, AttributeError, TypeError) as e:
+            except (KeyError, IndexError, AttributeError, TypeError, ValueError) as e:
                 logger.warning("Failed to extract fitting window dates: %s", e)
                 meta_dict["fitting_start"].append(None)
                 meta_dict["fitting_end"].append(None)

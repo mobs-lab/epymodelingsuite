@@ -18,7 +18,7 @@ from epymodelingsuite.config_loader import (
     load_calibration_config_from_file,
 )
 from epymodelingsuite.dispatcher.builder import dispatch_builder
-from epymodelingsuite.dispatcher.output import generate_simulation_outputs
+from epymodelingsuite.dispatcher.output import generate_calibration_outputs, generate_simulation_outputs
 from epymodelingsuite.dispatcher.runner import dispatch_runner
 from epymodelingsuite.schema.dispatcher import CalibrationOutput, SimulationOutput
 from epymodelingsuite.schema.output import OutputConfig, OutputConfiguration, TrajectoriesOutput
@@ -534,6 +534,56 @@ class TestCalibrationPipelineE2E:
 
         # Verify the strategy was recorded in results
         assert result.results.calibration_strategy == strategy_name
+
+    @pytest.mark.parametrize(
+        "strategy_name,strategy_options",
+        [
+            ("rejection", {"num_particles": 10, "epsilon": 100000}),
+            ("smc", {"num_particles": 10, "num_generations": 2}),
+            ("top_fraction", {"top_fraction": 0.5, "Nsim": 20}),
+        ],
+        ids=["rejection", "smc", "top_fraction"],
+    )
+    def test_calibration_outputs_for_each_strategy(
+        self, synthetic_observed_data, tmp_path, strategy_name, strategy_options
+    ):
+        """Generate outputs from real results of each strategy.
+
+        top_fraction stores selected trajectories as a numpy object array rather than a list,
+        which broke output generation that checked them with ``if trajectories``.
+        """
+        import yaml
+
+        basemodel_config = load_basemodel_config_from_file(str(FIXTURES_DIR / "minimal_basemodel_calibration.yaml"))
+        with open(FIXTURES_DIR / "minimal_modelset_calibration.yaml") as f:
+            calibration_raw = yaml.safe_load(f)
+        calibration_raw["modelset"]["calibration"]["strategy"] = {"name": strategy_name, "options": strategy_options}
+        calibration_raw["modelset"]["calibration"]["observed_data_path"] = synthetic_observed_data
+        calibration_raw["modelset"]["calibration"]["projection"] = {"n_trajectories": 4}
+        calibration_path = tmp_path / "calibration_config.yaml"
+        with open(calibration_path, "w") as f:
+            yaml.dump(calibration_raw, f)
+
+        builder_outputs = dispatch_builder(
+            basemodel_config=basemodel_config,
+            calibration_config=load_calibration_config_from_file(str(calibration_path)),
+        )
+        calibration = dispatch_runner(builder_outputs[0])
+
+        output_config = OutputConfig(
+            output=OutputConfiguration(
+                tabular_output_types=["DataFrame"],
+                quantiles={"selections": [0.25, 0.5, 0.75], "calibration": True},
+                posteriors=True,
+            )
+        )
+        outputs = generate_calibration_outputs(calibrations=[calibration], output_config=output_config)
+
+        # Calibration quantiles are skipped with a warning on failure, so check they exist.
+        assert {"model_metadata", "quantiles_calibration", "posteriors"} <= outputs.keys()
+        metadata = outputs["model_metadata"][0].data
+        assert metadata["fitting_start"].notna().all()
+        assert metadata["fitting_end"].notna().all()
 
     @pytest.mark.parametrize(
         "distance_function",
