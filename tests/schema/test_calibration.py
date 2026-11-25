@@ -422,11 +422,10 @@ class TestCalibrationModelsetPopulationNames:
         config = CalibrationConfig(**base_config)
         assert config.modelset.population_names == ["all-states", "denver"]
 
-    def test_invalid_location_raises_error(self, base_config):
-        """Test that invalid location names raise ValueError."""
-        base_config["modelset"]["population_names"] = ["invalid_location_xyz"]
-        with pytest.raises(ValueError):
-            CalibrationConfig(**base_config)
+    def test_external_location_is_deferred_to_builder(self, base_config):
+        """Custom identifiers can be parsed before their CSV is available."""
+        base_config["modelset"]["population_names"] = ["external-city"]
+        assert CalibrationConfig(**base_config).modelset.population_names == ["external-city"]
 
 
 class TestProjectionSpecTrajectories:

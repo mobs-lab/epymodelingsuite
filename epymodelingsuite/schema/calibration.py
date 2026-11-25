@@ -8,7 +8,7 @@ from epiweeks import Week
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
 
 from ..utils import parse_timedelta
-from ..utils.location import resolve_population_names
+from ..utils.location import validate_population_names
 from .common import DateParameter, Distribution, InputFilePath, Meta
 
 logger = logging.getLogger(__name__)
@@ -109,7 +109,7 @@ class ComparisonSpec(BaseModel):
     )
     observed_location_format: str = Field(
         default="ISO",
-        description="Format of location identifiers in observed data. Options: ISO, FIPS, abbreviation, name, epydemix_population, metrocast_location_id",
+        description="Format of location identifiers in observed data. Options: ISO, FIPS, abbreviation, name, epydemix_population, metrocast_location_id, location_id",
     )
     simulation: list[str] = Field(description="List of transition names to sum for comparison (e.g. I_to_R)")
 
@@ -117,7 +117,15 @@ class ComparisonSpec(BaseModel):
     @classmethod
     def validate_observed_location_format(cls, v: str) -> str:
         """Ensure observed_location_format is a valid option."""
-        valid_formats = {"ISO", "FIPS", "abbreviation", "name", "epydemix_population", "metrocast_location_id"}
+        valid_formats = {
+            "ISO",
+            "FIPS",
+            "abbreviation",
+            "name",
+            "epydemix_population",
+            "metrocast_location_id",
+            "location_id",
+        }
         if v not in valid_formats:
             msg = f"observed_location_format must be one of {valid_formats}, got '{v}'"
             raise ValueError(msg)
@@ -421,7 +429,7 @@ class CalibrationModelset(BaseModel):
         - Dict format (explicit type): {"name": "denver", "type": "metrocast_location"}
         - Keywords: "all", "all-states", "all-metrocast"
         """
-        resolve_population_names(v)
+        validate_population_names(v)
         return v
 
 

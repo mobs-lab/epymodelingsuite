@@ -20,7 +20,7 @@ class TestSetupInterventions:
     @pytest.fixture
     def sample_models(self, base_model_config):
         """Create a collection of test models."""
-        models, population_names = create_model_collection(base_model_config, ["US-CA", "US-TX"])
+        models = create_model_collection(base_model_config, ["US-CA", "US-TX"])
         return models
 
     def test_returns_models_unchanged_when_no_interventions(self, base_model_config, sample_models):
@@ -88,7 +88,7 @@ class TestSetupInterventions:
             )
 
             # Verify make_school_closure_dict was called once per model
-            assert mock_closure_dict.call_count == len(models)
+            assert mock_closure_dict.call_count == 1
             # Check that it was called with correct year range
             for call_args in mock_closure_dict.call_args_list:
                 year_range = list(call_args[0][0])
@@ -97,7 +97,7 @@ class TestSetupInterventions:
             # Verify _add_school_closure_intervention_from_config was called for each model
             assert mock_add_closure.call_count == len(models)
             for mock_call in mock_add_closure.call_args_list:
-                assert mock_call[0][0] in models  # First arg is a model
+                assert mock_call[0][0] in [item.model for item in models]  # First arg is a model
                 assert mock_call[0][1] == base_model_config.interventions
                 assert mock_call[0][2] == {"2024": []}
 
@@ -135,7 +135,7 @@ class TestSetupInterventions:
             # Verify _add_contact_matrix_interventions_from_config was called for each model
             assert mock_add_contact.call_count == len(models)
             for mock_call in mock_add_contact.call_args_list:
-                assert mock_call[0][0] in models  # First arg is a model
+                assert mock_call[0][0] in [item.model for item in models]  # First arg is a model
                 assert mock_call[0][1] == base_model_config.interventions
 
             # Result should be the models
@@ -396,7 +396,7 @@ class TestSetupInterventions:
         from epymodelingsuite.schema.basemodel import Intervention
 
         # Create a single model
-        models, _ = create_model_collection(base_model_config, ["US-CA"])
+        models = create_model_collection(base_model_config, ["US-CA"])
 
         # Add school closure
         base_model_config.interventions = [
@@ -428,7 +428,7 @@ class TestSetupInterventions:
         from epymodelingsuite.schema.basemodel import Intervention
 
         # Create multiple models
-        models, _ = create_model_collection(base_model_config, ["US-CA", "US-TX", "US-NY", "US-FL"])
+        models = create_model_collection(base_model_config, ["US-CA", "US-TX", "US-NY", "US-FL"])
 
         # Add contact matrix intervention
         base_model_config.interventions = [
@@ -537,11 +537,11 @@ class TestSetupInterventionsIntegration:
             Intervention(type="school_closure", label="School Closures", scaling_factor=0.344)
         ]
 
-        models, _ = create_model_collection(base_model_config, ["US-CA"])
+        models = create_model_collection(base_model_config, ["US-CA"])
         intervention_types = ["school_closure"]
 
         # Verify no interventions before
-        assert len(models[0].interventions) == 0
+        assert len(models[0].model.interventions) == 0
 
         setup_interventions(
             models=models,
@@ -551,10 +551,10 @@ class TestSetupInterventionsIntegration:
         )
 
         # Verify interventions were actually added to the model
-        assert len(models[0].interventions) > 0, "School closure interventions were not applied to the model"
+        assert len(models[0].model.interventions) > 0, "School closure interventions were not applied to the model"
 
         # Verify specific closures are included (timespan is Oct 2024 - May 2025)
-        intervention_names = [i["name"] for i in models[0].interventions]
+        intervention_names = [i["name"] for i in models[0].model.interventions]
         assert any("Christmas" in name for name in intervention_names), (
             f"Christmas break not found in interventions: {intervention_names}"
         )
@@ -586,8 +586,8 @@ class TestSetupInterventionsIntegration:
         ]
 
         # Create models for CA and AZ
-        ca_models, _ = create_model_collection(base_model_config, ["US-CA"])
-        az_models, _ = create_model_collection(base_model_config, ["US-AZ"])
+        ca_models = create_model_collection(base_model_config, ["US-CA"])
+        az_models = create_model_collection(base_model_config, ["US-AZ"])
 
         intervention_types = ["school_closure"]
 
@@ -604,8 +604,8 @@ class TestSetupInterventionsIntegration:
             sampled_start_timespan=None,
         )
 
-        ca_names = [i["name"] for i in ca_models[0].interventions]
-        az_names = [i["name"] for i in az_models[0].interventions]
+        ca_names = [i["name"] for i in ca_models[0].model.interventions]
+        az_names = [i["name"] for i in az_models[0].model.interventions]
 
         # AZ has Fall Break, CA does not
         assert any("Fall Break" in name for name in az_names), f"AZ should have Fall Break but got: {az_names}"
@@ -630,11 +630,11 @@ class TestSetupInterventionsIntegration:
             )
         ]
 
-        models, _ = create_model_collection(base_model_config, ["US-CA"])
+        models = create_model_collection(base_model_config, ["US-CA"])
         intervention_types = ["contact_matrix"]
 
         # Verify no interventions before
-        assert len(models[0].interventions) == 0
+        assert len(models[0].model.interventions) == 0
 
         setup_interventions(
             models=models,
@@ -644,4 +644,4 @@ class TestSetupInterventionsIntegration:
         )
 
         # Verify interventions were actually added to the model
-        assert len(models[0].interventions) > 0, "Contact matrix interventions were not applied to the model"
+        assert len(models[0].model.interventions) > 0, "Contact matrix interventions were not applied to the model"

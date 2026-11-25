@@ -761,7 +761,7 @@ class TestLoadMetrocastPopulation:
     def test_invalid_location_raises_error(self):
         """Test that invalid metrocast location raises ValueError."""
         age_groups = ["0-4", "5-17", "18-49", "50-64", "65+"]
-        with pytest.raises(ValueError, match="No population data found"):
+        with pytest.raises(ValueError, match="Invalid metrocast location"):
             load_metrocast_population("invalid_location", age_groups)
 
     def test_with_contact_matrix_override(self):
