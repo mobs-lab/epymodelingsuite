@@ -227,7 +227,7 @@ def fetch_nssp_edvisits(
         - epiweek : int
             MMWR epidemiological week in CDC format (YYYYWW)
         - prop_ed_visits : float
-            Proportion of ED visits attributed to flu, on a 0-1 scale
+            Proportion of ED visits attributed to flu, on a 0-1 scale. Missing CDC percentages remain NaN.
 
     Examples
     --------
@@ -282,15 +282,14 @@ def fetch_nssp_edvisits(
         results = client.get(dataset_id, where=base_where, limit=100000)
 
     # Convert to pandas DataFrame
-    data = pd.DataFrame.from_records(results)
-    data = data[["week_end", "geography", "percent_visits_influenza"]]
+    data = pd.DataFrame.from_records(results, columns=["week_end", "geography", "percent_visits_influenza"])
 
     # Process dates and epiweeks
     data["target_end_date"] = pd.to_datetime(data["week_end"])
     data["epiweek"] = data["target_end_date"].apply(lambda key: int(epiweeks.Week.fromdate(key).cdcformat()))
 
     # Convert CDC percentages to proportions
-    data["prop_ed_visits"] = data["percent_visits_influenza"].fillna(0).astype(float) / 100
+    data["prop_ed_visits"] = data["percent_visits_influenza"].astype(float) / 100
 
     # Load location mapping
     locations = get_flusight_locations()
