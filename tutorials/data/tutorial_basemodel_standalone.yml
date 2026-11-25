@@ -1,0 +1,294 @@
+model:
+  meta:
+    description: "2024 vaccination scenarios - Calibration workflow"
+    author: "epymodelingsuite"
+    version: "0.0.1"
+    date: "2038-01-19"
+
+  timespan:
+    start_date: calibrated #"2024-09-15"
+    end_date: "2025-05-31"
+    delta_t: 1.0
+
+  simulation:
+    resample_frequency: W-SAT
+
+  random_seed: 42
+
+  population:
+    name: US-MA
+    age_groups:
+      - "0-4"
+      - "5-17"
+      - "18-49"
+      - "50-64"
+      - "65+"
+   
+  compartments:
+    - id: S
+      label: "Susceptible"
+      init: default # The remainder of the population set in initial condition goes to the 'default' compartment
+      # initial_condition: 0.8 # float or 'sampled', defaults to 0 if not specified
+    - id: S_vax
+      label: "Susceptible (vaccinated)"
+    - id: L
+      label: "Latent"
+      #init: calibrated
+    - id: L_vax
+      label: "Latent (vaccinated)"
+    - id: I_symp
+      label: "Infectious symptomatic"
+    - id: I_symp_vax
+      label: "Infectious symptomatic (vaccinated)"
+    - id: I_asymp
+      label: "Infectious asymptomatic"
+    - id: I_asymp_vax
+      label: "Infectious asymptomatic (vaccinated)"
+    - id: Home_sev
+      label: "Home severe"
+    - id: Home_sev_vax
+      label: "Home severe (vaccinated)"
+    - id: Home_mild
+      label: "Home mild"
+    - id: Home_mild_vax
+      label: "Home mild (vaccinated)"
+    - id: Home_asymp
+      label: "Home asymptomatic"
+    - id: Home_asymp_vax
+      label: "Home asymptomatic (vaccinated)"
+    - id: Hosp
+      label: "Hospitalized"
+    - id: Hosp_vax
+      label: "Hospitalized (vaccinated)"
+    - id: R_sev
+      label: "Removed severe"
+    - id: R_sev_vax
+      label: "Removed severe (vaccinated)"
+    - id: R_mild
+      label: "Removed mild"
+    - id: R_mild_vax
+      label: "Removed mild (vaccinated)"
+    - id: R_asymp
+      label: "Removed asymptomatic"
+    - id: R_asymp_vax
+      label: "Removed asymptomatic (vaccinated)"
+    - id: Initial_immune
+      label: "Initially immune"
+      #init: calibrated
+
+  transitions:
+    ### Main Compartments Branch
+    # Infections
+    - type: mediated # "spontaneous" or "mediated" or "vaccination"
+      source: S
+      target: L
+      mediator: I_symp
+      rate: beta
+    - type: mediated
+      source: S
+      target: L
+      mediator: I_asymp
+      rate: beta*r_beta_asymp
+    - type: mediated
+      source: S
+      target: L
+      mediator: I_symp_vax
+      rate: beta
+    - type: mediated
+      source: S
+      target: L
+      mediator: I_asymp_vax
+      rate: beta*r_beta_asymp
+    # L -> I
+    - type: spontaneous
+      source: L
+      target: I_symp
+      rate: eps*(1-p_asymp)
+    - type: spontaneous
+      source: L
+      target: I_asymp
+      rate: eps*p_asymp
+    # I -> Home
+    - type: spontaneous
+      source: I_symp
+      target: Home_sev
+      rate: mu*p_h
+    - type: spontaneous
+      source: I_symp
+      target: Home_mild
+      rate: mu*(1-p_h)
+    - type: spontaneous
+      source: I_asymp
+      target: Home_asymp
+      rate: mu
+    # Others
+    - type: spontaneous
+      source: Home_sev
+      target: Hosp
+      rate: delta
+    - type: spontaneous
+      source: Home_mild
+      target: R_mild
+      rate: eta
+    - type: spontaneous
+      source: Home_asymp
+      target: R_asymp
+      rate: eta
+    - type: spontaneous
+      source: Hosp
+      target: R_sev
+      rate: mu_h
+
+    ### Vaccination Branch
+    # NOTE: vaccination transition type is not actually used in code,
+    # since the transition is added based on vaccination section below.
+    # Remove type, or retain and implement?
+    - type: vaccination
+      source: S
+      target: S_vax
+    # Infections
+    - type: mediated
+      source: S_vax
+      target: L_vax
+      mediator: I_symp_vax
+      rate: beta*r_beta_vax
+    - type: mediated
+      source: S_vax
+      target: L_vax
+      mediator: I_asymp_vax
+      rate: beta*r_beta_asymp*r_vax
+    - type: mediated
+      source: S_vax
+      target: L_vax
+      mediator: I_symp
+      rate: beta*r_beta_vax
+    - type: mediated
+      source: S_vax
+      target: L_vax
+      mediator: I_asymp
+      rate: beta*r_beta_asymp*r_vax
+    # L -> I
+    - type: spontaneous
+      source: L_vax
+      target: I_symp_vax
+      rate: eps*(1-p_asymp)
+    - type: spontaneous
+      source: L_vax
+      target: I_asymp_vax
+      rate: eps*p_asymp
+    # I -> Home
+    - type: spontaneous
+      source: I_symp_vax
+      target: Home_sev_vax
+      rate: mu*p_h
+    - type: spontaneous
+      source: I_symp_vax
+      target: Home_mild_vax
+      rate: mu*(1-p_h)
+    - type: spontaneous
+      source: I_asymp_vax
+      target: Home_asymp_vax
+      rate: mu
+    # Others
+    - type: spontaneous
+      source: Home_sev_vax
+      target: Hosp_vax
+      rate: delta
+    - type: spontaneous
+      source: Home_mild_vax
+      target: R_mild_vax
+      rate: eta
+    - type: spontaneous
+      source: Home_asymp_vax
+      target: R_asymp_vax
+      rate: eta
+    - type: spontaneous
+      source: Hosp_vax
+      target: R_sev_vax
+      rate: mu_h
+        
+  parameters:
+    beta:
+      type: calculated
+      value: Rt*mu/(eigenvalue*(1-p_asymp+p_asymp*r_beta_asymp)) # eigenvalue of contact matrix sensitive to location
+    seasonality_min:
+      type: scalar
+      value: 0.65
+    Rt:
+      type: scalar
+      value: 1.5
+    r_beta_asymp:
+      type: scalar
+      value: 0.5
+    r_beta_vax:
+      type: scalar
+      value: 0.7
+    r_vax:
+      type: scalar
+      value: 0.5
+    p_asymp:
+      type: scalar
+      value: 0.45
+    eps:
+      type: scalar
+      value: 1/1.5
+    mu:
+      type: scalar
+      value: 1/1.5
+    eta:
+      type: scalar
+      value: 1/3.5
+    p_h:
+      type: age_varying
+      values:
+        - 0.007
+        - 0.0027
+        - 0.0056
+        - 0.0110
+        - 0.0909
+    mu_h:
+      type: age_varying
+      values:
+        - 1/2.7
+        - 1/3.6
+        - 1/5.8
+        - 1/7.5
+        - 1/5.1
+    delta:
+      type: age_varying
+      values:
+        - 1/1.26
+        - 1/1.21
+        - 1/1.91
+        - 1/2.03
+        - 1/1.5
+        
+  vaccination:
+    scenario_data_path: "data/vaccine_scenarios_2425_cd.csv"
+    scenario: "C_D"
+    origin_compartment: S
+    eligible_compartments:
+      - S
+      - L
+      - I_asymp
+      - Home_asymp
+      - R_sev
+      - R_mild
+      - R_asymp
+      - Initial_immune
+      
+  interventions:
+    - type: school_closure
+      scaling_factor: 0.344
+
+  seasonality:
+    target_parameter: beta
+    method: balcan
+    seasonality_max_date: "2024-10-01" # YYYY-MM-DD
+    #seasonality_min_date: "2025-04-01" # YYYY-MM-DD, optional
+    max_value: 1.00
+    min_value: 0.50
+
+
+
+      
