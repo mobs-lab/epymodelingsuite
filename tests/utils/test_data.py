@@ -10,6 +10,7 @@ from epymodelingsuite.utils.data import (
     fetch_hhs_hospitalizations,
     fetch_latest_hhs_week_end,
     fetch_latest_nssp_week_end,
+    fetch_nssp_edvisits,
 )
 
 
@@ -419,3 +420,16 @@ class TestLatestWeekEnd:
     def test_invalid_hhs_data_type(self) -> None:
         with pytest.raises(ValueError, match="Invalid data_type"):
             fetch_latest_hhs_week_end("bogus")
+
+@pytest.mark.parametrize("include_zero", [False, True])
+def test_nssp_missing_percentage(include_zero):
+    rows = [{"week_end": "2026-11-14", "geography": "Delaware"}]
+    if include_zero:
+        rows.append({"week_end": "2026-11-21", "geography": "Delaware", "percent_visits_influenza": "0"})
+    with patch("epymodelingsuite.utils.data.Socrata") as client:
+        client.return_value.get.return_value = rows
+        proportions = fetch_nssp_edvisits()["prop_ed_visits"]
+    assert len(proportions) == len(rows)
+    assert pd.isna(proportions.iloc[0])
+    if include_zero:
+        assert proportions.iloc[1] == 0
