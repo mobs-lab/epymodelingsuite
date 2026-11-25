@@ -108,7 +108,7 @@ def _fetch_quantiles_for_location(
     if needs_calibration:
         try:
             cal_trajs = calibration.results.get_selected_trajectories()
-            cal_dates = cal_trajs[0].get("date") if cal_trajs else None
+            cal_dates = cal_trajs[0].get("date") if len(cal_trajs) > 0 else None
             cal_quant = get_calibration_quantiles(
                 calibration.results,
                 quantiles=plots_config.quantiles.quantiles,
@@ -615,7 +615,7 @@ def _compute_fitting_window(
 
     try:
         cal_trajs = calibration.results.get_selected_trajectories()
-        cal_dates = cal_trajs[0].get("date") if cal_trajs else None
+        cal_dates = cal_trajs[0].get("date") if len(cal_trajs) > 0 else None
         if cal_dates is not None and len(cal_dates) > 0:
             dates = pd.to_datetime(cal_dates).date
             return dates.min(), dates.max()

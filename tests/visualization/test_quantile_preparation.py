@@ -162,3 +162,25 @@ def test_drawing_failure_closes_figure_and_other_outputs_continue(monkeypatch):
     assert f"quantiles_{CA}_filtered" not in outputs
     assert len(outputs) == 5
     assert plt.get_fignums() == []
+
+
+@pytest.mark.parametrize("show_calibration", [True, False])
+def test_top_fraction_plot_data_preserves_fitting_window(show_calibration: bool) -> None:
+    """Plotting raw top_fraction draws can show the fitting window with or without a calibration band."""
+    calibration = make_calibration(CA)
+    selected = calibration.results.selected_trajectories
+    selected[0] = np.array(selected[0], dtype=object)
+    dates = selected[0][0]["date"]
+
+    data = preparation._collect_location_plot_data(
+        calibration,
+        make_plots_config(),
+        {},
+        needs_calibration=show_calibration,
+        needs_projection=False,
+        needs_fitting_window=True,
+    )
+
+    assert (data.fitting_window_start, data.fitting_window_end) == (dates[0], dates[-1])
+    if show_calibration:
+        assert not data.calibration_quantiles.empty
