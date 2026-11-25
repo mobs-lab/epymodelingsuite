@@ -1,7 +1,33 @@
 from collections.abc import Callable
 from datetime import date
 
+import numpy as np
+import pandas as pd
 from epydemix.calibration import ABCSampler, CalibrationResults
+
+
+def get_posterior_table(results: CalibrationResults, generation: int | None = None) -> pd.DataFrame:
+    """Copy a generation's particles with their weights, distances, and positional IDs.
+
+    Defaults to the last posterior generation. Weights are not rescaled, and
+    particle IDs refer to row positions within that generation, not projection IDs.
+    """
+    if generation is None:
+        generation = max(results.posterior_distributions)
+    posterior = results.get_posterior_distribution(generation)
+    weights = np.asarray(results.get_weights(generation))
+    if weights.shape != (len(posterior),):
+        msg = f"Posterior weights must match particles in generation {generation}"
+        raise ValueError(msg)
+    distances = np.asarray(results.get_distances(generation))
+    if distances.shape != (len(posterior),):
+        msg = f"Posterior distances must match particles in generation {generation}"
+        raise ValueError(msg)
+    metadata = pd.DataFrame(
+        {"generation": generation, "particle_id": range(len(posterior)), "weight": weights, "distance": distances},
+        index=posterior.index,
+    )
+    return pd.concat([metadata, posterior], axis=1, verify_integrity=True).copy()
 
 
 def reproduce_trajectory(
